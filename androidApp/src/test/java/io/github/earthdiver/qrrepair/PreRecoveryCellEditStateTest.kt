@@ -1,0 +1,215 @@
+package io.github.earthdiver.qrrepair
+
+import io.github.earthdiver.qrrepair.core.Coord
+import io.github.earthdiver.qrrepair.core.ModuleValue
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class PreRecoveryCellEditStateTest {
+    private val a = Coord(2, 3)
+    private val b = Coord(4, 5)
+
+    @Test
+    fun returningToImageValueKeepsManualSourceUntilExplicitlyRestored() {
+        val state = PreRecoveryCellEditState(emptyMap(), emptySet())
+
+        assertEquals(setOf(a), state.applyValues(listOf(a), ModuleValue.ONE) { ModuleValue.ZERO })
+        assertEquals(ModuleValue.ONE, state.edits[a])
+        assertEquals(1, state.undoCount)
+
+        assertEquals(setOf(a), state.applyValues(listOf(a), ModuleValue.ZERO) { ModuleValue.ZERO })
+        assertEquals(ModuleValue.ZERO, state.edits[a])
+        assertEquals(setOf(a), state.restoreImage(listOf(a)))
+        assertTrue(a !in state.edits)
+        assertEquals(setOf(a), state.undo())
+        assertEquals(ModuleValue.ZERO, state.edits[a])
+        assertEquals(setOf(a), state.redo())
+        assertTrue(a !in state.edits)
+    }
+
+    @Test
+    fun equalValueTapsDoNotCreateOverridesOrConsumeRedo() {
+        for (baseline in ModuleValue.entries) {
+            val state = PreRecoveryCellEditState(emptyMap(), emptySet())
+            state.makeManual(listOf(b)) { baseline }
+            state.undo()
+            assertTrue(state.applyValues(listOf(a), baseline) { baseline }.isEmpty())
+            assertTrue(state.edits.isEmpty())
+            assertEquals(0, state.undoCount)
+            assertEquals(1, state.redoCount)
+        }
+    }
+
+    @Test
+    fun allFourBinaryCasesHaveTheSameRulesForEveryCoordinate() {
+        // A format bit and a data bit use exactly the same state transition.
+        for (coord in listOf(Coord(8, 0), Coord(10, 10))) {
+            for (baseline in listOf(ModuleValue.ZERO, ModuleValue.ONE)) {
+                for (input in listOf(ModuleValue.ZERO, ModuleValue.ONE)) {
+                    val state = PreRecoveryCellEditState(emptyMap(), emptySet())
+                    state.applyValues(listOf(coord), input) { baseline }
+                    if (input == baseline) {
+                        assertTrue(state.edits.isEmpty())
+                        assertEquals(0, state.undoCount)
+                    } else {
+                        assertEquals(input, state.edits[coord])
+                        assertEquals(1, state.undoCount)
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun explicitPinAndItsSourceOnlyUndoRedoAreRetainedAcrossCheckpoints() {
+        val state = PreRecoveryCellEditState(emptyMap(), emptySet())
+        assertEquals(setOf(a), state.makeManual(listOf(a)) { ModuleValue.ZERO })
+        assertTrue(state.applyValues(listOf(a), ModuleValue.ZERO) { ModuleValue.ZERO }.isEmpty())
+        assertEquals(ModuleValue.ZERO, state.edits[a])
+        state.undo()
+        assertTrue(state.edits.isEmpty())
+        val reopened = state.copyForEditing()
+        reopened.redo()
+        assertEquals(ModuleValue.ZERO, reopened.edits[a])
+        reopened.restoreImage(listOf(a))
+        reopened.undo()
+        assertEquals(ModuleValue.ZERO, reopened.edits[a])
+        reopened.redo()
+        assertTrue(reopened.edits.isEmpty())
+    }
+
+    @Test
+    fun restoringMixedSelectionDropsPriorityWithoutChangingUnselectedCells() {
+        val state = PreRecoveryCellEditState(mapOf(b to ModuleValue.ONE), emptySet())
+        state.setPrioritySearch(listOf(a))
+        val image = Coord(12, 12)
+        state.select(listOf(a, image))
+        assertTrue(state.selectionHasManualEdits)
+        assertEquals(setOf(a), state.restoreImage(state.selectedCells))
+        assertEquals(mapOf(b to ModuleValue.ONE), state.edits)
+        assertTrue(state.prioritySearch.isEmpty())
+        assertTrue(!state.selectionHasManualEdits)
+        state.undo()
+        assertEquals(ModuleValue.ERASED, state.edits[a])
+        assertEquals(setOf(a), state.prioritySearch)
+    }
+
+    @Test
+    fun restoringUsesNoOldImageValueAndNewPinUsesCurrentSampling() {
+        val state = PreRecoveryCellEditState(emptyMap(), emptySet())
+        state.makeManual(listOf(a)) { ModuleValue.ONE }
+        state.restoreImage(listOf(a))
+        state.makeManual(listOf(a)) { ModuleValue.ZERO }
+        assertEquals(ModuleValue.ZERO, state.edits[a])
+    }
+
+    @Test
+    fun explicitPinIsAtomicWhenOneValueConflictsAndClearingRemainsPossible() {
+        val state = PreRecoveryCellEditState(emptyMap(), emptySet(), validateEdits = { b !in it })
+        state.select(listOf(a, b))
+        assertTrue(state.makeManual(state.selectedCells) { ModuleValue.ONE }.isEmpty())
+        assertTrue(state.edits.isEmpty())
+        assertEquals(0, state.undoCount)
+        assertEquals(setOf(a, b), state.selectedCells)
+        val legacy = PreRecoveryCellEditState(mapOf(a to ModuleValue.ONE, b to ModuleValue.ONE), emptySet(),
+            validateEdits = { it.isEmpty() })
+        assertEquals(setOf(a), legacy.restoreImage(listOf(a)))
+        assertEquals(mapOf(b to ModuleValue.ONE), legacy.edits)
+        assertTrue(legacy.undo().isEmpty())
+        assertEquals(mapOf(b to ModuleValue.ONE), legacy.edits)
+    }
+
+    @Test
+    fun prioritySearchIsBoundedAndUndoRestoresThePreviousEdit() {
+        val state = PreRecoveryCellEditState(mapOf(a to ModuleValue.ONE), emptySet(), priorityLimit = 1)
+
+        assertEquals(PriorityEditResult.CHANGED, state.setPrioritySearch(listOf(a)))
+        assertEquals(ModuleValue.ERASED, state.edits[a])
+        assertEquals(setOf(a), state.prioritySearch)
+        assertEquals(PriorityEditResult.LIMIT_EXCEEDED, state.setPrioritySearch(listOf(b)))
+
+        state.undo()
+        assertEquals(ModuleValue.ONE, state.edits[a])
+        assertTrue(state.prioritySearch.isEmpty())
+        state.redo()
+        assertEquals(ModuleValue.ERASED, state.edits[a])
+        assertEquals(setOf(a), state.prioritySearch)
+    }
+
+    @Test
+    fun persistedEditsStartAsOneUndoableTransaction() {
+        val state = PreRecoveryCellEditState(mapOf(a to ModuleValue.ZERO, b to ModuleValue.ONE), emptySet())
+
+        assertEquals("変更操作: 1回・変更セル: 2セル　やり直し: 0回　優先探索: 0/4", state.countLabel)
+        assertEquals(setOf(a, b), state.undo())
+        assertTrue(state.edits.isEmpty())
+        assertEquals("変更操作: 0回・変更セル: 0セル　やり直し: 1回　優先探索: 0/4", state.countLabel)
+    }
+
+    @Test
+    fun newEditClearsRedoBranch() {
+        val state = PreRecoveryCellEditState(emptyMap(), emptySet())
+        state.applyValues(listOf(a), ModuleValue.ONE) { ModuleValue.ZERO }
+        state.undo()
+        assertEquals(1, state.redoCount)
+
+        state.applyValues(listOf(b), ModuleValue.ONE) { ModuleValue.ZERO }
+
+        assertEquals(0, state.redoCount)
+        assertTrue(state.redo().isEmpty())
+    }
+
+    @Test
+    fun checkpointRetainsBothStacksAndIsIndependentOfDiscardedDraft() {
+        val state = PreRecoveryCellEditState(emptyMap(), emptySet())
+        state.applyValues(listOf(a), ModuleValue.ONE) { ModuleValue.ZERO }
+        state.setPrioritySearch(listOf(b))
+        state.undo()
+        val saved = state.copyForEditing()
+        state.clearAll()
+        val reopened = saved.copyForEditing()
+        assertEquals(1, reopened.undoCount)
+        assertEquals(1, reopened.redoCount)
+        assertEquals(setOf(b), reopened.redo())
+        assertEquals(setOf(b), reopened.prioritySearch)
+        reopened.undo()
+        reopened.undo()
+        assertTrue(reopened.edits.isEmpty())
+        assertEquals(mapOf(a to ModuleValue.ONE), saved.edits)
+        assertEquals(1, saved.undoCount)
+        assertEquals(1, saved.redoCount)
+    }
+
+    @Test
+    fun reopenedDraftUsesCurrentValidationAndCanRetryBlockedRedo() {
+        val state = PreRecoveryCellEditState(emptyMap(), emptySet())
+        state.applyValues(listOf(a), ModuleValue.ONE) { ModuleValue.ZERO }
+        state.undo()
+        var allowed = false
+        val reopened = state.copyForEditing { allowed }
+        assertTrue(reopened.redo().isEmpty())
+        assertEquals(1, reopened.redoCount)
+        allowed = true
+        assertEquals(setOf(a), reopened.redo())
+    }
+
+    @Test
+    fun rotatingProvisionalGridKeepsEditsAndHistoryOnTheSamePhysicalCells() {
+        val state = PreRecoveryCellEditState(emptyMap(), emptySet())
+        state.applyValues(listOf(a), ModuleValue.ONE) { ModuleValue.ZERO }
+        state.setPrioritySearch(listOf(b))
+
+        state.rotateCoordinates(dimension = 21, quarterTurns = 1)
+
+        val rotatedA = Coord(3, 18)
+        val rotatedB = Coord(5, 16)
+        assertEquals(ModuleValue.ONE, state.edits[rotatedA])
+        assertEquals(ModuleValue.ERASED, state.edits[rotatedB])
+        assertEquals(setOf(rotatedB), state.prioritySearch)
+        assertEquals(setOf(rotatedB), state.undo())
+        assertTrue(rotatedB !in state.edits)
+        assertEquals(setOf(rotatedB), state.redo())
+        assertEquals(ModuleValue.ERASED, state.edits[rotatedB])
+    }
+}

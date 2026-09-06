@@ -1,0 +1,14 @@
+# Privacy
+
+QR Repair is designed for local, on-device processing.
+
+- The app does not request the Internet permission.
+- Repair sessions and source images are stored under Android's app-private `noBackupFilesDir`. Imported/captured source images are persisted as lossless, content-addressed PNG files only when a repair session is saved.
+- Legacy version 0.5 sessions previously stored under app-private `filesDir` are migrated to the no-backup area on a best-effort basis when opened.
+- Automatic Android cloud backup and device-transfer backup are disabled/excluded because QR content may contain sensitive data such as Wi-Fi credentials, contact information, authentication URLs, or other private text. Manifest backup settings and XML exclusion rules remain defense-in-depth in addition to the no-backup storage location.
+- Recovered URLs are never opened automatically.
+- Wi-Fi passwords are masked by default in the content preview.
+- Camera capture uses a private cache JPEG only as a hand-off between activities; the app deletes that temporary file after decoding (including failure paths) and purges stale `qr-capture-*.jpg` files on the next app start after an interrupted/crashed hand-off.
+- Results leave app-private storage only when the user explicitly exports/saves them.
+
+If telemetry, crash reporting, advertising, cloud sync, sharing SDKs, or any network feature is added in the future, this document and the store privacy disclosures must be updated before release.

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Flat reconstruction of the selected broken-finder concept. -->
+    <path
+        android:fillColor="#20D6D2"
+        android:fillType="evenOdd"
+        android:pathData="M27,27 Q21,27 21,33 L21,78 Q21,87 30,87 L75,87 Q84,87 84,78 L84,52 L76,45 L76,75 Q76,79 72,79 L33,79 Q29,79 29,75 L29,36 Q29,35 30,35 L65,35 L65,27 Z M40,45 Q38,45 38,47 L38,67 Q38,69 40,69 L60,69 Q62,69 62,67 L62,47 Q62,45 60,45 Z" />
+    <path
+        android:fillColor="#20D6D2"
+        android:pathData="M44,49 Q42,49 42,51 L42,63 Q42,65 44,65 L56,65 Q58,65 58,63 L58,51 Q58,49 56,49 Z" />
+    <path
+        android:fillColor="#20D6D2"
+        android:pathData="M70,26 Q69,26 69,27 L69,34 Q69,35 70,35 L77,35 Q78,35 78,34 L78,27 Q78,26 77,26 Z M79,37 Q78,37 78,38 L78,45 Q78,46 79,46 L86,46 Q87,46 87,45 L87,38 Q87,37 86,37 Z" />
+    <path
+        android:fillColor="#B7F21A"
+        android:pathData="M82,20 Q81,20 81,21 L81,29 Q81,30 82,30 L90,30 Q91,30 91,29 L91,21 Q91,20 90,20 Z" />
+</vector>

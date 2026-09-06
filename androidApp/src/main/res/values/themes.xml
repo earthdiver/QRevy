@@ -1,0 +1,32 @@
+<resources>
+    <attr name="modernStyle" format="boolean" />
+    <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="modernStyle">false</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:colorAccent">#006C4C</item>
+    </style>
+    <style name="ModernAppTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="modernStyle">true</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">#101312</item>
+        <item name="android:navigationBarColor">#101312</item>
+        <item name="android:windowBackground">#101312</item>
+        <item name="android:colorBackground">#101312</item>
+        <item name="android:colorAccent">#D2ED48</item>
+        <item name="android:colorControlHighlight">#33D2ED48</item>
+        <item name="android:textColorPrimary">#F4F5EF</item>
+        <item name="android:textColorSecondary">#B9C0B8</item>
+        <item name="android:buttonStyle">@style/PrecisionButton</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+    <style name="PrecisionButton" parent="android:style/Widget.Material.Button">
+        <item name="android:minHeight">36dp</item>
+        <item name="android:paddingTop">0dp</item>
+        <item name="android:paddingBottom">0dp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textColor">#F4F5EF</item>
+        <item name="android:colorButtonNormal">#252B27</item>
+    </style>
+</resources>

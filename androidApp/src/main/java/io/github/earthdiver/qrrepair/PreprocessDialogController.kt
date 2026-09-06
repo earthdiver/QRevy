@@ -1,0 +1,1176 @@
+package io.github.earthdiver.qrrepair
+
+import android.app.Activity
+import android.app.AlertDialog
+import android.graphics.Bitmap
+import android.view.Gravity
+import android.view.View
+import android.widget.Button
+import android.widget.CheckBox
+import android.widget.HorizontalScrollView
+import android.widget.LinearLayout
+import android.widget.RadioButton
+import android.widget.RadioGroup
+import android.widget.SeekBar
+import android.widget.TextView
+import android.widget.Toast
+import io.github.earthdiver.qrrepair.core.CodewordExtractor
+import io.github.earthdiver.qrrepair.core.Coord
+import io.github.earthdiver.qrrepair.core.FinderRole
+import io.github.earthdiver.qrrepair.core.FinderDetector
+import io.github.earthdiver.qrrepair.core.GridGeometry
+import io.github.earthdiver.qrrepair.core.GeometryModel
+import io.github.earthdiver.qrrepair.core.MatrixSampler
+import io.github.earthdiver.qrrepair.core.ModuleSource
+import io.github.earthdiver.qrrepair.core.ModuleValue
+import com.google.zxing.qrcode.decoder.Version
+import io.github.earthdiver.qrrepair.core.PolarityMode
+import io.github.earthdiver.qrrepair.core.PreprocessSettings
+import io.github.earthdiver.qrrepair.core.SamplingProfile
+import io.github.earthdiver.qrrepair.core.prepareFinderDetection
+import io.github.earthdiver.qrrepair.core.QrMatrix
+import io.github.earthdiver.qrrepair.core.FormatEditPolicy
+import io.github.earthdiver.qrrepair.core.FormatEditConflict
+import io.github.earthdiver.qrrepair.core.QrFormatConstraint
+import io.github.earthdiver.qrrepair.core.QrFunctionMask
+import io.github.earthdiver.qrrepair.core.RecoveryEngine
+import io.github.earthdiver.qrrepair.core.ThresholdMode
+import io.github.earthdiver.qrrepair.ui.BitmapUtils
+import io.github.earthdiver.qrrepair.ui.EditorTool
+import io.github.earthdiver.qrrepair.ui.CodewordOverlayKind
+import io.github.earthdiver.qrrepair.ui.QrEditorView
+import io.github.earthdiver.qrrepair.ui.PreprocessOverlayView
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
+import java.util.concurrent.atomic.AtomicInteger
+
+/** A saved dialog draft; the Activity owns persistence and the retained image after handoff. */
+internal data class PreprocessSave(
+    val settings: PreprocessSettings,
+    val cellEdits: PreRecoveryCellEditState,
+    val image: BitmapUtils.Prepared,
+    val events: List<PreprocessDraftEvent>,
+)
+
+/** Keeps the same draft alive while the result page is visible. */
+internal class PreprocessEditorSession(
+    val open: (PreprocessPage) -> Unit,
+    val close: () -> Unit,
+)
+
+/** Session effects owned outside the dialog. Unsaved edits remain local to the dialog. */
+internal interface PreprocessDialogHost {
+    fun retains(image: BitmapUtils.Prepared): Boolean
+    fun save(draft: PreprocessSave)
+    fun showSavedStatus()
+    fun startRecovery()
+    fun canShowResult(): Boolean = false
+    fun showResult() = Unit
+    fun showHome() = Unit
+    fun editorOpened(session: PreprocessEditorSession) = Unit
+    fun editorClosed(session: PreprocessEditorSession) = Unit
+    fun saveDiagnosticInput(bitmap: Bitmap, owned: Boolean)
+}
+
+/** Owns the pre-repair pages, their interactions, and temporary transformed images. */
+internal class PreprocessDialogController(
+    private val activity: Activity,
+    private val preprocessSettings: PreprocessSettings,
+    private val source: BitmapUtils.Prepared,
+    private val initialWorking: BitmapUtils.Prepared,
+    private val savedCellEditState: PreRecoveryCellEditState?,
+    private val executor: java.util.concurrent.Executor,
+    private val finderSearchGeneration: AtomicInteger,
+    private val recoveryEngine: RecoveryEngine,
+    private val host: PreprocessDialogHost,
+) {
+    fun show(initialPage: PreprocessPage = PreprocessPage.BASIC) = with(activity) {
+        val modernStyle = AppStylePreferences.isModern(this)
+        val dialogState = PreprocessDialogState(preprocessSettings)
+        var working = initialWorking
+        fun releaseWorkingIfTemporary(previous: BitmapUtils.Prepared, replacement: BitmapUtils.Prepared) {
+            if (previous !== source && !host.retains(previous) && previous.bitmap !== replacement.bitmap &&
+                !previous.bitmap.isRecycled
+            ) {
+                previous.bitmap.recycle()
+            }
+        }
+        var navigatePreprocessPage: (PreprocessPage) -> Unit = {}
+        var savePreprocess: () -> Unit = {}
+        var submitPreprocess: () -> Unit = {}
+        var cancelPreprocess: () -> Unit = {}
+        val draftState = PreprocessDraftState(preprocessSettings)
+        var noteDraftChange: (String, String, String) -> Unit = { _, _, _ -> }
+        var validateCellEdits: (Map<Coord, ModuleValue>) -> Boolean = { true }
+        val cellEditState = savedCellEditState?.copyForEditing { validateCellEdits(it) } ?: PreRecoveryCellEditState(
+            preprocessSettings.preRecoveryEdits,
+            preprocessSettings.preRecoveryPrioritySearch,
+            validateEdits = { validateCellEdits(it) },
+        )
+        var updatePageLayout: (PreprocessPage) -> Unit = {}
+        var manualFocus = false
+        var workflowNavigation: ModernWorkflowNavigation? = null
+        var showResultPage: () -> Unit = {}
+        var preEditStatus: TextView? = null
+        var preEditCountStatus: TextView? = null
+        var dedicatedEditor: QrEditorView? = null
+        var dedicatedEditorDialog: AlertDialog? = null
+        var dedicatedEditStatus: TextView? = null
+        var dedicatedEditCountStatus: TextView? = null
+        var classificationLegend: TextView? = null
+        var preEditSourceControl: CellSourceControl? = null
+        var dedicatedSourceControl: CellSourceControl? = null
+        var refreshSourceControls: () -> Unit = {}
+        fun updatePreEditCountStatus() {
+            preEditCountStatus?.text = cellEditState.compactCountLabel
+            dedicatedEditCountStatus?.text = cellEditState.countLabel
+            refreshSourceControls()
+        }
+        val overlay = PreprocessOverlayView(this).apply {
+            setBitmap(working.bitmap)
+            setVersion(preprocessSettings.version)
+            preprocessSettings.manualQuad?.let {
+                if (preprocessSettings.logicalGridAssigned) setImageQuad(it) else setPhysicalImageQuad(it)
+            } ?: if (preprocessSettings.logicalGridAssigned) setImageQuad(imageQuad()) else Unit
+            setFinderPoints(preprocessSettings.manualFinders)
+            setConfirmedFinderPolarity(preprocessSettings.confirmedFinderPolarity)
+            onClassificationSummaryChanged = { summary -> classificationLegend?.text = summary }
+            val fixedHeight = (resources.displayMetrics.heightPixels * .42).toInt().coerceIn(dp(240), dp(420))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, fixedHeight)
+        }
+        var userGeometryEdited = false
+        overlay.onGeometryEdited = { userGeometryEdited = true }
+        val polarityModes = listOf(PolarityMode.AUTO, PolarityMode.NORMAL, PolarityMode.INVERTED)
+        val polarity = RadioGroup(this).apply {
+            orientation = RadioGroup.HORIZONTAL
+            listOf(ui("自動", "Auto"), ui("通常", "Normal"), ui("反転", "Inverted")).forEachIndexed { index, label ->
+                addView(RadioButton(activity).apply {
+                    id = View.generateViewId(); text = label; tag = polarityModes[index]
+                }, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
+            }
+            val selected = polarityModes.indexOf(preprocessSettings.polarity).coerceAtLeast(0)
+            check(getChildAt(selected).id)
+        }
+        fun selectedPolarity(): PolarityMode =
+            polarity.findViewById<RadioButton>(polarity.checkedRadioButtonId)?.tag as? PolarityMode ?: PolarityMode.AUTO
+        val local = CheckBox(this).apply {
+            text = ui("場所ごとに閾値を補正（照明むら・反射がある画像向け）", "Local threshold (uneven lighting or glare)")
+            isChecked = preprocessSettings.thresholdMode == ThresholdMode.LOCAL_ADAPTIVE
+        }
+        val useUnknownColors = CheckBox(this).apply {
+            text = ui("自動検出された色クラスタを不明領域（?）として扱う", "Treat detected color clusters as unknown (?)")
+            isChecked = preprocessSettings.useUnknownColorClusters && preprocessSettings.unknownColorClusters.isNotEmpty()
+            isEnabled = preprocessSettings.unknownColorClusters.isNotEmpty()
+        }
+        val searchQuadNeighborhood = CheckBox(this).apply {
+            text = ui("サンプリング位置を自動微調整する", "Automatically fine-tune sampling position")
+            isChecked = preprocessSettings.searchQuadNeighborhood
+        }
+        val trustKnownPayloadCount = CheckBox(this).apply {
+            text = ui("種類・文字数／バイト数が正しく読み取れている場合に、単一セグメントを仮定して後続構造を強制する。", "When the mode and character/byte count are read correctly, assume a single segment and force the following structure.")
+            isChecked = preprocessSettings.trustKnownPayloadCount
+        }
+        val lockManualBits = CheckBox(this).apply {
+            text = ui("手動指定した0/1と矛盾する復元候補を除外する", "Exclude recovery candidates that conflict with manual 0/1 values")
+            isChecked = preprocessSettings.lockManualBits
+        }
+        var formatConstraintDraft = preprocessSettings.formatConstraint
+        var formatMismatchLimitDraft = preprocessSettings.formatMismatchLimit
+        var dataEccMismatchLimitDraft = preprocessSettings.dataEccMismatchLimit
+        val blackLabel = TextView(this)
+        val black = SeekBar(this).apply { max = 254; progress = preprocessSettings.blackMax }
+        val whiteLabel = TextView(this)
+        val white = SeekBar(this).apply { max = 254; progress = preprocessSettings.whiteMin - 1 }
+        val version = SeekBar(this).apply { max = 39; progress = preprocessSettings.version - 1 }
+        var versionButton: Button? = null
+        var activePreviewProfile: SamplingProfile? = null
+        var committedVersion = preprocessSettings.version
+        var versionConfirmationShowing = false
+        var checkVersionErrorLimit: () -> Unit = {}
+        var refreshClassificationMatrix: () -> Unit = {}
+        var refreshPreRecoveryDataPage: () -> Unit = {}
+        fun invalidateSamplingPreview() {
+            overlay.clearCornerSelection()
+        }
+        fun controlSnapshot() = PreprocessControlSnapshot(
+            polarity = selectedPolarity(),
+            localThreshold = local.isChecked,
+            blackProgress = black.progress,
+            whiteProgress = white.progress,
+            useUnknownColors = useUnknownColors.isChecked,
+            version = version.progress + 1,
+            lockCorners = true,
+            lockVersion = true,
+            searchQuadNeighborhood = searchQuadNeighborhood.isChecked,
+            trustKnownPayloadCount = trustKnownPayloadCount.isChecked,
+            formatConstraint = formatConstraintDraft,
+            formatMismatchLimit = formatMismatchLimitDraft,
+            dataEccMismatchLimit = dataEccMismatchLimitDraft,
+            lockManualBits = lockManualBits.isChecked,
+        )
+        fun refreshLabels() {
+            val mode = selectedPolarity()
+            val (darkMeaning, lightMeaning) = polarityThresholdMeanings(mode, isJapaneseUi())
+            blackLabel.text = ui("画像の暗部（$darkMeaning）: ${black.progress}", "Dark pixels ($darkMeaning): ${black.progress}")
+            whiteLabel.text = ui("画像の明部（$lightMeaning）: ${white.progress + 1}", "Light pixels ($lightMeaning): ${white.progress + 1}")
+            val selectedVersion = version.progress + 1
+            val selectedDimension = 17 + 4 * selectedVersion
+            versionButton?.text = ui("QRバージョン: $selectedVersion / $selectedDimension×${selectedDimension}セル", "QR Version: $selectedVersion / $selectedDimension modules")
+            val profile = SamplingProfile(
+                dialogState.previewSettings(controlSnapshot()),
+                inverted = mode == PolarityMode.INVERTED,
+            )
+            activePreviewProfile = profile
+            overlay.setClassificationPreview(working.luma, profile)
+            refreshClassificationMatrix()
+        }
+        val listener = object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (black.progress >= white.progress + 1) {
+                    if (seekBar === black) white.progress = (black.progress + 1).coerceAtMost(254)
+                    else black.progress = white.progress.coerceAtMost(253)
+                }
+                if (fromUser) invalidateSamplingPreview()
+                refreshLabels()
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                overlay.clearCornerSelection()
+            }
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                when (seekBar) {
+                    black -> noteDraftChange("black", ui("暗部閾値を変更", "Changed dark threshold"), black.progress.toString())
+                    white -> noteDraftChange("white", ui("明部閾値を変更", "Changed light threshold"), (white.progress + 1).toString())
+                }
+            }
+        }
+        black.setOnSeekBarChangeListener(listener); white.setOnSeekBarChangeListener(listener)
+        fun commitVersion(requested: Int) {
+            // Even an empty edit map can have Undo/Redo entries in the old coordinates.
+            cellEditState.clearAll()
+            overlay.clearCellEditing()
+            updatePreEditCountStatus()
+            invalidateSamplingPreview()
+            committedVersion = requested.coerceIn(1, 40)
+            version.progress = committedVersion - 1
+            overlay.setVersion(committedVersion)
+            refreshLabels()
+            noteDraftChange("version", ui("QRバージョンを変更", "Changed QR Version"), committedVersion.toString())
+            checkVersionErrorLimit()
+        }
+        fun requestVersion(requested: Int) {
+            overlay.clearCornerSelection()
+            if (requested == committedVersion || versionConfirmationShowing) return
+            if (cellEditState.edits.isNotEmpty()) {
+                versionConfirmationShowing = true
+                AlertDialog.Builder(activity)
+                    .setTitle(ui("バージョンを変更しますか？", "Change Version?"))
+                    .setMessage(ui("セル編集済みです。バージョンを変更するとセル座標が変わるため、現在のセル編集はすべて解除されます。", "Cells have been edited. Changing Version changes their coordinates and clears all current cell edits."))
+                    .setNegativeButton(ui("変更しない", "Keep current")) { _, _ -> versionConfirmationShowing = false }
+                    .setPositiveButton(ui("編集を解除して変更", "Clear edits and change")) { _, _ ->
+                        versionConfirmationShowing = false
+                        commitVersion(requested)
+                    }
+                    .setOnCancelListener { versionConfirmationShowing = false }
+                    .show()
+            } else commitVersion(requested)
+        }
+        versionButton = button(ui("QRバージョン: $committedVersion / ${17 + 4 * committedVersion}×${17 + 4 * committedVersion}セル", "QR Version: $committedVersion / ${17 + 4 * committedVersion} modules")) {
+            overlay.clearCornerSelection()
+            val labels = (1..40).map { value -> ui("V$value / ${17 + 4 * value}×${17 + 4 * value}セル", "Version $value / ${17 + 4 * value} modules") }.toTypedArray()
+            AlertDialog.Builder(activity)
+                .setTitle(ui("QRバージョンを選択", "Select QR Version"))
+                .setSingleChoiceItems(labels, committedVersion - 1) { selectionDialog, which ->
+                    selectionDialog.dismiss()
+                    requestVersion(which + 1)
+                }
+                .setNegativeButton(R.string.close, null)
+                .show()
+        }
+        polarity.setOnCheckedChangeListener { group, checkedId ->
+            invalidateSamplingPreview()
+            val label = group.findViewById<RadioButton>(checkedId)?.text?.toString().orEmpty()
+            noteDraftChange("polarity", ui("白黒極性を変更", "Changed polarity"), label)
+            refreshLabels()
+        }
+        local.setOnCheckedChangeListener { _, checked ->
+            invalidateSamplingPreview(); refreshLabels()
+            noteDraftChange("local", ui("場所ごとの白黒判定を変更", "Changed local thresholding"), if (checked) "ON" else "OFF")
+        }
+        useUnknownColors.setOnCheckedChangeListener { _, checked ->
+            invalidateSamplingPreview(); refreshLabels()
+            noteDraftChange("unknown-colors", ui("色付き不明領域を変更", "Changed colored unknown regions"), if (checked) "ON" else "OFF")
+        }
+        searchQuadNeighborhood.setOnCheckedChangeListener { _, checked ->
+            if (checked && cellEditState.edits.isNotEmpty()) {
+                Toast.makeText(this, ui("近傍探索では編集セルが参照する画像位置が移動する場合があります。", "Nearby geometry search may move the image positions referenced by edited cells."), Toast.LENGTH_LONG).show()
+            }
+            noteDraftChange("quad-neighborhood", ui("四隅近傍探索を変更", "Changed nearby geometry search"), if (checked) "ON" else "OFF")
+        }
+        refreshLabels()
+        overlay.onLogicalGridAssigned = { quarterTurns ->
+            if (quarterTurns != 0) {
+                cellEditState.rotateCoordinates(17 + 4 * (version.progress + 1), quarterTurns)
+            }
+            refreshClassificationMatrix()
+        }
+        overlay.onFinderPlacementRejected = {
+            Toast.makeText(
+                this,
+                ui(
+                    "指定済みFinderから推定される位置と離れすぎています。格子またはFinder役割を確認してください。",
+                    "This point is too far from the position implied by the confirmed Finder. Check the grid or Finder roles.",
+                ),
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+        overlay.onFinderHintPlaced = finderHint@{ role, hint ->
+            val profile = activePreviewProfile ?: return@finderHint
+            val finderToken = finderSearchGeneration.incrementAndGet()
+            val finderWorking = working
+            val finderProfile = profile.copy(settings = profile.settings.copy(
+                manualQuad = overlay.imageQuad().takeIf { overlay.isLogicalGridAssigned() },
+            ))
+            Toast.makeText(this, ui("指定位置の周辺からFinderを精密探索中…", "Refining the Finder near the selected position…"), Toast.LENGTH_SHORT).show()
+            executor.execute {
+                val detection = prepareFinderDetection(finderWorking.luma, finderProfile)
+                val refined = FinderDetector(
+                    detection.image,
+                    finderProfile.settings.blackMax,
+                    finderProfile.settings.whiteMin,
+                ).detectNear(detection.toDetection(hint))?.let(detection::toSource)?.copy(
+                    polarity = if (finderProfile.inverted) io.github.earthdiver.qrrepair.core.FinderPolarity.INVERTED else io.github.earthdiver.qrrepair.core.FinderPolarity.NORMAL,
+                    detectionSource = io.github.earthdiver.qrrepair.core.FinderDetectionSource.RAW,
+                )
+                runOnUiThread {
+                    if (finderToken != finderSearchGeneration.get() || working !== finderWorking) return@runOnUiThread
+                    if (refined == null) {
+                        Toast.makeText(this, ui("周辺でFinderを確定できませんでした。指定点をヒントとして解析します。", "The Finder could not be confirmed nearby. The selected point will be used as a hint."), Toast.LENGTH_LONG).show()
+                    } else {
+                        overlay.setVerifiedFinder(role, refined)
+                        Toast.makeText(this, ui("Finder位置を自動補正しました（モジュール幅 ${"%.1f".format(refined.moduleSize)}px）", "Finder position refined (module width ${"%.1f".format(refined.moduleSize)} px)"), Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+        overlay.onFinderRemoved = { role ->
+            // A refinement launched when this Finder was placed may still be running. Do not
+            // allow its delayed result to confirm the Finder again after the user removed it.
+            finderSearchGeneration.incrementAndGet()
+            val label = when (role) {
+                FinderRole.TOP_LEFT -> getString(R.string.top_left)
+                FinderRole.TOP_RIGHT -> getString(R.string.top_right)
+                FinderRole.BOTTOM_LEFT -> getString(R.string.bottom_left)
+            }
+            userGeometryEdited = true
+            noteDraftChange("finder-$role", ui("$label Finderを解除", "Removed $label Finder"), role.name)
+            Toast.makeText(this, ui("$label のFinder確定を解除しました。", "The $label Finder was unconfirmed."), Toast.LENGTH_SHORT).show()
+        }
+        fun rotateBy(delta: Float) {
+            finderSearchGeneration.incrementAndGet()
+            overlay.clearCornerSelection()
+            dialogState.rotateBy(delta)
+            val previous = working
+            working = BitmapUtils.rotate(source.bitmap, dialogState.rotationDegrees)
+            releaseWorkingIfTemporary(previous, working)
+            overlay.setBitmap(working.bitmap)
+            overlay.setVersion(version.progress + 1)
+            overlay.clearFinders()
+            userGeometryEdited = true
+            noteDraftChange("rotation", ui("画像を回転", "Rotated image"), "${"%.1f".format(dialogState.rotationDegrees)}°")
+            refreshLabels()
+            Toast.makeText(activity, ui("回転 ${"%.1f".format(dialogState.rotationDegrees)}°。四隅とFinder役割を確認してください。", "Rotation ${"%.1f".format(dialogState.rotationDegrees)}°. Check the corners and Finder roles."), Toast.LENGTH_SHORT).show()
+        }
+        fun resetRotation() {
+            finderSearchGeneration.incrementAndGet()
+            dialogState.resetRotation()
+            val previous = working
+            working = source
+            releaseWorkingIfTemporary(previous, working)
+            overlay.setBitmap(working.bitmap)
+            overlay.setVersion(version.progress + 1)
+            overlay.clearFinders()
+            userGeometryEdited = true
+            refreshLabels()
+            noteDraftChange("rotation", ui("画像回転をリセット", "Reset image rotation"), "0°")
+        }
+        val formatMismatchLimitNote = TextView(this).apply { textSize = 12f }
+        lateinit var formatMismatchLimitButton: Button
+        fun formatMismatchLimitValueLabel(value: Int?): String = when (value) {
+            null -> getString(R.string.format_mismatch_limit_unlimited)
+            0 -> getString(R.string.format_mismatch_limit_exact)
+            else -> resources.getQuantityString(R.plurals.format_mismatch_limit_bits, value, value)
+        }
+        fun refreshFormatMismatchLimitControl() {
+            val fullySpecified = formatConstraintDraft?.candidateCount == 1
+            formatMismatchLimitButton.text = formatMismatchLimitValueLabel(formatMismatchLimitDraft)
+            formatMismatchLimitButton.isEnabled = !fullySpecified
+            formatMismatchLimitNote.setText(
+                if (fullySpecified) R.string.format_mismatch_limit_fixed_note
+                else R.string.format_mismatch_limit_note,
+            )
+        }
+        formatMismatchLimitButton = button("", {})
+        formatMismatchLimitButton.setOnClickListener {
+            showBitErrorLimitDialog(this, getString(R.string.format_mismatch_limit), formatMismatchLimitDraft, 30) { value ->
+                formatMismatchLimitDraft = value
+                refreshFormatMismatchLimitControl()
+                noteDraftChange(
+                    "formatMismatchLimit",
+                    ui("形式情報の誤り上限を変更", "Changed format-information error limit"),
+                    formatMismatchLimitValueLabel(value),
+                )
+            }
+        }
+        val formatMismatchLimitControl = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(TextView(activity).apply { setText(R.string.format_mismatch_limit) })
+            addView(formatMismatchLimitButton, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ))
+            addView(formatMismatchLimitNote)
+        }
+        refreshFormatMismatchLimitControl()
+        lateinit var dataEccMismatchLimitButton: Button
+        fun dataEccMismatchLimitValueLabel(value: Int?): String = when (value) {
+            null -> getString(R.string.data_ecc_mismatch_limit_unlimited)
+            0 -> getString(R.string.data_ecc_mismatch_limit_exact)
+            else -> resources.getQuantityString(R.plurals.data_ecc_mismatch_limit_bits, value, value)
+        }
+        fun refreshDataEccMismatchLimitControl() {
+            dataEccMismatchLimitButton.text = dataEccMismatchLimitValueLabel(dataEccMismatchLimitDraft)
+        }
+        dataEccMismatchLimitButton = button("", {})
+        fun dataEccMaximum() = Version.getVersionForNumber(version.progress + 1).totalCodewords * 8
+        fun dataEccLimitIsValid() = dataEccMismatchLimitDraft?.let { it <= dataEccMaximum() } != false
+        fun editDataEccLimit(notice: String? = null) {
+            showBitErrorLimitDialog(this, getString(R.string.data_ecc_mismatch_limit),
+                dataEccMismatchLimitDraft, dataEccMaximum(), notice) { value ->
+                dataEccMismatchLimitDraft = value
+                refreshDataEccMismatchLimitControl()
+                noteDraftChange(
+                    "dataEccMismatchLimit",
+                    ui("データ・ECCの誤り上限を変更", "Changed data/ECC error limit"),
+                    dataEccMismatchLimitValueLabel(value),
+                )
+            }
+        }
+        fun requestValidDataEccLimit(): Boolean {
+            if (dataEccLimitIsValid()) return true
+            editDataEccLimit(ui(
+                "現在の上限はVersion ${version.progress + 1}のデータ・ECC総bit数を超えています。上限を再指定するか「制限なし」を選択してください。",
+                "The current limit exceeds the total data/ECC bits for Version ${version.progress + 1}. Enter a new limit or select Unlimited.",
+            ))
+            return false
+        }
+        checkVersionErrorLimit = { requestValidDataEccLimit() }
+        dataEccMismatchLimitButton.setOnClickListener { editDataEccLimit() }
+        val dataEccMismatchLimitControl = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(TextView(activity).apply { setText(R.string.data_ecc_mismatch_limit) })
+            addView(dataEccMismatchLimitButton, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ))
+            addView(TextView(activity).apply {
+                setText(R.string.data_ecc_mismatch_limit_note)
+                textSize = 12f
+            })
+        }
+        refreshDataEccMismatchLimitControl()
+        val detailsPage = PreRecoveryDetailedSettingsPage(
+            this,
+            buttonFactory = ::button,
+            scrollRow = { views -> scrollRow(*views) },
+            polarity = polarity,
+            localThreshold = local,
+            searchQuadNeighborhood = searchQuadNeighborhood,
+            trustKnownPayloadCount = trustKnownPayloadCount,
+            lockManualBits = lockManualBits,
+            formatMismatchLimitControl = formatMismatchLimitControl,
+            dataEccMismatchLimitControl = dataEccMismatchLimitControl,
+            actions = DetailedSettingsPageActions(
+                rotateBy = ::rotateBy,
+                resetRotation = ::resetRotation,
+                saveDiagnosticInput = {
+                    val unadorned = if (dialogState.rotationDegrees % 360f == 0f) source else BitmapUtils.rotate(source.bitmap, dialogState.rotationDegrees)
+                    val diagnostic = dialogState.perspectiveCorrectionQuad?.let { quad ->
+                        val rectified = runCatching {
+                            BitmapUtils.rectify(unadorned.bitmap, quad, version.progress + 1, quietModules = 4.0).prepared.bitmap
+                        }.getOrNull()
+                        if (rectified != null && unadorned !== source) unadorned.bitmap.recycle()
+                        rectified
+                    } ?: unadorned.bitmap
+                    host.saveDiagnosticInput(diagnostic, owned = diagnostic !== source.bitmap)
+                },
+            ),
+        ).view
+        var singleCellEditMode = true
+        fun sampleImageMatrix(): Pair<GridGeometry, QrMatrix>? {
+            val q = overlay.imageQuad()
+            val dimension = 17 + 4 * (version.progress + 1)
+            val pitch = ((q.topLeft.distanceTo(q.topRight) + q.topLeft.distanceTo(q.bottomLeft)) / (2.0 * (dimension - 1))).coerceAtLeast(.25)
+            val g = runCatching { GridGeometry(
+                version.progress + 1, FinderRole.TOP_LEFT, q.topLeft.x, q.topLeft.y,
+                pitch, 0.0, q, io.github.earthdiver.qrrepair.core.GeometryModel.MANUAL_PROJECTIVE,
+            ).reanchored() }.getOrNull() ?: return null
+            return g to MatrixSampler(working.luma, activePreviewProfile).sample(g).first
+        }
+        fun refreshPreRecoveryMatrix(): Pair<GridGeometry, QrMatrix>? {
+            val (g, matrix) = sampleImageMatrix() ?: return null
+            cellEditState.edits.forEach { (c, v) ->
+                if (c.x in 0 until matrix.dimension && c.y in 0 until matrix.dimension) {
+                    // Explicit source overrides are independent of whether the image agrees.
+                    matrix.set(c.x, c.y, v, 1f, ModuleSource.USER)
+                }
+                if (c in cellEditState.prioritySearch) matrix.setPrioritySearch(c.x, c.y, true)
+            }
+            return g to matrix
+        }
+        fun setManualFocus(enabled: Boolean) {
+            manualFocus = enabled
+            overlay.highlightManualOnly = enabled
+            dedicatedEditor?.highlightManualOnly = enabled
+            preEditSourceControl?.setManualFocus(enabled)
+            dedicatedSourceControl?.setManualFocus(enabled)
+        }
+        refreshSourceControls = {
+            val baseline = if (cellEditState.selectedCells.isNotEmpty()) sampleImageMatrix()?.second else null
+            preEditSourceControl?.update(cellEditState, baseline)
+            dedicatedSourceControl?.update(cellEditState, baseline)
+        }
+        refreshClassificationMatrix = {
+            refreshSourceControls()
+            refreshPreRecoveryMatrix()?.let { (geometry, matrix) ->
+                val headerComplete = recoveryEngine.hasTrustablePayloadHeader(
+                    matrix,
+                    formatConstraintDraft,
+                    formatMismatchLimitDraft,
+                    manualEdits = cellEditState.edits,
+                )
+                trustKnownPayloadCount.isEnabled = headerComplete
+                if (!headerComplete) trustKnownPayloadCount.isChecked = false
+                overlay.setCellEditPreview(geometry, matrix)
+                dedicatedEditor?.setDocument(working.bitmap, geometry, matrix, keepViewport = true)
+            }
+        }
+        overlay.onGeometryEdited = {
+            userGeometryEdited = true
+        }
+        fun selectPreEditCell(x: Int, y: Int) {
+            overlay.selectEditCell(Coord(x, y))
+            cellEditState.select(setOf(Coord(x, y)))
+            val refreshed = refreshPreRecoveryMatrix()
+            refreshed?.let { (geometry, matrix) ->
+                overlay.setCellEditing(geometry, matrix, Coord(x, y))
+                dedicatedEditor?.setDocument(working.bitmap, geometry, matrix, keepViewport = true)
+                dedicatedEditor?.setSelected(x, y)
+            }
+            val value = refreshed?.second?.get(x, y)?.value
+            val kind = if (QrFunctionMask.isFunction(version.progress + 1, x, y)) ui("固定構造（データ値には影響しません）", "Fixed structure (does not affect payload data)") else getString(R.string.data)
+            val label = if (Coord(x, y) in cellEditState.prioritySearch) "*" else when (value) { ModuleValue.ZERO -> "0"; ModuleValue.ONE -> "1"; else -> "?" }
+            preEditStatus?.text = ui("選択: ($x,$y) / $kind / 値=$label", "Selected: ($x,$y) / $kind / value=$label")
+            dedicatedEditStatus?.text = preEditStatus?.text
+            refreshSourceControls()
+        }
+        overlay.onEditCellSelected = { x, y -> selectPreEditCell(x, y) }
+        fun movePreEditCell(dx: Int, dy: Int) {
+            val current = overlay.selectedEditCell() ?: return
+            val dimension = 17 + 4 * (version.progress + 1)
+            selectPreEditCell((current.x + dx).coerceIn(0, dimension - 1), (current.y + dy).coerceIn(0, dimension - 1))
+        }
+        validateCellEdits = { edits ->
+            val conflict = FormatEditPolicy.conflict(version.progress + 1, formatConstraintDraft, edits)
+            if (conflict != null) showFormatEditError(conflict)
+            conflict == null
+        }
+        fun setPreEditValues(coords: Collection<Coord>, value: ModuleValue) {
+            val original = sampleImageMatrix()?.second ?: return
+            val changed = cellEditState.applyValues(coords, value) { coord ->
+                original.takeIf { coord.x in 0 until it.dimension && coord.y in 0 until it.dimension }
+                    ?.get(coord.x, coord.y)?.value
+            }
+            if (changed.isEmpty()) return
+            val first = changed.first()
+            refreshPreRecoveryMatrix()?.let { (updatedGeometry, matrix) ->
+                overlay.setCellEditing(updatedGeometry, matrix, if (singleCellEditMode) first else overlay.selectedEditCell() ?: first)
+                overlay.setCellSelection(changed)
+                dedicatedEditor?.setDocument(working.bitmap, updatedGeometry, matrix, keepViewport = true)
+                dedicatedEditor?.setSelection(changed)
+            }
+            preEditStatus?.text = ui("${changed.size}セルを変更しました。", "Changed ${changed.size} cell(s).")
+            dedicatedEditStatus?.text = preEditStatus?.text
+            updatePreEditCountStatus()
+            noteDraftChange("cell-edit", ui("修復前セルを編集", "Edited pre-repair cells"), ui("${changed.size}セル", "${changed.size} cell(s)"))
+        }
+        fun toggleCellSource() {
+            val original = sampleImageMatrix()?.second ?: return
+            val selected = cellEditState.selectedCells
+            if (selected.isEmpty()) return
+            val restoringImage = cellEditState.selectionHasManualEdits
+            val changed = if (restoringImage) cellEditState.restoreImage(selected) else {
+                cellEditState.makeManual(selected) { coord ->
+                    original.takeIf { coord.x in 0 until it.dimension && coord.y in 0 until it.dimension }
+                        ?.get(coord.x, coord.y)?.value
+                }
+            }
+            if (changed.isEmpty()) return
+            // Recompute classification first; it clears overlay selection. Restore focus below
+            // so switching provenance keeps the 5x magnifier open on the selected cell.
+            refreshClassificationMatrix()
+            refreshPreRecoveryMatrix()?.let { (geometry, matrix) ->
+                val focus = if (singleCellEditMode) changed.first() else overlay.selectedEditCell() ?: changed.first()
+                overlay.setCellEditing(geometry, matrix, focus)
+                overlay.setCellSelection(changed)
+                dedicatedEditor?.setDocument(working.bitmap, geometry, matrix, keepViewport = true)
+                dedicatedEditor?.setSelection(changed)
+            }
+            val label = getString(if (restoringImage) R.string.cell_restore_image else R.string.cell_make_manual)
+            preEditStatus?.text = ui("${changed.size}セル: $label", "${changed.size} cell(s): $label")
+            dedicatedEditStatus?.text = preEditStatus?.text
+            updatePreEditCountStatus()
+            noteDraftChange("cell-source", label, ui("${changed.size}セル", "${changed.size} cell(s)"))
+        }
+        fun setPrioritySearch(coords: Collection<Coord>) {
+            val distinct = coords.distinct()
+            if (distinct.isEmpty()) return
+            val refreshed = refreshPreRecoveryMatrix() ?: return
+            val rsCoords = runCatching {
+                CodewordExtractor.extract(refreshed.second, version.progress + 1, 0)
+                    .codewords.flatMapTo(hashSetOf()) { it.coordinates }
+            }.getOrDefault(emptySet())
+            if (distinct.any { it !in rsCoords }) {
+                Toast.makeText(this, ui("*はデータ・ECCセルにのみ指定できます。", "* can be assigned only to data or ECC cells."), Toast.LENGTH_SHORT).show(); return
+            }
+            when (cellEditState.setPrioritySearch(distinct)) {
+                PriorityEditResult.LIMIT_EXCEEDED -> {
+                    Toast.makeText(this, ui("*は最大4セルです。", "Up to four cells can be marked *."), Toast.LENGTH_SHORT).show(); return
+                }
+                PriorityEditResult.UNCHANGED -> return
+                PriorityEditResult.CHANGED -> Unit
+            }
+            val changed = cellEditState.selectedCells
+            refreshPreRecoveryMatrix()?.let { (geometry, matrix) ->
+                overlay.setCellEditing(geometry, matrix, overlay.selectedEditCell() ?: changed.first())
+                overlay.setCellSelection(changed)
+                dedicatedEditor?.setDocument(working.bitmap, geometry, matrix, keepViewport = true)
+                dedicatedEditor?.setSelection(changed)
+            }
+            preEditStatus?.text = ui("${changed.size}セルを*に指定しました。", "Marked ${changed.size} cell(s) as *.")
+            dedicatedEditStatus?.text = preEditStatus?.text
+            updatePreEditCountStatus()
+            noteDraftChange("cell-edit-priority", ui("優先探索セルを指定", "Marked priority-search cells"), ui("${changed.size}セル", "${changed.size} cell(s)"))
+        }
+        fun undoPreEdit() {
+            val changed = cellEditState.undo()
+            if (changed.isEmpty()) return
+            refreshPreRecoveryMatrix()?.let { (geometry, matrix) ->
+                val focus = if (singleCellEditMode) changed.firstOrNull() else overlay.selectedEditCell() ?: changed.firstOrNull()
+                overlay.setCellEditing(geometry, matrix, focus)
+                overlay.setCellSelection(changed)
+                dedicatedEditor?.setDocument(working.bitmap, geometry, matrix, keepViewport = true)
+                dedicatedEditor?.setSelection(changed)
+            }
+            preEditStatus?.text = ui("${changed.size}セルの編集を戻しました。", "Undid edits to ${changed.size} cell(s).")
+            dedicatedEditStatus?.text = preEditStatus?.text
+            updatePreEditCountStatus()
+            noteDraftChange("cell-edit", ui("修復前セル編集をUndo", "Undid pre-repair cell edits"), ui("${changed.size}セル", "${changed.size} cell(s)"))
+        }
+        fun redoPreEdit() {
+            val changed = cellEditState.redo()
+            if (changed.isEmpty()) return
+            refreshPreRecoveryMatrix()?.let { (geometry, matrix) ->
+                val focus = if (singleCellEditMode) changed.firstOrNull() else overlay.selectedEditCell() ?: changed.firstOrNull()
+                overlay.setCellEditing(geometry, matrix, focus)
+                overlay.setCellSelection(changed)
+                dedicatedEditor?.setDocument(working.bitmap, geometry, matrix, keepViewport = true)
+                dedicatedEditor?.setSelection(changed)
+            }
+            preEditStatus?.text = ui("${changed.size}セルの編集をやり直しました。", "Redid edits to ${changed.size} cell(s).")
+            dedicatedEditStatus?.text = preEditStatus?.text
+            updatePreEditCountStatus()
+            noteDraftChange("cell-edit", ui("修復前セル編集をRedo", "Redid pre-repair cell edits"), ui("${changed.size}セル", "${changed.size} cell(s)"))
+        }
+        overlay.onCellBrushApplied = { coords, value -> setPreEditValues(coords, value) }
+        overlay.onCellRangeSelected = { coords ->
+            cellEditState.select(coords)
+            overlay.setCellSelection(coords, asRectangle = true)
+            preEditStatus?.text = ui("矩形選択 ${coords.size}セル。0/1/?で一括変更できます。", "Selected ${coords.size} cells. Use 0/1/? to change them together.")
+            refreshSourceControls()
+        }
+        fun showSingleCellEditor() {
+            singleCellEditMode = true
+            cellEditState.clearSelection()
+            refreshSourceControls()
+            overlay.visibility = View.VISIBLE
+            overlay.cellEditorTool = EditorTool.NAVIGATE
+            refreshPreRecoveryMatrix()?.let { (geometry, matrix) ->
+                overlay.setCellEditing(geometry, matrix, null)
+                overlay.setCellSelection(emptySet())
+                preEditStatus?.text = getString(R.string.tap_cell)
+            }
+        }
+        fun showBulkEditor(tool: EditorTool) {
+            singleCellEditMode = false
+            overlay.visibility = View.VISIBLE
+            refreshPreRecoveryMatrix()?.let { (geometry, matrix) ->
+                overlay.setCellEditing(geometry, matrix, null)
+            }
+            overlay.cellEditorTool = tool
+            preEditStatus?.text = ui("ブラシでなぞるか、矩形選択後に0/1/?を押して一括変更します。", "Paint with a brush, or select a rectangle and use 0/1/? to edit it.")
+        }
+        fun showDedicatedCellEditor() {
+            val initial = refreshPreRecoveryMatrix() ?: return
+            cellEditState.clearSelection()
+            refreshSourceControls()
+            overlay.setCellEditing(initial.first, initial.second, null)
+            overlay.setCellSelection(emptySet())
+            val largeEditor = QrEditorView(activity).apply {
+                setDocument(working.bitmap, initial.first, initial.second)
+                setCodewordOverlayVersion(version.progress + 1)
+                setSelection(emptySet())
+                cornerEditEnabled = false
+                showQrStructureOverlay = true
+            }
+            dedicatedEditor = largeEditor
+            lateinit var largePage: PreRecoveryLargeCellEditPage
+            fun largeEditorToolStatus(tool: EditorTool): CharSequence = when (tool) {
+                EditorTool.NAVIGATE -> getString(R.string.pan_zoom_status)
+                EditorTool.BRUSH_ZERO -> ui("0ブラシ：画像位置を固定してなぞります。2本目の指が触れると操作をキャンセルします。", "0 brush: paint while the image is locked. A second touch cancels the gesture.")
+                EditorTool.BRUSH_ONE -> ui("1ブラシ：画像位置を固定してなぞります。2本目の指が触れると操作をキャンセルします。", "1 brush: paint while the image is locked. A second touch cancels the gesture.")
+                EditorTool.BRUSH_ERASURE -> ui("?ブラシ：画像位置を固定してなぞります。2本目の指が触れると操作をキャンセルします。", "? brush: paint while the image is locked. A second touch cancels the gesture.")
+                EditorTool.BRUSH_ERASURE_WIDE -> ui("?ブラシ3：3モジュール幅でなぞります。", "? brush 3: paint with a three-module-wide brush.")
+                EditorTool.RECT_SELECT -> ui("矩形選択：画像位置を固定してドラッグします。選択後に0/1/?を指定します。", "Rectangle: drag while the image is locked, then assign 0/1/?.")
+                EditorTool.STAMP_ERASURE_SMALL -> ui("?スタンプ小：タップ位置を中心に3×3を?にします。", "Small ? stamp: tap to erase a 3×3 area.")
+                EditorTool.STAMP_ERASURE_MEDIUM -> ui("?スタンプ中：タップ位置を中心に5×5を?にします。", "Medium ? stamp: tap to erase a 5×5 area.")
+                EditorTool.STAMP_ERASURE_LARGE -> ui("?スタンプ大：タップ位置を中心に7×7を?にします。", "Large ? stamp: tap to erase a 7×7 area.")
+            }
+            fun setLargeEditorTool(tool: EditorTool) {
+                largeEditor.editorTool = tool
+                largePage.status.text = largeEditorToolStatus(tool)
+            }
+            largeEditor.onCellSelected = { x, y ->
+                cellEditState.select(setOf(Coord(x, y)))
+                val matrix = refreshPreRecoveryMatrix()?.second
+                val value = matrix?.get(x, y)?.value
+                val coord = Coord(x, y)
+                val codeword = largeEditor.codewordCellAt(coord)
+                val kind = when {
+                    QrFunctionMask.isFunction(version.progress + 1, x, y) ->
+                        ui("固定構造（データ値には影響しません）", "Fixed structure (does not affect payload data)")
+                    codeword == null -> ui("余りビット", "Remainder bit")
+                    codeword.entry.kind == CodewordOverlayKind.UNCLASSIFIED ->
+                        ui("コード語 #${codeword.entry.rawIndex} / 分類未確定 / bit ${codeword.bitIndex}",
+                            "Codeword #${codeword.entry.rawIndex} / unclassified / bit ${codeword.bitIndex}")
+                    else -> {
+                        val role = if (codeword.entry.kind == CodewordOverlayKind.DATA) "Data" else "ECC"
+                        "Codeword #${codeword.entry.rawIndex} / Block ${(codeword.entry.blockIndex ?: 0) + 1} / $role #${codeword.entry.kindIndex} / bit ${codeword.bitIndex}"
+                    }
+                }
+                val label = if (Coord(x, y) in cellEditState.prioritySearch) "*" else when (value) { ModuleValue.ZERO -> "0"; ModuleValue.ONE -> "1"; else -> "?" }
+                largePage.status.text = ui("選択: ($x,$y) / $kind / 値=$label", "Selected: ($x,$y) / $kind / value=$label")
+                overlay.setCellSelection(cellEditState.selectedCells)
+                refreshSourceControls()
+            }
+            largeEditor.onBrushApplied = { coords, value -> setPreEditValues(coords, value) }
+            largeEditor.onRangeSelected = { coords ->
+                cellEditState.select(coords)
+                largeEditor.setSelection(coords, asRectangle = true)
+                overlay.setCellSelection(coords, asRectangle = true)
+                largePage.status.text = ui("矩形選択 ${coords.size}セル。0/1/?で一括変更できます。", "Selected ${coords.size} cells. Use 0/1/? to change them together.")
+                refreshSourceControls()
+            }
+            largePage = PreRecoveryLargeCellEditPage(
+                this,
+                editor = largeEditor,
+                buttonFactory = ::button,
+                compactRow = { views -> compactRow(*views) },
+                scrollRow = { views -> scrollRow(*views) },
+                actions = LargeCellEditPageActions(
+                    setTool = ::setLargeEditorTool,
+                    setValue = { value -> setPreEditValues(cellEditState.selectedCells, value) },
+                    setPriority = { setPrioritySearch(cellEditState.selectedCells) },
+                    toggleSource = ::toggleCellSource,
+                    undo = ::undoPreEdit,
+                    redo = ::redoPreEdit,
+                    showCodewords = { checked ->
+                        largeEditor.showCodewordOverlay = checked
+                        largePage.status.text = if (checked) getString(R.string.codeword_overlay_legend)
+                        else largeEditorToolStatus(largeEditor.editorTool)
+                    },
+                    close = { dedicatedEditorDialog?.dismiss() },
+                ),
+            )
+            dedicatedSourceControl = largePage.sourceControl
+            largePage.sourceControl.onManualFocusChanged = ::setManualFocus
+            setManualFocus(manualFocus)
+            dedicatedEditStatus = largePage.status
+            dedicatedEditCountStatus = largePage.countStatus
+            updatePreEditCountStatus()
+            val dialog = AlertDialog.Builder(this)
+                .setView(largePage.view)
+                .create()
+            dedicatedEditorDialog = dialog
+            dialog.setOnShowListener {
+                dialog.window?.setLayout(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                )
+            }
+            dialog.setOnDismissListener {
+                dedicatedSourceControl = null
+                dedicatedEditor = null
+                dedicatedEditorDialog = null
+                dedicatedEditStatus = null
+                dedicatedEditCountStatus = null
+                refreshPreRecoveryMatrix()?.let { (geometry, matrix) ->
+                    overlay.setCellEditing(geometry, matrix, overlay.selectedEditCell())
+                    overlay.setCellSelection(cellEditState.selectedCells)
+                }
+                updatePreEditCountStatus()
+            }
+            dialog.show()
+        }
+        val cellEditPage = PreRecoveryCellEditPage(
+            this,
+            buttonFactory = ::button,
+            compactRow = { views -> compactRow(*views) },
+            actions = CellEditPageActions(
+                move = ::movePreEditCell,
+                setValue = { value -> setPreEditValues(cellEditState.selectedCells, value) },
+                setPriority = { setPrioritySearch(cellEditState.selectedCells) },
+                toggleSource = ::toggleCellSource,
+                undo = ::undoPreEdit,
+                redo = ::redoPreEdit,
+                selectMode = { tool ->
+                    if (tool == EditorTool.NAVIGATE) showSingleCellEditor() else showBulkEditor(tool)
+                },
+                openLargeEditor = ::showDedicatedCellEditor,
+            ),
+        )
+        preEditSourceControl = cellEditPage.sourceControl
+        cellEditPage.sourceControl.onManualFocusChanged = ::setManualFocus
+        preEditStatus = cellEditPage.status
+        preEditCountStatus = cellEditPage.countStatus
+        updatePreEditCountStatus()
+        val cellPage = cellEditPage.view
+        fun createDataPage() = PreRecoveryDataPage(
+            this,
+            inputProvider = {
+                refreshPreRecoveryMatrix()?.second?.let { matrix ->
+                    PreRecoveryDataInput(matrix, version.progress + 1)
+                }
+            },
+            formatConstraintProvider = { formatConstraintDraft },
+        )
+        val preRecoveryDataPage = createDataPage()
+        refreshPreRecoveryDataPage = preRecoveryDataPage::refresh
+        val hexPage = preRecoveryDataPage.view
+        var eccConstraintButton: Button? = null
+        var maskConstraintButton: Button? = null
+        val formatSearchCount = TextView(this).apply {
+            textSize = 12f
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+        fun refreshFormatConstraintControls() {
+            eccConstraintButton?.text = formatConstraintDraft?.ecLevel?.let { "ECC: $it" }
+                ?: ui("ECC: 自動", "ECC: Auto")
+            maskConstraintButton?.text = formatConstraintDraft?.dataMask?.let { "mask: $it" }
+                ?: ui("mask: 自動", "Mask: Auto")
+            val count = formatConstraintDraft?.candidateCount ?: 32
+            formatSearchCount.text = ui("探索対象: ${count}形式", "Formats to search: $count")
+            refreshFormatMismatchLimitControl()
+        }
+        fun updateFormatConstraint(ecLevel: ErrorCorrectionLevel?, dataMask: Int?) {
+            val next = if (ecLevel == null && dataMask == null) null
+            else QrFormatConstraint(ecLevel = ecLevel, dataMask = dataMask)
+            if (!FormatEditPolicy.returnsToAuto(formatConstraintDraft, next)) {
+                val conflict = FormatEditPolicy.conflict(version.progress + 1, next, cellEditState.edits)
+                if (conflict != null) {
+                    showFormatEditError(conflict)
+                    return
+                }
+            }
+            formatConstraintDraft = next
+            refreshFormatConstraintControls()
+            refreshClassificationMatrix()
+            refreshPreRecoveryDataPage()
+            noteDraftChange(
+                "format",
+                ui("形式情報の探索条件を変更", "Changed format search constraint"),
+                "ECC=${ecLevel ?: ui("自動", "Auto")}, mask=${dataMask ?: ui("自動", "Auto")}",
+            )
+        }
+        eccConstraintButton = button(ui("ECC: 自動", "ECC: Auto")) {
+            val choices = listOf<ErrorCorrectionLevel?>(
+                null,
+                ErrorCorrectionLevel.L,
+                ErrorCorrectionLevel.M,
+                ErrorCorrectionLevel.Q,
+                ErrorCorrectionLevel.H,
+            )
+            val labels = choices.map { it?.let { level -> "ECC: $level" } ?: ui("ECC: 自動", "ECC: Auto") }.toTypedArray()
+            val selected = choices.indexOf(formatConstraintDraft?.ecLevel).coerceAtLeast(0)
+            AlertDialog.Builder(this)
+                .setTitle(ui("誤り訂正レベルを指定", "Select ECC level"))
+                .setSingleChoiceItems(labels, selected) { dialog, which ->
+                    updateFormatConstraint(choices[which], formatConstraintDraft?.dataMask)
+                    dialog.dismiss()
+                }
+                .setNegativeButton(R.string.close, null)
+                .show()
+        }
+        maskConstraintButton = button(ui("mask: 自動", "Mask: Auto")) {
+            val choices = listOf<Int?>(null) + (0..7)
+            val labels = choices.map { it?.let { mask -> "mask: $mask" } ?: ui("mask: 自動", "Mask: Auto") }.toTypedArray()
+            val selected = choices.indexOf(formatConstraintDraft?.dataMask).coerceAtLeast(0)
+            AlertDialog.Builder(this)
+                .setTitle(ui("マスクを指定", "Select mask"))
+                .setSingleChoiceItems(labels, selected) { dialog, which ->
+                    updateFormatConstraint(formatConstraintDraft?.ecLevel, choices[which])
+                    dialog.dismiss()
+                }
+                .setNegativeButton(R.string.close, null)
+                .show()
+        }
+        val formatConstraintFooter = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(3), 0, dp(3))
+            addView(TextView(activity).apply {
+                text = ui("形式情報（修復探索）", "Format information (recovery search)")
+            })
+            addView(LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(eccConstraintButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                addView(maskConstraintButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            })
+            addView(formatSearchCount)
+        }
+        refreshFormatConstraintControls()
+        val basicPage = PreRecoveryBasicSettingsPage(
+            this,
+            buttonFactory = ::button,
+            compactRow = { views -> compactRow(*views) },
+            versionButton = requireNotNull(versionButton),
+            blackLabel = blackLabel,
+            blackSeekBar = black,
+            whiteLabel = whiteLabel,
+            whiteSeekBar = white,
+            useUnknownColors = useUnknownColors,
+            scrollContentFooter = formatConstraintFooter,
+            actions = BasicSettingsPageActions(
+                openDetails = { navigatePreprocessPage(PreprocessPage.DETAILS) },
+                openCellEditor = { navigatePreprocessPage(PreprocessPage.CELL_EDITOR) },
+                nudgeCorner = { dx, dy, step ->
+                    overlay.nudgeSelectedCorner(dx * step, dy * step)
+                },
+                applyPerspectiveCorrection = applyPerspective@{
+                    finderSearchGeneration.incrementAndGet()
+                    if (dialogState.perspectiveCorrectionQuad != null) {
+                        Toast.makeText(this, ui("台形補正は適用済みです。再適用する場合は画像を読み込み直してください。", "Perspective correction is already applied. Re-import the image to apply it again."), Toast.LENGTH_LONG).show()
+                        return@applyPerspective
+                    }
+                    val sourceQuad = overlay.imageQuad()
+                    val rectified = runCatching {
+                        BitmapUtils.rectify(working.bitmap, sourceQuad, version.progress + 1, quietModules = 1.0)
+                    }.getOrElse {
+                        Toast.makeText(this, ui("台形補正を適用できませんでした。四隅を確認してください。", "Could not rectify the image. Check the four corners."), Toast.LENGTH_LONG).show()
+                        return@applyPerspective
+                    }
+                    dialogState.applyPerspectiveCorrection(sourceQuad)
+                    val previous = working
+                    working = rectified.prepared
+                    releaseWorkingIfTemporary(previous, working)
+                    overlay.setBitmap(working.bitmap)
+                    overlay.setImageQuad(rectified.qrQuad)
+                    overlay.clearFinders()
+                    userGeometryEdited = true
+                    refreshLabels()
+                    noteDraftChange("perspective", ui("台形補正を適用", "Applied perspective correction"), "${working.bitmap.width}x${working.bitmap.height}")
+                    Toast.makeText(this, R.string.perspective_applied, Toast.LENGTH_LONG).show()
+                },
+                beginFinderPlacement = { role ->
+                    overlay.clearCornerSelection()
+                    overlay.finderPlacementRole = role
+                },
+                beginFinderRemoval = overlay::beginFinderRemoval,
+            ),
+        ).view
+        val pages = mapOf(
+            PreprocessPage.BASIC to basicPage,
+            PreprocessPage.DETAILS to detailsPage,
+            PreprocessPage.CELL_EDITOR to cellPage,
+            PreprocessPage.DATA to hexPage,
+        )
+        val pageHost = PreprocessPageHost(
+            this,
+            pages,
+            buttonFactory = ::button,
+            basicActions = buildList {
+                if (modernStyle) {
+                    add(PreprocessPageHost.BasicAction(getString(R.string.home_navigation), home = true) { cancelPreprocess() })
+                    add(PreprocessPageHost.BasicAction(ui("保存", "Save")) { savePreprocess() })
+                    add(PreprocessPageHost.BasicAction(getString(R.string.repair_short)) { submitPreprocess() })
+                } else {
+                    add(PreprocessPageHost.BasicAction(getString(R.string.cancel)) { cancelPreprocess() })
+                    add(PreprocessPageHost.BasicAction(ui("保存", "Save")) { savePreprocess() })
+                    add(PreprocessPageHost.BasicAction(ui("設定を保存して修復", "Save & repair"), weight = 2f) { submitPreprocess() })
+                }
+            },
+            onDataRequested = {
+                val data = createDataPage()
+                data.refresh()
+                showDataDialog(activity, data.view)
+            },
+            onPageShown = { page ->
+                overlay.clearCornerSelection()
+                overlay.highlightManualOnly = manualFocus && page == PreprocessPage.CELL_EDITOR
+                if (page == PreprocessPage.CELL_EDITOR) {
+                    showSingleCellEditor()
+                } else {
+                    refreshPreRecoveryMatrix()?.let { (geometry, matrix) -> overlay.setCellEditPreview(geometry, matrix) }
+                    overlay.visibility = View.VISIBLE
+                }
+                workflowNavigation?.update(if (page == PreprocessPage.CELL_EDITOR) 1 else 0, canShowResult = host.canShowResult())
+                updatePageLayout(page)
+                if (page == PreprocessPage.DATA) preRecoveryDataPage.refresh()
+            },
+        )
+        navigatePreprocessPage = pageHost::navigateTo
+        if (modernStyle) {
+            workflowNavigation = ModernWorkflowNavigation(this,
+                { pageHost.navigateTo(PreprocessPage.BASIC) },
+                { pageHost.navigateTo(PreprocessPage.CELL_EDITOR) },
+                {
+                    if (host.canShowResult()) {
+                        Toast.makeText(activity, R.string.previous_result_notice, Toast.LENGTH_LONG).show()
+                        showResultPage()
+                    }
+                })
+            workflowNavigation.view.contentDescription = getString(R.string.workflow_help)
+        }
+        val scaffold = PreprocessDialogScaffold(this, overlay, pageHost.view, workflowNavigation?.view)
+        updatePageLayout = { page -> scaffold.showPage(page) }
+        classificationLegend = scaffold.classificationLegend
+        val root = scaffold.view
+        val dialog = AlertDialog.Builder(this).apply {
+            if (!modernStyle) setView(root)
+        }.create()
+        val session = PreprocessEditorSession(
+            open = { page -> dialog.show(); pageHost.navigateTo(page) },
+            close = { dialog.dismiss() },
+        )
+        showResultPage = {
+            dialog.hide()
+            host.showResult()
+        }
+        dialog.setOnDismissListener {
+            host.editorClosed(session)
+            finderSearchGeneration.incrementAndGet()
+            releaseWorkingIfTemporary(working, source)
+        }
+        cancelPreprocess = { dialog.dismiss() }
+        dialog.setOnShowListener {
+            // AlertDialog's wrap-content custom panel otherwise shrinks on shorter pages,
+            // pulling the footer upward instead of giving the page the available space.
+            if (modernStyle) dialog.window?.apply {
+                root.setPadding(dp(16), dp(8), dp(16), dp(8))
+                setBackgroundDrawable(android.graphics.drawable.ColorDrawable(PrecisionStyle.BACKGROUND))
+                setContentView(root)
+                clearFlags(android.view.WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
+            }
+            val availableHeight = (resources.displayMetrics.heightPixels * .98f).toInt()
+            dialog.window?.setLayout(
+                if (modernStyle) android.view.WindowManager.LayoutParams.MATCH_PARENT
+                    else (resources.displayMetrics.widthPixels * .98f).toInt(),
+                if (modernStyle) android.view.WindowManager.LayoutParams.MATCH_PARENT else availableHeight,
+            )
+            fun capturePreprocessSettings(): PreprocessSettings {
+                return dialogState.captureSettings(
+                    controls = controlSnapshot(),
+                    geometry = PreprocessGeometrySnapshot(
+                        logicalGridAssigned = overlay.isLogicalGridAssigned(),
+                        quad = overlay.imageQuad(),
+                        finders = overlay.finderPoints(),
+                        confirmedFinderPolarity = overlay.confirmedFinderPolarity(),
+                    ),
+                    edits = cellEditState.edits.toMap(),
+                    prioritySearch = cellEditState.prioritySearch.toSet(),
+                )
+            }
+            fun leaveEditor() {
+                dialog.dismiss()
+                if (modernStyle) host.showHome()
+            }
+            cancelPreprocess = cancel@{
+                overlay.clearCornerSelection()
+                val hasUnsavedChanges = draftState.hasUnsavedChanges(capturePreprocessSettings())
+                if (!hasUnsavedChanges) {
+                    leaveEditor()
+                    return@cancel
+                }
+                AlertDialog.Builder(activity)
+                    .setTitle(ui("未保存の変更があります", "Unsaved changes"))
+                    .setMessage(ui("変更を保存せずに修復前設定を閉じますか？", "Close the pre-repair settings without saving changes?"))
+                    .setPositiveButton(ui("保存せず閉じる", "Close without saving")) { _, _ -> leaveEditor() }
+                    .setNegativeButton(R.string.back, null)
+                    .show()
+            }
+            noteDraftChange = { key, label, detail ->
+                draftState.note(key, label, detail, capturePreprocessSettings())
+            }
+            overlay.onGeometryEditFinished = {
+                // Sampling the full Version-sized matrix on every ACTION_MOVE made high-Version
+                // corner drags increasingly sluggish. Refresh once after the gesture instead.
+                refreshClassificationMatrix()
+                noteDraftChange("quad", ui("四隅を調整", "Adjusted corners"), ui("ドラッグまたは矢印で調整", "Adjusted by drag or arrow keys"))
+            }
+            fun persistPreprocessDraft(): Boolean {
+                if (!requestValidDataEccLimit()) return false
+                val captured = capturePreprocessSettings()
+                FormatEditPolicy.conflict(captured.version, captured.formatConstraint, captured.preRecoveryEdits)?.let { showFormatEditError(it); return false }
+                val events = mutableListOf<PreprocessDraftEvent>()
+                draftState.commit(captured, events::add)
+                host.save(PreprocessSave(captured, cellEditState.copyForEditing(), working, events))
+                workflowNavigation?.update(if (pageHost.currentPage() == PreprocessPage.CELL_EDITOR) 1 else 0,
+                    canShowResult = host.canShowResult())
+                return true
+            }
+            savePreprocess = save@{
+                if (!persistPreprocessDraft()) return@save
+                host.showSavedStatus()
+                Toast.makeText(activity, ui("修復設定を保存しました。", "Repair settings saved."), Toast.LENGTH_SHORT).show()
+            }
+            submitPreprocess = submit@{
+                if (!persistPreprocessDraft()) return@submit
+                dialog.dismiss(); host.startRecovery()
+            }
+        }
+        if (modernStyle) host.editorOpened(session)
+        dialog.show()
+        pageHost.navigateTo(initialPage)
+    }
+
+    private val dialogViews by lazy { DialogViewFactory(activity) }
+
+    private fun button(label: String, onClick: () -> Unit): Button = dialogViews.button(label, onClick)
+
+    private fun compactRow(vararg children: View): LinearLayout = dialogViews.compactRow(*children)
+
+    private fun scrollRow(vararg children: View): HorizontalScrollView = dialogViews.scrollRow(*children)
+
+    private fun dp(value: Int): Int = (value * activity.resources.displayMetrics.density).toInt()
+
+    private fun isJapaneseUi(): Boolean =
+        activity.resources.configuration.locales[0]?.language == "ja"
+
+    private fun ui(japanese: String, english: String): String =
+        if (isJapaneseUi()) japanese else english
+
+    private fun showFormatEditError(conflict: FormatEditConflict) {
+        AlertDialog.Builder(activity)
+            .setTitle(ui("形式情報の指定エラー", "Format selection error"))
+            .setMessage(conflict.message(true))
+            .setPositiveButton(R.string.close, null)
+            .show()
+    }
+}
