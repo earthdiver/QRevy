@@ -4,6 +4,21 @@ English | [日本語](RECOVERY_STRATEGY.ja.md)
 
 This document describes how QR Repair currently builds, validates, and explains recovery candidates for damaged QR Code Model 2 images. It is an implementation overview, not a replacement for the QR specification.
 
+## Start with the big picture
+
+For a first reading, this section, the tri-state example in section 1, the pipeline and scenarios in section 2, and the limitations in section 7 provide the operating model without requiring every implementation detail. Sections 3–5 cover format information, Reed–Solomon (RS), and candidate ranking. UI fields and cell-level evidence are documented separately in [Understanding recovery result fields](RECOVERY_RESULT_FIELDS.en.md) and [Understanding decode and repair reasons](REPAIR_REASONS.en.md).
+
+QR Repair does not guess one answer from an image and immediately declare it correct. It combines independent evidence from geometry, format information, error correction, and QR payload structure, then presents validated candidates and any remaining ambiguity to the user.
+
+| Display or state | What has been established | What it does not establish by itself |
+| --- | --- | --- |
+| RS-consistent | The RS equations hold under the selected version, format, and known bits | The original QR content, correct geometry, or correct format |
+| Payload-validated candidate | QR payload structure and final decoding succeeded in addition to RS | The real-world author's intended content or a unique solution |
+| Multiple candidates | Distinct solutions passed validation | Which candidate was the original content |
+| No candidate | No validated candidate was found within the finite search performed | That no correct solution exists |
+| Candidate agreement | The cell agrees across the validated candidates selected for comparison | Mathematical uniqueness across unretained or unexplored solutions |
+| Confidence | An explanatory comparison of image evidence and provenance | A statistical probability of correctness |
+
 ## 1. Principles
 
 A conventional reader is fast when it can obtain reliable geometry and a binary image. QR Repair targets cases where that assumption fails, so every module is retained as one of three values:
@@ -16,7 +31,40 @@ Manual `*` is not a fourth logical value. The matrix value remains `?`; the mark
 
 The result preserves provenance from image sampling, fixed QR structures, payload constraints, Reed–Solomon repair, and manual editing. Confidence is an explanatory heuristic, not a statistical probability.
 
+### Example of tri-state and manual input
+
+The following is an illustrative data-bit fragment, not a complete codeword from a real QR symbol.
+
+```text
+Image observation:       1 0 ? 1 ? 0 ? 1
+Manually set third to 0: 1 0 0 1 ? 0 ? 1
+Mark fifth with *:       1 0 0 1 ? 0 ? 1   (the value stays ?, with priority-search metadata)
+One possible candidate:  1 0 0 1 1 0 0 1
+```
+
+| Action | Matrix value | Effect on provenance or constraints |
+| --- | --- | --- |
+| Image is clearly read as black or white | `0` or `1` | Known image-derived value; it can still be corrected within configured limits |
+| Image is ambiguous | `?` | Retained as unknown for erasure decoding or partial-bit constraints |
+| User enters `0` or `1` | `0` or `1` | `USER` provenance; conflicting candidates are rejected when locking is enabled |
+| User applies `*` | `?` | Prioritizes bounded 0/1 enumeration for that cell if the ordinary route fails |
+
+Even if the last line in the example is RS-consistent, it is not accepted on that basis alone. It becomes a validated candidate only after format, manual constraints, QR payload structure, and final decoding also pass.
+
 ## 2. Pipeline
+
+### Pipeline at a glance
+
+| Stage | Main input | Operation | Output for the next stage | Not established by this stage alone |
+| --- | --- | --- | --- | --- |
+| 1. Normalize | Image, EXIF, crop, rotation | Normalize orientation and luminance; prepare polarity alternatives when needed | Working luminance image | QR orientation or content |
+| 2. Initial geometry | Grid period, extent, user input | Propose editable version and corner starting values | Editable geometry | Correct version or corners |
+| 3. Roles and geometry hypotheses | Corners, version, manual Finder roles | Build baseline, neighborhood, and alignment-refined hypotheses | Finite sampling geometries | Best geometry |
+| 4. Sample modules | Luminance, thresholds, color clusters | Classify every cell as `0 / 1 / ?` | Tri-state matrix with provenance | Values of unknown cells |
+| 5. Format and structure | Version, format cells, function modules | Apply ECC-level/mask candidates and fixed QR structure | Codeword candidates per format | Correct payload |
+| 6. Constraints and RS | Partial codewords, known bits, structure hypotheses | Apply erasures/errors, bounded searches, and binary constraints | RS-consistent candidates | Agreement with the original data |
+| 7. Final validation | Corrected codewords | Check manual constraints, error limits, QR structure, and final decode | Validated candidates or diagnostics | Uniqueness across unexplored space |
+| 8. Explain | Candidates and route history | Present ranking, cell provenance, and useful additional checks | Evidence the user can review | Probability of correctness |
 
 ### 2.1 Input and normalization
 
@@ -40,9 +88,20 @@ Finders are not searched automatically. The user chooses a top-left, top-right, 
 
 Automatic Model 1 classification is not implemented yet. Input must therefore be limited to Model 2 symbols.
 
+The following table distinguishes the number of Finder roles assigned by the user. It is not a count of Finder-like shapes visible in the image; it counts explicit top-left, top-right, and bottom-left logical-role assignments.
+
+| Assigned roles | Logical orientation | Base hypotheses with neighborhood search | Important qualification |
+| --- | --- | --- | --- |
+| 0 | Use the displayed corners and default logical orientation | At most 19 | No global Finder search or automatic role assignment |
+| 1 | Treat the assigned logical corner as a pivot | At most 21 | Add clockwise and counterclockwise rotations to the ordinary 19 |
+| 2 | Fix orientation from the two roles and corners | At most 19 | Do not add the two rotation hypotheses |
+| 3 | Use the fully explicit role assignment | At most 19 | Incorrect roles can prevent the correct recovery |
+
+For version 2 and later, at most one alignment-refined variant may be added for each base hypothesis. The next section gives the complete bounds.
+
 ### 2.4 Geometry hypotheses
 
-Recovery fixes the logically assigned corners and selected version. It first creates the selected geometry as one base hypothesis. Enabling “fine-tune sampling position” in advanced settings expands the base set to at most 19 hypotheses without changing logical orientation or version: one baseline, four axial translations, four diagonal translations, two overall-scale variants, and eight variants that move one corner inward or outward. Only the 0.6-module width is used. Diagonal components are `0.6 / √2`, and scale factors are chosen so the mean outer displacement of the four corners is 0.6 module; axial, diagonal, and scale comparisons therefore use the same displacement magnitude.
+Recovery fixes the logically assigned corners and selected version. It first creates the selected geometry as one base hypothesis. Enabling “Automatically fine-tune sampling position” in advanced settings expands the base set to at most 19 hypotheses without changing logical orientation or version: one baseline, four axial translations, four diagonal translations, two overall-scale variants, and eight variants that move one corner inward or outward. Only the 0.6-module width is used. Diagonal components are `0.6 / √2`, and scale factors are chosen so the mean outer displacement of the four corners is 0.6 module; axial, diagonal, and scale comparisons therefore use the same displacement magnitude.
 
 If exactly one Finder role has been assigned manually, two more base hypotheses rotate clockwise and counterclockwise around its logical corner, for 21 base hypotheses in total. The angle is chosen so the farthest outer corner moves by 0.6 module. No rotation hypothesis is added with zero or at least two assigned Finder roles. These neighborhood transformations are not combined with one another, and logical orientation and version remain unchanged.
 
@@ -57,6 +116,34 @@ On image import, initial thresholds are estimated once without depending on find
 Colored unknown regions are initially estimated as approximate clusters in Lab color space. Cluster acceptance uses color frequency, color-density, and separation from black and white; it does not use spatial grouping, module size, finders, or version. “Use colored unknown regions,” directly below the Version button in basic settings, starts disabled and applies detected clusters only when enabled. Achromatic gray unknown regions are handled by the three-class luminance model instead.
 
 Each geometry samples luminance near module centers. The locally adjusted mean is rounded to an integer before values between the dark upper threshold and light lower threshold become `?`; adjacent thresholds therefore cannot create an unknown band solely from a fractional sample mean. A configured color cluster also takes precedence over luminance when its pixels occupy at least half of the sampling area. Local thresholding adjusts the decision for spatial illumination. Manual `0 / 1 / ?` edits override resampling. With “Exclude recovery candidates that conflict with manual 0/1 values” enabled, candidates that contradict those values are rejected.
+
+### 2.6 Reading three common scenarios
+
+These synthetic scenarios explain how to use the mechanisms. They are not test vectors derived from a particular image and do not promise recovery.
+
+#### Example A: only one Finder can be trusted
+
+1. The user confirms the version and corners, then assigns the correct logical role to the one trusted Finder.
+2. Enabling **Automatically fine-tune sampling position** adds two pivot rotations to the ordinary 19 base hypotheses.
+3. Every hypothesis retains the same version and logical orientation. An alignment-refined variant is evaluated separately when supported by image evidence.
+4. If multiple validated candidates remain, the app retains them and reports their agreement instead of choosing one silently.
+
+Seeing one Finder-like shape does not trigger this route automatically. Role assignment is a user decision, and the rotation hypotheses do not change the selected version or logical orientation.
+
+#### Example B: gray damage covers several cells
+
+1. Black/unknown/white thresholds preserve the gray region as `?` instead of forcing an unreliable known value.
+2. Codewords containing `?` can enter ordinary erasure decoding, bounded partial-bit search, and partial-bit RS constraints.
+3. Even a unique RS solution is conditional on the format and known bits. QR payload structure and final decoding still run.
+4. If the solution space remains ambiguous, the app may recommend a cell whose visual confirmation reduces RS freedom by one bit.
+
+#### Example C: a manual pin was wrong
+
+1. With locking enabled, any candidate that contradicts the incorrect manual 0/1 is rejected even when it is RS-consistent.
+2. When possible, a direct format conflict or the opposite value required by a candidate is reported with coordinates.
+3. Return a weakly supported pin to `?` or use **Restore image**, then retry.
+
+Relaxing an error limit never grants permission to overwrite a locked manual value. Preserving explicit user control takes precedence.
 
 ## 3. QR structures and format information
 
@@ -279,3 +366,18 @@ When no concrete recovery candidate exists but a nonempty ambiguous exact RS spa
 ## 8. Implementation boundary
 
 The main primitives for finder detection, geometry, tri-state matrices, GF(256) RS, partial-bit search, and payload constraints live under `shared/src/commonMain`. ZXing-dependent version/format/block interleave and final payload decoding currently live under `androidApp`. This keeps the shared core independent of Android and JVM-only APIs.
+
+## 9. Quick glossary
+
+| Term | Meaning in this document |
+| --- | --- |
+| Module / cell | One square element of the QR symbol; an editable cell in the UI |
+| Codeword | Eight bits extracted in placement order; a data or ECC unit |
+| Erasure | A codeword whose position is known but value is incomplete; a codeword containing `?` may qualify |
+| Error | A position supplied as known whose value must change in the corrected result |
+| Format information | The ECC level and mask information stored in two copies in a QR symbol |
+| Geometry hypothesis | One mapping from logical module centers to sampling positions in the image |
+| Provenance | The route that supplied a value: image, user, fixed structure, constraint, RS, and so on |
+| RS consistency | Satisfaction of Reed–Solomon equations; not synonymous with correct QR content |
+| Validated candidate | A candidate that passed QR structure and final decoding; uniqueness is separate |
+| Degrees of freedom | Unknown bits that remain independently selectable in a partial-bit RS solution space |
