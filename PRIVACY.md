@@ -1,6 +1,15 @@
 # Privacy
 
+English | [日本語](PRIVACY.ja.md)
+
 QR Repair is designed for local, on-device processing.
+
+| Data | When it exists | Storage or destination | Removal or retention |
+| --- | --- | --- | --- |
+| Imported image | While editing; persisted only when a repair session is saved | App-private `noBackupFilesDir` as a lossless content-addressed PNG | Removed with the saved session through the app's deletion flow |
+| Camera hand-off JPEG | Between camera capture and import | App-private cache | Deleted after import or failure; stale matching files are purged on next startup |
+| QRR repair session | After the user saves work | App-private `noBackupFilesDir` | Retained until the user deletes the saved work or app data |
+| Recovered image or other export | Only after an explicit export action | Destination selected or authorized by the user | Controlled by the destination rather than QR Repair's private storage |
 
 - The app does not request the Internet permission.
 - Repair sessions and source images are stored under Android's app-private `noBackupFilesDir`. Imported/captured source images are persisted as lossless, content-addressed PNG files only when a repair session is saved.
@@ -12,3 +21,5 @@ QR Repair is designed for local, on-device processing.
 - Results leave app-private storage only when the user explicitly exports/saves them.
 
 If telemetry, crash reporting, advertising, cloud sync, sharing SDKs, or any network feature is added in the future, this document and the store privacy disclosures must be updated before release.
+
+GZIP compression and SHA-256 integrity checks used by session storage do not encrypt QR content. Device-level and operating-system protections remain relevant to saved sensitive data.

@@ -2,6 +2,17 @@
 
 This document describes the current boundary between the Kotlin Multiplatform shared core and platform-specific code.
 
+## Boundary at a glance
+
+| Area | Owns | Must not own |
+| --- | --- | --- |
+| `shared/commonMain` | Platform-neutral matrices, luminance, geometry, finder detection, GF(256) RS, bounded partial-bit solving, payload constraints, cancellation interfaces | Android, Java/JVM-only, ZXing, or Apple-framework APIs |
+| `shared` platform targets | Packaging the common core for Android, JVM tests, and Apple frameworks | Application UI or Android session storage |
+| `androidApp` | CameraX, Android UI/storage, ZXing adapters, current version/format/block metadata and final payload decode | Platform-neutral logic that can move safely to common code |
+| Future iOS app | SwiftUI, PhotosPicker/AVFoundation integration, Apple lifecycle and storage | Reimplementations of algorithms already available from the shared core |
+
+The dependency direction is platform application → shared core. When common logic needs a platform service, define a small interface in common code and implement it in the platform layer; do not import a platform framework into `commonMain`.
+
 ## What moved to commonMain
 The following components are now compiled as Kotlin Multiplatform common code:
 - `QrTypes.kt`
@@ -50,3 +61,5 @@ CI verifies this on macOS. The framework is the bridge that the future SwiftUI a
 6. Move provenance/guidance/session model portions that have no UI/storage dependencies.
 
 Each extraction must preserve the Android regression suite.
+
+Before completing an extraction, run `./scripts/check-shared-boundary.sh`, `:shared:jvmTest`, and the relevant Android regression tests. On macOS, also assemble `QRRepairCore.xcframework` to confirm that common declarations remain exportable.

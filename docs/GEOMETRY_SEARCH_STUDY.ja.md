@@ -1,8 +1,26 @@
 # 幾何近傍探索の合成画像比較
 
+[English](GEOMETRY_SEARCH_STUDY.en.md) | 日本語
+
 ## 目的
 
-「サンプリング位置を微調整」の探索幅と変形種類を比較するため、中央付近だけに判別可能な画素を持つ合成QR画像で、幾何候補から元の文字列まで復号できるかを測定する。QR規格上の保証や実画像に対する統計ではなく、探索候補間の決定論的な回帰比較である。
+「サンプリング位置を自動微調整する」の探索幅と変形種類を比較するため、中央付近だけに判別可能な画素を持つ合成QR画像で、幾何候補から元の文字列まで復号できるかを測定する。QR規格上の保証や実画像に対する統計ではなく、探索候補間の決定論的な回帰比較である。
+
+## 対応する実装と再現方法
+
+- 幾何候補生成: [`FixedGeometryRecovery.kt`](../androidApp/src/main/java/io/github/earthdiver/qrrepair/core/FixedGeometryRecovery.kt)
+- 変位と単一幅の回帰: [`GeometryNeighborhoodDisplacementRegressionTest.kt`](../androidApp/src/test/java/io/github/earthdiver/qrrepair/core/GeometryNeighborhoodDisplacementRegressionTest.kt)
+- 変形別・回転候補の回帰: [`GeometryNeighborhoodExpandedRegressionTest.kt`](../androidApp/src/test/java/io/github/earthdiver/qrrepair/core/GeometryNeighborhoodExpandedRegressionTest.kt)
+- 候補数と支点回転の単体確認: [`AutoRecoveryOrderingTest.kt`](../androidApp/src/test/java/io/github/earthdiver/qrrepair/core/AutoRecoveryOrderingTest.kt)
+
+```bash
+./gradlew :androidApp:testDebugUnitTest \
+  --tests io.github.earthdiver.qrrepair.core.GeometryNeighborhoodDisplacementRegressionTest \
+  --tests io.github.earthdiver.qrrepair.core.GeometryNeighborhoodExpandedRegressionTest \
+  --tests io.github.earthdiver.qrrepair.core.AutoRecoveryOrderingTest
+```
+
+表の数値は合成テストデータに対する設計判断時の比較値です。現行テストはコード変更による退行を検出しますが、過去の全数値を固定するものではありません。評価結果を更新する場合は、対象コミット、テストデータ、成功条件、探索上限の変更も併記します。
 
 ## 通常幾何の条件
 

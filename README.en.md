@@ -8,6 +8,17 @@ Recovery does not guarantee correctness. Independently verify important recovere
 
 For compactness, the UI uses “Finder” for a finder pattern, “cell” for a module, and “Format” for format information.
 
+## Current status
+
+| Area | Status |
+| --- | --- |
+| Android | Builds and tests from source; API 26 and newer |
+| iOS | Shared-core XCFramework output and bootstrap examples only; no complete Xcode app |
+| Supported QR | QR Code Model 2, versions 1–40 |
+| Unsupported | Model 1, Micro QR, and rMQR |
+| Distribution | No release-signing configuration or official signed package is provided |
+| Network | The Android app does not use the `INTERNET` permission |
+
 ## Features
 
 - Image-file import and camera capture
@@ -34,13 +45,7 @@ The supported symbol family is QR Code Model 2, versions 1 through 40. Model 1, 
 5. Adjust cells and search options in advanced settings when needed.
 6. Start recovery and inspect the decoded content and per-cell explanations.
 
-Use **Make manual / Restore image** in the cell editor to switch the selected cells' source. Entering an unchanged 0/1 does not make it manual. Once a value is changed, it remains manual until Restore image or Undo removes the override. The control shows the current source and value alongside the value sampled from the current image settings. Multiple-cell selections are supported. In the regular editor (including its 5x magnifier) and the large editor, cyan squares identify manual cells and yellow circles identify selected cells. Manual markers remain visible when the value matches the image or the cell is selected.
-
-The search order, constraints, Reed–Solomon processing, and candidate-validation rules are collected in [Recovery Strategy](docs/RECOVERY_STRATEGY.en.md).
-
-Choose Classic or Modern under Menu → Appearance (next launch), then save. Classic is the default. The choice takes effect after exiting and launching the app again, and persists until changed. Rotation and language changes keep the active style. Modern uses a dark background, lime accents, and a typographic “QR Repair” title.
-
-In Modern, resume previous work from Home and navigate with the 01 Repair settings / 02 Edit cells / 03 Result tabs. The result tab is enabled when a result exists; switching tabs preserves the draft and undo history. The settings and cell-editor footer contains Home, a page switch, Data, Save, and Repair. Save stores the draft without repairing; Repair saves and then runs recovery. Home asks before discarding unsaved changes. Workspace offers import choices when no image is loaded. Image previews are square, and manual-source controls sit below the brushes. Highlight manual cells only changes overlays without changing classification counts or edit history. The large editor keeps its counts, Undo, Redo, and Close at the bottom. Data uses a shared popup, and Show detailed results opens repair evidence. Saved work lists sessions; Operation history shows the current editing history.
+See the [User Guide](docs/USER_GUIDE.en.md) for cell editing, advanced settings, result review, saved work, and Classic/Modern navigation. The search order, constraints, Reed–Solomon processing, and candidate-validation rules are collected in [Recovery Strategy](docs/RECOVERY_STRATEGY.en.md).
 
 ## Local build
 
@@ -64,13 +69,15 @@ The permanent application ID is `io.github.earthdiver.qrrepair`. Release signing
 ## Documentation
 
 - [Recovery strategy](docs/RECOVERY_STRATEGY.en.md)
-- [Synthetic geometry-search comparison (Japanese)](docs/GEOMETRY_SEARCH_STUDY.ja.md)
+- [User guide](docs/USER_GUIDE.en.md)
+- [Synthetic geometry-search comparison](docs/GEOMETRY_SEARCH_STUDY.en.md)
 - [Understanding recovery result fields](docs/RECOVERY_RESULT_FIELDS.en.md)
 - [Understanding decode and repair reasons](docs/REPAIR_REASONS.en.md)
 - [Kotlin Multiplatform boundary](docs/KMP_MIGRATION.md)
 - [iOS integration plan](iosApp/README.md)
 - [Privacy](PRIVACY.md)
 - [Security](SECURITY.md)
+- [Contributing](CONTRIBUTING.md)
 - [Third-party licenses](THIRD_PARTY_NOTICES.md)
 
 ## License

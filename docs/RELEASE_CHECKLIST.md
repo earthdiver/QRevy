@@ -2,6 +2,16 @@
 
 This checklist is a technical release gate, not legal advice.
 
+## Repository publication
+
+- [ ] Confirm the public repository contains only the intended clean history, branches, tags, releases, pull requests, Actions runs, and artifacts.
+- [ ] Confirm the repository description, topics, default branch, license detection, and visibility are correct.
+- [ ] While the repository is private, prepare the exact post-visibility steps for GitHub private vulnerability reporting. GitHub exposes this setting only for public repositories.
+- [ ] Immediately after changing visibility to public, enable and test private vulnerability reporting and verify `SECURITY.md` points to the available channel; do this before announcing the repository or publishing a release.
+- [ ] Review repository Actions permissions and confirm no publisher or signing secrets are present in ordinary build environments.
+- [ ] Before requiring CI checks on pull requests, add reviewed `pull_request` triggers to the intended workflows and configure `main` protection or a ruleset. The current workflows are manual-only.
+- [ ] Review Dependabot pull requests and configuration; close or supersede proposals intentionally rather than merging updates without tests.
+
 ## Build identity / signing
 
 - [ ] Confirm `io.github.earthdiver.qrrepair` remains the final `namespace` and `applicationId` before store publication.
@@ -15,7 +25,7 @@ This checklist is a technical release gate, not legal advice.
 - [ ] Commit the verified Gradle Wrapper files (`gradlew`, `gradlew.bat`, `gradle-wrapper.jar`, `gradle-wrapper.properties`) in the public repository.
 - [ ] `./gradlew --no-daemon :shared:jvmTest :androidApp:testDebugUnitTest :androidApp:lint :androidApp:assembleDebug :androidApp:assembleRelease :androidApp:bundleRelease`
 - [ ] Review `build/androidApp/reports/` and fix all release-blocking lint/test failures.
-- [ ] Run the nightly deterministic fuzz profile before a public release.
+- [ ] Manually run the `Extended recovery fuzz` workflow before a public release.
 - [ ] Verify `KMP Shared Core` succeeds on macOS and produces `QRRepairCore.xcframework`.
 - [ ] Keep `shared/commonMain` free of Android, Java/JVM-only, ZXing, and Apple-framework imports.
 - [ ] Verify every external GitHub Action in `.github/workflows/` is pinned to a full 40-character commit SHA; review Dependabot updates before merging.

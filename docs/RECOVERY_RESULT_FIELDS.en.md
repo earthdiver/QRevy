@@ -6,6 +6,20 @@ The main content display and diagnostic details describe candidate generation an
 
 Invalid Kanji/Hanzi character codes are rejected by structure validation even when RS is consistent; replacement text is not accepted as a successful character-mode result. Byte-mode binary data is handled separately.
 
+## Identify the outcome first
+
+| Outcome or warning | Meaning | Check first |
+| --- | --- | --- |
+| Repair succeeded | At least one candidate passed QR payload structure and final decoding | Decoded content, distinct-content count, candidate agreement, and search-limit warnings |
+| Repair incomplete | An RS-consistent candidate exists, but payload validation or final decoding did not succeed | Format information, version/geometry, partial diagnostics, and failure reason |
+| Repair failed | Format conditions prevented RS attempts, or the performed search found no RS-consistent candidate | First failing block, erasure-capacity shortfall bits, and known-bit conflicts |
+| Combination/node limit | Search stopped with part of the candidate space unexplored | Do not treat candidate counts as uniqueness; review settings or an additional-check cell |
+| Candidate retention budget | The 32 MiB accounting budget was reached | Results and agreement cover retained candidates only |
+
+### Short reading example
+
+Suppose Repair succeeded with three validated candidates, two distinct contents, and candidate agreement of `2 / 3` for one cell. At least one compared candidate differs at that cell, so inspect its source-image evidence and repair reason instead of silently choosing the selected payload. Agreement of `3 / 3` still does not prove uniqueness across unretained or unexplored solutions.
+
 ## Results and counts
 
 “Candidate retention budget” means the shared request budget stopped further search. Previously validated results remain available, but counts and consensus cover only retained results. This warning also applies when repair succeeds. Cell explanations are generated when accessed; the accounting budget and its scope are described in [Recovery Strategy](RECOVERY_STRATEGY.en.md#6-explanation-of-results).

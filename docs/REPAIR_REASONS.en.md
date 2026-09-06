@@ -6,6 +6,20 @@ Tapping a cell in “Show result” displays the primary reason for its final va
 
 An attempt that fails payload validation does not modify the original matrix, so unvalidated guesses receive no repair reasons. The reasons below apply to payload-validated results or explicit user edits.
 
+## Reason quick reference
+
+| Main category | Border | What it shows | Important qualification |
+| --- | --- | --- | --- |
+| Fixed QR structure | Green | The specification determines the value from version or confirmed format | Depends on the selected version and format being correct |
+| RS | Orange | The value came from codeword erasure recovery or error correction | RS consistency alone does not prove correctness |
+| Payload constraint | Purple | Mode, count, terminator, padding, or another structure implied the value | May depend on a selected payload-structure hypothesis |
+| Bit-level candidate search | Magenta | A route used bounded 0/1 enumeration | This is not exhaustive brute force over every `?` |
+| User edit | Blue | The user selected the value or its source | With locking enabled, an incorrect pin is enforced too |
+
+### Example history for one cell
+
+Consider an illustrative data cell that was `?` in the input and is `1` in a final candidate. A payload constraint may first supply `1`, an RS route may then succeed using it, and final QR payload validation may pass. The UI distinguishes the main reason that wrote the final value, supporting evidence for the same value, and an intermediate value later overturned by RS. Multiple reasons are not independent votes and do not form a correctness probability.
+
 ## Why an overall decode succeeds or fails
 
 The app distinguishes these checks (some run more than once during search):
