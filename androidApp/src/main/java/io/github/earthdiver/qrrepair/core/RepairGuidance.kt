@@ -66,6 +66,8 @@ object RepairGuidance {
         val out = HashMap<Coord, CellConfidence>(after.dimension * after.dimension)
         val comparison = candidateMatrices
         for (y in 0 until after.dimension) for (x in 0 until after.dimension) {
+            // Format bits express a selected ECC/mask, not independent confidence in that choice.
+            if (RepairTraceBuilder.isFormat(x, y, after.dimension)) continue
             val coord = Coord(x, y)
             val src = source[x, y]
             val cell = after[x, y]

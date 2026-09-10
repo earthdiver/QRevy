@@ -346,7 +346,7 @@ object RepairTraceBuilder {
             ((x in d - 8 until d && y == 7) || (x == d - 8 && y in 0..7)) ||
             ((x in 0..7 && y == d - 8) || (x == 7 && y in d - 8 until d))
 
-    private fun isFormat(x: Int, y: Int, d: Int): Boolean {
+    fun isFormat(x: Int, y: Int, d: Int): Boolean {
         val copy1 = setOf(
             0 to 8, 1 to 8, 2 to 8, 3 to 8, 4 to 8, 5 to 8, 7 to 8, 8 to 8, 8 to 7,
             8 to 5, 8 to 4, 8 to 3, 8 to 2, 8 to 1, 8 to 0,

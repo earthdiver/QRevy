@@ -1,5 +1,7 @@
 package io.github.earthdiver.qrrepair
 
+import io.github.earthdiver.qrrepair.core.ModuleSource
+
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
@@ -792,8 +794,8 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             addView(TextView(this@MainActivity).apply {
                 text = ui(
-                    "セル: 黒=1  白=0  灰色×=未確定（修復後も値が定まらないセル）\n枠: 緑=固定構造  橙=RS  紫=制約  赤紫=ビット候補探索  青=ユーザー編集",
-                    "Cells: black=1, white=0, grey ×=unresolved after repair\nBorders: green=fixed structure, orange=RS, purple=constraint, magenta=bit candidate search, blue=user edit",
+                    "セル: 黒=1  白=0  灰色×=未確定（修復後も値が定まらないセル）\n枠: 緑=固定構造  黄土色=形式情報  橙=RS  紫=制約  赤紫=ビット候補探索  青=ユーザー編集",
+                    "Cells: black=1, white=0, grey ×=unresolved after repair\nBorders: green=fixed structure, ochre=format information, orange=RS, purple=constraint, magenta=bit candidate search, blue=user edit",
                 )
                 textSize = 12f
                 setPadding(dp(12), dp(8), dp(12), dp(4))
@@ -899,6 +901,11 @@ class MainActivity : Activity() {
         val coord = Coord(x, y)
         val trace = recoveryState.traces[coord]
         val confidence = recoveryState.confidenceMap[coord]
+        if (io.github.earthdiver.qrrepair.core.RepairTraceBuilder.isFormat(x, y, matrix.dimension)) {
+            return io.github.earthdiver.qrrepair.core.formatCellDescription(x, y,
+                trace?.originalValue ?: recoveryState.sourceMatrix?.get(x, y)?.value ?: matrix[x, y].value,
+                matrix[x, y].value, recoveryState.selectedRecovery, matrix[x, y].source == ModuleSource.USER)
+        }
         if (trace != null) return buildString {
             append(trace.explanationJa())
             confidence?.let { append(ui("\n相対信頼度（確率ではありません）: ${it.labelJa} (${"%.2f".format(it.score)}) — ${it.detailJa}", "\nRelative confidence (not a probability): ${it.labelEn} (${"%.2f".format(it.score)}) — ${it.detailEn}")) }

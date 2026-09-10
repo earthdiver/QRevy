@@ -52,6 +52,8 @@ data class RecoveryCandidate(
     /** Only blocks with equivalent routes; route 1 is the representative used by repairInfo. */
     val blockDerivations: Map<Int, List<PartialCodewordSolver.Derivation>> = emptyMap(),
     val combinationSearch: CombinationSearchSummary = CombinationSearchSummary(),
+    val formatSelection: FormatSelection? = null,
+    val formatRoute: FormatSelectionReason? = null,
     val fnc1ApplicationIndicator: Int? = null,
     val structuredAppend: StructuredAppendInfo? = null,
 ) {
@@ -225,7 +227,8 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
             cancellation.check()
             recoverRun(run, matrix, maxFormatCandidates, trustKnownPayloadCount, formatConstraint,
                 maxFormatMismatches, maxKnownDataEccMismatches, manualEdits, onPriorityProgress)
-                .map { it.copy(combinationSearch = run.combinationSearch) }
+                .map { it.copy(combinationSearch = run.combinationSearch,
+                    formatSelection = FormatSelection(formatConstraint?.ecLevel != null, formatConstraint?.dataMask != null)) }
         } finally {
             lastFailure = run.failure?.copy(combinationSearch = run.combinationSearch)
             lastFormatAttempts = run.formatAttempts
@@ -338,6 +341,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         allowPayloadConstraints: Boolean = true,
         maxFormatMismatches: Int? = null,
         maxKnownDataEccMismatches: Int? = null,
+        formatRoute: FormatSelectionReason = FormatSelectionReason.SEARCH,
     ): List<RecoveryCandidate> {
         run.cancellation.check()
         val version = (matrix.dimension - 17) / 4
@@ -355,7 +359,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 rankedFormats.firstOrNull { it.maskedCodeword == trusted.maskedCodeword }
             }?.takeIf { nonRsManualConflicts(matrix, version, it.ecLevel, it.dataMask).isEmpty() }
             if (trusted != null) {
-                val fastResult = recoverInternal(run, matrix, 1, forcedFormats = listOf(trusted), allowBitEnumeration = allowBitEnumeration, trustKnownPayloadCount, allowPayloadConstraints, maxFormatMismatches, maxKnownDataEccMismatches)
+                val fastResult = recoverInternal(run, matrix, 1, forcedFormats = listOf(trusted), allowBitEnumeration = allowBitEnumeration, trustKnownPayloadCount, allowPayloadConstraints, maxFormatMismatches, maxKnownDataEccMismatches, FormatSelectionReason.OBSERVED)
                 // A BCH-trusted format is a hard constraint for this geometry. RS or payload
                 // failure must not cause unrelated ECC-level/mask combinations to be tried.
                 return fastResult
@@ -364,7 +368,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                     rankedFormats.firstOrNull { it.maskedCodeword == provisional.maskedCodeword }
                 }?.takeIf { nonRsManualConflicts(matrix, version, it.ecLevel, it.dataMask).isEmpty() }
                 if (provisional != null) {
-                    val fastResult = recoverInternal(run, matrix, 1, forcedFormats = listOf(provisional), allowBitEnumeration = allowBitEnumeration, trustKnownPayloadCount, allowPayloadConstraints, maxFormatMismatches, maxKnownDataEccMismatches)
+                    val fastResult = recoverInternal(run, matrix, 1, forcedFormats = listOf(provisional), allowBitEnumeration = allowBitEnumeration, trustKnownPayloadCount, allowPayloadConstraints, maxFormatMismatches, maxKnownDataEccMismatches, FormatSelectionReason.OBSERVED)
                     // Matching information bits are weaker than BCH agreement. They only provide
                     // ordering; an invalid payload must always fall back to the other 31 formats.
                     if (fastResult.any { it.payloadParsed }) return fastResult
@@ -511,6 +515,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                         allowPayloadConstraints = false,
                         maxFormatMismatches = maxFormatMismatches,
                         maxKnownDataEccMismatches = maxKnownDataEccMismatches,
+                        formatRoute = formatRoute,
                     )
                 }
                 continue
@@ -649,6 +654,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                             (it.structuredAppendSequenceNumber and 15) + 1, it.structuredAppendParity)
                     },
                     dataBytes = dataBytes,
+                    formatRoute = formatRoute,
                     formatMatches = format.matches,
                     formatMismatches = format.mismatches,
                     originalErasedCodewords = originalErasures,
@@ -703,6 +709,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                     allowPayloadConstraints = false,
                     maxFormatMismatches = maxFormatMismatches,
                     maxKnownDataEccMismatches = maxKnownDataEccMismatches,
+                    formatRoute = formatRoute,
                 )
             }
         }

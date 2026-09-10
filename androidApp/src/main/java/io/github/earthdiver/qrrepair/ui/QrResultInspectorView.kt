@@ -275,6 +275,7 @@ class QrResultInspectorView(context: Context) : View(context) {
     }
 
     private fun colorFor(reason: RepairReasonKind?): Int = when (reason) {
+        RepairReasonKind.FORMAT_INFORMATION -> Color.rgb(190, 135, 0)
         RepairReasonKind.USER_OVERRIDE -> Color.rgb(0, 145, 200)
         RepairReasonKind.RS_ERASURE_RECOVERY, RepairReasonKind.RS_ERROR_CORRECTION -> Color.rgb(230, 115, 0)
         RepairReasonKind.PAYLOAD_MODE, RepairReasonKind.PAYLOAD_COUNT, RepairReasonKind.PAYLOAD_DATA_VALUE,
@@ -283,7 +284,7 @@ class QrResultInspectorView(context: Context) : View(context) {
         RepairReasonKind.PARTIAL_BIT_SEARCH -> Color.rgb(210, 20, 105)
         RepairReasonKind.FINDER_PATTERN, RepairReasonKind.SEPARATOR,
         RepairReasonKind.TIMING_PATTERN, RepairReasonKind.ALIGNMENT_PATTERN,
-        RepairReasonKind.FORMAT_INFORMATION, RepairReasonKind.VERSION_INFORMATION,
+        RepairReasonKind.VERSION_INFORMATION,
         RepairReasonKind.FIXED_DARK_MODULE, RepairReasonKind.REMAINDER_BITS -> Color.rgb(0, 155, 80)
         else -> Color.rgb(80, 80, 80)
     }
