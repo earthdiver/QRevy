@@ -39,12 +39,13 @@ class StructuredAppendRecoveryTest {
         }
     }
 
-    @Test fun fragmentPreviewKeepsWifiPasswordsMasked() {
+    @Test fun fragmentPreviewKeepsRecoveredTextExact() {
         val base = recoverPayload(data(1)).single()
-        val candidate = base.copy(text = "WIFI:T:WPA;S:LabNet;P:secret;;")
+        val candidate = base.copy(text = "CONFIG:T:TYPE;S:Example;P:secret;;")
         val display = QrContentPreviewParser.parse(candidate)!!.toDisplayText()
         assertTrue(display.contains("連結QRの一部"))
-        assertTrue(display.contains("••••"))
-        assertFalse(display.contains("secret"))
+        assertFalse(display.contains("••••"))
+        assertTrue(display.contains(candidate.text!!))
+        assertFalse(display.contains("パスワード: "))
     }
 }
