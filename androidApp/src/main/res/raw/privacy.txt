@@ -6,6 +6,6 @@ QR Repair is designed for local, on-device processing.
 • Sessions/source images are kept in Android app-private no-backup storage. Source images are stored losslessly and integrity-checked.
 • Android cloud backup and device-transfer backup are disabled/excluded because QR data can contain sensitive information.
 • Recovered URLs are never opened automatically.
-• Wi-Fi passwords are masked by default in the content preview.
+• Recovered text is displayed and compared without masking or redaction. Copying preserves the complete recovered text.
 • Temporary camera JPEGs are deleted after decoding; stale capture files are purged on the next app start.
 • Data leaves app-private storage only when you explicitly export/save a result.

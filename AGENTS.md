@@ -78,7 +78,7 @@ On macOS, shared iOS compatibility must also pass:
 - Do not commit user-specific attachment filenames or local filesystem paths. External-image diagnostics must be explicitly opt-in and receive their path at runtime.
 - Regression tests derived from user-attached images must use independently generated synthetic fixtures, not the original image data.
 - URLs recovered from QR payloads must never open automatically.
-- Wi-Fi passwords must remain masked by default.
+- Display and compare recovered text without masking or redacting its contents; copying must preserve the complete recovered text.
 
 ## Licensing
 - Preserve `LICENSE`, `NOTICE.md`, `THIRD_PARTY_NOTICES.md`, `PRIVACY.md`, and `SECURITY.md`.

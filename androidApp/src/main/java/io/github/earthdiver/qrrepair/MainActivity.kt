@@ -1,6 +1,20 @@
 package io.github.earthdiver.qrrepair
 
 import io.github.earthdiver.qrrepair.core.ModuleSource
+import io.github.earthdiver.qrrepair.core.inputAgreementText
+import io.github.earthdiver.qrrepair.core.resultContentText
+import io.github.earthdiver.qrrepair.core.resultExplanationText
+import io.github.earthdiver.qrrepair.core.candidatePairComparisonText
+import io.github.earthdiver.qrrepair.ui.ResultActionRow
+import io.github.earthdiver.qrrepair.core.RecoveryDiagnosticReport
+import io.github.earthdiver.qrrepair.core.DiagnosticSection
+import io.github.earthdiver.qrrepair.core.DiagnosticStage
+import io.github.earthdiver.qrrepair.core.runSettingsText
+import io.github.earthdiver.qrrepair.core.initialDiagnosticSection
+import io.github.earthdiver.qrrepair.core.usedMethodsText
+import io.github.earthdiver.qrrepair.core.searchDescription
+import io.github.earthdiver.qrrepair.core.codewordCellText
+import io.github.earthdiver.qrrepair.core.inputComparisonText
 
 import android.app.Activity
 import android.app.AlertDialog
@@ -60,6 +74,7 @@ import io.github.earthdiver.qrrepair.core.HistoryEventKind
 import io.github.earthdiver.qrrepair.core.historyCellChangeCount
 import io.github.earthdiver.qrrepair.core.InitialThresholdEstimator
 import io.github.earthdiver.qrrepair.core.QrContentPreviewParser
+import io.github.earthdiver.qrrepair.core.QrContentPreview
 import io.github.earthdiver.qrrepair.core.UiMode
 import io.github.earthdiver.qrrepair.core.RepairGuidance
 import io.github.earthdiver.qrrepair.core.RepairTraceBuilder
@@ -140,7 +155,20 @@ class MainActivity : Activity() {
     private lateinit var diagnosticToggle: Button
     private lateinit var diagnosticDetailsText: TextView
     private var diagnosticDetailsExpanded = false
+    private var diagnosticReport: RecoveryDiagnosticReport? = null
+    private var diagnosticInput: QrMatrix? = null
+    private var diagnosticGeometry: GridGeometry? = null
+    private var diagnosticRecoveries: List<RecoveryCandidate>? = null
+    private var comparisonCandidate: RecoveryCandidate? = null
+    private val expandedDiagnosticStages = mutableSetOf<DiagnosticStage>()
+    private lateinit var resultExplanationText: TextView
+    private lateinit var resultNextAction: Button
+    private lateinit var resultActions: LinearLayout
+    private lateinit var resultCopyButton: Button
+    private lateinit var resultSavePngButton: Button
+    private lateinit var resultImageLabel: TextView
     private lateinit var mainResultSelector: LinearLayout
+    private lateinit var upperResultSelector: LinearLayout
 
 
     private val executor = Executors.newSingleThreadExecutor()
@@ -275,7 +303,63 @@ class MainActivity : Activity() {
             .show()
     }
 
-    private fun buildUi(): View = if (modernStyle) buildModernUi() else buildClassicUi()
+    private fun buildUi(): View = (if (modernStyle) buildModernUi() else buildClassicUi()).also {
+        configureResultLayout()
+    }
+
+    /** Both appearances use the same reading order and actions. */
+    private fun configureResultLayout() {
+        val panel = contentPreviewText.parent as LinearLayout
+        val ordered = listOf(statusText, upperResultSelector, contentPreviewText, guideText,
+            mainResultSelector, diagnosticToggle, diagnosticDetailsText)
+        ordered.forEach { panel.removeView(it) }
+        if (modernStyle) panel.removeView(workspacePreview)
+        panel.addView(statusText)
+        panel.addView(upperResultSelector)
+        panel.addView(contentPreviewText)
+        if (modernStyle) {
+            resultImageLabel = TextView(this).apply {
+                textSize = 12f
+                setPadding(dp(8), dp(8), dp(8), dp(4))
+                visibility = View.GONE
+            }
+            panel.addView(resultImageLabel)
+            panel.addView(workspacePreview)
+        }
+        resultExplanationText = TextView(this).apply {
+            textSize = 14f
+            setPadding(dp(12), dp(12), dp(12), dp(8))
+            setTextIsSelectable(true)
+            visibility = View.GONE
+        }
+        panel.addView(resultExplanationText, panel.indexOfChild(contentPreviewText) + 1)
+        panel.addView(guideText)
+        resultNextAction = button(ui("入力を確認", "Review input")) { showCellEditor() }.apply { visibility = View.GONE }
+        panel.addView(resultNextAction)
+        resultCopyButton = button(ui("内容をコピー", "Copy content")) {
+            val candidate = recoveryState.selectedRecovery?.takeIf { it.payloadParsed } ?: return@button
+            val value = candidate.text ?: return@button
+            (getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                .setPrimaryClip(android.content.ClipData.newPlainText("QR Repair", value))
+            Toast.makeText(this, ui("内容をコピーしました。", "Content copied."), Toast.LENGTH_SHORT).show()
+        }
+        resultSavePngButton = button(getString(R.string.save_png)) { startSavePng() }.apply {
+            visibility = View.GONE
+        }
+        resultActions = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(ResultActionRow(this@MainActivity).apply {
+                addView(resultCopyButton)
+                addView(resultSavePngButton)
+            }, LinearLayout.LayoutParams(-1, -2))
+            addView(button(getString(R.string.show_detailed_result)) { showZoomableResult() })
+            visibility = View.GONE
+        }
+        panel.addView(resultActions)
+        panel.addView(mainResultSelector)
+        panel.addView(diagnosticToggle)
+        panel.addView(diagnosticDetailsText)
+    }
 
     private fun buildClassicUi(): View {
         val root = LinearLayout(this).apply {
@@ -294,15 +378,14 @@ class MainActivity : Activity() {
             button(getString(R.string.import_text_matrix)) { chooseTextMatrix() },
             button(getString(R.string.repair)) { showPreprocessDialog() },
         ))
-        root.addView(compactRow(
-            button(getString(R.string.show_result)) { showZoomableResult() },
-            button(getString(R.string.data)) { showCodewordHex() },
-            button(getString(R.string.save_png)) { startSavePng() },
-        ))
         val resultContent = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
         mainResultSelector = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+        }
+        upperResultSelector = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
         }
@@ -312,6 +395,7 @@ class MainActivity : Activity() {
             setPadding(dp(4), dp(6), dp(4), dp(6))
         }
         resultContent.addView(statusText)
+        resultContent.addView(upperResultSelector)
 
         guideText = TextView(this).apply {
             text = getString(R.string.initial_guide)
@@ -361,6 +445,7 @@ class MainActivity : Activity() {
             1f,
         ))
 
+        root.addView(button(getString(R.string.data)) { showCodewordHex() }, LinearLayout.LayoutParams(-1, -2))
         return root
     }
 
@@ -435,6 +520,10 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
         }
+        upperResultSelector = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+        }
         statusText = label(getString(R.string.select_image_prompt), 16f).apply { setTextColor(PrecisionStyle.TEXT) }
         guideText = label(getString(R.string.initial_guide), 13f)
 
@@ -444,13 +533,12 @@ class MainActivity : Activity() {
             setTextIsSelectable(true)
             PrecisionStyle.panel(this)
         }
-        // Content comes first when a result exists; navigation and the page title remain above it.
+        // Put the candidate count before the selected candidate and the QR image.
+        workspacePanel.addView(statusText, workspacePanel.indexOfChild(workspacePreview))
+        workspacePanel.addView(upperResultSelector, workspacePanel.indexOfChild(workspacePreview))
         workspacePanel.addView(contentPreviewText, workspacePanel.indexOfChild(workspacePreview))
         workspacePanel.addView(mainResultSelector)
-        workspacePanel.addView(statusText)
         workspacePanel.addView(guideText)
-        workspacePanel.addView(button(getString(R.string.show_detailed_result)) { showZoomableResult() },
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         diagnosticToggle = button(getString(R.string.show_diagnostic_details)) {
             diagnosticDetailsExpanded = !diagnosticDetailsExpanded
             refreshDiagnosticDetailsVisibility()
@@ -463,7 +551,6 @@ class MainActivity : Activity() {
             visibility = View.GONE
         }
         workspacePanel.addView(diagnosticDetailsText)
-        workspacePanel.addView(action(getString(R.string.save_png)) { startSavePng() })
         content.addView(homePanel)
         content.addView(workspacePanel)
         root.addView(ScrollView(this).apply {
@@ -507,6 +594,16 @@ class MainActivity : Activity() {
     }
 
     private fun showWorkspace() {
+        if (::resultActions.isInitialized) {
+            val hasAttempt = recoveryState.selectedRecovery != null || recoveryState.failure != null
+            resultActions.visibility = if (hasAttempt) View.VISIBLE else View.GONE
+            if (!hasAttempt) {
+                resultExplanationText.visibility = View.GONE
+                resultNextAction.visibility = View.GONE
+                setDiagnosticDetails(null)
+                if (::resultImageLabel.isInitialized) resultImageLabel.visibility = View.GONE
+            }
+        }
         if (!modernStyle) return
         modernHeader.visibility = View.GONE
         workspaceNavigation.view.visibility = View.VISIBLE
@@ -564,9 +661,60 @@ class MainActivity : Activity() {
 
     private fun setDiagnosticDetails(text: String?) {
         if (!::diagnosticToggle.isInitialized || !::diagnosticDetailsText.isInitialized) return
+        diagnosticReport = null
+        diagnosticInput = null
+        diagnosticGeometry = null
+        diagnosticRecoveries = null
+        expandedDiagnosticStages.clear()
         diagnosticDetailsText.text = text.orEmpty()
         diagnosticToggle.visibility = if (text.isNullOrBlank()) View.GONE else View.VISIBLE
         refreshDiagnosticDetailsVisibility()
+    }
+
+    private fun setDiagnosticReport(report: RecoveryDiagnosticReport) {
+        if (diagnosticInput !== recoveryState.sourceMatrix || diagnosticGeometry != recoveryState.geometry ||
+            diagnosticRecoveries !== recoveryState.recoveries) expandedDiagnosticStages.clear()
+        diagnosticInput = recoveryState.sourceMatrix
+        diagnosticGeometry = recoveryState.geometry
+        diagnosticRecoveries = recoveryState.recoveries
+        diagnosticReport = report
+        renderDiagnosticReport()
+        diagnosticToggle.visibility = View.VISIBLE
+        refreshDiagnosticDetailsVisibility()
+    }
+
+    private fun renderDiagnosticReport() {
+        val report = diagnosticReport ?: return
+        val text = android.text.SpannableStringBuilder()
+        text.append(report.scope)
+        report.sections.forEach { section ->
+            text.append("\n\n")
+            val heading = text.length
+            text.append(section.stage.title())
+            text.setSpan(android.text.style.StyleSpan(Typeface.BOLD), heading, text.length,
+                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            text.append('\n').append(section.summary)
+            if (section.details.isNotBlank()) {
+                text.append("\n\n")
+                val start = text.length
+                val expanded = section.stage in expandedDiagnosticStages
+                text.append(if (expanded) "▾ " else "▸ ").append(section.stage.detailsTitle())
+                text.setSpan(object : android.text.style.ClickableSpan() {
+                    override fun onClick(widget: View) {
+                        if (!expandedDiagnosticStages.add(section.stage)) expandedDiagnosticStages.remove(section.stage)
+                        renderDiagnosticReport()
+                    }
+                    override fun updateDrawState(ds: android.text.TextPaint) {
+                        super.updateDrawState(ds)
+                        if (modernStyle) ds.color = PrecisionStyle.ACCENT
+                    }
+                }, start, text.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                if (expanded) text.append('\n').append(section.details)
+            }
+        }
+        diagnosticDetailsText.textSize = 14f
+        diagnosticDetailsText.text = text
+        diagnosticDetailsText.movementMethod = android.text.method.LinkMovementMethod.getInstance()
     }
 
     private fun refreshDiagnosticDetailsVisibility() {
@@ -712,7 +860,8 @@ class MainActivity : Activity() {
     }
 
     private fun showZoomableResult() {
-        val before = recoveryState.sourceMatrix ?: run { Toast.makeText(this, ui("表示できる結果がありません。", "No result is available."), Toast.LENGTH_SHORT).show(); return }
+        var before = recoveryState.sourceMatrix ?: run { Toast.makeText(this, ui("表示できる結果がありません。", "No result is available."), Toast.LENGTH_SHORT).show(); return }
+        var displayedGeometry = recoveryState.geometry
         var after = recoveryState.inspectorMatrix ?: recoveryState.workingMatrix ?: return
         val detail = TextView(this).apply {
             text = ui("セルをタップ：セルの修復理由を表示", "Tap a cell to view its repair reason")
@@ -722,17 +871,38 @@ class MainActivity : Activity() {
         }
         lateinit var codewordButton: Button
         var selectedCoord: Coord? = null
+        var showCellCalculations = false
+        var codewordHighlighted = false
         var revealEvidence: () -> Unit = {}
         val view = QrResultInspectorView(this).apply {
             setDocument(before, after, recoveryState.traces)
             setComparisonEnabled(false)
-            onCellSelected = { x, y ->
-                selectedCoord = Coord(x, y)
-                revealEvidence()
-                detail.text = resultCellDetailText(x, y, after)
-                codewordButton.isEnabled = findCodewordAt(x, y) != null
-                clearHighlightedCodeword()
+        }
+        fun refreshCellEvidence() {
+            val coord = selectedCoord
+            val found = coord?.let { findCodewordAt(it.x, it.y) }
+            val word = found?.let { recoveryState.selectedRecovery?.extraction?.codewords?.getOrNull(it.first) }
+            codewordButton.isEnabled = word != null
+            codewordButton.visibility = if (showCellCalculations) View.VISIBLE else View.GONE
+            view.clearHighlightedCodeword()
+            if (!showCellCalculations || word == null) codewordHighlighted = false
+            if (coord == null) return
+            view.setSelected(coord.x, coord.y)
+            detail.text = buildString {
+                append(resultCellDetailText(coord.x, coord.y, after))
+                if (codewordHighlighted && found != null && word != null) {
+                    view.setHighlightedCodeword(word.coordinates)
+                    append('\n').append(codewordDetailText(found.first, found.second))
+                } else if (showCellCalculations) {
+                    append("\n\n").append(resultCellTechnicalText(coord.x, coord.y, after))
+                }
             }
+        }
+        view.onCellSelected = { x, y ->
+            selectedCoord = Coord(x, y)
+            codewordHighlighted = false
+            revealEvidence()
+            refreshCellEvidence()
         }
         val displayedResults = displayedDecodedRecoveryEntries()
         val candidateTabs = RadioGroup(this).apply {
@@ -749,23 +919,29 @@ class MainActivity : Activity() {
                     setOnClickListener {
                         if (candidateIndex == recoveryState.recoveryIndex) return@setOnClickListener
                         selectRecoveryCandidate(candidateIndex, recordSelection = true)
-                        after = recoveryState.inspectorMatrix ?: recoveryState.workingMatrix ?: return@setOnClickListener
-                        selectedCoord = null
-                        detail.text = ui("セルをタップ：セルの修復理由を表示", "Tap a cell to view its repair reason")
-                        codewordButton.isEnabled = false
-                        view.setDocument(before, after, recoveryState.traces)
+                        val nextBefore = recoveryState.sourceMatrix ?: return@setOnClickListener
+                        val nextAfter = recoveryState.inspectorMatrix ?: recoveryState.workingMatrix ?: return@setOnClickListener
+                        val keepPosition = before === nextBefore && displayedGeometry == recoveryState.geometry &&
+                            after.dimension == nextAfter.dimension
+                        before = nextBefore
+                        after = nextAfter
+                        displayedGeometry = recoveryState.geometry
+                        view.setDocument(before, after, recoveryState.traces, keepViewport = keepPosition)
                         view.clearHighlightedCodeword()
+                        if (!keepPosition) {
+                            selectedCoord = null
+                            codewordHighlighted = false
+                            detail.text = ui("表示位置をリセットしました。セルを選択してください。", "View reset. Select a cell.")
+                        }
+                        refreshCellEvidence()
                     }
                 })
             }
         }
         codewordButton = button(ui("同じコード語を表示", "Show same codeword")) {
-            val coord = selectedCoord ?: return@button
-            val found = findCodewordAt(coord.x, coord.y) ?: return@button
-            val partial = recoveryState.selectedRecovery?.extraction?.codewords?.getOrNull(found.first) ?: return@button
-            view.setHighlightedCodeword(partial.coordinates)
-            detail.text = resultCellDetailText(coord.x, coord.y, after) + "\n" + codewordDetailText(found.first, found.second)
-        }.apply { isEnabled = false }
+            codewordHighlighted = true
+            refreshCellEvidence()
+        }.apply { isEnabled = false; visibility = View.GONE }
         val detailPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             if (modernStyle) {
@@ -777,43 +953,69 @@ class MainActivity : Activity() {
                     textSize = 16f
                     setPadding(dp(12), 0, dp(12), dp(4))
                 })
-                addView(ScrollView(this@MainActivity).apply { addView(detail) },
-                    LinearLayout.LayoutParams(-1, dp(128)))
+                addView(detail)
             } else {
                 setBackgroundColor(0xFFF4F4F4.toInt())
                 addView(detail)
             }
+            addView(button(ui("計算の説明を表示／閉じる", "Show/hide calculation details")) {
+                showCellCalculations = !showCellCalculations
+                refreshCellEvidence()
+            })
             addView(codewordButton)
         }
-        val evidenceToggle = button(getString(R.string.show_evidence)) {
-            detailPanel.visibility = if (detailPanel.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+        val evidenceScroll = ScrollView(this).apply {
+            isFillViewport = true
+            addView(detailPanel)
+            visibility = View.GONE
         }
-        if (modernStyle) detailPanel.visibility = View.GONE
-        revealEvidence = { if (modernStyle) detailPanel.visibility = View.VISIBLE }
+        val evidenceToggle = button(getString(R.string.show_evidence)) {
+            evidenceScroll.visibility = if (evidenceScroll.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+        }
+        revealEvidence = { evidenceScroll.visibility = View.VISIBLE }
+        val legend = TextView(this).apply {
+            text = ui(
+                "セル: 黒=1 / 白=0 / 灰色×=不明\n枠: 緑=QRの固定構造 / 黄土色=形式情報 / 橙=RS誤り訂正 / 紫=データ構造の条件 / 赤紫=ビット候補探索 / 青=手動指定",
+                "Cells: black=1 / white=0 / grey ×=unknown\nBorders: green=QR structure / ochre=format / orange=RS correction / purple=payload constraints / magenta=bit search / blue=manual entry")
+            textSize = 12f
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            visibility = View.GONE
+        }
+        detailPanel.addView(legend)
+        val comparison = RadioGroup(this).apply {
+            orientation = RadioGroup.HORIZONTAL
+            for ((index, label) in listOf(ui("修復後", "After"), ui("修復前", "Before"), ui("左右で比較", "Compare")).withIndex()) {
+                addView(RadioButton(this@MainActivity).apply {
+                    id = View.generateViewId()
+                    text = label
+                    isChecked = index == 0
+                    setOnClickListener {
+                        view.setComparisonEnabled(index != 0)
+                        view.setBeforeFraction(if (index == 1) 1f else .5f)
+                    }
+                })
+            }
+        }
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            addView(TextView(this@MainActivity).apply {
-                text = ui(
-                    "セル: 黒=1  白=0  灰色×=未確定（修復後も値が定まらないセル）\n枠: 緑=固定構造  黄土色=形式情報  橙=RS  紫=制約  赤紫=ビット候補探索  青=ユーザー編集",
-                    "Cells: black=1, white=0, grey ×=unresolved after repair\nBorders: green=fixed structure, ochre=format information, orange=RS, purple=constraint, magenta=bit candidate search, blue=user edit",
-                )
-                textSize = 12f
-                setPadding(dp(12), dp(8), dp(12), dp(4))
-            })
             if (displayedResults.size > 1) addView(HorizontalScrollView(this@MainActivity).apply {
                 isHorizontalScrollBarEnabled = false
                 addView(candidateTabs)
             })
-            if (!modernStyle) addView(detailPanel)
-            addView(view, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f,
-            ))
-            if (modernStyle) {
-                addView(evidenceToggle)
-                addView(detailPanel)
-            }
+            addView(comparison)
+            addView(view, LinearLayout.LayoutParams(-1, 0, 1f))
+            addView(TextView(this@MainActivity).apply {
+                text = ui("左右の移動・拡大は連動します。セルをタップすると修復理由を表示します。", "Both sides pan and zoom together. Tap a cell for its repair reason.")
+                textSize = 13f
+                setPadding(dp(12), 0, dp(12), 0)
+            })
+            addView(evidenceToggle)
+            addView(evidenceScroll, LinearLayout.LayoutParams(-1, 0, .65f))
+            addView(button(ui("色と記号の説明", "Colors and symbols")) {
+                legend.visibility = if (legend.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+                evidenceScroll.visibility = View.VISIBLE
+                if (legend.visibility == View.VISIBLE) evidenceScroll.post { evidenceScroll.smoothScrollTo(0, legend.top) }
+            })
         }
         val dialog = AlertDialog.Builder(this)
             .setTitle(ui("修復結果（ピンチで拡大）", "Repair result (pinch to zoom)"))
@@ -858,18 +1060,43 @@ class MainActivity : Activity() {
         if (!::mainResultSelector.isInitialized) return
         val allResults = decodedRecoveryEntries()
         val results = allResults.take(MAX_DISPLAYED_RECOVERY_CANDIDATES)
-        mainResultSelector.removeAllViews()
-        mainResultSelector.visibility = if (results.size > 1) View.VISIBLE else View.GONE
-        if (results.size <= 1) return
-        mainResultSelector.addView(TextView(this).apply {
-            text = candidateSelectionLabel(allResults.size)
-            textSize = 12f
-            setPadding(dp(8), dp(4), dp(8), 0)
-        })
-        mainResultSelector.addView(HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-            addView(resultRadioGroup(results) { renderMainResultSelection() })
-        })
+        for (selector in listOf(upperResultSelector, mainResultSelector)) {
+            selector.removeAllViews()
+            selector.visibility = if (results.size > 1) View.VISIBLE else View.GONE
+            if (results.size <= 1) continue
+            selector.addView(TextView(this).apply {
+                text = candidateSelectionLabel(allResults.size)
+                textSize = 12f
+                setPadding(dp(8), dp(4), dp(8), 0)
+            })
+            selector.addView(HorizontalScrollView(this).apply {
+                isHorizontalScrollBarEnabled = false
+                addView(resultRadioGroup(results) { renderMainResultSelection() })
+            })
+            if (selector === upperResultSelector) {
+                val current = results.firstOrNull { it.first == recoveryState.recoveryIndex } ?: results.first()
+                val others = results.filter { it.first != current.first }
+                val partner = others.firstOrNull { it.second === comparisonCandidate } ?: others.first()
+                comparisonCandidate = partner.second
+                if (others.size > 1) selector.addView(button(ui(
+                    "比較相手：候補${results.indexOf(partner) + 1}", "Compare with: candidate ${results.indexOf(partner) + 1}")) {
+                    AlertDialog.Builder(this)
+                        .setTitle(ui("比較相手を選択", "Choose a candidate to compare"))
+                        .setSingleChoiceItems(others.map { ui("候補${results.indexOf(it) + 1}", "Candidate ${results.indexOf(it) + 1}") }.toTypedArray(),
+                            others.indexOf(partner)) { dialog, which ->
+                            comparisonCandidate = others[which].second
+                            refreshMainResultSelector()
+                            dialog.dismiss()
+                        }.setNegativeButton(R.string.cancel, null).show()
+                })
+                selector.addView(TextView(this).apply {
+                    text = candidatePairComparisonText(current.second, partner.second,
+                        results.indexOf(current) + 1, results.indexOf(partner) + 1)
+                    textSize = 14f
+                    setPadding(dp(8), dp(8), dp(8), dp(8))
+                })
+            }
+        }
     }
 
     private fun renderMainResultSelection() {
@@ -898,47 +1125,70 @@ class MainActivity : Activity() {
     }
 
     private fun resultCellDetailText(x: Int, y: Int, matrix: QrMatrix): String {
+        fun value(v: ModuleValue) = when (v) {
+            ModuleValue.ZERO -> ui("白（0）", "White (0)")
+            ModuleValue.ONE -> ui("黒（1）", "Black (1)")
+            ModuleValue.ERASED -> ui("不明（?）", "Unknown (?)")
+        }
+        val trace = recoveryState.traces[Coord(x, y)]
+        val cell = matrix[x, y]
+        val before = trace?.originalValue ?: recoveryState.sourceMatrix?.get(x, y)?.value ?: cell.value
+        val reason = when {
+            cell.source == ModuleSource.USER -> ui("手動で指定した値です。", "This is a manually entered value.")
+            before == cell.value -> ui("この候補では値を変更していません。", "The value is unchanged in this candidate.")
+            trace?.bitConstraintSolved == true && trace.primaryReason in setOf(
+                io.github.earthdiver.qrrepair.core.RepairReasonKind.RS_ERASURE_RECOVERY,
+                io.github.earthdiver.qrrepair.core.RepairReasonKind.RS_ERROR_CORRECTION) ->
+                ui("部分bit制約で補いました。", "Partial-bit constraints filled this value.")
+            trace == null -> ui("この候補の値を表示しています。", "Showing the value in this candidate.")
+            trace.primaryReason == io.github.earthdiver.qrrepair.core.RepairReasonKind.RS_ERASURE_RECOVERY ->
+                ui("RS誤り訂正で不明な値を補いました。", "RS error correction filled the unknown value.")
+            trace.primaryReason == io.github.earthdiver.qrrepair.core.RepairReasonKind.RS_ERROR_CORRECTION ->
+                ui("RS誤り訂正で白黒を変更しました。", "RS error correction changed the value.")
+            else -> trace.titleJa()
+        }
+        return buildString {
+            append(ui("セル ($x,$y)（座標は0から）", "Cell ($x,$y) (zero-based coordinates)"))
+            append('\n').append(if (before == cell.value) ui("${value(cell.value)}のまま", "Unchanged: ${value(cell.value)}")
+                else "${value(before)} → ${value(cell.value)}")
+            append('\n').append(reason)
+            val source = trace?.originalSource ?: recoveryState.sourceMatrix?.get(x, y)?.source
+            if (source == ModuleSource.IMAGE) append(ui("\n入力：画像から読み取った値", "\nInput: sampled from the image"))
+            else if (source == ModuleSource.USER) append(ui("\n入力：手動で指定した値", "\nInput: manually entered value"))
+            recoveryState.confidenceMap[Coord(x, y)]?.let { c ->
+                if (c.comparedCandidates != null) append(ui(
+                    "\n比較した${c.comparedCandidates}候補中${c.agreeingCandidates}候補で、このセルの白黒が一致しています。",
+                    "\nThis cell agrees in ${c.agreeingCandidates} of ${c.comparedCandidates} compared candidates."))
+            }
+            if (cell.value == ModuleValue.ERASED) append(ui("\nこのセルの白黒はまだ決まっていません。", "\nThis cell remains unresolved."))
+        }
+    }
+
+    private fun resultCellTechnicalText(x: Int, y: Int, matrix: QrMatrix): String {
         val coord = Coord(x, y)
         val trace = recoveryState.traces[coord]
         val confidence = recoveryState.confidenceMap[coord]
         if (io.github.earthdiver.qrrepair.core.RepairTraceBuilder.isFormat(x, y, matrix.dimension)) {
             return io.github.earthdiver.qrrepair.core.formatCellDescription(x, y,
                 trace?.originalValue ?: recoveryState.sourceMatrix?.get(x, y)?.value ?: matrix[x, y].value,
-                matrix[x, y].value, recoveryState.selectedRecovery, matrix[x, y].source == ModuleSource.USER)
+                matrix[x, y].value, recoveryState.selectedRecovery, matrix[x, y].source == ModuleSource.USER, includeBasic = false)
         }
         if (trace != null) return buildString {
-            append(trace.explanationJa())
-            confidence?.let { append(ui("\n相対信頼度（確率ではありません）: ${it.labelJa} (${"%.2f".format(it.score)}) — ${it.detailJa}", "\nRelative confidence (not a probability): ${it.labelEn} (${"%.2f".format(it.score)}) — ${it.detailEn}")) }
+            append(ui("計算の補足", "Calculation details"))
+            append(trace.explanationJa(includeBasic = false))
+            confidence?.let { append(ui("\n候補の評価（確率ではありません）: ${it.labelJa} (${"%.2f".format(it.score)}) — ${it.detailJa}", "\nCandidate assessment (not a probability): ${it.labelEn} (${"%.2f".format(it.score)}) — ${it.detailEn}")) }
         }
-        val cell = matrix[x, y]
-        val value = when (cell.value) {
-            ModuleValue.ZERO -> "0"
-            ModuleValue.ONE -> "1"
-            ModuleValue.ERASED -> "?"
-        }
-        return ui(
-            "セル ($x,$y) = $value / source=${cell.source}\nこのセルは現在の候補では変更されていません。",
-            "Cell ($x,$y) = $value / source=${cell.source}\nThis cell is unchanged in the current candidate.",
-        )
+        return ui("このセルの追加の計算記録はありません。", "No additional calculation record is available for this cell.")
     }
 
     private fun codewordDetailText(codewordIndex: Int, bitIndex: Int): String {
         val candidate = recoveryState.selectedRecovery ?: return ""
         val partial = candidate.extraction.codewords.getOrNull(codewordIndex) ?: return ""
         val info = candidate.repairInfo.getOrNull(codewordIndex)
-        val corrected = candidate.correctedInterleaved.getOrNull(codewordIndex)
-        val beforeBits = buildString {
-            for (bit in 7 downTo 0) append(
-                if ((partial.unknownBits and (1 shl bit)) != 0) '?' else if ((partial.value and (1 shl bit)) != 0) '1' else '0',
-            )
-        }
-        return buildString {
-            append(ui("Codeword #$codewordIndex / 選択bit $bitIndex", "Codeword #$codewordIndex / selected bit $bitIndex"))
-            info?.let { append(" / RS block ${it.blockIndex} local ${it.localIndex}") }
-            append("\n$beforeBits → ${corrected?.toString(2)?.padStart(8, '0') ?: "????????"}")
-            if (info?.partialEnumerated == true) append(ui("\nbit-level限定列挙の対象", "\nIncluded in limited bit-level enumeration"))
-            if (info?.rsErrata == true) append(ui("\nRS errataとして訂正", "\nCorrected as RS errata"))
-        }
+        return codewordCellText(codewordIndex, bitIndex, partial.value, partial.unknownBits,
+            candidate.correctedInterleaved.getOrNull(codewordIndex), info?.blockIndex, info?.localIndex,
+            info?.rsErrata == true) + if (info?.partialEnumerated == true)
+                ui("\nこのコード語はbit探索の対象です。", "\nThis codeword was included in bit search.") else ""
     }
 
     private fun showCodewordHex() {
@@ -1314,6 +1564,7 @@ class MainActivity : Activity() {
                 maxFormatMismatches = requestSettings.formatMismatchLimit,
                 maxKnownDataEccMismatches = requestSettings.dataEccMismatchLimit,
                 manualEdits = requestSettings.preRecoveryEdits,
+                displayLockManualBits = requestSettings.lockManualBits,
                 cancellation = RecoveryCancellation { token != workGeneration.get() || Thread.currentThread().isInterrupted },
             ) } catch (_: RecoveryCancelledException) { return@execute }
             val failure = recoveryEngine.lastFailure
@@ -1474,54 +1725,47 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun hasInconsistentInputFailure(): Boolean =
+        recoveryState.selectedRecovery == null &&
+            recoveryState.failure?.rsBitDiagnostic?.let { it.dimension == null } == true
+
     private fun updateContentPreview() {
         immediateResultShown = false
         showWorkspace()
         val candidate = recoveryState.selectedRecovery
         val preview = QrContentPreviewParser.parse(candidate)
         val geometry = recoveryState.geometry
+        val failure = recoveryState.failure
+        arrangeResultGuide(beforeImage = false)
+        if (::resultImageLabel.isInitialized) {
+            resultImageLabel.visibility = if (candidate != null || failure != null) View.VISIBLE else View.GONE
+            resultImageLabel.text = if (candidate?.payloadParsed == true) ui("選択中の候補のQR", "QR for the selected candidate")
+                else ui("入力のQR（修復前）", "Input QR (before repair)")
+        }
+        contentPreviewText.visibility = View.VISIBLE
+        guideText.visibility = if (candidate?.payloadParsed == true) View.GONE else View.VISIBLE
+        resultExplanationText.visibility = View.GONE
+        resultNextAction.visibility = View.GONE
+        resultActions.visibility = if (candidate != null || failure != null) View.VISIBLE else View.GONE
+        resultCopyButton.visibility = if (candidate?.payloadParsed == true && candidate.text != null) View.VISIBLE else View.GONE
+        resultSavePngButton.visibility = if (candidate.isSavableQrResult(preview)) View.VISIBLE else View.GONE
         when {
             candidate != null -> {
-                contentPreviewText.text = buildString {
-                    if (preview != null) append(preview.toDisplayText(maskSensitive = true))
-                    else append(ui("内容: 復号できませんでした。", "Content: Could not be decoded."))
-                    append(ui("\n\n誤り訂正レベル: ", "\n\nError correction level: ")).append(candidate.ecLevel)
-                    append(ui(" / マスク: ", " / Mask: ")).append(candidate.dataMask)
-                    append(ui("\n形式情報の誤り: ", "\nFormat information errors: "))
-                        .append(candidate.formatMismatches).append(ui("bit / 既知", " bits / "))
-                        .append(candidate.formatMatches + candidate.formatMismatches).append(ui("bit", " known bits"))
-                    append(ui("\nデータ・ECCの誤り: ", "\nData and ECC errors: "))
-                        .append(candidate.knownBitMismatchesAfterCorrection).append(ui("bit / 既知", " bits / "))
-                        .append(candidate.knownBitsCompared).append(ui("bit", " known bits"))
-                    if (preview?.kind == io.github.earthdiver.qrrepair.core.QrContentKind.URL) {
-                        append(ui("\nURLは安全のため自動では開きません。", "\nURLs are not opened automatically for safety."))
-                    }
-                }
-                setDiagnosticDetails(candidateDiagnosticText(candidate, geometry))
+                contentPreviewText.text = if (preview != null && (candidate.payloadParsed || preview.qrStructureValid)) preview.resultContentText(candidate.text)
+                    else ui("誤り訂正の条件は満たしましたが、内容は読み取れませんでした。", "The error-correction conditions were met, but the content could not be read.")
+                resultExplanationText.text = candidate.resultExplanationText()
+                resultExplanationText.visibility = View.VISIBLE
+                setDiagnosticReport(candidateDiagnosticReport(candidate, geometry))
+                if (!candidate.payloadParsed && preview?.qrStructureValid != true) configureNextResultAction()
             }
-            recoveryState.failure != null -> {
-                val failure = recoveryState.failure!!
-                contentPreviewText.text = buildString {
-                    append(ui("最良の失敗試行", "Best failed attempt"))
-                    append(ui("\n誤り訂正レベル: ", "\nError correction level: ")).append(failure.ecLevel)
-                    append(ui(" / マスク: ", " / Mask: ")).append(failure.dataMask)
-                    append(ui("\n形式情報の誤り: ", "\nFormat information errors: "))
-                        .append(failure.formatMismatches).append(ui("bit / 既知", " bits / "))
-                        .append(failure.formatKnownBits).append(ui("bit", " known bits"))
-                    failure.formatMismatchLimit?.let {
-                        append(ui("\n形式情報の指定上限: ${it}bit", "\nSpecified format limit: $it bits"))
-                    }
-                    if (failure.knownBitMismatches != null && failure.knownBitsCompared != null) {
-                        append(ui("\nデータ・ECCの誤り: ", "\nData and ECC errors: "))
-                            .append(failure.knownBitMismatches).append(ui("bit / 既知", " bits / "))
-                            .append(failure.knownBitsCompared).append(ui("bit", " known bits"))
-                        failure.knownBitMismatchLimit?.let {
-                            append(ui("\n指定された上限: ${it}bit", "\nSpecified limit: $it bits"))
-                        }
-                    }
-                    append(ui("\n理由: ", "\nReason: ")).append(recoveryFailureReasonText(failure))
-                }
-                setDiagnosticDetails(failureDiagnosticText(failure, geometry))
+            failure != null -> {
+                contentPreviewText.text = ui("今回分かったこと\n", "What this attempt established\n") +
+                    if (hasInconsistentInputFailure()) ui(
+                        "今の形式設定では、入力済みの白黒をすべて正しいとした場合に、誤り訂正の条件を満たす組合せがありません。\nどのセルや設定が誤っているかは特定できていません。",
+                        "With the current format, no combination meets the error-correction conditions while preserving every entered value.\nThe incorrect cells or settings have not been identified.")
+                    else recoveryFailureReasonText(failure).substringBefore("。").substringBefore(". ")
+                setDiagnosticReport(failureDiagnosticReport(failure, geometry))
+                configureNextResultAction()
             }
             else -> {
                 contentPreviewText.text = getString(R.string.no_content_preview)
@@ -1530,81 +1774,192 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun candidateDiagnosticText(candidate: RecoveryCandidate, geometry: GridGeometry?): String = buildString {
-        geometry?.let { append(geometryDiagnosticText(it)).append('\n') }
-        append(ui("消失コード語: 修復時 ", "Erased codewords: at recovery "))
-            .append(candidate.erasedCodewords)
-            .append(ui(" / 入力時 ", " / at input "))
-            .append(candidate.originalErasedCodewords)
-        append(ui("\nRS訂正シンボル: ", "\nRS corrected symbols: ")).append(candidate.correctedErrataSymbols)
-        if (candidate.repairInfo.any { it.bitConstraintSolved }) {
-            append(ui("\nRS余裕: 算定対象外（部分bit制約を使用）", "\nRS margin: not applicable (partial-bit constraints used)"))
-        } else append(ui(" / RS余裕: ", " / RS margin: ")).append(candidate.minRsMargin)
-        if (candidate.constraintFilledBits > 0) {
-            append(ui("\n構造制約で確定: ", "\nFilled by structure constraints: "))
-                .append(candidate.constraintFilledBits).append(ui("bit", " bits"))
-            if (candidate.constraintForcedByUserSetting) {
-                append(ui("（ユーザ指定による強制、既知構造との一致: ", " (forced by user setting, known-structure matches: "))
-            } else {
-                append(ui("（既知構造との一致: ", " (known-structure matches: "))
+    private fun arrangeResultGuide(beforeImage: Boolean) {
+        val panel = contentPreviewText.parent as LinearLayout
+        panel.removeView(guideText)
+        panel.removeView(resultNextAction)
+        val index = panel.indexOfChild(if (beforeImage) contentPreviewText else resultExplanationText) + 1
+        panel.addView(guideText, index)
+        panel.addView(resultNextAction, index + 1)
+    }
+
+    private fun configureNextResultAction() {
+        arrangeResultGuide(beforeImage = true)
+        val reason = recoveryState.failure?.reason
+        val settings = reason in setOf(RecoveryFailureReason.FORMAT_MISMATCH_LIMIT, RecoveryFailureReason.FORMAT_EDIT_CONFLICT)
+        val recommendation = recoveryState.recommendation
+        guideText.text = when {
+            settings -> ui("次に試すこと\n形式情報と、ECC・マスクの指定を確認してください。", "Next step\nReview the format information and ECC/mask settings.")
+            reason == RecoveryFailureReason.MANUAL_PIN_CONFLICT -> ui("次に試すこと\n手動で固定したセルの白黒を確認してください。", "Next step\nReview the manually locked cell values.")
+            recommendation != null -> ui("次に試すこと\nセル (${recommendation.coord.x},${recommendation.coord.y}) の白黒を確認してください（座標は0から）。",
+                "Next step\nCheck cell (${recommendation.coord.x},${recommendation.coord.y}) (zero-based coordinates).")
+            else -> ui("次に試すこと\n入力したセルの白黒を元画像と見比べてください。", "Next step\nCompare the entered cell values with the source image.")
+        }
+        resultNextAction.text = if (settings) ui("形式設定を確認", "Review format settings") else ui("入力画面で確認", "Review in the input editor")
+        resultNextAction.setOnClickListener { if (settings) showPreprocessDialog() else showCellEditor() }
+        resultNextAction.visibility = View.VISIBLE
+    }
+
+    private fun candidateDiagnosticReport(candidate: RecoveryCandidate, geometry: GridGeometry?): RecoveryDiagnosticReport {
+        val preview = QrContentPreviewParser.parse(candidate)
+        val input = initialDiagnosticSection(candidate.version, candidate.ecLevel, candidate.dataMask,
+            geometry?.let(::geometryDiagnosticText).orEmpty(), candidate.rsBitDiagnostic,
+            candidate.extraction.codewords.takeIf { it.isNotEmpty() }?.sumOf { (it.unknownBits and 255).countOneBits() },
+            candidate.originalErasedCodewords, candidate.conventionalRsDiagnostic, candidate.correctedInterleaved,
+            candidate.actualBlockMethods.any { it.bitConstraintSolved } || candidate.repairInfo.any { it.bitConstraintSolved })
+        val verification = buildString {
+            append(if (preview?.qrStructureValid == true) ui("QRのデータ構造を確認できました。", "The QR data structure was verified.")
+                else ui("QRのデータ構造を確認できませんでした。", "The QR data structure could not be verified."))
+            append('\n').append(candidate.inputComparisonText())
+            append(ui("\n\n今回の探索全体\n", "\n\nSearch-wide results\n"))
+            append(ui("得られた候補: ", "Candidates obtained: "))
+                .append(decodedRecoveryEntries().size.takeIf { it > 0 } ?: recoveryState.recoveries.size)
+            if (candidate.combinationSearch.stops.isNotEmpty()) append(ui(
+                "\nまだ調べていない組合せがあります。", "\nSome combinations remain unchecked."))
+        }
+        val processing = listOf(candidate.usedMethodsText(), candidate.combinationSearch.stopReasonsText()
+            .takeIf { it.isNotBlank() }?.let { ui("今回の探索全体の終了理由\n", "Search-wide stop reasons\n") + it })
+            .filterNotNull().joinToString("\n\n")
+        return RecoveryDiagnosticReport(ui("選択中の候補の診断", "Diagnostics for the selected candidate"), listOf(
+            DiagnosticSection(DiagnosticStage.SETTINGS, candidate.displayConditions.runSettingsText()),
+            input,
+            DiagnosticSection(DiagnosticStage.PROCESSING, processing, candidateProcessingText(candidate)),
+            DiagnosticSection(DiagnosticStage.VERIFICATION, verification, preview?.toDisplayText().orEmpty()),
+        ))
+    }
+
+    private fun failureDiagnosticReport(failure: RecoveryFailure, geometry: GridGeometry?): RecoveryDiagnosticReport {
+        val input = initialDiagnosticSection(geometry?.version, failure.ecLevel, failure.dataMask,
+            geometry?.let(::geometryDiagnosticText).orEmpty(), failure.rsBitDiagnostic, null,
+            failure.originalErasedCodewords.takeIf { failure.rsBitDiagnostic != null || failure.failedBlockIndex != null || it > 0 },
+            failure.conventionalRsDiagnostic)
+        val processing = buildString {
+            append(recoveryFailureReasonText(failure))
+            if (failure.constraintFilledBits > 0) append(ui(
+                "\nこの試行で構造に基づいて補完・変更した値: ${failure.constraintFilledBits}bit",
+                "\nValues filled/changed using structure in this attempt: ${failure.constraintFilledBits} bits"))
+            if (failure.partialGuessedBits > 0) append(ui(
+                "\nこの試行のbit探索で扱った選択: ${failure.partialGuessedBits}bit分",
+                "\nBit-search choices in this attempt: ${failure.partialGuessedBits} bits"))
+            failure.combinationSearch.stopReasonsText().takeIf { it.isNotBlank() }?.let {
+                append(ui("\n\n今回の探索全体の終了理由\n", "\n\nSearch-wide stop reasons\n")).append(it)
             }
-            append(candidate.constraintEvidenceBits).append(ui("bit）", " bits)"))
         }
-        if (candidate.priorityGuessedBits > 0) {
-            append(ui("\n優先0/1探索: ", "\nPriority 0/1 search: "))
-                .append(candidate.priorityGuessedBits).append(ui("bit（元入力では不明）", " bits (unknown in the input)"))
+        val verification = buildString {
+            append(ui("この試行では内容を読み取れませんでした。", "This attempt did not produce readable content."))
+            append(ui("\nこの形式と入力との比較\n", "\nComparison of this format with the input\n"))
+            append(inputAgreementText(failure.formatKnownBits, failure.formatMismatches, true))
+            if (failure.knownBitMismatches != null && failure.knownBitsCompared != null) {
+                append(ui("\n採用できなかった候補と入力との比較\n", "\nComparison of the rejected candidate with the input\n"))
+                append(inputAgreementText(failure.knownBitsCompared, failure.knownBitMismatches, false))
+            }
+            if (failure.combinationSearch.stops.isNotEmpty() || failure.reason in setOf(
+                    RecoveryFailureReason.RS_BIT_SPACE_LIMIT, RecoveryFailureReason.BOUNDED_BIT_SEARCH_LIMIT,
+                    RecoveryFailureReason.QR_COMBINATION_SEARCH_LIMIT)) append(ui(
+                "\nまだ調べていない組合せがあります。", "\nSome combinations remain unchecked."))
         }
-        if (candidate.partialGuessedBits > 0) {
-            append(ui("\n部分bit探索: ", "\nPartial-bit search: ")).append(candidate.partialGuessedBits).append(ui("bit", " bits"))
-        }
-        if (candidate.combinationSearch.passes > 0) append('\n').append(candidate.combinationSearch.description())
-        candidate.rsBitDiagnostic?.let { append('\n').append(it.description()) }
-        val qrRoutes = listOf(candidate) + candidate.alternativeDerivations
-        qrRoutes.forEachIndexed { qrIndex, route ->
-            route.blockDerivations.forEach { (block, derivations) ->
-                append(ui("\n経路${qrIndex + 1}・RS block $block: 同じ訂正値への${derivations.size}経路（代表は1）",
-                    "\nRoute ${qrIndex + 1}, RS block $block: ${derivations.size} derivations of the same values (representative: 1)"))
-                derivations.forEachIndexed { index, derivation ->
-                    append("\n  ${index + 1}: ").append(derivation.description())
+        return RecoveryDiagnosticReport(ui("表示中の試行の診断", "Diagnostics for the displayed attempt"), listOf(
+            DiagnosticSection(DiagnosticStage.SETTINGS, failure.displayConditions.runSettingsText()),
+            input,
+            DiagnosticSection(DiagnosticStage.PROCESSING, processing, failureProcessingText(failure)),
+            DiagnosticSection(DiagnosticStage.VERIFICATION, verification),
+        ))
+    }
+
+    private fun candidateDiagnosticText(candidate: RecoveryCandidate, geometry: GridGeometry?): String =
+        candidateDiagnosticReport(candidate, geometry).fullText()
+
+    private fun failureDiagnosticText(failure: RecoveryFailure, geometry: GridGeometry?): String =
+        failureDiagnosticReport(failure, geometry).fullText()
+
+    private fun candidateProcessingText(candidate: RecoveryCandidate): String {
+        val processing = buildString {
+            if (candidate.constraintFilledBits > 0) {
+                append(if (candidate.constraintForcedByUserSetting) ui("\n指定した仮定に基づく補完・変更: ", "\nFilling/changes under the specified assumption: ")
+                    else ui("\nQRの構造に基づく補完・変更: ", "\nFilling/changes using QR structure: "))
+                    .append(candidate.constraintFilledBits).append(ui("bit（終端・埋め草など）", " bits (terminator, padding, etc.)"))
+                append(ui("\n仮定した末尾構造と一致する読み取り済みbit: ", "\nObserved bits matching the assumed suffix structure: "))
+                    .append(candidate.constraintEvidenceBits).append("bit")
+            }
+            if (candidate.priorityGuessedBits > 0) {
+                append(ui("\n優先指定した不明セルの白黒を仮置きして探索: ", "\nSearch with tentative values for prioritized unknown cells: "))
+                    .append(candidate.priorityGuessedBits).append(ui("bit（入力時は不明）", " bits (unknown in the input)"))
+            }
+            append(ui("\n構造補完・優先セルの仮置きを反映した不明コード語数（全ブロック合計）: ", "\nUnknown codewords after structure filling and priority assignments (all blocks): "))
+                .append(candidate.erasedCodewords)
+
+            append(ui("\n補完・訂正の対象コード語数: ", "\nCodewords targeted for filling/correction: ")).append(candidate.correctedErrataSymbols)
+            if (candidate.repairInfo.any { it.bitConstraintSolved }) {
+                append(ui("\n補完方法: 既知bitと誤り訂正の条件から不明部分を計算", "\nMethod: solve unknown bits using known bits and error-correction constraints"))
+            } else {
+                append(ui("\n通常RSの計算値 ECC−消失数−2×誤りコード語数（ブロック最小）: ",
+                    "\nConventional RS calculation, ECC−erasures−2×errors (minimum across blocks): ")).append(candidate.minRsMargin)
+                append(ui("（この補完方法での値。元入力の残り訂正能力や正しさを示しません）",
+                    " (for this derivation; not remaining input correction capacity or proof of correctness)"))
+            }
+            if (candidate.actualBlockMethods.isNotEmpty()) {
+                append(ui("\nこの候補のブロック別処理", "\nBlock methods for this candidate"))
+                candidate.actualBlockMethods.forEach { method ->
+                    append('\n').append(method.searchDescription())
+                    if (!method.bitConstraintSolved) append(ui("／この計算の余裕: ${method.rsMargin ?: "—"}",
+                        " / margin for this calculation: ${method.rsMargin ?: "—"}"))
                 }
             }
-        }
-        if (candidate.alternativeDerivations.isNotEmpty()) {
-            val routes = listOf(candidate) + candidate.alternativeDerivations
-            append(ui("\n同じ復元結果への探索経路: ${routes.size}件（セルの理由は経路1）", "\nDerivations of the same QR: ${routes.size} (cell reasons use route 1)"))
-            routes.forEachIndexed { index, route ->
-                append(ui("\n経路${index + 1}: 構造制約 ${route.constraintFilledBits}bit / 優先探索 ${route.priorityGuessedBits}bit / 部分bit探索 ${route.partialGuessedBits}bit",
-                    "\nRoute ${index + 1}: structure ${route.constraintFilledBits} bits / priority ${route.priorityGuessedBits} bits / partial-bit search ${route.partialGuessedBits} bits"))
+            val qrRoutes = listOf(candidate) + candidate.alternativeDerivations
+            qrRoutes.forEachIndexed { qrIndex, route ->
+                route.blockDerivations.forEach { (block, derivations) ->
+                    append(ui("\n補完方法${qrIndex + 1}・RSブロック${block + 1}: 同じ補完結果を得た方法: ${derivations.size}通り（代表は1）",
+                        "\nRoute ${qrIndex + 1}, RS block ${block + 1}: ${derivations.size} derivations of the same values (representative: 1)"))
+                    derivations.forEachIndexed { index, derivation ->
+                        append("\n  ${index + 1}: ").append(derivation.description())
+                    }
+                }
             }
-        }
-    }.trimEnd()
+            if (candidate.alternativeDerivations.isNotEmpty()) {
+                val routes = listOf(candidate) + candidate.alternativeDerivations
+                append(ui("\n異なる補完方法で同じ復元結果が得られました: ${routes.size}通り（セルの説明は方法1）", "\nDerivations of the same QR: ${routes.size} (cell reasons use route 1)"))
+                routes.forEachIndexed { index, route ->
+                    append(ui("\n補完方法${index + 1}: 構造による補完 ${route.constraintFilledBits}bit / 優先探索 ${route.priorityGuessedBits}bit",
+                        "\nRoute ${index + 1}: structure ${route.constraintFilledBits} bits / priority ${route.priorityGuessedBits} bits"))
+                    route.actualBlockMethods.forEach { append("\n  ").append(it.searchDescription()) }
+                }
+            }
+        }.trim()
+        return processing
+    }
 
-    private fun failureDiagnosticText(failure: RecoveryFailure, geometry: GridGeometry?): String = buildString {
-        geometry?.let { append(geometryDiagnosticText(it)) }
-        if (failure.failedBlockIndex != null) {
-            if (isNotEmpty()) append('\n')
-            append(ui("最初に失敗したRSブロック: ", "First failing RS block: ")).append(failure.failedBlockIndex + 1)
-            failure.rsBlockCount?.let { append(ui(" / 全${it}ブロック", " / $it total")) }
-            failure.ecSymbolsPerBlock?.let {
-                append(ui("\nブロックあたりECCシンボル: ", "\nECC symbols per block: ")).append(it)
+    private fun failureProcessingText(failure: RecoveryFailure): String {
+        val processing = buildString {
+            if (failure.failedBlockIndex != null) {
+                if (isNotEmpty()) append('\n')
+                append(ui("最初に失敗したRSブロック: ", "First failing RS block: ")).append(failure.failedBlockIndex + 1)
+                failure.rsBlockCount?.let { append(ui(" / 全${it}ブロック", " / $it total")) }
+                failure.ecSymbolsPerBlock?.let {
+                    append(ui("\n失敗ブロックのECCシンボル数: ", "\nECC symbols in the failing block: ")).append(it)
+                }
+                failure.failedBlockErasures?.let {
+                    append(ui("\n失敗ブロックの未知bitを含むコード語数（探索前）: ", "\nErased codewords in the failing block (before search): ")).append(it)
+                }
             }
-        }
-        if (failure.originalErasedCodewords > 0 || failure.erasedCodewords > 0) {
-            if (isNotEmpty()) append('\n')
-            append(ui("消失コード語: 修復時 ", "Erased codewords: at recovery "))
-                .append(failure.erasedCodewords)
-                .append(ui(" / 入力時 ", " / at input "))
-                .append(failure.originalErasedCodewords)
-        }
-        if (failure.combinationSearch.passes > 0) {
-            if (isNotEmpty()) append('\n')
-            append(failure.combinationSearch.description())
-        }
-        failure.rsBitDiagnostic?.let {
-            if (isNotEmpty()) append('\n')
-            append(it.description())
-        }
-    }.trimEnd()
+            if (failure.originalErasedCodewords > 0 || failure.erasedCodewords > 0) {
+                if (isNotEmpty()) append('\n')
+                append(ui("構造補完・優先セルの仮置きを反映した不明コード語数（全ブロック合計）: ", "Unknown codewords after structure filling and priority assignments (all blocks): "))
+                    .append(failure.erasedCodewords)
+
+            }
+            if (failure.ecSymbolsPerBlock != null || failure.originalErasedCodewords > 0 || failure.erasedCodewords > 0) {
+                if (isNotEmpty()) append('\n')
+                append(ui(
+                    "ECC数と消失数の差は、残りの訂正能力を示しません。通常のRS訂正では、各ブロックで「消失数 + 2 × 誤りコード語数 ≤ ECC数」が必要です。読み取り済みコード語の誤り数は、この失敗診断では確定していません。",
+                    "ECC count minus erasure count does not indicate remaining correction capacity. Conventional RS correction requires erasures + 2 × erroneous codewords ≤ ECC symbols in each block. This failure diagnostic has not established the number of erroneous observed codewords.",
+                ))
+            }
+        }.trim()
+        val shortfall = failure.rsShortfallBits?.let { bits -> ui(
+            "構造補完後の欠損量から見た追加確認の目安: ${bits}bit\n入力済みの白黒と形式設定が正しいという前提です。読み取り済みセルの誤りは含めていません。",
+            "Additional checks estimated from missing data after structure filling: $bits bits\nAssumes the entered values and format are correct; errors in observed cells are not included.") }.orEmpty()
+        return listOf(processing, shortfall).filter { it.isNotBlank() }.joinToString("\n")
+    }
 
     private fun geometryDiagnosticText(geometry: GridGeometry): String {
         val model = when (geometry.model) {
@@ -1619,7 +1974,7 @@ class MainActivity : Activity() {
             FinderRole.TOP_RIGHT -> ui("右上基準", "top-right reference")
             FinderRole.BOTTOM_LEFT -> ui("左下基準", "bottom-left reference")
         }
-        return ui("幾何: $model / V${geometry.version} / $role", "Geometry: $model / V${geometry.version} / $role")
+        return ui("QRの位置・向き: $model / V${geometry.version} / $role", "QR position/orientation: $model / V${geometry.version} / $role")
     }
 
     private fun openCamera() {
@@ -2284,23 +2639,27 @@ class MainActivity : Activity() {
             .count()
         guideText.text = when {
             c?.payloadParsed == true && distinctPayloads > 1 -> ui(
-                "案内: 内容が異なるため正しい結果を確定できません。各候補の内容をご確認ください。",
-                "Guide: The contents differ, so the correct result could not be determined. Please review each candidate.",
+                "案内: データコード語列が異なる候補があります。表示内容が同じ場合もあります。各候補をご確認ください。",
+                "Guide: Candidates have different data codeword sequences, even if their displayed text is identical. Please review each candidate.",
             )
             c?.payloadParsed == true && c.structuredAppend != null -> c.structuredAppend.description()
             c?.payloadParsed == true -> ui(
-                "案内: 重要な内容については、表示された結果をご確認ください。",
-                "Guide: Please verify the displayed result if the content is important.",
+                "内容を確認して、コピーやQR画像の保存ができます。",
+                "Review the content, then copy it or save the QR image.",
             )
             c != null -> ui(
-                "案内: 誤り訂正と整合する候補はありますが、QRデータ構造を最後まで検証できませんでした。診断詳細と設定をご確認ください。",
-                "Guide: A candidate is consistent with error correction, but the complete QR data structure could not be validated. Review the diagnostic details and settings.",
+                "案内: 内容を文字列として表示できませんでした。HEX／Binary表示で確認できます。",
+                "Guide: The content could not be displayed as text. Check the Hex / Binary view.",
+            )
+            hasInconsistentInputFailure() -> ui(
+                "現在の形式設定では、読み取り済みセルをすべて正しいとした場合に整合する復元結果が見つかりませんでした。誤っているセルや設定は特定できていません。\n\n入力済みセルの白黒、QRの位置・向き、形式設定をご確認ください。",
+                "Under the current format settings, no consistent recovery was found assuming all observed cells are correct. The incorrect cells or settings have not been identified.\n\nReview the black/white values of entered cells, the QR position and orientation, and the format settings.",
             )
             recoveryState.workingMatrix != null -> {
                 if (rec?.exactSpaceDimension != null) {
                     guideText.text = buildString {
                         append(ui(
-                            "案内: 既知bitとの完全一致を仮定したRS自由度: ${rec.exactSpaceDimension}bit。ペイロード検証前の目安です。\n",
+                            "案内: 既知bitとの完全一致を仮定した残る選択: ${rec.exactSpaceDimension}bit分。内容検証前の目安です。\n",
                             "Guide: ${rec.exactSpaceDimension} free RS bits assuming exact known-bit agreement, before payload validation.\n",
                         ))
                         append(rec.explanationJa())
@@ -2308,13 +2667,28 @@ class MainActivity : Activity() {
                     return
                 }
                 val shortfall = recoveryState.failure?.rsShortfallBits ?: estimateRsShortfallBits(recoveryState.workingMatrix!!)
-                val shortfallText = shortfall?.toString() ?: ui("算出できません", "unavailable")
                 buildString {
-                    append(ui("案内: 追加で確定が必要なbit数: $shortfallText。", "Guide: Additional bits that must be determined: $shortfallText."))
+                    append(when (shortfall) {
+                        null -> ui(
+                            "案内: 欠損量に基づく追加確認bit数の目安は算出できません。",
+                            "Guide: An estimate of additional bits to check based on missing data is unavailable.",
+                        )
+                        0 -> ui(
+                            "案内: 欠損量だけを見ると誤り訂正の容量内ですが、修復には至りませんでした。入力済みセルや修復設定をご確認ください。",
+                            "Guide: The amount of missing data is within error-correction capacity, but repair was unsuccessful. Review the entered cells and repair settings.",
+                        )
+                        else -> ui(
+                            "案内: 欠損量に基づく追加確認bit数の目安: ${shortfall}bit。既知bitと形式設定が正しいという前提での値で、修復成功を保証するものではありません。",
+                            "Guide: Estimated additional bits to check based on missing data: $shortfall bits. This assumes the known bits and format settings are correct and does not guarantee successful repair.",
+                        )
+                    })
                     rec?.let {
                         append(ui(" 候補を最も絞り込めるセル: (${it.coord.x},${it.coord.y})。", " Best cell for narrowing the candidates: (${it.coord.x},${it.coord.y})."))
                         append(ui("このセルをご確認ください。", " Check this cell."))
-                    } ?: append(ui("設定をご確認ください。", " Review the settings."))
+                    }
+                    if (rec == null && shortfall != 0) {
+                        append(ui(" 入力済みセルや修復設定をご確認ください。", " Review the entered cells and repair settings."))
+                    }
                 }
             }
             else -> getString(R.string.initial_guide)
@@ -2357,17 +2731,23 @@ class MainActivity : Activity() {
         val decoded = decodedRecoveryEntries().map { it.second }
         val distinctPayloads = decoded.asSequence().map { it.dataBytes.toList() }.distinct().count()
         val sharedResult = when {
-            decoded.size == 1 -> ui("修復成功", "Repair succeeded")
+            decoded.size == 1 -> ui("QRデータを読み取れました\n修復候補: 1件", "QR data was read\nRecovery candidates: 1")
             decoded.size > 1 && distinctPayloads == 1 -> ui(
-                "修復成功: ${decoded.size}件の候補は同じ内容です",
-                "Repair succeeded: ${decoded.size} candidates have the same content",
+                "修復候補: ${decoded.size}件（データコード語列はすべて同じ）",
+                "Recovery candidates: ${decoded.size} (all have the same data codeword sequence)",
             )
             decoded.size > 1 -> ui(
-                "修復成功: ${decoded.size}件の候補 / 異なる内容 ${distinctPayloads}件",
-                "Repair succeeded: ${decoded.size} candidates / $distinctPayloads distinct contents",
+                "修復候補: ${decoded.size}件（データコード語列は${distinctPayloads}種類）",
+                "Recovery candidates: ${decoded.size} ($distinctPayloads distinct data codeword sequences)",
             )
-            c != null -> ui("修復未完了: RSと整合する候補があります", "Repair incomplete: an RS-consistent candidate is available")
-            recoveryState.failure != null -> ui("修復失敗", "Repair failed")
+            c != null && QrContentPreviewParser.parse(c)?.qrStructureValid == true -> ui(
+                "QRのデータ形式を確認しました\n文字として表示できないデータです。", "The QR data format was verified\nThe data cannot be displayed as text.")
+            c != null -> ui("誤り訂正の条件を満たす候補はありますが、内容を読み取れませんでした", "Error-correction candidates exist, but their content could not be read")
+            hasInconsistentInputFailure() -> ui("修復できませんでした", "Could not repair")
+            recoveryState.failure?.reason == RecoveryFailureReason.RS_BIT_SPACE_LIMIT -> ui("候補を絞り込めませんでした", "Could not narrow down the candidates")
+            recoveryState.failure?.reason in setOf(RecoveryFailureReason.BOUNDED_BIT_SEARCH_LIMIT, RecoveryFailureReason.QR_COMBINATION_SEARCH_LIMIT) ->
+                ui("候補が見つかりませんでした", "No candidate was found")
+            recoveryState.failure != null -> ui("修復できませんでした", "Could not repair")
             else -> ui("修復候補なし", "No recovery candidate")
         }
         statusText.text = buildString {
@@ -2383,7 +2763,7 @@ class MainActivity : Activity() {
         RecoveryFailureReason.ERASURE_CAPACITY_EXCEEDED ->
             ui("不明なデータが誤り訂正容量を超えています", "The amount of unknown data exceeds the error-correction capacity")
         RecoveryFailureReason.BOUNDED_BIT_SEARCH_LIMIT ->
-            ui("探索上限までに、誤り訂正可能な組み合わせを見つけられませんでした", "No correctable combination could be found within the search limit")
+            ui("探索上限までに候補が見つかりませんでした。未探索の組合せがあるため、候補が存在しないとは判断できません", "No candidate was found within the search limit. Unchecked combinations remain, so this does not establish that no candidate exists")
         RecoveryFailureReason.ERROR_ERASURE_CAPACITY_EXCEEDED ->
             ui("不明なデータは容量内ですが、読み取り済みセルの誤りを含めると訂正容量を超えています。閾値・反転・グリッド、または固定セルをご確認ください", "The unknown data is within capacity, but errors in the observed cells exceed the correction capacity. Please review the thresholds, polarity, grid, or fixed cells")
         RecoveryFailureReason.NO_RS_CONSISTENT_ASSIGNMENT ->
@@ -2391,20 +2771,20 @@ class MainActivity : Activity() {
         RecoveryFailureReason.RS_CORRECTION_FAILED ->
             ui("誤り訂正を試みましたが、整合する結果を得られませんでした。読み取り済みセルの誤りが考えられますので、閾値・反転・グリッドをご確認ください", "Error correction was attempted, but no consistent result was obtained. Some observed cells may have been read incorrectly; please review the thresholds, polarity, and grid")
         RecoveryFailureReason.QR_COMBINATION_SEARCH_LIMIT ->
-            ui("複数の誤り訂正候補を検証しましたが、探索上限までに復号可能な結果を確定できませんでした", "Multiple error-correction candidates were checked, but no decodable result could be determined within the search limit")
+            ui("計算量の上限に達したため、途中で探索を終了しました。調べた範囲では読み取れる候補が見つかりませんでした", "Search stopped early at the computation limit. No readable candidate was found in the searched range")
         RecoveryFailureReason.KNOWN_DATA_ECC_MISMATCH_LIMIT ->
             ui("RSと整合する候補は得られましたが、既知のデータ・ECC bitとの不一致が指定された上限を超えました", "An RS-consistent candidate was found, but its differences from known data/ECC bits exceeded the specified limit")
         RecoveryFailureReason.KNOWN_BIT_CONSTRAINT_CONFLICT ->
             ui("既知のデータ・ECC bitと完全一致するRS解がありません。入力bit・固定セル・形式の指定をご確認ください", "No RS solution exactly matches the known data/ECC bits. Check input bits, fixed cells, and format settings")
         RecoveryFailureReason.FORMAT_MISMATCH_LIMIT ->
-            ui("形式情報の不一致が指定上限を超え、試せる形式がありません。形式セル・ECC・マスクの指定、または形式情報の誤り上限をご確認ください", "Every permitted format exceeds the format-error limit. Review format cells, ECC/mask selections, or the format-error limit")
+            ui("指定された形式情報の不一致上限を満たす形式が見つかりませんでした。形式セル・ECC・マスクの指定、または形式情報の誤り上限をご確認ください", "Every permitted format exceeds the format-error limit. Review format cells, ECC/mask selections, or the format-error limit")
         RecoveryFailureReason.FORMAT_EDIT_CONFLICT ->
             FormatEditConflict(failure.manualConflicts).message(changeRejected = false)
         RecoveryFailureReason.MANUAL_PIN_CONFLICT ->
             ui("手動固定値と矛盾するため、この候補は採用できません。", "This candidate conflicts with manually fixed values.") +
                 failure.manualConflicts.joinToString(prefix = "\n") { "(${it.coord.x},${it.coord.y}): ${it.actual.bitOrNull()} → ${it.expected?.bitOrNull()}" }
         RecoveryFailureReason.RS_BIT_SPACE_LIMIT ->
-            ui("RS解空間は求まりましたが、自由度が今回の列挙上限を超えています。追加確認セルと診断詳細をご確認ください", "The RS solution space was found, but its free dimension exceeds this pass's enumeration limit. Review the additional-check cell and diagnostics")
+            ui("誤り訂正の条件を満たす組合せが多すぎるため、候補をすべて調べられませんでした。不明なセルの白黒を追加で確認してください", "Too many combinations satisfy the error-correction conditions to check every candidate. Check additional unknown cells.")
         null -> when (failure.stage) {
             io.github.earthdiver.qrrepair.core.RecoveryFailureStage.EXTRACTION -> ui("QR行列からデータを取り出せませんでした。バージョン・マスク・グリッドをご確認ください", "Data could not be extracted from the QR matrix. Please review the Version, mask, and grid")
             io.github.earthdiver.qrrepair.core.RecoveryFailureStage.DEINTERLEAVE -> ui("抽出したデータをQRの誤り訂正ブロックとして解釈できませんでした。バージョンと形式情報をご確認ください", "The extracted data could not be interpreted as QR error-correction blocks. Please review the Version and format information")
@@ -2414,6 +2794,14 @@ class MainActivity : Activity() {
     }
 
     private fun startSavePng() {
+        val candidate = recoveryState.selectedRecovery
+        if (!candidate.isSavableQrResult(QrContentPreviewParser.parse(candidate))) {
+            statusText.text = ui(
+                "検証済みの修復結果がないため、結果PNGは保存できません。調査用画像は修復設定の詳細画面から保存できます。",
+                "A result PNG cannot be saved because there is no validated repair result. Diagnostic input images can be saved from detailed repair settings.",
+            )
+            return
+        }
         if (matrixForPng() == null) {
             statusText.text = ui("保存するQR行列がありません。", "No QR matrix is available to save.")
             return
@@ -2460,6 +2848,9 @@ class MainActivity : Activity() {
 
     /** PNG export must match the displayed result matrix, including RS and structural repairs. */
     private fun matrixForPng(): QrMatrix? = (recoveryState.inspectorMatrix ?: recoveryState.workingMatrix)?.copy()
+
+    private fun RecoveryCandidate?.isSavableQrResult(preview: QrContentPreview?): Boolean =
+        this != null && (payloadParsed || preview?.qrStructureValid == true)
 
     private fun startSaveDiagnosticInput(bitmap: Bitmap? = null, owned: Boolean = false) {
         if (prepared == null) {

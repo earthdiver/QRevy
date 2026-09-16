@@ -10,11 +10,11 @@ QR Repair is designed for offline, on-device processing. The current Android man
 | Camera hand-off | Private cache JPEG, deleted after success or failure; stale files purged on startup | A crash can leave a temporary file until the next startup purge |
 | Saved sessions | App-private `noBackupFilesDir`; Android backup and transfer excluded | Does not protect against a compromised device or app process |
 | Session integrity | Bounded QRR schema, SHA-256 integrity check, strict field validation | Integrity checking does not encrypt session contents |
-| Recovered content | URLs never open automatically; Wi-Fi passwords are masked by default | Users must still verify recovered content before acting on it |
+| Recovered content | URLs never open automatically; recovered text is displayed and copied without masking or redaction | Users must still verify recovered content before acting on it |
 
 ## Sensitive data
 
-QR payloads can contain Wi-Fi credentials, contact data, URLs, authentication tokens, or other secrets. Repair sessions therefore remain in internal app storage, Android backup is disabled, backup/data-extraction rules exclude app data, and Wi-Fi passwords are masked in the preview by default.
+QR payloads can contain Wi-Fi credentials, contact data, URLs, authentication tokens, or other secrets. Repair sessions therefore remain in internal app storage, Android backup is disabled, and backup/data-extraction rules exclude app data. Recovered text is displayed and compared without masking or redaction, and copying preserves the complete recovered text.
 
 Do not attach a real sensitive QR image, decoded payload, QRR session, application data directory, or unredacted diagnostic output to a public issue. Prefer an independently generated synthetic QR that reproduces the behavior.
 

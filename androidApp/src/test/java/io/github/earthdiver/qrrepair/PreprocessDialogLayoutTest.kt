@@ -44,6 +44,7 @@ import io.github.earthdiver.qrrepair.session.RecoverySessionStore
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -151,7 +152,7 @@ class PreprocessDialogLayoutTest {
         (ShadowDialog.getLatestDialog() as? AlertDialog)?.dismiss()
 
         val mainDecor = activity.window.decorView
-        listOf("Menu", "History", "Exit", "Select image", "Camera", "Repair", "Show result", "Data", "Save PNG").forEach { label ->
+        listOf("Menu", "History", "Exit", "Select image", "Camera", "Repair", "Show detailed result", "Data", "Save PNG").forEach { label ->
             assertNotNull("English main control is missing: $label", findText(mainDecor, label))
         }
         findText(mainDecor, "Menu")!!.performClick()
@@ -537,11 +538,14 @@ class PreprocessDialogLayoutTest {
         decor.layout(0, 0, 360, 640)
         val button = findText(decor, "同じコード語を表示")
         assertNotNull("Codeword強調の明示ボタンがありません", button)
-        assertTrue("Codeword強調ボタンが小画面で見切れています", isInside(decor, button!!))
-        assertTrue("Codeword未選択時にボタンが有効です", button.isEnabled.not())
+        assertNotNull(button)
+        assertTrue("Codeword未選択時にボタンが有効です", button!!.isEnabled.not())
         assertNotNull("セルタップ操作の案内がありません", findText(decor, "セルをタップ：セルの修復理由を表示"))
         val inspector = findViews(decor, QrResultInspectorView::class.java).single()
         inspector.onCellSelected?.invoke(3, 4)
+        decor.measure(View.MeasureSpec.makeMeasureSpec(360, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(640, View.MeasureSpec.EXACTLY))
+        decor.layout(0, 0, 360, 640)
+        assertTrue("根拠表示時もQR領域を確保", inspector.height >= 160)
         val detail = findText(decor, "セル (3,4)")
         assertNotNull("タップ時のセル詳細が表示されません", detail)
         assertTrue("セルの修復理由が小画面で見切れています", isInside(decor, detail!!))
@@ -742,14 +746,18 @@ class PreprocessDialogLayoutTest {
         val repairButton = requireNotNull(findText(activity.window.decorView, "修復する"))
         assertNull("上部の操作ボタンが結果と一緒にスクロールします", findAncestor(repairButton, ScrollView::class.java))
         assertTrue(parent.indexOfChild(status) < parent.indexOfChild(guide))
-        assertTrue(parent.indexOfChild(guide) < parent.indexOfChild(selector))
-        assertTrue(parent.indexOfChild(selector) < parent.indexOfChild(candidateDetails))
+        assertTrue(parent.indexOfChild(candidateDetails) < parent.indexOfChild(guide))
+        assertTrue(parent.indexOfChild(field("upperResultSelector")) < parent.indexOfChild(candidateDetails))
         assertNotNull(findText(selector, "候補を選択（上限256まで）"))
-        assertTrue(status.text.contains("修復成功"))
+        assertTrue(status.text.contains("修復候補"))
         assertTrue("共有結果にECCが混在しています", !status.text.contains("ECC"))
-        assertTrue(candidateDetails.text.contains("誤り訂正レベル: M / マスク: 1"))
-        assertTrue(candidateDetails.text.contains("形式情報の誤り: 2bit / 既知28bit"))
-        assertTrue(candidateDetails.text.contains("データ・ECCの誤り: 4bit / 既知100bit"))
+        val settingsText = (field("diagnosticDetailsText") as TextView).text
+        assertTrue(settingsText.contains("ECC M / マスク1"))
+        assertTrue(settingsText.contains("形式情報領域: 比較対象の読み取り済み28bitとの不一致 2bit"))
+        assertTrue(settingsText.contains("データ・ECC領域: 比較対象の読み取り済み100bitとの不一致 4bit"))
+        assertTrue(!candidateDetails.text.contains("誤り訂正レベル"))
+        assertTrue((field("resultExplanationText") as TextView).text.contains("使用した方法"))
+        assertFalse((field("resultExplanationText") as TextView).text.contains("100bitと比較"))
         assertTrue(!candidateDetails.text.contains("format誤り"))
 
         val toggle = field("diagnosticToggle") as TextView
@@ -757,9 +765,10 @@ class PreprocessDialogLayoutTest {
         assertEquals(View.GONE, diagnostics.visibility)
         toggle.performClick()
         assertEquals(View.VISIBLE, diagnostics.visibility)
-        assertTrue(diagnostics.text.contains("幾何: 相似変換 / V1 / 左上基準"))
-        assertTrue(diagnostics.text.contains("RS余裕: 2"))
-        assertTrue(diagnostics.text.contains("構造制約で確定: 48bit（ユーザ指定による強制、既知構造との一致: 0bit）"))
+        assertTrue(diagnostics.text.contains("QRの位置・向き: 相似変換 / V1 / 左上基準"))
+        val fullDiagnostic = (MainActivity::class.java.getDeclaredField("diagnosticReport").apply { isAccessible = true }.get(activity) as io.github.earthdiver.qrrepair.core.RecoveryDiagnosticReport).fullText()
+        assertTrue(fullDiagnostic.contains("ブロック最小）: 2"))
+        assertTrue(fullDiagnostic.contains("指定した仮定に基づく補完・変更: 48bit"))
     }
 
     @Test
@@ -803,17 +812,17 @@ class PreprocessDialogLayoutTest {
         val status = text("statusText")
         val guide = text("guideText")
         val candidateDetails = text("contentPreviewText")
-        val diagnostics = text("diagnosticDetailsText")
-        assertEquals("修復失敗", status)
+        val diagnostics = (MainActivity::class.java.getDeclaredField("diagnosticReport").apply { isAccessible = true }.get(activity) as io.github.earthdiver.qrrepair.core.RecoveryDiagnosticReport).fullText()
+        assertEquals("候補が見つかりませんでした", status)
         assertTrue(guide.contains("81"))
         assertTrue(!guide.contains("推奨セル"))
         assertTrue(!guide.contains("絞り込めるセル"))
         assertTrue(!guide.contains("探索上限"))
-        assertTrue(candidateDetails.contains("形式情報の誤り: 0bit / 既知25bit"))
+        assertTrue(diagnostics.contains("形式情報領域: 比較対象の読み取り済み25bitとの不一致 0bit"))
         assertTrue(candidateDetails.contains("探索上限"))
-        assertTrue(!diagnostics.contains("81"))
+        assertTrue(diagnostics.contains("追加確認の目安: 81bit"))
         assertTrue(diagnostics.contains("最初に失敗したRSブロック: 1 / 全1ブロック"))
-        assertTrue(diagnostics.contains("最初に失敗したRSブロック: 1 / 全1ブロック\nブロックあたりECCシンボル: 20"))
+        assertTrue(diagnostics.contains("最初に失敗したRSブロック: 1 / 全1ブロック\n失敗ブロックのECCシンボル数: 20\n失敗ブロックの未知bitを含むコード語数（探索前）: 42"))
     }
 
     @Test
@@ -849,11 +858,13 @@ class PreprocessDialogLayoutTest {
         )
         decor.layout(0, 0, 360, 640)
 
-        listOf("履歴", "終了", "修復する", "結果を表示", "データ", "PNG保存").forEach { label ->
+        listOf("履歴", "終了", "修復する").forEach { label ->
             val control = findText(decor, label)
             assertNotNull("$label がメイン画面にありません", control)
             assertTrue("$label が小画面で見切れています", isInside(decor, control!!))
         }
+        val resultActions = MainActivity::class.java.getDeclaredField("resultActions").apply { isAccessible = true }.get(activity) as View
+        assertEquals(View.GONE, resultActions.visibility)
         listOf("修復設定", "修復開始", "結果を拡大", "HEX", "詳細ツール").forEach { removed ->
             assertNull("旧ボタンがメイン画面に残っています: $removed", findText(decor, removed))
         }

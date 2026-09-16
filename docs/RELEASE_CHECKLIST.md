@@ -37,7 +37,7 @@ This checklist is a technical release gate, not legal advice.
 - [ ] Keep `INTERNET` permission absent unless the privacy model is intentionally changed.
 - [ ] Verify app backup remains disabled, current sessions are under `noBackupFilesDir/qr_sessions`, and backup/data-extraction rules remain defense-in-depth exclusions.
 - [ ] Confirm recovered URLs are never opened automatically.
-- [ ] Confirm Wi-Fi passwords remain masked by default.
+- [ ] Confirm recovered text is displayed and compared without masking or redaction, and copying preserves the complete recovered text.
 - [ ] Host `PRIVACY.md` at a stable public HTTPS URL and provide that URL to the app store listing.
 - [ ] If telemetry, crash reporting, ads, cloud processing, or sharing SDKs are added, re-review the privacy policy and Data Safety declarations before release.
 
