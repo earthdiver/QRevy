@@ -123,30 +123,17 @@ data class ModuleRepairTrace(
         RepairReasonKind.OTHER -> "Repair"
     }
 
-    fun explanationJa(): String = buildString {
-        append(localizedText("セル ($x,$y): ${originalValue.symbol()} → ${finalValue.symbol()}\n", "Cell ($x,$y): ${originalValue.symbol()} → ${finalValue.symbol()}\n"))
-        append(localizedText("理由: ${titleJa()}", "Reason: ${titleJa()}"))
-        if (codewordIndex != null && bitIndex != null) {
-            append("\nCodeword #$codewordIndex / bit $bitIndex")
-            if (rsBlockIndex != null) append(" / RS block $rsBlockIndex")
-            if (rsLocalIndex != null) append(" / local $rsLocalIndex")
-        }
-        if (originalCodewordValue != null && correctedCodewordValue != null) {
-            append("\nCodeword: ")
-            append(formatPartialByte(originalCodewordValue, originalUnknownMask ?: 0))
-            append(" → ")
-            append(correctedCodewordValue.toString(2).padStart(8, '0'))
-        }
-        alternativeRsDerivations.forEach { route ->
-            append(localizedText("\n同じブロック訂正値への別経路: ", "\nAlternative route to the same block values: "))
-                .append(route.description())
-            if (rsLocalIndex in route.errataPositions) append(localizedText("（このコード語を訂正対象に含む）", " (targets this codeword)"))
-            if (rsLocalIndex in route.guessedPositions) append(localizedText("（このコード語を列挙対象に含む）", " (enumerates this codeword)"))
+    fun explanationJa(includeBasic: Boolean = true): String = buildString {
+        if (includeBasic) append(localizedText("セル ($x,$y): ${originalValue.symbol()} → ${finalValue.symbol()}\n", "Cell ($x,$y): ${originalValue.symbol()} → ${finalValue.symbol()}\n"))
+        if (includeBasic) append(localizedText("理由: ${titleJa()}", "Reason: ${titleJa()}"))
+        if (codewordIndex != null && bitIndex != null && originalCodewordValue != null) {
+            append('\n').append(codewordCellText(codewordIndex, bitIndex, originalCodewordValue,
+                originalUnknownMask ?: 0, correctedCodewordValue, rsBlockIndex, rsLocalIndex, false))
         }
         if (rsErrata) append(localizedText("\nRS処理でこのコード語を訂正対象としました。", "\nRS processing treated this codeword as a repair target."))
         if (bitConstraintSolved) append(localizedText(
-            "\n既知bitとの完全一致を仮定したRS部分bit制約を使用しました。一意性はこの前提に依存し、正解の保証ではありません。",
-            "\nUsed RS partial-bit constraints assuming exact known-bit agreement. Uniqueness is conditional, not proof of correctness.",
+            "\n入力済みのbitを保つ条件で、RS部分bit制約を使用しました。",
+            "\nUsed RS partial-bit constraints while preserving the entered bits.",
         ))
         priorityAssignment?.let { value ->
             append(localizedText(
@@ -165,7 +152,16 @@ data class ModuleRepairTrace(
             append(localizedText("\n補助根拠: ", "\nSupporting evidence: "))
             append(supportingReasons.distinct().joinToString(" / ") { reasonLabelJa(it) })
         }
-        append(localizedText("\n修復前セルの相対信頼度（確率ではありません）=", "\nInput-cell relative confidence (not a probability)=")).append("%.2f".format(originalConfidence))
+        if (alternativeRsDerivations.isNotEmpty()) append(localizedText("\n\n同じRSブロックの別の計算", "\n\nOther calculations for the same RS block"))
+        alternativeRsDerivations.forEach { route ->
+            append(localizedText("\n同じブロック訂正値への別経路: ", "\nAlternative route to the same block values: "))
+                .append(route.description())
+            if (rsLocalIndex in route.errataPositions) append(localizedText("（このコード語を訂正対象に含む）", " (targets this codeword)"))
+            if (rsLocalIndex !in route.errataPositions) append(localizedText("（このコード語は訂正対象に含みません）", " (does not target this codeword for correction)"))
+            if (rsLocalIndex in route.guessedPositions) append(localizedText("（このコード語を列挙対象に含む）", " (enumerates this codeword)"))
+        }
+        append(localizedText("\n\n評価の補足", "\n\nAssessment details"))
+        append(localizedText("\n入力の評価（確率ではありません）=", "\nInput-cell relative confidence (not a probability)=")).append("%.2f".format(originalConfidence))
     }
 
     companion object {

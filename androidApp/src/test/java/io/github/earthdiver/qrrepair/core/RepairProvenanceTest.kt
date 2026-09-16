@@ -45,7 +45,7 @@ class RepairProvenanceTest {
         assertEquals(.2f, trace.originalConfidence, 0f)
         assertEquals(1f, repaired[10, 10].confidence, 0f)
         val explanation = trace.explanationJa()
-        assertTrue(explanation.contains("修復前セルの相対信頼度（確率ではありません）=0.20"))
+        assertTrue(explanation.contains("入力の評価（確率ではありません）=0.20"))
         assertTrue(!explanation.contains("画像判定の相対信頼度"))
     }
 
@@ -57,7 +57,7 @@ class RepairProvenanceTest {
             StructuralRepair.apply(repaired, ErrorCorrectionLevel.L, 0)
             val trace = RepairTraceBuilder.build(source, repaired, null).getValue(Coord(0, 0))
             assertEquals(.3f, trace.originalConfidence, 0f)
-            assertTrue(trace.explanationJa().contains("修復前セルの相対信頼度（確率ではありません）=0.30"))
+            assertTrue(trace.explanationJa().contains("入力の評価（確率ではありません）=0.30"))
         }
     }
 

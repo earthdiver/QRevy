@@ -166,6 +166,7 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
                     maxFormatMismatches = settings.formatMismatchLimit,
                     maxKnownDataEccMismatches = settings.dataEccMismatchLimit,
                     manualEdits = settings.preRecoveryEdits,
+                displayLockManualBits = settings.lockManualBits,
                     retentionBudget = retentionBudget,
                     cancellation = cancellation,
                 ) { done, total ->

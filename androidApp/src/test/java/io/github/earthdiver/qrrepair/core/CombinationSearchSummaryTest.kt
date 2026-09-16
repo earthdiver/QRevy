@@ -4,6 +4,22 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class CombinationSearchSummaryTest {
+    @Test fun countsAndStopReasonsDoNotClaimExhaustion() {
+        for (count in listOf(0, 1, 16, 4096)) {
+            val summary = CombinationSearchSummary(1)
+            val message = summary.description(count)
+            assertTrue(message.contains("探索した結果、${count}件の候補が見つかりました"))
+            assertFalse(message.contains("すべての組合せ"))
+            assertFalse(message.contains("確認できません"))
+            for (stop in CombinationSearchStop.entries) {
+                val stopped = summary.copy(stops = setOf(stop)).description(count)
+                assertTrue(stopped.startsWith(message))
+                assertTrue(stopped.contains("まだ調べていない組合せ"))
+                assertFalse(stopped.contains("正解が含まれるとは限りません"))
+            }
+        }
+    }
+
     @Test fun exactBoundaryExhaustionIsNotTruncation() {
         var truncated = false
         assertEquals(listOf(0, 1), (0..1).asSequence()

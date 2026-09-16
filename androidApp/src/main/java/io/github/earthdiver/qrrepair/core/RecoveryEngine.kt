@@ -56,6 +56,11 @@ data class RecoveryCandidate(
     val formatRoute: FormatSelectionReason? = null,
     val fnc1ApplicationIndicator: Int? = null,
     val structuredAppend: StructuredAppendInfo? = null,
+    val displayConditions: RecoveryDisplayConditions? = null,
+    val manualDataEccMismatches: Int? = null,
+    val manualDataEccCompared: Int? = null,
+    val conventionalRsDiagnostic: ConventionalRsDiagnostic? = null,
+    val actualBlockMethods: List<RecoveryBlockMethod> = emptyList(),
 ) {
     val priorityGuessedBits: Int get() = priorityAssignments.size
     val payloadParsed: Boolean get() = text != null
@@ -126,6 +131,8 @@ data class RecoveryFailure(
     val rsBitDiagnostic: RsBitDiagnostic? = null,
     val manualConflicts: List<ManualCellConflict> = emptyList(),
     val combinationSearch: CombinationSearchSummary = CombinationSearchSummary(),
+    val displayConditions: RecoveryDisplayConditions? = null,
+    val conventionalRsDiagnostic: ConventionalRsDiagnostic? = null,
 )
 
 class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()) {
@@ -141,6 +148,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         val cancellation: RecoveryCancellation) {
         var ignoredFormatCoords: Set<Coord> = emptySet()
         val bitDiagnostics = mutableMapOf<Pair<ErrorCorrectionLevel, Int>, RsBitDiagnostic>()
+        val conventionalDiagnostics = mutableMapOf<Pair<ErrorCorrectionLevel, Int>, ConventionalRsDiagnostic>()
         var failure: RecoveryFailure? = null
         var formatAttempts: Int = 0
         var combinationSearch = CombinationSearchSummary()
@@ -218,19 +226,41 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         manualEdits: Map<Coord, ModuleValue> = emptyMap(),
         retentionBudget: RecoveryRetentionBudget = RecoveryRetentionBudget(),
         cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
+        displayLockManualBits: Boolean? = null,
         onPriorityProgress: ((done: Int, total: Int) -> Unit)? = null,
     ): List<RecoveryCandidate> {
         require(maxFormatMismatches == null || maxFormatMismatches in 0..30)
         require(maxKnownDataEccMismatches == null || maxKnownDataEccMismatches in 0..MAX_QR_DATA_ECC_BITS)
         val run = RecoveryRunState(matrix, retentionBudget, cancellation)
+        val conditions = RecoveryDisplayConditions(trustKnownPayloadCount, displayLockManualBits,
+            formatConstraint, maxFormatMismatches, maxKnownDataEccMismatches)
+        val manual = FormatEditPolicy.manualValues(matrix) + manualEdits
+        fun annotate(candidate: RecoveryCandidate): RecoveryCandidate {
+            cancellation.check()
+            var manualMismatches = 0
+            var manualCompared = 0
+            candidate.extraction.codewords.forEachIndexed { raw, word ->
+                cancellation.check()
+                word.coordinates.forEachIndexed bitLoop@{ bit, coord ->
+                    val observed = manual[coord]?.bitOrNull() ?: return@bitLoop
+                    manualCompared++
+                    val expected = ((candidate.correctedInterleaved[raw] shr (7 - bit)) and 1) xor
+                        if (CodewordExtractor.maskApplies(candidate.dataMask, coord.x, coord.y)) 1 else 0
+                    if (observed != expected) manualMismatches++
+                }
+            }
+            return candidate.copy(combinationSearch = run.combinationSearch, displayConditions = conditions,
+                formatSelection = FormatSelection(formatConstraint?.ecLevel != null, formatConstraint?.dataMask != null),
+                manualDataEccMismatches = manualMismatches, manualDataEccCompared = manualCompared,
+                alternativeDerivations = candidate.alternativeDerivations.map(::annotate))
+        }
         return try {
             cancellation.check()
             recoverRun(run, matrix, maxFormatCandidates, trustKnownPayloadCount, formatConstraint,
                 maxFormatMismatches, maxKnownDataEccMismatches, manualEdits, onPriorityProgress)
-                .map { it.copy(combinationSearch = run.combinationSearch,
-                    formatSelection = FormatSelection(formatConstraint?.ecLevel != null, formatConstraint?.dataMask != null)) }
+                .map(::annotate)
         } finally {
-            lastFailure = run.failure?.copy(combinationSearch = run.combinationSearch)
+            lastFailure = run.failure?.copy(combinationSearch = run.combinationSearch, displayConditions = conditions)
             lastFormatAttempts = run.formatAttempts
         }
     }
@@ -404,6 +434,27 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
             // The trial extraction and blocks still drive RS and enforce temporary guesses.
             val evidenceExtraction = if (matrix === run.diagnosticInput) extraction else
                 CodewordExtractor.extract(run.diagnosticInput, version, format.dataMask)
+            val conventionalDiagnostic = run.conventionalDiagnostics.getOrPut(format.ecLevel to format.dataMask) {
+                val inputBlocks = QrBlockInterleaver.deinterleave(evidenceExtraction, version, format.ecLevel)
+                val diagnosis = ConventionalRsDiagnostic.analyze(inputBlocks, rs, run.cancellation)
+                val raw = diagnosis.correctedInterleaved
+                diagnosis.copy(
+                    knownBitMismatches = raw?.let { countKnownBitMismatches(run.diagnosticInput, evidenceExtraction, it, format.dataMask).second },
+                    knownBitMismatchLimit = maxKnownDataEccMismatches,
+                    manualConflicts = raw?.let { userPinConflicts(run.diagnosticInput, evidenceExtraction, it, format.dataMask) }.orEmpty(),
+                    qrStructureValid = raw?.let {
+                        val restored = inputBlocks.blocks.map { IntArray(it.codewords.size) }
+                        inputBlocks.rawLocations.forEachIndexed { position, location ->
+                            val loc = requireNotNull(location)
+                            restored[loc.blockIndex][loc.localIndex] = raw[position]
+                        }
+                        val data = inputBlocks.blocks.indices.flatMap { block ->
+                            restored[block].take(inputBlocks.blocks[block].numDataCodewords).map { it.toByte() }
+                        }.toByteArray()
+                        StrictQrPayloadValidator.isValid(data, version)
+                    },
+                )
+            }
             val originalErasures = evidenceExtraction.codewords.count { it.unknownBits != 0 }
             val priorityCoordinates = matrix.prioritySearchCoordinates().toSet()
             val priorityRawIndices = extraction.codewords.indices.filterTo(hashSetOf()) { raw ->
@@ -672,6 +723,11 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                     inferredCount = constraints.inferredCount,
                     partialGuessedBits = partialBits,
                     minRsMargin = minMargin,
+                    conventionalRsDiagnostic = conventionalDiagnostic,
+                    actualBlockMethods = combination.mapIndexed { blockIndex, result ->
+                        RecoveryBlockMethod(blockIndex, result.bitConstraintSolved,
+                            result.rsMargin.takeUnless { result.bitConstraintSolved }, result.guessedBits)
+                    },
                     blockDerivations = combination.withIndex().filter { it.value.alternativeDerivations.isNotEmpty() }
                         .associate { (block, result) -> block to (listOf(result.derivation()) + result.alternativeDerivations) },
                     repairInfo = repairInfo,
@@ -760,6 +816,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
             formatMismatchLimit = formatMismatchLimit,
             rsBitDiagnostic = rsBitDiagnostic,
             manualConflicts = manualConflicts,
+            conventionalRsDiagnostic = run.conventionalDiagnostics[format.ecLevel to format.dataMask],
         )
         val current = run.failure
         if (current == null || failureComparator.compare(candidate, current) <= 0) run.failure = candidate

@@ -19,14 +19,15 @@ fun RecoveryCandidate.formatReasonAt(x: Int, y: Int, userSpecified: Boolean = fa
 }
 
 fun formatCellDescription(x: Int, y: Int, before: ModuleValue, after: ModuleValue,
-    candidate: RecoveryCandidate?, userSpecified: Boolean): String = buildString {
+    candidate: RecoveryCandidate?, userSpecified: Boolean, includeBasic: Boolean = true): String = buildString {
     fun value(v: ModuleValue) = when (v) {
         ModuleValue.ERASED -> localizedText("不明", "unknown")
         ModuleValue.ZERO -> localizedText("白", "white")
         ModuleValue.ONE -> localizedText("黒", "black")
     }
-    append(localizedText("セル ($x,$y)：${value(before)} → ${value(after)}\n領域：形式情報",
+    if (includeBasic) append(localizedText("セル ($x,$y)：${value(before)} → ${value(after)}\n領域：形式情報",
         "Cell ($x,$y): ${value(before)} → ${value(after)}\nRegion: format information"))
+    if (!includeBasic) append(localizedText("領域：形式情報", "Region: format information"))
     if (candidate != null) append(localizedText(
         "\n選択中の候補の形式：ECCレベル ${candidate.ecLevel} / マスク ${candidate.dataMask}",
         "\nSelected candidate format: ECC ${candidate.ecLevel} / mask ${candidate.dataMask}"))
