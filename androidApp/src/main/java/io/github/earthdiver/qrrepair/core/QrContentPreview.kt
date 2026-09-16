@@ -5,7 +5,6 @@ import java.net.URI
 
 enum class QrContentKind {
     URL,
-    WIFI,
     VCARD,
     EMAIL,
     PHONE,
@@ -15,20 +14,53 @@ enum class QrContentKind {
     BINARY,
 }
 
-data class QrContentField(val label: String, val value: String, val sensitive: Boolean = false)
+data class QrContentField(val label: String, val value: String)
 
 data class QrContentPreview(
     val kind: QrContentKind,
     val title: String,
     val summary: String,
     val fields: List<QrContentField>,
-    val payloadValid: Boolean,
+    val contentFormatValid: Boolean,
     val utf8Like: Boolean,
     val structuredAppend: StructuredAppendInfo? = null,
     val fnc1ApplicationIndicator: Int? = null,
+    val encodingModes: List<Int>? = null,
+    val textRepresentation: Boolean = false,
+    val qrStructureValid: Boolean = false,
+    val byteSegments: List<Pair<Int, ByteArray>> = emptyList(),
+    val recoveredText: String? = null,
 ) {
-    fun toDisplayText(maskSensitive: Boolean = true): String = buildString {
-        append(localizedText("内容プレビュー: ", "Content preview: ")).append(title).append('\n')
+    fun toDisplayText(): String = buildString {
+        append(if (qrStructureValid) localizedText("表示中の候補は、QRのデータ形式として読み取れました。", "The displayed candidate was read as QR-formatted data.")
+            else localizedText("QRのデータ構造を確認できませんでした。", "The QR data structure could not be verified."))
+        append('\n')
+        if (textRepresentation && !contentFormatValid) append(localizedText(
+            "${title}として必要な情報が不足しているか、形式に不備があります。\n",
+            "Required information is missing or malformed for ${title}.\n",
+        ))
+        encodingModes?.takeIf { it.isNotEmpty() }?.let { modes ->
+            append(localizedText("符号化モード: ", "Encoding mode: "))
+            if (modes.size > 1) append(localizedText("複数セグメント — ", "Multiple segments — "))
+            append(modes.joinToString(" → ") { mode -> when (mode) {
+                1 -> localizedText("数字", "Numeric")
+                2 -> localizedText("英数字", "Alphanumeric")
+                4 -> localizedText("バイト", "Byte")
+                8 -> localizedText("漢字", "Kanji")
+                13 -> localizedText("中国語漢字（Hanzi）", "Hanzi")
+                else -> localizedText("不明", "Unknown")
+            } }).append('\n')
+        }
+        if (byteSegments.isNotEmpty()) {
+            append('\n').append(CodewordHex.payloadByteSegments(byteSegments))
+                .append("\n\n")
+            if (textRepresentation) append(localizedText(
+                "参考: 文字列変換（文字コードによっては正しく表示されません）\n",
+                "Reference: text conversion (may display incorrectly depending on the encoding)\n",
+            ))
+        }
+        append(if (textRepresentation && byteSegments.isNotEmpty()) localizedText("内容プレビュー（文字列に変換した表示）: ", "Content preview (converted to text): ")
+            else localizedText("内容プレビュー: ", "Content preview: ")).append(title).append('\n')
         structuredAppend?.let { append(it.description()).append('\n') }
         fnc1ApplicationIndicator?.let {
             append(localizedText("FNC1アプリケーション識別子: ", "FNC1 application indicator: "))
@@ -36,20 +68,26 @@ data class QrContentPreview(
         }
         if (summary.isNotBlank()) append(summary).append('\n')
         for (field in fields) {
-            val shown = if (maskSensitive && field.sensitive) "••••••••" else field.value
+            val shown = field.value
             append(field.label).append(": ").append(shown).append('\n')
         }
-        append(localizedText("QRデータ構造: ", "QR data structure: "))
-            .append(if (payloadValid) localizedText("適合", "valid") else localizedText("要確認", "check"))
-        append(localizedText("\nテキスト: ", "\nText: "))
-            .append(if (utf8Like) localizedText("適合", "valid") else localizedText("バイナリまたは不明", "binary or unknown"))
+        recoveredText?.takeIf { kind != QrContentKind.TEXT && it != summary }?.let { raw ->
+            append(localizedText("\n復元した文字列（原文）\n", "\nRecovered text (original)\n"))
+            append(raw).append('\n')
+        }
+        if (!textRepresentation) append(localizedText("\n内容はバイナリまたは未解釈データです。", "\nThe content is binary or uninterpreted data."))
     }.trimEnd()
 }
 
 object QrContentPreviewParser {
     fun parse(candidate: RecoveryCandidate?): QrContentPreview? = candidate?.let {
         parseBody(it).copy(structuredAppend = it.structuredAppend,
-            fnc1ApplicationIndicator = it.fnc1ApplicationIndicator)
+            fnc1ApplicationIndicator = it.fnc1ApplicationIndicator,
+            encodingModes = StrictQrPayloadValidator.encodingModes(it.dataBytes, it.version),
+            textRepresentation = it.text != null,
+            qrStructureValid = StrictQrPayloadValidator.isValid(it.dataBytes, it.version),
+            byteSegments = StrictQrPayloadValidator.byteSegments(it.dataBytes, it.version).orEmpty(),
+            recoveredText = it.text)
     }
 
     private fun parseBody(candidate: RecoveryCandidate): QrContentPreview {
@@ -58,16 +96,15 @@ object QrContentPreviewParser {
             return QrContentPreview(
                 QrContentKind.BINARY,
                 localizedText("バイナリ/未解釈データ", "Binary/unparsed data"),
-                localizedText("RS整合候補ですが、ZXingでテキストpayloadとして解釈できません。", "The candidate is RS-consistent but ZXing cannot interpret it as a text payload."),
+                localizedText("内容を文字列として表示できませんでした。HEX／Binary表示で確認できます。", "The content could not be displayed as text. Check the Hex / Binary view."),
                 listOf(QrContentField(localizedText("データバイト数", "Data bytes"), candidate.dataBytes.size.toString())),
-                payloadValid = false,
+                contentFormatValid = false,
                 utf8Like = false,
             )
         }
         // A recovery preview must not silently change payload bytes represented as text. Leading
         // and trailing whitespace can be meaningful and must also prevent structured reclassification.
         val t = text
-        parseWifi(t)?.let { return it }
         parseVCard(t)?.let { return it }
         parseMail(t)?.let { return it }
         parseSms(t)?.let { return it }
@@ -77,9 +114,9 @@ object QrContentPreviewParser {
         return QrContentPreview(
             QrContentKind.TEXT,
             localizedText("テキスト", "Text"),
-            t.take(220),
+            t,
             listOf(QrContentField(localizedText("文字数", "Characters"), text.length.toString())),
-            payloadValid = true,
+            contentFormatValid = true,
             utf8Like = true,
         )
     }
@@ -97,30 +134,7 @@ object QrContentPreviewParser {
                 QrContentField(localizedText("スキーム", "Scheme"), scheme),
                 QrContentField(localizedText("ホスト", "Host"), host),
             ),
-            payloadValid = true,
-            utf8Like = true,
-        )
-    }
-
-    private fun parseWifi(t: String): QrContentPreview? {
-        if (!t.startsWith("WIFI:", ignoreCase = true)) return null
-        val body = t.substringAfter(':').removeSuffix(";")
-        val fields = parseEscapedFields(body)
-        val ssid = fields["S"].orEmpty()
-        val auth = fields["T"].orEmpty().ifBlank { "nopass" }
-        val pass = fields["P"].orEmpty()
-        val hidden = fields["H"].orEmpty()
-        return QrContentPreview(
-            QrContentKind.WIFI,
-            "Wi-Fi",
-            if (ssid.isBlank()) localizedText("SSID未取得", "SSID unavailable") else ssid,
-            buildList {
-                add(QrContentField("SSID", ssid))
-                add(QrContentField(localizedText("セキュリティ", "Security"), auth))
-                if (pass.isNotEmpty()) add(QrContentField(localizedText("パスワード", "Password"), pass, sensitive = true))
-                if (hidden.isNotEmpty()) add(QrContentField(localizedText("非表示", "Hidden"), hidden))
-            },
-            payloadValid = ssid.isNotBlank(),
+            contentFormatValid = true,
             utf8Like = true,
         )
     }
@@ -141,7 +155,7 @@ object QrContentPreviewParser {
                 if (!tel.isNullOrBlank()) add(QrContentField(localizedText("電話番号", "Phone"), tel))
                 if (!email.isNullOrBlank()) add(QrContentField(localizedText("メールアドレス", "Email"), email))
             },
-            payloadValid = lines.any { it.equals("END:VCARD", ignoreCase = true) },
+            contentFormatValid = lines.any { it.equals("END:VCARD", ignoreCase = true) },
             utf8Like = true,
         )
     }
@@ -155,7 +169,7 @@ object QrContentPreviewParser {
             localizedText("メール", "Email"),
             address,
             listOf(QrContentField(localizedText("宛先", "To"), address)),
-            payloadValid = address.contains('@'),
+            contentFormatValid = address.contains('@'),
             utf8Like = true,
         )
     }
@@ -179,24 +193,4 @@ object QrContentPreviewParser {
         return QrContentPreview(QrContentKind.GEO, localizedText("位置情報", "Location"), coords, listOf(QrContentField(localizedText("座標", "Coordinates"), coords)), coords.contains(','), true)
     }
 
-    private fun parseEscapedFields(body: String): Map<String, String> {
-        val out = LinkedHashMap<String, String>()
-        val token = StringBuilder()
-        val parts = ArrayList<String>()
-        var escaped = false
-        for (ch in body) {
-            when {
-                escaped -> { token.append(ch); escaped = false }
-                ch == '\\' -> escaped = true
-                ch == ';' -> { parts += token.toString(); token.setLength(0) }
-                else -> token.append(ch)
-            }
-        }
-        if (token.isNotEmpty()) parts += token.toString()
-        for (part in parts) {
-            val i = part.indexOf(':')
-            if (i > 0) out[part.substring(0, i)] = part.substring(i + 1)
-        }
-        return out
-    }
 }

@@ -99,9 +99,9 @@ class PrecisionDesignTest {
             assertNotNull(find(inspectorDialog.window!!.decorView, "セルの修復根拠"))
             val evidenceRoot = inspectorDialog.window!!.decorView
             val heading = find(evidenceRoot, "セルの修復根拠")!!
-            assertEquals(View.GONE, (heading.parent as View).visibility)
+            assertEquals(View.GONE, ((heading.parent as View).parent as View).visibility)
             find(evidenceRoot, activity.getString(R.string.show_evidence))!!.performClick()
-            assertEquals(View.VISIBLE, (heading.parent as View).visibility)
+            assertEquals(View.VISIBLE, ((heading.parent as View).parent as View).visibility)
             render(evidenceRoot, "evidence")
             inspectorDialog.dismiss()
         } finally {
@@ -153,6 +153,7 @@ class PrecisionDesignTest {
             assertEquals("Scan result", field<TextView>(activity, "workspaceTitle").text.toString())
             assertTrue(field<TextView>(activity, "contentPreviewText").text.contains(result.text))
             val panel = field<ViewGroup>(activity, "workspacePanel")
+            assertTrue(panel.indexOfChild(field(activity, "statusText")) < panel.indexOfChild(field(activity, "contentPreviewText")))
             assertTrue(panel.indexOfChild(field(activity, "contentPreviewText")) < panel.indexOfChild(field(activity, "workspacePreview")))
             assertTrue(find(activity.window.decorView, activity.getString(R.string.step_result))!!.isSelected)
             assertEquals(1, allViews(activity.window.decorView).filterIsInstance<TextView>()
@@ -386,7 +387,7 @@ class PrecisionDesignTest {
                 .apply { isAccessible = true }.invoke(activity, "Synthetic diagnostic information")
             val diagnostics = find(main, "診断情報を表示")!!
             val png = find(main, activity.getString(R.string.save_png))!!
-            assertTrue(panel.indexOfChild(diagnostics) < panel.indexOfChild(png))
+            assertTrue(panel.indexOfChild(png.parent as View) < panel.indexOfChild(diagnostics))
             diagnostics.performClick()
             assertEquals("診断情報を閉じる", diagnostics.text.toString())
             assertTrue(field<View>(activity, "diagnosticDetailsText").isShown)
@@ -432,6 +433,61 @@ class PrecisionDesignTest {
             assertTrue(field<View>(activity, "homePanel").isShown)
             assertTrue(field<View>(activity, "homeActions").isShown)
             assertFalse(root.isShown)
+        } finally { controller.pause().stop().destroy() }
+    }
+
+    @Test
+    fun candidateSelectorsAboveAndBelowQrStayInSync() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        try {
+            val state = field<RecoveryUiState>(activity, "recoveryState")
+            val matrix = io.github.earthdiver.qrrepair.core.QrMatrix(21)
+            state.sourceMatrix = matrix
+            state.workingMatrix = matrix
+            state.geometry = io.github.earthdiver.qrrepair.core.GridGeometry(
+                1, io.github.earthdiver.qrrepair.core.FinderRole.TOP_LEFT, 10.0, 10.0, 2.0, 0.0,
+            )
+            state.recoveries = listOf("first", "second").mapIndexed { index, text ->
+                io.github.earthdiver.qrrepair.core.RecoveryCandidate(
+                    1, com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.M, index, text,
+                    byteArrayOf(0x40, 0x14, 0x10), 15, 0, 0, 0, 0, 0, 8, intArrayOf(),
+                    io.github.earthdiver.qrrepair.core.CodewordExtraction(emptyList()),
+                )
+            }
+            state.selectRecovery(0)
+            fun refresh() = MainActivity::class.java.getDeclaredMethod("updateSummary", String::class.java)
+                .apply { isAccessible = true }.invoke(activity, null)
+            refresh()
+            val panel = field<ViewGroup>(activity, "workspacePanel")
+            val upper = field<ViewGroup>(activity, "upperResultSelector")
+            val lower = field<ViewGroup>(activity, "mainResultSelector")
+            val status = field<View>(activity, "statusText")
+            val qr = field<View>(activity, "workspacePreview")
+            assertEquals(panel.indexOfChild(status) + 1, panel.indexOfChild(upper))
+            assertTrue(panel.indexOfChild(upper) < panel.indexOfChild(qr))
+            assertTrue(panel.indexOfChild(qr) < panel.indexOfChild(lower))
+            fun radios(view: View) = allViews(view).filterIsInstance<android.widget.RadioButton>()
+            fun assertSelected(index: Int) {
+                assertEquals(index, state.recoveryIndex)
+                for (selector in listOf(upper, lower)) {
+                    assertEquals(View.VISIBLE, selector.visibility)
+                    assertEquals(listOf(index == 0, index == 1), radios(selector).map { it.isChecked })
+                }
+            }
+            assertSelected(0)
+            radios(upper)[1].performClick()
+            assertSelected(1)
+            assertTrue(field<TextView>(activity, "contentPreviewText").text.contains("second"))
+            radios(lower)[0].performClick()
+            assertSelected(0)
+            assertTrue(field<TextView>(activity, "contentPreviewText").text.contains("first"))
+            state.recoveries = state.recoveries.take(1)
+            refresh()
+            for (selector in listOf(upper, lower)) {
+                assertEquals(View.GONE, selector.visibility)
+                assertTrue(radios(selector).isEmpty())
+            }
         } finally { controller.pause().stop().destroy() }
     }
 

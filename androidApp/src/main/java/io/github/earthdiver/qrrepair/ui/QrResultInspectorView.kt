@@ -5,10 +5,12 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
+import android.util.TypedValue
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
+import io.github.earthdiver.qrrepair.localizedText
 import io.github.earthdiver.qrrepair.core.CellConfidence
 import io.github.earthdiver.qrrepair.core.Coord
 import io.github.earthdiver.qrrepair.core.ModuleRepairTrace
@@ -38,6 +40,11 @@ class QrResultInspectorView(context: Context) : View(context) {
     private var compareEnabled = true
     private var beforeFraction = 0.5f
 
+    private val paired get() = compareEnabled && beforeFraction > 0f && beforeFraction < 1f
+    private val paneWidth get() = if (paired) width / 2f else width.toFloat()
+    private val headerHeight get() = if (paired) 24f * resources.displayMetrics.density else 0f
+    private var gesturePane = 0
+
     private var scale = 1f
     private var fitScale = 1f
     private var offsetX = 0f
@@ -55,10 +62,11 @@ class QrResultInspectorView(context: Context) : View(context) {
             val old = scale
             val next = (scale * detector.scaleFactor).coerceIn(fitScale * 0.8f, fitScale * 35f)
             if (next == old) return true
-            val lx = (detector.focusX - offsetX) / old
+            val focusX = detector.focusX - if (paired) gesturePane * paneWidth else 0f
+            val lx = (focusX - offsetX) / old
             val ly = (detector.focusY - offsetY) / old
             scale = next
-            offsetX = detector.focusX - lx * next
+            offsetX = focusX - lx * next
             offsetY = detector.focusY - ly * next
             invalidate()
             return true
@@ -92,7 +100,11 @@ class QrResultInspectorView(context: Context) : View(context) {
         this.before = before
         this.after = after
         this.traces = traces
-        if (!keepViewport || dimensionChanged) resetTransform()
+        if (!keepViewport || dimensionChanged) {
+            selected = null
+            highlightedCodeword = emptySet()
+            resetTransform()
+        }
         invalidate()
     }
 
@@ -113,8 +125,16 @@ class QrResultInspectorView(context: Context) : View(context) {
     fun setHighlightedCodeword(coords: Collection<Coord>) { highlightedCodeword = coords.toSet(); invalidate() }
     fun clearHighlightedCodeword() { highlightedCodeword = emptySet(); invalidate() }
     fun setSelected(x: Int, y: Int) { selected = Coord(x, y); invalidate() }
-    fun setComparisonEnabled(enabled: Boolean) { compareEnabled = enabled; invalidate() }
-    fun setBeforeFraction(fraction: Float) { beforeFraction = fraction.coerceIn(0f, 1f); invalidate() }
+    fun setComparisonEnabled(enabled: Boolean) {
+        if (compareEnabled == enabled) return
+        compareEnabled = enabled; resetTransform(); invalidate()
+    }
+    fun setBeforeFraction(fraction: Float) {
+        val wasPaired = paired
+        beforeFraction = fraction.coerceIn(0f, 1f)
+        if (wasPaired != paired) resetTransform()
+        invalidate()
+    }
     fun setHeatmap(enabled: Boolean, values: Map<Coord, CellConfidence>) { heatmapEnabled = enabled; confidence = values; invalidate() }
 
     fun focusCell(x: Int, y: Int) {
@@ -122,8 +142,8 @@ class QrResultInspectorView(context: Context) : View(context) {
         if (x !in 0 until m.dimension || y !in 0 until m.dimension) return
         val target = max(scale, 24f).coerceAtMost(fitScale * 35f)
         scale = target
-        offsetX = width / 2f - (quiet + x + .5f) * scale
-        offsetY = height / 2f - (quiet + y + .5f) * scale
+        offsetX = paneWidth / 2f - (quiet + x + .5f) * scale
+        offsetY = (height + headerHeight) / 2f - (quiet + y + .5f) * scale
         selected = Coord(x, y)
         invalidate()
     }
@@ -136,23 +156,29 @@ class QrResultInspectorView(context: Context) : View(context) {
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         if (oldw == 0 || oldh == 0) resetTransform()
+        else {
+            offsetX += (w - oldw) / if (paired) 4f else 2f
+            offsetY += (h - oldh) / 2f
+        }
     }
 
     private fun resetTransform() {
         val m = after ?: return
         if (width <= 0 || height <= 0) return
         val logical = m.dimension + quiet * 2f
-        fitScale = min(width / logical, height / logical).coerceAtLeast(0.05f)
+        fitScale = min(paneWidth / logical, (height - headerHeight) / logical).coerceAtLeast(0.05f)
         scale = fitScale
-        offsetX = (width - logical * scale) / 2f
-        offsetY = (height - logical * scale) / 2f
+        offsetX = (paneWidth - logical * scale) / 2f
+        offsetY = headerHeight + (height - headerHeight - logical * scale) / 2f
         invalidate()
     }
 
     private fun pointToCell(px: Float, py: Float): Coord? {
         val m = after ?: return null
         if (scale <= 0f) return null
-        val lx = (px - offsetX) / scale - quiet
+        if (py < headerHeight || px < 0 || px >= width || py >= height) return null
+        val localX = if (paired && px >= paneWidth) px - paneWidth else px
+        val lx = (localX - offsetX) / scale - quiet
         val ly = (py - offsetY) / scale - quiet
         val x = floor(lx.toDouble()).toInt()
         val y = floor(ly.toDouble()).toInt()
@@ -166,33 +192,38 @@ class QrResultInspectorView(context: Context) : View(context) {
         val b = before ?: a
         val logicalSize = a.dimension + quiet * 2f
 
-        canvas.save()
-        canvas.translate(offsetX, offsetY)
-        canvas.scale(scale, scale)
-        fill.color = Color.WHITE
-        canvas.drawRect(0f, 0f, logicalSize, logicalSize, fill)
-
-        if (compareEnabled) {
-            val split = quiet + a.dimension * beforeFraction
+        fun drawPane(matrix: QrMatrix, left: Float, showEvidence: Boolean) {
             canvas.save()
-            canvas.clipRect(0f, 0f, split, logicalSize)
-            drawMatrix(canvas, b)
+            canvas.clipRect(left, headerHeight, left + paneWidth, height.toFloat())
+            canvas.translate(left + offsetX, offsetY)
+            canvas.scale(scale, scale)
+            fill.color = Color.WHITE
+            canvas.drawRect(0f, 0f, logicalSize, logicalSize, fill)
+            drawMatrix(canvas, matrix)
+            if (showEvidence) {
+                if (heatmapEnabled) drawHeatmap(canvas, a)
+                drawOverlays(canvas, matrix)
+            }
             canvas.restore()
-            canvas.save()
-            canvas.clipRect(split, 0f, logicalSize, logicalSize)
-            drawMatrix(canvas, a)
-            canvas.restore()
-            stroke.style = Paint.Style.STROKE
-            stroke.strokeWidth = max(1f / scale, 0.055f)
-            stroke.color = Color.rgb(0, 110, 220)
-            canvas.drawLine(split, quiet - 0.4f, split, quiet + a.dimension + 0.4f, stroke)
-        } else {
-            drawMatrix(canvas, a)
         }
-
-        if (heatmapEnabled) drawHeatmap(canvas, a)
-        drawOverlays(canvas, a)
-        canvas.restore()
+        if (paired) {
+            drawPane(b, 0f, false)
+            drawPane(a, paneWidth, true)
+            stroke.color = Color.rgb(0, 110, 220)
+            stroke.strokeWidth = resources.displayMetrics.density
+            canvas.drawLine(paneWidth, 0f, paneWidth, height.toFloat(), stroke)
+            text.textSize = TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_SP,
+                13f,
+                resources.displayMetrics,
+            )
+            text.textAlign = Paint.Align.CENTER
+            canvas.drawText(localizedText("修復前", "Before"), paneWidth / 2f, headerHeight * .72f, text)
+            canvas.drawText(localizedText("修復後", "After"), paneWidth * 1.5f, headerHeight * .72f, text)
+        } else {
+            val showingBefore = compareEnabled && beforeFraction == 1f
+            drawPane(if (showingBefore) b else a, 0f, !showingBefore)
+        }
     }
 
     private fun drawMatrix(canvas: Canvas, matrix: QrMatrix) {
@@ -275,6 +306,7 @@ class QrResultInspectorView(context: Context) : View(context) {
     }
 
     private fun colorFor(reason: RepairReasonKind?): Int = when (reason) {
+        RepairReasonKind.FORMAT_INFORMATION -> Color.rgb(190, 135, 0)
         RepairReasonKind.USER_OVERRIDE -> Color.rgb(0, 145, 200)
         RepairReasonKind.RS_ERASURE_RECOVERY, RepairReasonKind.RS_ERROR_CORRECTION -> Color.rgb(230, 115, 0)
         RepairReasonKind.PAYLOAD_MODE, RepairReasonKind.PAYLOAD_COUNT, RepairReasonKind.PAYLOAD_DATA_VALUE,
@@ -283,13 +315,19 @@ class QrResultInspectorView(context: Context) : View(context) {
         RepairReasonKind.PARTIAL_BIT_SEARCH -> Color.rgb(210, 20, 105)
         RepairReasonKind.FINDER_PATTERN, RepairReasonKind.SEPARATOR,
         RepairReasonKind.TIMING_PATTERN, RepairReasonKind.ALIGNMENT_PATTERN,
-        RepairReasonKind.FORMAT_INFORMATION, RepairReasonKind.VERSION_INFORMATION,
+        RepairReasonKind.VERSION_INFORMATION,
         RepairReasonKind.FIXED_DARK_MODULE, RepairReasonKind.REMAINDER_BITS -> Color.rgb(0, 155, 80)
         else -> Color.rgb(80, 80, 80)
     }
 
     @android.annotation.SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            gesturePane = if (paired && event.x >= paneWidth) 1 else 0
+            parent?.requestDisallowInterceptTouchEvent(true)
+        }
+        if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL)
+            parent?.requestDisallowInterceptTouchEvent(false)
         val a = scaleDetector.onTouchEvent(event)
         val b = gesture.onTouchEvent(event)
         return a || b || super.onTouchEvent(event)

@@ -7,7 +7,6 @@
     <string name="import_text_matrix">TXT行列</string>
     <string name="camera">カメラ</string>
     <string name="repair">修復する</string>
-    <string name="show_result">結果を表示</string>
     <string name="result_tab">候補%1$d</string>
     <string name="select_result">候補を選択</string>
     <string name="select_result_limited">候補を選択（上限%1$dまで）</string>

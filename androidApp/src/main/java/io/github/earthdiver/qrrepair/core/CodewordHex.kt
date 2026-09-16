@@ -41,17 +41,32 @@ object CodewordHex {
      * already validated by ZXing, including ECI, Kanji mode, and charset handling.
      */
     fun interpretedRecovered(dataBytes: ByteArray, version: Int, decodedText: String?): String {
-        val extraction = CodewordExtraction(
-            dataBytes.map { PartialCodeword(it.toInt() and 0xFF, 0, emptyList()) },
-        )
-        if (decodedText == null) return interpreted(extraction, version)
-        val firstMode = dataBytes.firstOrNull()?.toInt()?.ushr(4)?.and(0x0F)
-        val mode = firstMode?.let(::modeName) ?: localizedText("不明", "unknown")
-        return localizedText(
-            "モード: $mode / QR復号済み\n$decodedText",
-            "Mode: $mode / decoded QR payload\n$decodedText",
-        )
+        val modes = StrictQrPayloadValidator.encodingModes(dataBytes, version)
+        val segments = StrictQrPayloadValidator.byteSegments(dataBytes, version)
+        if (modes == null || segments == null) {
+            return localizedText("QRデータ構造を確認できません。", "The QR data structure could not be verified.")
+        }
+        return buildString {
+            append(localizedText("モード: ", "Mode: "))
+            append(modes.joinToString(" → ", transform = ::modeName))
+            if (segments.isNotEmpty()) append("\n\n").append(payloadByteSegments(segments))
+            if (decodedText != null) {
+                append(if (segments.isEmpty()) localizedText("\n内容\n", "\nContent\n")
+                    else localizedText("\n\n参考: 文字列変換（文字コードによっては正しく表示されません）\n",
+                        "\n\nReference: text conversion (may display incorrectly depending on the encoding)\n"))
+                append(decodedText)
+            }
+        }
     }
+
+    /** Shared payload-only presentation for the data dialog and repair-result preview. */
+    internal fun payloadByteSegments(segments: List<Pair<Int, ByteArray>>): String =
+        segments.joinToString("\n\n") { (index, bytes) ->
+            localizedText(
+                "セグメント $index / バイト数: ${bytes.size}\n実データ (HEX)\n",
+                "Segment $index / byte count: ${bytes.size}\nPayload bytes (HEX)\n",
+            ) + corrected(IntArray(bytes.size) { bytes[it].toInt() and 255 })
+        }
 
     private fun remasked(values: IntArray, extraction: CodewordExtraction, mask: Int): CodewordExtraction =
         extraction.copy(codewords = extraction.codewords.mapIndexed { index, original ->
@@ -126,13 +141,23 @@ object CodewordHex {
                 repeat(count / 2) { val v = read(11) ?: return@buildString; append(table.getOrElse(v / 45) { '?' }); append(table.getOrElse(v % 45) { '?' }) }
                 if (count % 2 == 1) read(6)?.let { append(table.getOrElse(it) { '?' }) }
             }
-            else -> ByteArray(count) { read(8)?.toByte() ?: 0 }.toString(Charsets.UTF_8)
+            else -> buildString {
+                append(localizedText("実データ (HEX)\n", "Payload bytes (HEX)\n"))
+                repeat(count) { index ->
+                    if (index > 0) append(if (index % 16 == 0) '\n' else ' ')
+                    // Advance by a complete byte even when a bit is unknown.
+                    val start = position
+                    val value = read(8)
+                    position = start + 8
+                    append(value?.let { "%02X".format(it) } ?: "??")
+                }
+            }
         }
         return localizedText("モード: ${modeName(mode)} / 長さ: $count\n$content", "Mode: ${modeName(mode)} / length: $count\n$content")
     }
 
     private fun modeName(mode: Int): String = when (mode) {
-        1 -> localizedText("数字", "numeric"); 2 -> localizedText("英数字", "alphanumeric"); 4 -> localizedText("バイト", "byte"); 8 -> localizedText("漢字", "Kanji"); 7 -> "ECI"; else -> "0x${mode.toString(16)}"
+        1 -> localizedText("数字", "numeric"); 2 -> localizedText("英数字", "alphanumeric"); 4 -> localizedText("バイト", "byte"); 8 -> localizedText("漢字", "Kanji"); 13 -> "Hanzi"; 7 -> "ECI"; else -> "0x${mode.toString(16)}"
     }
 
     private fun format(codewords: List<PartialCodeword>): String = codewords.chunked(16).mapIndexed { row, bytes ->

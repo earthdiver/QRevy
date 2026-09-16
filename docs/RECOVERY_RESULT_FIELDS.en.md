@@ -30,7 +30,9 @@ Within one geometry, identical version, ECC level, mask, and corrected codewords
 
 “Distinct contents” compares data-codeword sequences; equal displayed text can still count as different content. Result switching and PNG candidate selection display at most the top 256 results. This is a display limit, not a claim of exhaustive search.
 
-Without a validated payload, the app shows “Repair incomplete” or “Repair failed” and diagnostics. Unvalidated corrections do not overwrite the result matrix. The Data dialog initially shows Before with original partial codewords containing `?`. Switching to After does not expose an unvalidated corrected byte sequence.
+When decoded text can also be interpreted as a URL, email, SMS, contact, or another structured type, the display shows the complete original string in addition to parsed fields. It is not silently truncated or replaced by selected fields. Copying preserves that same complete string.
+
+Without a validated payload, the app shows “Repair incomplete” or “Repair failed” and diagnostics. Unvalidated corrections do not overwrite the result matrix. The Data dialog initially shows Before with original partial codewords containing `?`. Switching to After does not expose an unvalidated corrected byte sequence. Result PNG export is unavailable for unvalidated candidates and failed attempts. A diagnostic input image can instead be exported from detailed repair settings.
 
 When conventional RS and partial-bit constraints produce the same block values, those values remain one candidate while each route retains its targets, enumerated positions, search bits, and RS margin. Diagnostics list derivations per RS block with route 1 as representative. Main cell reasons and conventional margins describe that representative; other routes appear separately. Products of block-route counts are not added to QR-level derivation or result counts.
 
@@ -108,7 +110,7 @@ If the format-error limit excludes every permitted format, recovery reports a fo
 
 ## Structured Append and FNC1
 
-For Structured Append, the preview and success display include this symbol’s one-based position, total and parity. “Repair succeeded” applies to this symbol; it does not mean the whole message is assembled or parity-verified. Wi-Fi passwords remain masked by default in fragment previews. The FNC1 second-position application indicator is shown separately from the body as its raw eight-bit value in decimal.
+For Structured Append, the preview and success display include this symbol’s one-based position, total and parity. “Repair succeeded” applies to this symbol; it does not mean the whole message is assembled or parity-verified. Fragment text is displayed without masking or redaction, and copying preserves the complete recovered text. The FNC1 second-position application indicator is shown separately from the body as its raw eight-bit value in decimal.
 
 ## Cell confidence and candidate agreement
 

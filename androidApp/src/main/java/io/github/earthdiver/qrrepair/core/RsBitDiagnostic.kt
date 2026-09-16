@@ -10,12 +10,24 @@ data class RsBitDiagnostic(
     val fixedBits: Int,
     val independentCells: List<Coord>,
 ) {
-    fun description(): String = if (dimension == null) localizedText(
-        "RS部分bit制約: 既知データ・ECCとの完全一致解なし（入力bitまたは形式等の前提を確認してください）",
-        "RS partial-bit constraints: no exact known-data/ECC solution (check input bits and format assumptions)",
+    fun description(): String = listOfNotNull(inputAnalysisDescription(), commonBitsDescription()).joinToString("\n")
+
+    /** A null dimension means inconsistency; rank is not a whole-input rank in that case. */
+    fun inputAnalysisDescription(): String = if (dimension == null) localizedText(
+        "入力済みの白黒をすべて保つ、RSの条件に合う組合せはありません。",
+        "No combination satisfies the RS constraints while preserving all entered values.",
     ) else localizedText(
-        "RS部分bit制約: 未知${unknownBits}bit・独立制約${rank}bit・自由度${dimension}bit\n全解共通で確定: ${fixedBits}bit（指定形式と既知データ・ECCが正しいと仮定。構造制約適用前、ペイロード未検証）",
-        "RS partial-bit constraints: $unknownBits unknown bits; rank $rank; $dimension free bits\nFixed across all solutions: $fixedBits bits (assuming this format and known data/ECC are correct; before structure constraints and payload validation)",
+        "不明${unknownBits}bit − 独立な条件${rank}個 = 自由度${dimension}（${combinationsText()}通り）",
+        "$unknownBits unknown bits − $rank independent constraints = $dimension free bits (${combinationsText()} combinations)",
+    )
+
+    fun combinationsText(): String? = dimension?.let {
+        if (it in 0..16) (1L shl it).toString() else localizedText("2の${it}乗", "2^$it")
+    }
+
+    fun commonBitsDescription(): String? = if (dimension == null) null else localizedText(
+        "この形式で入力済みの白黒を保つ組合せのすべてで、同じ値になる不明bit: ${fixedBits}bit",
+        "Unknown bits with the same value in every combination preserving the entered values for this format: $fixedBits bits",
     )
 
     companion object {

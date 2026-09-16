@@ -12,13 +12,30 @@ internal object StrictQrPayloadValidator {
     /** True unless the available prefix already proves that no valid complete payload can follow. */
     fun canBePrefix(data: ByteArray, version: Int): Boolean = validate(data, version, allowIncomplete = true)
 
-    private fun validate(data: ByteArray, version: Int, allowIncomplete: Boolean): Boolean = try {
+    /** Payload modes in segment order; control prefixes (ECI/FNC1/etc.) are not payload modes. */
+    fun encodingModes(data: ByteArray, version: Int): List<Int>? {
+        val modes = mutableListOf<Int>()
+        return if (validate(data, version, allowIncomplete = false, modes = modes)) modes else null
+    }
+
+    /** Raw BYTE payloads, indexed by payload segment (control prefixes do not count). */
+    fun byteSegments(data: ByteArray, version: Int): List<Pair<Int, ByteArray>>? {
+        val segments = mutableListOf<Pair<Int, ByteArray>>()
+        return if (validate(data, version, allowIncomplete = false,
+                modes = mutableListOf(), byteSegments = segments)) segments else null
+    }
+
+    private fun validate(data: ByteArray, version: Int, allowIncomplete: Boolean,
+        modes: MutableList<Int>? = null, byteSegments: MutableList<Pair<Int, ByteArray>>? = null,
+    ): Boolean = try {
         val bits = Bits(data)
         var structuredAppendSeen = false
         var fnc1Seen = false
         var modeSeenAfterStructuredAppend = false
         while (bits.available >= 4) {
-            when (val mode = bits.read(4)) {
+            val mode = bits.read(4)
+            if (mode == 1 || mode == 2 || mode == 4 || mode == 8 || mode == 13) modes?.add(mode)
+            when (mode) {
                 0 -> return validateFiller(bits)
                 1 -> { modeSeenAfterStructuredAppend = true; validateNumeric(bits, bits.read(countBits(mode, version))) }
                 2 -> { modeSeenAfterStructuredAppend = true; validateAlphanumeric(bits, bits.read(countBits(mode, version))) }
@@ -32,7 +49,15 @@ internal object StrictQrPayloadValidator {
                     if (totalMinusOne == 0 || index > totalMinusOne) return false
                     bits.skip(8) // Parity belongs to the complete set; one symbol cannot verify it.
                 }
-                4 -> { modeSeenAfterStructuredAppend = true; bits.skip(bits.read(countBits(mode, version)) * 8) } // Byte
+                4 -> {
+                    modeSeenAfterStructuredAppend = true
+                    val count = bits.read(countBits(mode, version))
+                    if (byteSegments == null) bits.skip(count * 8)
+                    else {
+                        if (count > bits.available / 8) throw IncompletePayload
+                        byteSegments.add(modes!!.size to ByteArray(count) { bits.read(8).toByte() })
+                    }
+                } // Byte
                 5 -> { // FNC1 first position
                     if (fnc1Seen || modeSeenAfterStructuredAppend) return false
                     fnc1Seen = true

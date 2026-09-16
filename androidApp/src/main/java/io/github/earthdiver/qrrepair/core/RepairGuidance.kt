@@ -11,6 +11,8 @@ data class CellConfidence(
     val detailJa: String,
     val labelEn: String = labelJa,
     val detailEn: String = detailJa,
+    val agreeingCandidates: Int? = null,
+    val comparedCandidates: Int? = null,
 )
 
 data class CellRecommendation(
@@ -28,11 +30,11 @@ data class CellRecommendation(
     fun explanationJa(): String = buildString {
         append(localizedText("次の推奨セル: (${coord.x},${coord.y})", "Next recommended cell: (${coord.x},${coord.y})"))
         exactSpaceDimension?.let { d ->
-            append(localizedText("\nRS自由度: ${d}bit → ${d - 1}bit（0/1のどちらでも）", "\nRS free bits: $d → ${d - 1} (for either 0 or 1)"))
+            append(localizedText("\n残る選択: ${d}bit → ${d - 1}bit（0/1のどちらでも）", "\nRS free bits: $d → ${d - 1} (for either 0 or 1)"))
         }
         if (totalCandidates > 1 && zeroCandidates > 0 && oneCandidates > 0) {
-            append(localizedText("\n候補分岐: 0→${zeroCandidates}件・1→${oneCandidates}件", "\nCandidate split: 0→$zeroCandidates; 1→$oneCandidates"))
-            append(localizedText("\n最悪ケースでも ${totalCandidates}→${worstCaseRemaining}件、情報利得=${"%.2f".format(informationGainBits)} bit", "\nWorst case: $totalCandidates→$worstCaseRemaining, information gain=${"%.2f".format(informationGainBits)} bit"))
+            append(localizedText("\nこのセルが白なら${zeroCandidates}件、黒なら${oneCandidates}件に絞れます", "\nCandidate split: 0→$zeroCandidates; 1→$oneCandidates"))
+            append(localizedText("\n見つかった${totalCandidates}件の候補を、どちらの場合も${worstCaseRemaining}件以下に絞れます", "\nWorst case: $totalCandidates→$worstCaseRemaining, information gain=${"%.2f".format(informationGainBits)} bit"))
         }
         append(localizedText("\n理由: $reasonJa", "\nReason: $reasonEn"))
     }
@@ -66,6 +68,8 @@ object RepairGuidance {
         val out = HashMap<Coord, CellConfidence>(after.dimension * after.dimension)
         val comparison = candidateMatrices
         for (y in 0 until after.dimension) for (x in 0 until after.dimension) {
+            // Format bits express a selected ECC/mask, not independent confidence in that choice.
+            if (RepairTraceBuilder.isFormat(x, y, after.dimension)) continue
             val coord = Coord(x, y)
             val src = source[x, y]
             val cell = after[x, y]
@@ -93,6 +97,8 @@ object RepairGuidance {
                 ModuleSource.IMAGE -> "Relative image-sampling confidence=${"%.2f".format(src.confidence)} (not a probability)"
             }
 
+            var agreeing: Int? = null
+            var compared: Int? = null
             if (comparison.size >= 2 && cell.value != ModuleValue.ERASED) {
                 var same = 0
                 var known = 0
@@ -103,6 +109,8 @@ object RepairGuidance {
                     if (v == cell.value) same++
                 }
                 if (known >= 2) {
+                    agreeing = same
+                    compared = known
                     val consensus = same.toFloat() / known
                     if (cell.source != ModuleSource.STRUCTURAL && cell.source != ModuleSource.USER) {
                         base = (base * 0.45f + consensus * 0.55f).coerceIn(0f, 1f)
@@ -128,7 +136,7 @@ object RepairGuidance {
                 base >= 0.65f -> "Medium"
                 else -> "Low"
             }
-            out[coord] = CellConfidence(base, label, detail, labelEn, detailEn)
+            out[coord] = CellConfidence(base, label, detail, labelEn, detailEn, agreeing, compared)
         }
         return out
     }
@@ -176,8 +184,8 @@ object RepairGuidance {
             if (!split && observedCell.value != ModuleValue.ERASED && conf >= 0.45f) continue
             val reason = when {
                 split && observedCell.value == ModuleValue.ERASED -> "復元候補が0/1に分岐しており、かつ元画像ではerasureです。ここを判定すると候補を最も減らせます。"
-                split -> "復元候補がこのセルで0/1に分岐しています。候補集合の情報利得が大きいセルです。"
-                observedCell.value == ModuleValue.ERASED -> "候補間の分岐は小さいものの、未確定のerasureなので手動判定の価値があります。"
+                split -> "復元候補がこのセルで0/1に分岐しています。このセルの白黒を確認すると、見つかった候補を絞り込めます。"
+                observedCell.value == ModuleValue.ERASED -> "候補間の分岐は小さいものの、白黒が不明なセルなので、画像を確認する価値があります。"
                 else -> "画像サンプリングの相対信頼度が低く、誤認識の可能性を確認する価値があります。"
             }
             val reasonEn = when {
