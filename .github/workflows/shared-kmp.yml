@@ -39,10 +39,10 @@ jobs:
       - name: Build iOS XCFramework
         run: sh ./gradlew --no-daemon --stacktrace :shared:assembleQRRepairCoreReleaseXCFramework
       - name: Assert release XCFramework exists
-        run: test -d shared/build/XCFrameworks/release/QRRepairCore.xcframework
+        run: test -d build/shared/XCFrameworks/release/QRRepairCore.xcframework
       - name: Upload QRRepairCore XCFramework
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: qr-repair-core-xcframework-${{ github.run_number }}
           if-no-files-found: error
-          path: shared/build/XCFrameworks/release/QRRepairCore.xcframework/**
+          path: build/shared/XCFrameworks/release/QRRepairCore.xcframework/**
