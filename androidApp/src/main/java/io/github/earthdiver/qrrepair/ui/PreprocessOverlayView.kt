@@ -211,7 +211,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
         val bottom = PointD(corners[3].x + (corners[2].x - corners[3].x) * u, corners[3].y + (corners[2].y - corners[3].y) * u)
         return PointD(top.x + (bottom.x - top.x) * v, top.y + (bottom.y - top.y) * v)
     }
-    /** Only explicit user confirmations are hard constraints for recovery. */
+    /** Assigned Finders are constraints for recovery; each can be released in the Finder UI. */
     fun finderPoints(): Map<FinderRole, PointD> = confirmedFinderPoints(finders, confirmedFinderRoles)
     fun confirmedFinderPolarity(): io.github.earthdiver.qrrepair.core.FinderPolarity {
         val polarities = confirmedFinderRoles.mapNotNull { role -> confirmedFinderEvidence[role]?.polarity }

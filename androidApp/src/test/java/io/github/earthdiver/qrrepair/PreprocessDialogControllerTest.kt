@@ -45,14 +45,14 @@ class PreprocessDialogControllerTest {
             .first { it.text.toString() == label }.performClick()
     }
 
-    private fun withDialog(block: (AlertDialog, Host, BitmapUtils.Prepared, BitmapUtils.Prepared) -> Unit) {
+    private fun withDialog(settings: PreprocessSettings? = null, block: (AlertDialog, Host, BitmapUtils.Prepared, BitmapUtils.Prepared) -> Unit) {
         val activity = Robolectric.buildActivity(Activity::class.java).setup()
         val source = BitmapUtils.prepare(Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888).apply {
             eraseColor(Color.WHITE)
         })
         val working = BitmapUtils.rotate(source.bitmap, 15f)
         val host = Host()
-        PreprocessDialogController(activity.get(), PreprocessSettings(version = 1, rotationDegrees = 15f,
+        PreprocessDialogController(activity.get(), settings ?: PreprocessSettings(version = 1, rotationDegrees = 15f,
             manualQuad = ImageQuad(PointD(20.0, 20.0), PointD(220.0, 20.0),
                 PointD(220.0, 220.0), PointD(20.0, 220.0))),
             source, working, null, Executor { it.run() }, AtomicInteger(), RecoveryEngine(), host).show()
@@ -107,4 +107,46 @@ class PreprocessDialogControllerTest {
         assertFalse(working.bitmap.isRecycled)
         assertTrue(host.saves.isEmpty())
     }
+    @Test fun assignedFindersCanBeReleasedAndStayReleasedAfterSaving() = checkFinderRelease(FinderRole.entries.toSet())
+
+    @Test fun twoAssignedFindersCanBeReleasedAndStayReleasedAfterSaving() =
+        checkFinderRelease(setOf(FinderRole.TOP_RIGHT, FinderRole.BOTTOM_LEFT))
+
+    private fun checkFinderRelease(roles: Set<FinderRole>) {
+        val initial = PreprocessSettings(version = 1, rotationDegrees = 15f,
+            manualQuad = ImageQuad(PointD(20.0, 20.0), PointD(220.0, 20.0), PointD(220.0, 220.0), PointD(20.0, 220.0)),
+            logicalGridAssigned = true,
+            manualFinders = mapOf(FinderRole.TOP_LEFT to PointD(50.0, 50.0),
+                FinderRole.TOP_RIGHT to PointD(190.0, 50.0), FinderRole.BOTTOM_LEFT to PointD(50.0, 190.0)).filterKeys { it in roles })
+        var saved: PreprocessSettings? = null
+        withDialog(initial) { dialog, host, _, _ ->
+            val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
+            assertEquals(initial.manualFinders, overlay.finderPoints())
+            assertTrue(overlay.isLogicalGridAssigned())
+            val coord = Coord(10, 10)
+            overlay.onCellBrushApplied!!.invoke(setOf(coord), ModuleValue.ERASED)
+            overlay.onCellBrushApplied!!.invoke(setOf(coord), ModuleValue.ONE)
+            for (role in roles) {
+                assertTrue(overlay.beginFinderRemoval())
+                assertTrue(overlay.removeConfirmedFinder(role))
+                overlay.onFinderRemoved!!.invoke(role)
+            }
+            assertFalse(overlay.isLogicalGridAssigned())
+            click(dialog, "保存")
+            val settingsAfterRemoval = host.saves.single().settings
+            saved = settingsAfterRemoval
+            assertTrue(settingsAfterRemoval.manualFinders.isEmpty())
+            assertFalse(settingsAfterRemoval.logicalGridAssigned)
+            assertEquals(ModuleValue.ONE, settingsAfterRemoval.preRecoveryEdits[coord])
+        }
+        withDialog(saved) { dialog, _, _, _ ->
+            val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
+            assertTrue(overlay.finderPoints().isEmpty())
+            assertFalse(overlay.isLogicalGridAssigned())
+            overlay.setFinderPoint(FinderRole.BOTTOM_LEFT, overlay.imageQuad().topLeft)
+            assertTrue(overlay.isLogicalGridAssigned())
+            assertEquals(setOf(FinderRole.BOTTOM_LEFT), overlay.finderPoints().keys)
+        }
+    }
+
 }
