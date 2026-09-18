@@ -576,7 +576,8 @@ class MainActivity : Activity() {
 
     private fun openWorkspace() {
         if (prepared != null || recoveryState.workingMatrix != null || immediateResultShown) {
-            showWorkspace()
+            val hasResult = immediateResultShown || recoveryState.selectedRecovery != null || recoveryState.failure != null
+            if (modernStyle && prepared != null && !hasResult) showPreprocessDialog() else showWorkspace()
             return
         }
         AlertDialog.Builder(this)
@@ -639,7 +640,7 @@ class MainActivity : Activity() {
 
     private fun resumeLatestWork() {
         if (prepared != null || recoveryState.workingMatrix != null) {
-            showWorkspace()
+            openWorkspace()
             return
         }
         resumeButton.isEnabled = false
@@ -2094,6 +2095,7 @@ class MainActivity : Activity() {
                     lockCorners = true,
                     lockVersion = true,
                     manualQuad = quad,
+                    manualFinders = BitmapUtils.textMatrixFinders(parsed.matrix, moduleSize, quietModules),
                     logicalGridAssigned = true,
                     preRecoveryEdits = priority.associateWith { ModuleValue.ERASED },
                     preRecoveryPrioritySearch = priority,

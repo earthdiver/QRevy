@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
 import io.github.earthdiver.qrrepair.core.Homography
+import io.github.earthdiver.qrrepair.core.FinderRole
 import io.github.earthdiver.qrrepair.core.PointD
 import io.github.earthdiver.qrrepair.core.LumaImage
 import io.github.earthdiver.qrrepair.core.ModuleValue
@@ -17,6 +18,29 @@ object BitmapUtils {
     private const val MAX_TRANSFORM_DIMENSION = 2_600
     data class Prepared(val bitmap: Bitmap, val luma: LumaImage)
     data class Rectified(val prepared: Prepared, val qrQuad: io.github.earthdiver.qrrepair.core.ImageQuad)
+
+    /** Assign only fully observed Finder patterns at the imported matrix's logical corners. */
+    fun textMatrixFinders(matrix: QrMatrix, moduleSize: Int = 8, quietModules: Int = 4):
+        Map<FinderRole, PointD> {
+        require(moduleSize >= 2 && quietModules >= 0)
+        val far = matrix.dimension - 7
+        val origins = mapOf(
+            FinderRole.TOP_LEFT to (0 to 0),
+            FinderRole.TOP_RIGHT to (far to 0),
+            FinderRole.BOTTOM_LEFT to (0 to far),
+        )
+        return origins.filterValues { (left, top) ->
+            (0..6).all { y -> (0..6).all { x ->
+                val black = x == 0 || x == 6 || y == 0 || y == 6 || (x in 2..4 && y in 2..4)
+                matrix[left + x, top + y].value == if (black) ModuleValue.ONE else ModuleValue.ZERO
+            } }
+        }.mapValues { (_, origin) ->
+            PointD(
+                (quietModules + origin.first + 3) * moduleSize + (moduleSize - 1) / 2.0,
+                (quietModules + origin.second + 3) * moduleSize + (moduleSize - 1) / 2.0,
+            )
+        }
+    }
 
     /** Creates a lossless sampling source for a matrix imported without an original image. */
     fun renderTextMatrixSource(matrix: QrMatrix, moduleSize: Int = 8, quietModules: Int = 4): Bitmap {
