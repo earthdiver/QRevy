@@ -180,7 +180,7 @@ class PreprocessDialogLayoutTest {
         )
         decor.layout(0, 0, 360, 640)
 
-        listOf("Details", "Nudge:", "Rectify selection", "QR Version:", "Manually assign Finder", "Save & repair").forEach { label ->
+        listOf("Details", "Nudge:", "Rectify selection", "QR Version:", "Assign Finder", "Save & repair").forEach { label ->
             val control = findText(decor, label)
             assertNotNull("English pre-repair control is missing: $label", control)
             assertTrue("English control has no measurable size: $label", control!!.measuredWidth > 0 && control.measuredHeight > 0)

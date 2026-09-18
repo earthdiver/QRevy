@@ -24,7 +24,9 @@ For compactness, the UI uses “Finder” for a finder pattern, “cell” for a
 - Image-file import and camera capture
 - Strict QR matrix text import using only `0 / 1 / ? / *`
 - Rotation, crop, corner, tone, and QR version adjustment
-- Manual Finder-role assignment with local position refinement
+- Initial corner and version estimation using ZXing-C++, grid periodicity, and two Finders
+- Automatic Finder positions and roles when image agreement is sufficient, with manual clearing, assignment, and local refinement
+- Automatic top-right/bottom-left assignment for two diagonal Finders using both timing axes (version 2 and later; no alignment pattern required); ambiguous roles remain unassigned, and assignments can be cleared manually
 - Cell editing with `0 / 1 / ? / *`, Undo, and Redo
 - Recovery using QR structure and error correction
 - Binary, hexadecimal, and decoded-content inspection
@@ -41,7 +43,7 @@ The supported symbol family is QR Code Model 2, versions 1 through 40. Model 1, 
 1. Load an image, capture one with the camera, or import a QR matrix text file containing `0 / 1 / ? / *`.
 2. Rotate the image and crop the QR region when necessary.
 3. Review the estimated corners, version, and two-/three-class tone thresholds; adjust them if needed. Colored-unknown detection can be enabled in basic settings when needed and starts off.
-4. If the QR orientation is wrong, manually assign its top-left, top-right, and bottom-left Finder roles.
+4. Review Finder positions and roles, which are assigned automatically when image agreement is sufficient. To correct an assignment, press **Clear**, tap the green Finder, and assign the intended role.
 5. Adjust cells and search options in advanced settings when needed.
 6. Start recovery and inspect the decoded content and per-cell explanations.
 
@@ -70,6 +72,8 @@ The permanent application ID is `io.github.earthdiver.qrrepair`. Release signing
 
 - [Recovery strategy](docs/RECOVERY_STRATEGY.en.md)
 - [User guide](docs/USER_GUIDE.en.md)
+- [Detector library comparison (Japanese)](docs/DETECTOR_COMPARISON.ja.md)
+- [Initial grid estimation and automatic Finder assignment (Japanese)](docs/ZXING_CPP_INTEGRATION.ja.md)
 - [Synthetic geometry-search comparison](docs/GEOMETRY_SEARCH_STUDY.en.md)
 - [Understanding recovery result fields](docs/RECOVERY_RESULT_FIELDS.en.md)
 - [Understanding decode and repair reasons](docs/REPAIR_REASONS.en.md)

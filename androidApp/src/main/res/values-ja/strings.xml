@@ -70,7 +70,7 @@
     <string name="top_right">右上</string>
     <string name="bottom_left">左下</string>
     <string name="finder_manual">Finderの位置と役割を指定</string>
-    <string name="fixed_geometry_summary">修復には表示中のQR格子位置・向きと、指定バージョンを使用します。</string>
+    <string name="fixed_geometry_summary">修復には表示中のQR格子位置・向きと、指定バージョンを使用します。緑のFinderは自動設定されたものも含め、「解除」を押してタップすると解除できます。役割を指定し直す場合は設定済みのFinderをすべて解除してください。</string>
     <string name="tap_finder_to_remove">解除するFinderをタップしてください。</string>
     <string name="no_confirmed_finder">確定したFinderはありません。</string>
     <string name="finder_placement_help">%1$s Finder付近をタップしてください。位置検出パターンを検出できた場合は中心を補正し、できない場合は指定点を使用します。</string>

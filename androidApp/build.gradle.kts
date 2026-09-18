@@ -10,8 +10,8 @@ android {
         applicationId = "io.github.earthdiver.qrrepair"
         minSdk = 26
         targetSdk = 37
-        versionCode = 43
-        versionName = "0.15.2"
+        versionCode = 44
+        versionName = "0.15.3"
     }
 
     compileOptions {
@@ -53,6 +53,7 @@ android {
 dependencies {
     implementation(project(":shared"))
     implementation("com.google.zxing:core:3.5.4")
+    implementation("io.github.zxing-cpp:android:3.1.1")
     implementation("androidx.activity:activity-ktx:1.13.0")
     implementation("androidx.core:core:1.19.0")
     implementation("androidx.exifinterface:exifinterface:1.4.2")

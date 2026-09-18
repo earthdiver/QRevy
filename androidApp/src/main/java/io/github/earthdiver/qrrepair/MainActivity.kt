@@ -2240,7 +2240,9 @@ class MainActivity : Activity() {
                 if (p.bitmap !== bitmap) bitmap.recycle()
                 val standardResult = decodeStandardQr(p.bitmap)
                 val initialEstimate = InitialThresholdEstimator.estimate(p.bitmap)
-                val initialGrid = io.github.earthdiver.qrrepair.core.GridPeriodicityEstimator.estimate(p.luma)
+                val initialGrid = io.github.earthdiver.qrrepair.core.InitialGridEstimator.estimate(
+                    p.luma, io.github.earthdiver.qrrepair.core.ZxingCppGridDetector.detect(p.bitmap),
+                )
                 if (token != workGeneration.get()) {
                     p.bitmap.recycle()
                     return@execute
@@ -2260,7 +2262,8 @@ class MainActivity : Activity() {
                         unknownColorClusters = initialEstimate?.unknownColorClusters.orEmpty(),
                         version = initialGrid?.version ?: 1,
                         lockCorners = true,
-                        logicalGridAssigned = initialGrid == null,
+                        logicalGridAssigned = initialGrid == null || initialGrid.autoAssignedFinders.isNotEmpty(),
+                        manualFinders = initialGrid?.autoAssignedFinders.orEmpty(),
                         manualQuad = initialGrid?.moduleCenterQuad,
                     )
                     sessionId = sessionStore.newId()
@@ -2277,7 +2280,16 @@ class MainActivity : Activity() {
                         RecoveryHistoryEntry(
                             kind = HistoryEventKind.IMPORT,
                             label = ui("画像を読み込み", "Imported image"),
-                            detail = "${p.bitmap.width}×${p.bitmap.height}px",
+                            detail = "${p.bitmap.width}×${p.bitmap.height}px" +
+                                (initialGrid?.let {
+                                    val method = when (it.source) {
+                                        io.github.earthdiver.qrrepair.core.InitialGridSource.ZXING_CPP -> "ZXing-C++"
+                                        io.github.earthdiver.qrrepair.core.InitialGridSource.PERIODICITY -> ui("周期推定", "periodicity")
+                                        io.github.earthdiver.qrrepair.core.InitialGridSource.TWO_FINDER -> ui("2つのFinderから推定", "two-Finder estimate")
+                                    }
+                                    ui("; 格子推定: $method / V${it.version}", "; Grid estimate: $method / V${it.version}") +
+                                        if (it.autoAssignedFinders.isNotEmpty()) ui("; Finder位置・役割を自動設定", "; Finder positions and roles assigned automatically") else ""
+                                } ?: ""),
                             snapshot = RecoverySnapshot(null, null, null, -1, preprocessSettings),
                         ),
                     )

@@ -1,0 +1,35 @@
+[
+  {
+    "step": "existing_standard_plus_periodicity",
+    "total": 180,
+    "added": 180
+  },
+  {
+    "step": "add_zxing_java",
+    "total": 180,
+    "added": 0,
+    "cascade_correct": 180,
+    "cascade_wrong": 0
+  },
+  {
+    "step": "add_quirc_boofcv",
+    "total": 203,
+    "added": 23,
+    "cascade_correct": 203,
+    "cascade_wrong": 0
+  },
+  {
+    "step": "add_zxing_cpp",
+    "total": 206,
+    "added": 3,
+    "cascade_correct": 206,
+    "cascade_wrong": 0
+  },
+  {
+    "step": "add_opencv_both",
+    "total": 206,
+    "added": 0,
+    "cascade_correct": 206,
+    "cascade_wrong": 0
+  }
+]

@@ -70,8 +70,8 @@
     <string name="top_left">Top left</string>
     <string name="top_right">Top right</string>
     <string name="bottom_left">Bottom left</string>
-    <string name="finder_manual">Manually assign Finder centers and logical roles</string>
-    <string name="fixed_geometry_summary">Recovery uses the displayed QR grid position and orientation with the selected Version.</string>
+    <string name="finder_manual">Assign Finder centers and logical roles</string>
+    <string name="fixed_geometry_summary">Recovery uses the displayed QR grid position and orientation with the selected Version. To release a green Finder, including an automatically assigned one, press Clear and tap it. Release all assigned Finders to reassign the logical roles.</string>
     <string name="tap_finder_to_remove">Tap a green Finder to remove it.</string>
     <string name="no_confirmed_finder">No Finder is confirmed.</string>
     <string name="finder_placement_help">Tap near the logical %1$s Finder center. Its center is refined when a nearby Finder can be detected; otherwise the tapped point is used.</string>

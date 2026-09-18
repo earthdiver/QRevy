@@ -26,9 +26,15 @@ Prefer an image containing the complete QR and, when possible, its surrounding q
 
 Automatic estimates are starting values, not proof of the correct symbol. Align corners with the centers of the outer modules and confirm that the selected version agrees with the number of cells along one side.
 
-## 3. Assign Finder roles
+For a newly imported image, initial corners and version are tried in this order: ZXing-C++, grid periodicity, then a two-Finder fallback. The last route covers version 2 and later symbols. Two diagonal Finders can be assigned as top-right and bottom-left when both timing axes provide sufficient evidence, even without an alignment pattern. Otherwise, a verified lower-right alignment pattern may still support provisional corners without role assignment. Strong perspective distortion is not supported. If every route fails, adjust the default geometry manually.
 
-When orientation is wrong, manually assign top-left, top-right, and bottom-left logical roles to visible Finder patterns. The app can refine center and polarity near a selected point, but it does not determine roles through a global image search.
+## 3. Review and assign Finder roles
+
+On new image import, a grid derived from ZXing-C++ can automatically set Finder centers and their top-left, top-right, and bottom-left logical roles when strict checks of all three Finders, white separators, timing patterns, and position stability pass. The import history records this assignment. These checks are heuristics, not a guarantee or a statistical probability.
+
+To remove an incorrect assignment, press **Clear** in the Finder section and tap the green Finder. Clear all assigned Finders to make logical orientation unassigned again. Corners and existing cell edits are retained. Saving and reopening the work does not reapply a cleared assignment.
+
+When roles were not assigned automatically, or orientation needs changing, manually assign logical roles to visible Finders. The app refines center and polarity near the selected point. A hidden Finder need not be assigned as though it were observed.
 
 With exactly one assigned role and **Automatically fine-tune sampling position** enabled, small rotations around that logical corner are also evaluated. An incorrect role can prevent the correct recovery, so compare results without an assignment when its evidence is weak.
 

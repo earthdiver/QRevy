@@ -1,0 +1,33 @@
+{
+  "positive_cases": 240,
+  "negative_cases": 24,
+  "counts": {
+    "ZXING_CPP": 164,
+    "correct_grid": 224,
+    "PERIODICITY": 63,
+    "negative_proposals": 3
+  },
+  "correct_by_condition": {
+    "clean": 12,
+    "rotate17": 12,
+    "rotate43": 12,
+    "perspective_mild": 12,
+    "perspective_strong": 8,
+    "blur_mild": 12,
+    "blur_strong": 12,
+    "low_contrast": 12,
+    "small_modules": 12,
+    "no_quiet_zone": 12,
+    "clutter": 12,
+    "one_finder_missing": 12,
+    "two_finders_missing": 12,
+    "three_finders_missing": 12,
+    "finder_ring_damage": 12,
+    "gray_data_patch": 12,
+    "white_data_patch": 12,
+    "scratch": 12,
+    "shadow": 6,
+    "combined": 6
+  },
+  "scope": "Recorded Python ZXing-C++ 3.1.1 boundaries; production common selection; no Android JNI execution or payload recovery"
+}

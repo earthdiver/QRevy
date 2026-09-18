@@ -58,8 +58,8 @@ Even if the last line in the example is RS-consistent, it is not accepted on tha
 | Stage | Main input | Operation | Output for the next stage | Not established by this stage alone |
 | --- | --- | --- | --- | --- |
 | 1. Normalize | Image, EXIF, crop, rotation | Normalize orientation and luminance; prepare polarity alternatives when needed | Working luminance image | QR orientation or content |
-| 2. Initial geometry | Grid period, extent, user input | Propose editable version and corner starting values | Editable geometry | Correct version or corners |
-| 3. Roles and geometry hypotheses | Corners, version, manual Finder roles | Build baseline, neighborhood, and alignment-refined hypotheses | Finite sampling geometries | Best geometry |
+| 2. Initial geometry | ZXing-C++ boundary, grid period, two Finders, user input | Propose editable version and corner starting values | Editable geometry | Correct version or corners |
+| 3. Roles and geometry hypotheses | Corners, version, assigned Finder roles | Build baseline, neighborhood, and alignment-refined hypotheses | Finite sampling geometries | Best geometry |
 | 4. Sample modules | Luminance, thresholds, color clusters | Classify every cell as `0 / 1 / ?` | Tri-state matrix with provenance | Values of unknown cells |
 | 5. Format and structure | Version, format cells, function modules | Apply ECC-level/mask candidates and fixed QR structure | Codeword candidates per format | Correct payload |
 | 6. Constraints and RS | Partial codewords, known bits, structure hypotheses | Apply erasures/errors, bounded searches, and binary constraints | RS-consistent candidates | Agreement with the original data |
@@ -74,25 +74,35 @@ The working image is converted to luminance. When polarity is unknown, normal an
 
 ### 2.2 Initial version and corner estimation
 
-On image import, the module-grid period is analyzed before finder detection. Luminance gradients identify two orthogonal edge families, and their projected coordinates are searched for a phase and module pitch that align with an evenly spaced boundary grid. When a half-period or another harmonic has similar agreement, the fundamental period is preferred so that the harmonic is not mistaken for a different version.
+On new image import, the Android adapter obtains Model 2 boundaries from ZXing-C++ 3.1.1. Shared code tests versions 1–40 and four rotations against a single boundary. Finder and timing mismatch must each be at most 20%, with a runner-up gap of at least 0.03 in the score weighted 0.55/0.45. Accepted boundaries are converted to outer module centers. Decoded native text is not used as a recovery result.
+
+Multiple boundaries are validated individually. They are treated as duplicates only when every pair agrees in version and logical orientation, with each corresponding corner within 0.25 module. A representative that passes the automatic-role gate is preferred; coordinates are not averaged and repetition does not increase confidence. An unverified boundary or a distinct QR candidate prevents merging.
+
+If the boundary is rejected, multiple boundaries cannot be merged, or JNI loading or execution fails, the existing grid-period estimator is tried. Luminance gradients identify two orthogonal edge families, and their projected coordinates are searched for a phase and module pitch that align with an evenly spaced boundary grid. When a half-period or another harmonic has similar agreement, the fundamental period is preferred so that the harmonic is not mistaken for a different version.
 
 An initial version is set from `dimension = 17 + 4 × version` only when the pitches on both axes agree, the extent supported by definite-black pixels is approximately square, and it sufficiently matches one of the permitted dimensions `21, 25, 29, …, 177`. A phase-aligned window spanning that dimension also supplies initial corners at the centers of the outer modules. Large gray damaged regions and isolated dark background pixels are excluded from definite-black boundary evidence so that they do not enlarge the symbol by several modules.
 
-This estimate is an editable starting value, not proof of recovery. If its checks fail, the UI falls back to version 1 and default corners. Recovery treats the displayed corners and selected version as confirmed inputs.
+If periodicity also fails, a fallback uses individual Finder detection and two-Finder geometry hypotheses. It checks both Finders’ pitch, axes, and patterns. For a diagonal pair, both timing axes can establish the observed top-right and bottom-left roles without an alignment pattern. Each axis requires at least eight known cells covering at least 60% of its length, at least three black and three white observations, and at most 5% mismatches. These checks must also pass at offsets of 0.2 module in each axial direction. Unknown cells do not count as matches. A score gap of at least 0.12 against competing hypotheses and white-separator checks are required.
 
-Physical corner positions and the choice of logical coordinate `(0, 0)` are separate. If orientation is wrong, the user manually assigns top-left, top-right, and bottom-left Finder roles. The app neither searches globally for Finder candidates nor assigns roles automatically.
+If timing cannot establish roles, a verified lower-right alignment pattern may still support provisional corners without role assignment. The fallback covers version 2 and later symbols approximately described by a similarity transform. Version 1 has only five timing cells per axis, below the evidence requirement. Multiple native boundaries disable the fallback. A hidden Finder is never treated as observed.
+
+These estimates are editable starting values, not proof of recovery. If every estimator fails, the UI falls back to version 1 and default corners. Recovery treats the displayed corners and selected version as confirmed inputs.
+
+Physical corner positions and the choice of logical coordinate `(0, 0)` are separate. A grid derived from ZXing-C++ can automatically assign Finder centers and roles through the following gate: at most 2/49 mismatches per Finder, 1/15 per white separator, 5% timing mismatch, a score gap of at least 0.08 including rejected alternatives, and at least two pixels per module along every edge. Samples offset by 0.25 module in each axial direction must also have at most 2/49 mismatches per Finder. Weaker native grids and periodicity estimates do not assign roles automatically. Two-Finder estimates use the separate conditions above.
+
+Automatic assignment runs only on new image import and is recorded in history. Saved settings are not re-estimated. Press **Clear** and tap a green Finder to remove its assignment; clearing all roles also unassigns logical orientation. Corners and cell edits are retained, and cell provenance is not changed to `USER`. The thresholds are heuristics, not probabilities. See the [implementation and validation record (Japanese)](ZXING_CPP_INTEGRATION.ja.md) for details.
 
 ### 2.3 Manual Finder-role assignment
 
-Finders are not searched automatically. The user chooses a top-left, top-right, or bottom-left role and taps its approximate center. Only that neighborhood is checked for Finder image features; when evidence is sufficient, the center and polarity are refined. If no Finder is detected, the tapped point remains in use. Once a Finder role has established the logical grid, however, a subsequent Finder assignment is rejected when it is far from the expected position. This local refinement does not decide Finder roles automatically.
+Roles can also be assigned manually, whether or not automatic assignment was available. The user chooses a top-left, top-right, or bottom-left role and taps its approximate center. Only that neighborhood is checked for Finder image features; when evidence is sufficient, the center and polarity are refined. If no Finder is detected, the tapped point remains in use. Once a Finder role has established the logical grid, however, a subsequent Finder assignment is rejected when it is far from the expected position. This local refinement does not decide Finder roles automatically.
 
 Automatic Model 1 classification is not implemented yet. Input must therefore be limited to Model 2 symbols.
 
-The following table distinguishes the number of Finder roles assigned by the user. It is not a count of Finder-like shapes visible in the image; it counts explicit top-left, top-right, and bottom-left logical-role assignments.
+The following table counts currently assigned Finder roles during recovery, including automatic and manual assignments that have not been cleared. It does not count Finder-like shapes visible in the image.
 
 | Assigned roles | Logical orientation | Base hypotheses with neighborhood search | Important qualification |
 | --- | --- | --- | --- |
-| 0 | Use the displayed corners and default logical orientation | At most 19 | No global Finder search or automatic role assignment |
+| 0 | Use the displayed corners and default logical orientation | At most 19 | No global Finder search or automatic role assignment during recovery |
 | 1 | Treat the assigned logical corner as a pivot | At most 21 | Add clockwise and counterclockwise rotations to the ordinary 19 |
 | 2 | Fix orientation from the two roles and corners | At most 19 | Do not add the two rotation hypotheses |
 | 3 | Use the fully explicit role assignment | At most 19 | Incorrect roles can prevent the correct recovery |
@@ -103,7 +113,7 @@ For version 2 and later, at most one alignment-refined variant may be added for 
 
 Recovery fixes the logically assigned corners and selected version. It first creates the selected geometry as one base hypothesis. Enabling “Automatically fine-tune sampling position” in advanced settings expands the base set to at most 19 hypotheses without changing logical orientation or version: one baseline, four axial translations, four diagonal translations, two overall-scale variants, and eight variants that move one corner inward or outward. Only the 0.6-module width is used. Diagonal components are `0.6 / √2`, and scale factors are chosen so the mean outer displacement of the four corners is 0.6 module; axial, diagonal, and scale comparisons therefore use the same displacement magnitude.
 
-If exactly one Finder role has been assigned manually, two more base hypotheses rotate clockwise and counterclockwise around its logical corner, for 21 base hypotheses in total. The angle is chosen so the farthest outer corner moves by 0.6 module. No rotation hypothesis is added with zero or at least two assigned Finder roles. These neighborhood transformations are not combined with one another, and logical orientation and version remain unchanged.
+If exactly one Finder role is assigned, two more base hypotheses rotate clockwise and counterclockwise around its logical corner, for 21 base hypotheses in total. The angle is chosen so the farthest outer corner moves by 0.6 module. No rotation hypothesis is added with zero or at least two assigned Finder roles. These neighborhood transformations are not combined with one another, and logical orientation and version remain unchanged.
 
 For each base hypothesis, when an interior alignment pattern available in version 2 or later has sufficient image evidence, the engine adds one alignment-refined geometry. The observed alignment pattern must differ from its predicted position by 0.1 to 1.25 modules; refinement moves only the nearest logical corner to fit that observation. A refinement is rejected if it materially worsens the independent timing pattern score. It never replaces the user-selected geometry: both the base and refined hypotheses are evaluated. If alignment refinement succeeds for every base hypothesis, the resulting maxima are two hypotheses normally, 38 with neighborhood search, and 42 with neighborhood search plus exactly one assigned Finder role. The engine-wide bound is 72 geometry hypotheses.
 

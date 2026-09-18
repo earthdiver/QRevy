@@ -1,0 +1,39 @@
+{
+  "source_commit": "3bc7491661bde38491bda801830c4662340cad7d",
+  "os": "Linux",
+  "machine": "x86_64",
+  "cpu": "Intel(R) Core(TM) Ultra 7 258V",
+  "python": "3.12.13",
+  "versions": {
+    "numpy": "2.2.6",
+    "opencv-python-headless": "4.12.0.88",
+    "Pillow": "11.3.0",
+    "qrcode": "8.2",
+    "zxing-cpp": "3.1.1"
+  },
+  "quirc_commit": "927d680904dc95fdff4cd9d022eb374b438ff8f2",
+  "quirc_library_bytes": 38464,
+  "manifest_sha256": "40493658d5ff44ff8c7930e1f721032997a63ec273e13d6bfe09443695c29c59",
+  "max_rss_kib": {
+    "baseline": 482308,
+    "zxing_java": 338128,
+    "quirc": 45776,
+    "boofcv": 343272,
+    "zxing_cpp": 45764,
+    "opencv": 48296,
+    "opencv_aruco": 54308
+  },
+  "harness_sha256": {
+    "build.gradle.kts": "61beb84b6b594378b31bf254e7edf1d25d0f99afa6a4f3a6c402c2601535d41d",
+    "corpus.py": "fa73bdc44084e3111dc7e5d13a4eef4977153f76729589f70e031226608af6cd",
+    "evaluate.py": "f994a762920b2a8564ae76ffb2b9492f20dd17938ae1eaff94992399de0d509e",
+    "native.py": "c1dedbece7c86d42dfcbe621f1141e9d8b4d6ecb51a9ab4a5ad927aa1ff52643",
+    "run.py": "00eb85037e8d9f6a24627c5765c7ea3ce7fb4b9aae2259ba77c47bf3d7e4d6c6",
+    "settings.gradle.kts": "e1f7de8caa7192a0c2be6a56ec669b5db5716cb6c6ff3a2145f52a4bee5eda32",
+    "src/main/kotlin/BitmapAdapter.kt": "cfb9112ec9eba77688412ed3395b9f1103a25864a6f4699d8b7d4f48f607fd11",
+    "src/main/kotlin/LanguageStub.kt": "0cf7d4d63126bbe40ad715573860605c5c2cad0e1b95bba4370a500ed82b2e8f",
+    "src/main/kotlin/Study.kt": "80f6d9cc956eaa5c6ac7212c73a01e78ab0ceab36e58057b210e99633dfc2ca8",
+    "test_evaluate.py": "1df2d1279752f45d4fdca51d86665878ed64c4411201323b0702e35dce76a910"
+  },
+  "jvm_jars_bytes": 17587293
+}

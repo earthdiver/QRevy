@@ -59,6 +59,7 @@ data class PreprocessSettings(
     /** Source-image quadrilateral rectified before all sampling; null leaves the rotated image intact. */
     val perspectiveCorrectionQuad: ImageQuad? = null,
     val manualQuad: ImageQuad? = null,
+    /** Assigned centers, set manually or by verified initialization; removable in the Finder UI. */
     val manualFinders: Map<FinderRole, PointD> = emptyMap(),
     /** False while [manualQuad] is only a physical boundary without QR corner roles. */
     val logicalGridAssigned: Boolean = true,

@@ -1,0 +1,264 @@
+{"id": "v1-s0-clean", "engine": "quirc", "ms": 0.842987, "times": [0.853258, 0.820071, 0.842987], "candidates": [{"quad": [[183, 182], [331, 182], [324, 329], [183, 327]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s0-rotate17", "engine": "quirc", "ms": 0.869247, "times": [0.869247, 0.879472, 0.868782], "candidates": [{"quad": [[207, 164], [347, 207], [304, 346], [164, 305]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s0-rotate43", "engine": "quirc", "ms": 0.87479, "times": [0.87479, 0.846221, 0.874948], "candidates": [{"quad": [[252, 152], [360, 253], [258, 360], [152, 260]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s0-perspective_mild", "engine": "quirc", "ms": 0.847416, "times": [0.861252, 0.847416, 0.843185], "candidates": [{"quad": [[188, 197], [326, 172], [317, 337], [192, 327]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s0-perspective_strong", "engine": "quirc", "ms": 0.904692, "times": [0.920533, 0.904692, 0.898743], "candidates": [{"quad": [[196, 216], [324, 152], [291, 344], [206, 322]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s0-blur_mild", "engine": "quirc", "ms": 0.868676, "times": [0.872896, 0.837872, 0.868676], "candidates": [{"quad": [[184, 180], [331, 180], [321, 332], [185, 326]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s0-blur_strong", "engine": "quirc", "ms": 0.851827, "times": [0.857238, 0.851827, 0.835249], "candidates": [{"quad": [[184, 180], [331, 180], [321, 332], [185, 326]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s0-shadow", "engine": "quirc", "ms": 0.205356, "times": [0.205356, 0.205653, 0.199241], "candidates": []}
+{"id": "v1-s0-low_contrast", "engine": "quirc", "ms": 0.845738, "times": [0.852795, 0.845738, 0.82813], "candidates": [{"quad": [[183, 182], [331, 182], [324, 329], [183, 327]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s0-small_modules", "engine": "quirc", "ms": 0.82455, "times": [0.83188, 0.82455, 0.808428], "candidates": [{"quad": [[235, 235], [277, 235], [277, 277], [235, 277]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s0-no_quiet_zone", "engine": "quirc", "ms": 0.053969, "times": [0.062366, 0.053969, 0.051489], "candidates": []}
+{"id": "v1-s0-clutter", "engine": "quirc", "ms": 0.82818, "times": [1.745497, 0.82818, 0.825226], "candidates": [{"quad": [[183, 182], [331, 182], [324, 329], [183, 327]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s0-one_finder_missing", "engine": "quirc", "ms": 0.488465, "times": [0.488465, 0.482746, 0.505041], "candidates": []}
+{"id": "v1-s0-two_finders_missing", "engine": "quirc", "ms": 0.467305, "times": [0.481849, 0.458803, 0.467305], "candidates": []}
+{"id": "v1-s0-three_finders_missing", "engine": "quirc", "ms": 0.462186, "times": [0.462932, 0.460038, 0.462186], "candidates": []}
+{"id": "v1-s0-finder_ring_damage", "engine": "quirc", "ms": 0.480159, "times": [0.483146, 0.480159, 0.46698], "candidates": []}
+{"id": "v1-s0-gray_data_patch", "engine": "quirc", "ms": 0.807004, "times": [0.805971, 0.807004, 0.82171], "candidates": [{"quad": [[183, 182], [331, 182], [324, 329], [183, 327]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s0-white_data_patch", "engine": "quirc", "ms": 0.822223, "times": [0.822223, 0.814104, 0.825107], "candidates": [{"quad": [[183, 182], [331, 182], [324, 329], [183, 327]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s0-scratch", "engine": "quirc", "ms": 0.834141, "times": [0.845084, 0.814955, 0.834141], "candidates": [{"quad": [[183, 182], [331, 182], [324, 329], [183, 327]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s0-combined", "engine": "quirc", "ms": 0.302562, "times": [0.302562, 0.308083, 0.300375], "candidates": []}
+{"id": "v1-s1-clean", "engine": "quirc", "ms": 0.851096, "times": [0.851096, 0.862395, 0.834767], "candidates": [{"quad": [[329, 183], [329, 330], [180, 324], [184, 183]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s1-rotate17", "engine": "quirc", "ms": 0.865308, "times": [0.865308, 0.899209, 0.854702], "candidates": [{"quad": [[347, 207], [304, 348], [162, 304], [206, 164]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s1-rotate43", "engine": "quirc", "ms": 0.898652, "times": [0.899589, 0.881693, 0.898652], "candidates": [{"quad": [[359, 252], [260, 361], [150, 258], [251, 152]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s1-perspective_mild", "engine": "quirc", "ms": 0.852546, "times": [0.843821, 0.852546, 1.107428], "candidates": [{"quad": [[314, 188], [339, 326], [174, 317], [184, 192]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s1-perspective_strong", "engine": "quirc", "ms": 0.846188, "times": [0.846188, 0.855993, 0.84368], "candidates": [{"quad": [[295, 196], [353, 321], [167, 295], [189, 206]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s1-blur_mild", "engine": "quirc", "ms": 0.830996, "times": [0.850369, 0.817621, 0.830996], "candidates": [{"quad": [[329, 183], [329, 330], [180, 324], [184, 183]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s1-blur_strong", "engine": "quirc", "ms": 0.857418, "times": [0.864962, 0.857418, 0.839858], "candidates": [{"quad": [[329, 184], [331, 332], [179, 322], [187, 185]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s1-shadow", "engine": "quirc", "ms": 0.204449, "times": [0.208383, 0.204449, 0.197663], "candidates": []}
+{"id": "v1-s1-low_contrast", "engine": "quirc", "ms": 0.839576, "times": [0.839576, 0.83336, 0.845101], "candidates": [{"quad": [[329, 183], [329, 330], [180, 324], [184, 183]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s1-small_modules", "engine": "quirc", "ms": 0.822762, "times": [0.825501, 0.797821, 0.822762], "candidates": [{"quad": [[276, 235], [276, 277], [234, 277], [234, 235]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s1-no_quiet_zone", "engine": "quirc", "ms": 0.042642, "times": [0.048518, 0.042642, 0.040268], "candidates": []}
+{"id": "v1-s1-clutter", "engine": "quirc", "ms": 0.834065, "times": [0.844965, 0.832357, 0.834065], "candidates": [{"quad": [[329, 183], [329, 330], [180, 324], [184, 183]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s1-one_finder_missing", "engine": "quirc", "ms": 0.493931, "times": [0.539539, 0.493931, 0.483897], "candidates": []}
+{"id": "v1-s1-two_finders_missing", "engine": "quirc", "ms": 0.467627, "times": [0.47951, 0.467627, 0.466], "candidates": []}
+{"id": "v1-s1-three_finders_missing", "engine": "quirc", "ms": 0.455621, "times": [0.455621, 0.468628, 0.455518], "candidates": []}
+{"id": "v1-s1-finder_ring_damage", "engine": "quirc", "ms": 0.461203, "times": [0.465628, 0.453685, 0.461203], "candidates": []}
+{"id": "v1-s1-gray_data_patch", "engine": "quirc", "ms": 0.816247, "times": [0.815386, 0.816247, 0.895487], "candidates": [{"quad": [[329, 183], [329, 330], [180, 324], [184, 183]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s1-white_data_patch", "engine": "quirc", "ms": 0.82739, "times": [0.82739, 0.790816, 0.852349], "candidates": [{"quad": [[329, 183], [329, 330], [180, 324], [184, 183]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s1-scratch", "engine": "quirc", "ms": 0.797811, "times": [0.798848, 0.796869, 0.797811], "candidates": [{"quad": [[329, 183], [329, 330], [180, 324], [184, 183]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s1-combined", "engine": "quirc", "ms": 0.307115, "times": [0.307115, 0.351711, 0.304304], "candidates": []}
+{"id": "v1-s2-clean", "engine": "quirc", "ms": 0.819977, "times": [0.838798, 0.819977, 0.811634], "candidates": [{"quad": [[328, 329], [181, 329], [186, 179], [328, 183]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s2-rotate17", "engine": "quirc", "ms": 0.853204, "times": [0.896429, 0.838796, 0.853204], "candidates": [{"quad": [[304, 347], [163, 304], [205, 162], [348, 205]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s2-rotate43", "engine": "quirc", "ms": 0.873178, "times": [0.873178, 0.890686, 0.861637], "candidates": [{"quad": [[259, 359], [151, 258], [251, 147], [360, 251]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s2-perspective_mild", "engine": "quirc", "ms": 0.86058, "times": [0.91389, 0.846296, 0.86058], "candidates": [{"quad": [[323, 314], [185, 340], [192, 177], [319, 186]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s2-perspective_strong", "engine": "quirc", "ms": 0.897549, "times": [0.897549, 0.902666, 0.897062], "candidates": [{"quad": [[315, 295], [191, 356], [215, 164], [305, 189]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s2-blur_mild", "engine": "quirc", "ms": 0.827912, "times": [0.844163, 0.81556, 0.827912], "candidates": [{"quad": [[328, 329], [181, 329], [186, 179], [328, 183]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s2-blur_strong", "engine": "quirc", "ms": 0.861379, "times": [0.861379, 0.851565, 0.910495], "candidates": [{"quad": [[327, 330], [179, 331], [188, 178], [327, 186]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s2-shadow", "engine": "quirc", "ms": 0.206055, "times": [0.210636, 0.199055, 0.206055], "candidates": []}
+{"id": "v1-s2-low_contrast", "engine": "quirc", "ms": 0.834084, "times": [0.834084, 0.842121, 0.823767], "candidates": [{"quad": [[328, 329], [181, 329], [186, 179], [328, 183]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s2-small_modules", "engine": "quirc", "ms": 0.824117, "times": [0.830957, 0.824117, 0.81212], "candidates": [{"quad": [[276, 276], [234, 276], [234, 234], [276, 234]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s2-no_quiet_zone", "engine": "quirc", "ms": 0.05179, "times": [0.060449, 0.05179, 0.049038], "candidates": []}
+{"id": "v1-s2-clutter", "engine": "quirc", "ms": 0.83878, "times": [0.84952, 0.836911, 0.83878], "candidates": [{"quad": [[328, 329], [181, 329], [186, 179], [328, 183]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s2-one_finder_missing", "engine": "quirc", "ms": 0.48786, "times": [0.49831, 0.48786, 0.480147], "candidates": []}
+{"id": "v1-s2-two_finders_missing", "engine": "quirc", "ms": 0.476716, "times": [0.476716, 0.471949, 1.009864], "candidates": []}
+{"id": "v1-s2-three_finders_missing", "engine": "quirc", "ms": 0.474499, "times": [0.459701, 0.474499, 0.495445], "candidates": []}
+{"id": "v1-s2-finder_ring_damage", "engine": "quirc", "ms": 0.470985, "times": [0.470816, 0.470985, 0.51668], "candidates": []}
+{"id": "v1-s2-gray_data_patch", "engine": "quirc", "ms": 0.809659, "times": [0.809659, 0.807732, 0.822505], "candidates": [{"quad": [[328, 329], [181, 329], [186, 179], [328, 183]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s2-white_data_patch", "engine": "quirc", "ms": 0.822416, "times": [0.858458, 0.822416, 0.818452], "candidates": [{"quad": [[328, 329], [181, 329], [186, 179], [328, 183]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s2-scratch", "engine": "quirc", "ms": 0.831293, "times": [0.831293, 1.494314, 0.824734], "candidates": [{"quad": [[328, 329], [181, 329], [186, 179], [328, 183]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s2-combined", "engine": "quirc", "ms": 0.296796, "times": [0.303889, 0.296796, 0.291823], "candidates": []}
+{"id": "v1-s3-clean", "engine": "quirc", "ms": 0.883959, "times": [1.066952, 0.87729, 0.883959], "candidates": [{"quad": [[182, 328], [182, 180], [330, 185], [328, 328]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s3-rotate17", "engine": "quirc", "ms": 0.96965, "times": [0.96965, 1.1044, 0.928753], "candidates": [{"quad": [[164, 304], [207, 164], [346, 205], [305, 348]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s3-rotate43", "engine": "quirc", "ms": 0.934874, "times": [0.958355, 0.934874, 0.900194], "candidates": [{"quad": [[152, 259], [252, 151], [360, 252], [260, 360]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s3-perspective_mild", "engine": "quirc", "ms": 0.83617, "times": [0.83617, 0.826142, 0.843329], "candidates": [{"quad": [[197, 323], [171, 188], [336, 194], [327, 319]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s3-perspective_strong", "engine": "quirc", "ms": 1.902767, "times": [1.902767, 2.265294, 0.866018], "candidates": [{"quad": [[216, 315], [155, 192], [347, 216], [322, 305]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s3-blur_mild", "engine": "quirc", "ms": 0.814409, "times": [0.809863, 0.955764, 0.814409], "candidates": [{"quad": [[181, 327], [180, 180], [332, 189], [326, 327]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s3-blur_strong", "engine": "quirc", "ms": 0.850483, "times": [0.853754, 0.832472, 0.850483], "candidates": [{"quad": [[181, 327], [181, 180], [332, 189], [326, 327]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s3-shadow", "engine": "quirc", "ms": 0.291333, "times": [0.291333, 0.283069, 0.315422], "candidates": []}
+{"id": "v1-s3-low_contrast", "engine": "quirc", "ms": 0.845053, "times": [0.833306, 0.845053, 0.850364], "candidates": [{"quad": [[182, 328], [182, 180], [330, 185], [328, 328]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s3-small_modules", "engine": "quirc", "ms": 0.830969, "times": [0.84464, 0.830969, 0.826918], "candidates": [{"quad": [[235, 276], [235, 234], [277, 234], [277, 276]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s3-no_quiet_zone", "engine": "quirc", "ms": 0.055076, "times": [0.062407, 0.055076, 0.05118], "candidates": []}
+{"id": "v1-s3-clutter", "engine": "quirc", "ms": 0.854038, "times": [0.850612, 0.862719, 0.854038], "candidates": [{"quad": [[182, 328], [182, 180], [330, 185], [328, 328]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s3-one_finder_missing", "engine": "quirc", "ms": 0.498219, "times": [0.498219, 0.59482, 0.492284], "candidates": []}
+{"id": "v1-s3-two_finders_missing", "engine": "quirc", "ms": 0.481362, "times": [0.47883, 0.486009, 0.481362], "candidates": []}
+{"id": "v1-s3-three_finders_missing", "engine": "quirc", "ms": 0.479373, "times": [0.464748, 0.479373, 0.480824], "candidates": []}
+{"id": "v1-s3-finder_ring_damage", "engine": "quirc", "ms": 0.470198, "times": [0.470198, 0.466764, 0.483903], "candidates": []}
+{"id": "v1-s3-gray_data_patch", "engine": "quirc", "ms": 0.825786, "times": [0.818712, 0.882655, 0.825786], "candidates": [{"quad": [[182, 328], [182, 180], [330, 185], [328, 328]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s3-white_data_patch", "engine": "quirc", "ms": 0.851352, "times": [0.851352, 0.839839, 0.853885], "candidates": [{"quad": [[182, 328], [182, 180], [330, 185], [328, 328]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s3-scratch", "engine": "quirc", "ms": 0.974546, "times": [0.857719, 0.974546, 0.999886], "candidates": [{"quad": [[182, 328], [182, 180], [330, 185], [328, 328]], "n": 21, "stage": "extracted"}]}
+{"id": "v1-s3-combined", "engine": "quirc", "ms": 0.396206, "times": [0.396206, 0.456223, 0.358667], "candidates": []}
+{"id": "v3-s0-clean", "engine": "quirc", "ms": 0.965413, "times": [0.974555, 0.943212, 0.965413], "candidates": [{"quad": [[155, 154], [358, 154], [357, 358], [155, 357]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s0-rotate17", "engine": "quirc", "ms": 1.04246, "times": [1.101428, 1.04246, 1.035751], "candidates": [{"quad": [[188, 130], [383, 188], [324, 384], [129, 324]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s0-rotate43", "engine": "quirc", "ms": 1.045531, "times": [1.045531, 1.047263, 1.012167], "candidates": [{"quad": [[251, 113], [400, 251], [260, 398], [113, 262]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s0-perspective_mild", "engine": "quirc", "ms": 1.022439, "times": [1.03404, 1.022439, 0.992105], "candidates": [{"quad": [[164, 174], [349, 142], [334, 366], [169, 353]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s0-perspective_strong", "engine": "quirc", "ms": 1.042059, "times": [1.02583, 1.042059, 1.04842], "candidates": [{"quad": [[173, 201], [346, 120], [310, 374], [186, 347]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s0-blur_mild", "engine": "quirc", "ms": 0.970243, "times": [0.970243, 0.952009, 0.972116], "candidates": [{"quad": [[156, 154], [358, 154], [355, 359], [156, 355]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s0-blur_strong", "engine": "quirc", "ms": 0.940476, "times": [0.999555, 0.940476, 0.937979], "candidates": [{"quad": [[156, 154], [358, 154], [355, 359], [156, 355]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s0-shadow", "engine": "quirc", "ms": 0.307371, "times": [0.307371, 0.298216, 0.323864], "candidates": []}
+{"id": "v3-s0-low_contrast", "engine": "quirc", "ms": 1.008786, "times": [1.009316, 0.942151, 1.008786], "candidates": [{"quad": [[155, 154], [358, 154], [357, 358], [155, 357]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s0-small_modules", "engine": "quirc", "ms": 0.959401, "times": [0.961003, 0.959401, 0.929393], "candidates": [{"quad": [[227, 227], [285, 227], [285, 285], [227, 285]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s0-no_quiet_zone", "engine": "quirc", "ms": 0.096692, "times": [0.105937, 0.096692, 0.093477], "candidates": []}
+{"id": "v3-s0-clutter", "engine": "quirc", "ms": 0.961817, "times": [0.961817, 0.960627, 0.971474], "candidates": [{"quad": [[155, 154], [358, 154], [357, 358], [155, 357]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s0-one_finder_missing", "engine": "quirc", "ms": 0.510604, "times": [0.510604, 0.509148, 0.519089], "candidates": []}
+{"id": "v3-s0-two_finders_missing", "engine": "quirc", "ms": 0.493703, "times": [0.495846, 0.480176, 0.493703], "candidates": []}
+{"id": "v3-s0-three_finders_missing", "engine": "quirc", "ms": 0.486368, "times": [0.486368, 0.481382, 0.489418], "candidates": []}
+{"id": "v3-s0-finder_ring_damage", "engine": "quirc", "ms": 0.492006, "times": [0.492901, 0.481361, 0.492006], "candidates": []}
+{"id": "v3-s0-gray_data_patch", "engine": "quirc", "ms": 1.404046, "times": [2.685803, 1.404046, 0.95041], "candidates": [{"quad": [[155, 154], [358, 154], [357, 358], [155, 357]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s0-white_data_patch", "engine": "quirc", "ms": 1.138509, "times": [1.502695, 1.138509, 0.979047], "candidates": [{"quad": [[155, 154], [358, 154], [357, 358], [155, 357]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s0-scratch", "engine": "quirc", "ms": 0.958717, "times": [0.974438, 0.932655, 0.958717], "candidates": [{"quad": [[155, 154], [358, 154], [357, 357], [155, 356]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s0-combined", "engine": "quirc", "ms": 0.319051, "times": [0.389746, 0.317743, 0.319051], "candidates": []}
+{"id": "v3-s1-clean", "engine": "quirc", "ms": 1.041458, "times": [1.041458, 1.029607, 1.105422], "candidates": [{"quad": [[357, 155], [357, 358], [153, 357], [154, 155]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s1-rotate17", "engine": "quirc", "ms": 1.049766, "times": [1.067615, 1.040206, 1.049766], "candidates": [{"quad": [[381, 188], [323, 383], [127, 324], [187, 129]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s1-rotate43", "engine": "quirc", "ms": 1.058138, "times": [1.060426, 1.028018, 1.058138], "candidates": [{"quad": [[398, 251], [260, 400], [113, 260], [249, 113]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s1-perspective_mild", "engine": "quirc", "ms": 1.014847, "times": [1.014847, 0.959655, 1.015326], "candidates": [{"quad": [[336, 163], [371, 351], [146, 337], [157, 168]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s1-perspective_strong", "engine": "quirc", "ms": 1.033983, "times": [1.033983, 1.023294, 1.233842], "candidates": [{"quad": [[310, 173], [391, 342], [137, 311], [163, 187]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s1-blur_mild", "engine": "quirc", "ms": 0.981989, "times": [1.063414, 0.981989, 0.960541], "candidates": [{"quad": [[357, 156], [357, 358], [152, 355], [156, 156]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s1-blur_strong", "engine": "quirc", "ms": 0.96589, "times": [0.97392, 0.94272, 0.96589], "candidates": [{"quad": [[357, 156], [357, 358], [152, 355], [156, 156]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s1-shadow", "engine": "quirc", "ms": 0.316218, "times": [0.316218, 0.317799, 0.296652], "candidates": []}
+{"id": "v3-s1-low_contrast", "engine": "quirc", "ms": 0.97081, "times": [0.97081, 1.033775, 0.969367], "candidates": [{"quad": [[357, 155], [357, 358], [153, 357], [154, 155]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s1-small_modules", "engine": "quirc", "ms": 0.956345, "times": [0.942769, 0.956345, 1.267929], "candidates": [{"quad": [[284, 227], [284, 285], [226, 285], [226, 227]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s1-no_quiet_zone", "engine": "quirc", "ms": 0.092682, "times": [0.108698, 0.092682, 0.088342], "candidates": []}
+{"id": "v3-s1-clutter", "engine": "quirc", "ms": 0.99847, "times": [0.99847, 0.991421, 1.044591], "candidates": [{"quad": [[357, 155], [357, 358], [153, 357], [154, 155]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s1-one_finder_missing", "engine": "quirc", "ms": 0.535357, "times": [0.524247, 0.535357, 0.537017], "candidates": []}
+{"id": "v3-s1-two_finders_missing", "engine": "quirc", "ms": 0.550268, "times": [0.540229, 1.561137, 0.550268], "candidates": []}
+{"id": "v3-s1-three_finders_missing", "engine": "quirc", "ms": 0.529989, "times": [0.529989, 0.539548, 0.501379], "candidates": []}
+{"id": "v3-s1-finder_ring_damage", "engine": "quirc", "ms": 0.50256, "times": [0.50256, 0.517498, 0.491827], "candidates": []}
+{"id": "v3-s1-gray_data_patch", "engine": "quirc", "ms": 1.044371, "times": [0.985937, 1.044371, 1.199048], "candidates": [{"quad": [[357, 155], [357, 358], [153, 357], [154, 155]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s1-white_data_patch", "engine": "quirc", "ms": 1.000208, "times": [1.241165, 0.989854, 1.000208], "candidates": [{"quad": [[357, 155], [357, 358], [153, 357], [154, 155]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s1-scratch", "engine": "quirc", "ms": 1.020576, "times": [1.020576, 0.996088, 1.045931], "candidates": [{"quad": [[358, 155], [358, 358], [154, 357], [155, 155]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s1-combined", "engine": "quirc", "ms": 0.329261, "times": [0.330952, 0.324347, 0.329261], "candidates": []}
+{"id": "v3-s2-clean", "engine": "quirc", "ms": 1.042182, "times": [1.042182, 1.046929, 0.963222], "candidates": [{"quad": [[356, 357], [153, 357], [154, 153], [356, 154]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s2-rotate17", "engine": "quirc", "ms": 0.98121, "times": [1.013179, 0.98121, 0.941267], "candidates": [{"quad": [[323, 381], [128, 323], [187, 127], [382, 187]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s2-rotate43", "engine": "quirc", "ms": 0.985654, "times": [1.006821, 0.975001, 0.985654], "candidates": [{"quad": [[260, 398], [111, 260], [251, 113], [398, 249]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s2-perspective_mild", "engine": "quirc", "ms": 0.971032, "times": [0.985172, 0.956308, 0.971032], "candidates": [{"quad": [[347, 336], [162, 371], [176, 145], [342, 157]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s2-perspective_strong", "engine": "quirc", "ms": 1.021784, "times": [1.041873, 0.998923, 1.021784], "candidates": [{"quad": [[338, 310], [169, 392], [201, 137], [324, 163]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s2-blur_mild", "engine": "quirc", "ms": 0.941025, "times": [0.941025, 0.945417, 0.921172], "candidates": [{"quad": [[355, 357], [153, 357], [156, 152], [355, 156]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s2-blur_strong", "engine": "quirc", "ms": 0.939356, "times": [0.963503, 0.939356, 0.91626], "candidates": [{"quad": [[355, 357], [153, 357], [157, 152], [355, 156]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s2-shadow", "engine": "quirc", "ms": 0.295737, "times": [0.296603, 0.295737, 0.294775], "candidates": []}
+{"id": "v3-s2-low_contrast", "engine": "quirc", "ms": 0.930274, "times": [0.986841, 0.917425, 0.930274], "candidates": [{"quad": [[356, 357], [153, 357], [154, 153], [356, 154]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s2-small_modules", "engine": "quirc", "ms": 0.920599, "times": [0.930807, 0.920599, 0.907211], "candidates": [{"quad": [[284, 284], [226, 284], [226, 226], [284, 226]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s2-no_quiet_zone", "engine": "quirc", "ms": 0.08876, "times": [0.096658, 0.08876, 0.08582], "candidates": []}
+{"id": "v3-s2-clutter", "engine": "quirc", "ms": 0.969627, "times": [0.969627, 0.93722, 1.307175], "candidates": [{"quad": [[356, 357], [153, 357], [154, 153], [356, 154]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s2-one_finder_missing", "engine": "quirc", "ms": 0.500713, "times": [0.610122, 0.500713, 0.477576], "candidates": []}
+{"id": "v3-s2-two_finders_missing", "engine": "quirc", "ms": 0.473259, "times": [0.473259, 0.466356, 0.475547], "candidates": []}
+{"id": "v3-s2-three_finders_missing", "engine": "quirc", "ms": 0.47071, "times": [0.473581, 0.463184, 0.47071], "candidates": []}
+{"id": "v3-s2-finder_ring_damage", "engine": "quirc", "ms": 0.473552, "times": [0.483031, 0.473552, 0.470909], "candidates": []}
+{"id": "v3-s2-gray_data_patch", "engine": "quirc", "ms": 0.918738, "times": [0.918738, 0.907631, 0.921065], "candidates": [{"quad": [[356, 357], [153, 357], [154, 153], [356, 154]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s2-white_data_patch", "engine": "quirc", "ms": 0.916265, "times": [0.909958, 0.916265, 0.919541], "candidates": [{"quad": [[356, 357], [153, 357], [154, 153], [356, 154]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s2-scratch", "engine": "quirc", "ms": 0.925462, "times": [0.925462, 0.917005, 0.933908], "candidates": [{"quad": [[356, 358], [153, 358], [154, 154], [356, 155]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s2-combined", "engine": "quirc", "ms": 0.327831, "times": [0.336364, 0.32653, 0.327831], "candidates": []}
+{"id": "v3-s3-clean", "engine": "quirc", "ms": 0.944271, "times": [0.934637, 0.95878, 0.944271], "candidates": [{"quad": [[154, 356], [154, 153], [358, 154], [357, 356]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s3-rotate17", "engine": "quirc", "ms": 1.000833, "times": [1.000833, 1.017652, 0.988356], "candidates": [{"quad": [[130, 323], [188, 128], [384, 187], [324, 382]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s3-rotate43", "engine": "quirc", "ms": 0.995508, "times": [0.998451, 0.995508, 0.987863], "candidates": [{"quad": [[113, 260], [251, 111], [398, 251], [262, 398]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s3-perspective_mild", "engine": "quirc", "ms": 0.96718, "times": [0.977027, 0.94648, 0.96718], "candidates": [{"quad": [[175, 348], [140, 160], [365, 174], [354, 343]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s3-perspective_strong", "engine": "quirc", "ms": 1.015098, "times": [1.032898, 1.014816, 1.015098], "candidates": [{"quad": [[201, 338], [118, 168], [374, 200], [349, 324]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s3-blur_mild", "engine": "quirc", "ms": 0.95127, "times": [0.953449, 0.95127, 0.935726], "candidates": [{"quad": [[154, 355], [154, 153], [359, 156], [355, 356]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s3-blur_strong", "engine": "quirc", "ms": 0.94265, "times": [0.943946, 0.94265, 0.937545], "candidates": [{"quad": [[154, 355], [154, 153], [358, 156], [355, 355]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s3-shadow", "engine": "quirc", "ms": 0.290867, "times": [0.305479, 0.283159, 0.290867], "candidates": []}
+{"id": "v3-s3-low_contrast", "engine": "quirc", "ms": 0.955328, "times": [0.955328, 1.357177, 0.944038], "candidates": [{"quad": [[154, 356], [154, 153], [358, 154], [357, 356]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s3-small_modules", "engine": "quirc", "ms": 0.940624, "times": [0.926047, 0.940624, 0.943987], "candidates": [{"quad": [[227, 284], [227, 226], [285, 226], [285, 284]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s3-no_quiet_zone", "engine": "quirc", "ms": 0.106009, "times": [0.110804, 0.101052, 0.106009], "candidates": []}
+{"id": "v3-s3-clutter", "engine": "quirc", "ms": 0.941107, "times": [0.941107, 0.956778, 0.938225], "candidates": [{"quad": [[154, 356], [154, 153], [358, 154], [357, 356]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s3-one_finder_missing", "engine": "quirc", "ms": 0.495001, "times": [0.503458, 0.493807, 0.495001], "candidates": []}
+{"id": "v3-s3-two_finders_missing", "engine": "quirc", "ms": 0.486451, "times": [0.492816, 0.486451, 0.464845], "candidates": []}
+{"id": "v3-s3-three_finders_missing", "engine": "quirc", "ms": 0.465691, "times": [0.460995, 0.476356, 0.465691], "candidates": []}
+{"id": "v3-s3-finder_ring_damage", "engine": "quirc", "ms": 0.477932, "times": [0.465813, 0.477932, 0.481096], "candidates": []}
+{"id": "v3-s3-gray_data_patch", "engine": "quirc", "ms": 0.914788, "times": [0.901712, 0.929108, 0.914788], "candidates": [{"quad": [[154, 356], [154, 153], [358, 154], [357, 356]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s3-white_data_patch", "engine": "quirc", "ms": 0.916449, "times": [0.913155, 0.920933, 0.916449], "candidates": [{"quad": [[154, 356], [154, 153], [358, 154], [357, 356]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s3-scratch", "engine": "quirc", "ms": 0.940241, "times": [0.940241, 0.920739, 0.946065], "candidates": [{"quad": [[154, 356], [154, 153], [357, 154], [356, 356]], "n": 29, "stage": "extracted"}]}
+{"id": "v3-s3-combined", "engine": "quirc", "ms": 0.297272, "times": [0.297272, 0.286903, 0.301058], "candidates": []}
+{"id": "v7-s0-clean", "engine": "quirc", "ms": 1.305296, "times": [1.296265, 1.305296, 1.323238], "candidates": [{"quad": [[99, 98], [414, 98], [414, 413], [99, 413]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s0-rotate17", "engine": "quirc", "ms": 1.462106, "times": [1.466355, 1.455268, 1.462106], "candidates": [{"quad": [[151, 60], [453, 151], [361, 453], [59, 361]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s0-rotate43", "engine": "quirc", "ms": 1.531433, "times": [1.560082, 1.531433, 1.526801], "candidates": [{"quad": [[248, 34], [479, 249], [262, 480], [32, 264]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s0-perspective_mild", "engine": "quirc", "ms": 1.400292, "times": [1.413565, 1.400292, 1.38643], "candidates": [{"quad": [[111, 130], [405, 76], [381, 427], [120, 408]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s0-perspective_strong", "engine": "quirc", "ms": 0.679591, "times": [0.690176, 0.679591, 0.661564], "candidates": []}
+{"id": "v7-s0-blur_mild", "engine": "quirc", "ms": 1.291871, "times": [1.303751, 1.291828, 1.291871], "candidates": [{"quad": [[98, 98], [413, 98], [413, 413], [98, 413]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s0-blur_strong", "engine": "quirc", "ms": 1.300125, "times": [1.306066, 1.300125, 1.296076], "candidates": [{"quad": [[98, 98], [413, 98], [413, 413], [98, 413]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s0-shadow", "engine": "quirc", "ms": 0.372189, "times": [0.376322, 0.36168, 0.372189], "candidates": []}
+{"id": "v7-s0-low_contrast", "engine": "quirc", "ms": 1.307622, "times": [1.307622, 1.303205, 1.34752], "candidates": [{"quad": [[99, 98], [414, 98], [414, 413], [99, 413]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s0-small_modules", "engine": "quirc", "ms": 1.309315, "times": [1.310385, 1.309315, 1.294976], "candidates": [{"quad": [[211, 211], [301, 211], [301, 301], [211, 301]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s0-no_quiet_zone", "engine": "quirc", "ms": 0.228577, "times": [0.241454, 0.228577, 0.217494], "candidates": []}
+{"id": "v7-s0-clutter", "engine": "quirc", "ms": 1.335255, "times": [1.335255, 1.31662, 1.344593], "candidates": [{"quad": [[99, 98], [414, 98], [414, 413], [99, 413]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s0-one_finder_missing", "engine": "quirc", "ms": 0.523223, "times": [0.552134, 0.523223, 0.515157], "candidates": []}
+{"id": "v7-s0-two_finders_missing", "engine": "quirc", "ms": 0.622474, "times": [0.516794, 0.629849, 0.622474], "candidates": []}
+{"id": "v7-s0-three_finders_missing", "engine": "quirc", "ms": 0.490147, "times": [0.506649, 0.486559, 0.490147], "candidates": []}
+{"id": "v7-s0-finder_ring_damage", "engine": "quirc", "ms": 0.500498, "times": [0.498936, 0.500498, 0.503024], "candidates": []}
+{"id": "v7-s0-gray_data_patch", "engine": "quirc", "ms": 1.224693, "times": [1.285239, 1.224693, 1.216227], "candidates": [{"quad": [[99, 98], [414, 98], [414, 413], [99, 413]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s0-white_data_patch", "engine": "quirc", "ms": 1.291445, "times": [1.25831, 1.291445, 1.306245], "candidates": [{"quad": [[99, 98], [414, 98], [414, 413], [99, 413]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s0-scratch", "engine": "quirc", "ms": 1.328409, "times": [1.297038, 1.346641, 1.328409], "candidates": [{"quad": [[99, 98], [414, 98], [414, 413], [99, 413]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s0-combined", "engine": "quirc", "ms": 0.382323, "times": [0.389472, 0.373279, 0.382323], "candidates": []}
+{"id": "v7-s1-clean", "engine": "quirc", "ms": 1.358406, "times": [1.358243, 1.358406, 1.387708], "candidates": [{"quad": [[413, 99], [413, 414], [97, 413], [98, 99]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s1-rotate17", "engine": "quirc", "ms": 1.507317, "times": [1.51376, 1.507317, 1.499096], "candidates": [{"quad": [[451, 151], [360, 453], [58, 361], [150, 59]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s1-rotate43", "engine": "quirc", "ms": 1.509257, "times": [1.509257, 1.510088, 1.506881], "candidates": [{"quad": [[477, 248], [262, 479], [31, 262], [247, 32]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s1-perspective_mild", "engine": "quirc", "ms": 1.37458, "times": [1.37458, 1.383481, 1.363529], "candidates": [{"quad": [[381, 111], [434, 403], [84, 381], [103, 120]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s1-perspective_strong", "engine": "quirc", "ms": 0.578705, "times": [0.578705, 0.595697, 0.54721], "candidates": []}
+{"id": "v7-s1-blur_mild", "engine": "quirc", "ms": 1.330146, "times": [1.314297, 1.330146, 1.344605], "candidates": [{"quad": [[413, 99], [413, 415], [97, 412], [99, 99]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s1-blur_strong", "engine": "quirc", "ms": 1.334409, "times": [1.334409, 1.324299, 1.335818], "candidates": [{"quad": [[413, 99], [413, 415], [97, 412], [99, 99]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s1-shadow", "engine": "quirc", "ms": 0.396392, "times": [0.415589, 0.396392, 0.395597], "candidates": []}
+{"id": "v7-s1-low_contrast", "engine": "quirc", "ms": 1.369945, "times": [1.369945, 1.346397, 1.38553], "candidates": [{"quad": [[413, 99], [413, 414], [97, 413], [98, 99]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s1-small_modules", "engine": "quirc", "ms": 1.297738, "times": [1.316878, 1.297738, 1.289368], "candidates": [{"quad": [[300, 211], [300, 301], [210, 301], [210, 211]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s1-no_quiet_zone", "engine": "quirc", "ms": 0.229884, "times": [0.229884, 0.217119, 0.665718], "candidates": []}
+{"id": "v7-s1-clutter", "engine": "quirc", "ms": 1.379488, "times": [1.389008, 1.359908, 1.379488], "candidates": [{"quad": [[413, 99], [413, 414], [97, 413], [98, 99]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s1-one_finder_missing", "engine": "quirc", "ms": 0.577497, "times": [0.588382, 0.577497, 0.563885], "candidates": []}
+{"id": "v7-s1-two_finders_missing", "engine": "quirc", "ms": 0.545726, "times": [0.557453, 0.545726, 0.544926], "candidates": []}
+{"id": "v7-s1-three_finders_missing", "engine": "quirc", "ms": 0.54531, "times": [0.54531, 0.55066, 0.5361], "candidates": []}
+{"id": "v7-s1-finder_ring_damage", "engine": "quirc", "ms": 0.540276, "times": [0.540276, 0.554811, 0.539291], "candidates": []}
+{"id": "v7-s1-gray_data_patch", "engine": "quirc", "ms": 1.492544, "times": [1.366373, 1.867203, 1.492544], "candidates": [{"quad": [[413, 99], [413, 414], [97, 413], [98, 99]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s1-white_data_patch", "engine": "quirc", "ms": 1.242463, "times": [1.238107, 1.242463, 1.287333], "candidates": [{"quad": [[413, 99], [413, 414], [97, 413], [98, 99]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s1-scratch", "engine": "quirc", "ms": 1.337085, "times": [1.317007, 1.337085, 1.33808], "candidates": [{"quad": [[413, 99], [413, 414], [97, 412], [98, 99]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s1-combined", "engine": "quirc", "ms": 0.405201, "times": [0.415131, 0.405201, 0.398464], "candidates": []}
+{"id": "v7-s2-clean", "engine": "quirc", "ms": 1.244545, "times": [1.583176, 1.244545, 1.237354], "candidates": [{"quad": [[412, 413], [97, 413], [98, 97], [412, 98]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s2-rotate17", "engine": "quirc", "ms": 1.505395, "times": [1.531474, 1.457397, 1.505395], "candidates": [{"quad": [[360, 451], [58, 360], [150, 58], [452, 150]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s2-rotate43", "engine": "quirc", "ms": 1.519115, "times": [1.506891, 1.519115, 1.53904], "candidates": [{"quad": [[263, 477], [32, 262], [249, 31], [479, 247]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s2-perspective_mild", "engine": "quirc", "ms": 1.500386, "times": [1.500386, 1.439467, 1.658919], "candidates": [{"quad": [[400, 381], [108, 434], [130, 84], [391, 103]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s2-perspective_strong", "engine": "quirc", "ms": 0.66714, "times": [0.648437, 0.66714, 0.669394], "candidates": []}
+{"id": "v7-s2-blur_mild", "engine": "quirc", "ms": 1.37468, "times": [1.349316, 1.37468, 1.39265], "candidates": [{"quad": [[411, 413], [97, 413], [100, 97], [411, 99]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s2-blur_strong", "engine": "quirc", "ms": 1.425251, "times": [1.425251, 1.39132, 1.432504], "candidates": [{"quad": [[411, 413], [97, 413], [100, 97], [411, 99]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s2-shadow", "engine": "quirc", "ms": 0.341372, "times": [0.341372, 0.345754, 0.339836], "candidates": []}
+{"id": "v7-s2-low_contrast", "engine": "quirc", "ms": 1.359648, "times": [1.359648, 1.435335, 1.253357], "candidates": [{"quad": [[412, 413], [97, 413], [98, 97], [412, 98]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s2-small_modules", "engine": "quirc", "ms": 1.242529, "times": [1.242529, 1.213098, 1.255131], "candidates": [{"quad": [[300, 300], [210, 300], [210, 210], [300, 210]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s2-no_quiet_zone", "engine": "quirc", "ms": 0.202782, "times": [0.225407, 0.202782, 0.193762], "candidates": []}
+{"id": "v7-s2-clutter", "engine": "quirc", "ms": 1.309958, "times": [1.304831, 1.309958, 1.310061], "candidates": [{"quad": [[412, 413], [97, 413], [98, 97], [412, 98]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s2-one_finder_missing", "engine": "quirc", "ms": 0.509469, "times": [0.518991, 0.509469, 0.500251], "candidates": []}
+{"id": "v7-s2-two_finders_missing", "engine": "quirc", "ms": 0.498006, "times": [0.498006, 0.500992, 0.497689], "candidates": []}
+{"id": "v7-s2-three_finders_missing", "engine": "quirc", "ms": 0.495481, "times": [0.495481, 0.478343, 0.499519], "candidates": []}
+{"id": "v7-s2-finder_ring_damage", "engine": "quirc", "ms": 0.505556, "times": [0.505556, 0.506148, 0.495402], "candidates": []}
+{"id": "v7-s2-gray_data_patch", "engine": "quirc", "ms": 1.285601, "times": [1.274648, 1.285601, 1.31957], "candidates": [{"quad": [[412, 413], [97, 413], [98, 97], [412, 98]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s2-white_data_patch", "engine": "quirc", "ms": 1.297512, "times": [1.285771, 1.297512, 1.315274], "candidates": [{"quad": [[412, 413], [97, 413], [98, 97], [412, 98]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s2-scratch", "engine": "quirc", "ms": 1.335227, "times": [1.330517, 1.360027, 1.335227], "candidates": [{"quad": [[413, 413], [97, 413], [99, 97], [413, 98]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s2-combined", "engine": "quirc", "ms": 0.396585, "times": [0.420988, 0.393923, 0.396585], "candidates": []}
+{"id": "v7-s3-clean", "engine": "quirc", "ms": 1.310728, "times": [1.361563, 1.310728, 1.299121], "candidates": [{"quad": [[98, 412], [98, 97], [413, 97], [413, 412]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s3-rotate17", "engine": "quirc", "ms": 1.543606, "times": [1.543606, 1.56148, 1.533261], "candidates": [{"quad": [[60, 360], [151, 58], [453, 150], [361, 452]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s3-rotate43", "engine": "quirc", "ms": 1.524018, "times": [1.524018, 1.527967, 1.496291], "candidates": [{"quad": [[34, 263], [249, 32], [480, 249], [264, 479]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s3-perspective_mild", "engine": "quirc", "ms": 1.407195, "times": [1.407195, 1.398851, 1.41585], "candidates": [{"quad": [[130, 400], [77, 108], [427, 130], [408, 391]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s3-perspective_strong", "engine": "quirc", "ms": 0.564945, "times": [0.586727, 0.564945, 0.559516], "candidates": []}
+{"id": "v7-s3-blur_mild", "engine": "quirc", "ms": 1.323424, "times": [1.354418, 1.323424, 1.307454], "candidates": [{"quad": [[98, 411], [98, 100], [411, 100], [411, 411]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s3-blur_strong", "engine": "quirc", "ms": 1.323732, "times": [1.323732, 1.301475, 1.341741], "candidates": [{"quad": [[98, 411], [98, 100], [413, 100], [413, 411]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s3-shadow", "engine": "quirc", "ms": 0.368877, "times": [0.378316, 0.368877, 0.362119], "candidates": []}
+{"id": "v7-s3-low_contrast", "engine": "quirc", "ms": 1.302668, "times": [1.314177, 1.295614, 1.302668], "candidates": [{"quad": [[98, 412], [98, 97], [413, 97], [413, 412]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s3-small_modules", "engine": "quirc", "ms": 1.350405, "times": [1.372298, 1.350405, 1.241329], "candidates": [{"quad": [[211, 300], [211, 210], [301, 210], [301, 300]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s3-no_quiet_zone", "engine": "quirc", "ms": 0.209742, "times": [0.216293, 0.209742, 0.199091], "candidates": []}
+{"id": "v7-s3-clutter", "engine": "quirc", "ms": 1.298481, "times": [1.274826, 1.298481, 1.313857], "candidates": [{"quad": [[98, 412], [98, 97], [413, 97], [413, 412]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s3-one_finder_missing", "engine": "quirc", "ms": 0.530589, "times": [0.530589, 0.533569, 0.514973], "candidates": []}
+{"id": "v7-s3-two_finders_missing", "engine": "quirc", "ms": 0.506821, "times": [0.506821, 0.503007, 0.506942], "candidates": []}
+{"id": "v7-s3-three_finders_missing", "engine": "quirc", "ms": 0.503421, "times": [0.511771, 0.496128, 0.503421], "candidates": []}
+{"id": "v7-s3-finder_ring_damage", "engine": "quirc", "ms": 0.503481, "times": [0.513998, 0.490276, 0.503481], "candidates": []}
+{"id": "v7-s3-gray_data_patch", "engine": "quirc", "ms": 1.212885, "times": [1.329834, 1.212885, 1.20936], "candidates": [{"quad": [[98, 412], [98, 97], [413, 97], [413, 412]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s3-white_data_patch", "engine": "quirc", "ms": 1.253593, "times": [1.285311, 1.253406, 1.253593], "candidates": [{"quad": [[98, 412], [98, 97], [413, 97], [413, 412]], "n": 45, "stage": "extracted"}]}
+{"id": "v7-s3-scratch", "engine": "quirc", "ms": 2.695992, "times": [2.642137, 2.695992, 2.711322], "candidates": [{"quad": [[99, 99], [380, 100], [197, 389], [98, 388]], "n": 41, "stage": "extracted"}, {"quad": [[97, 411], [97, 96], [412, 96], [412, 411]], "n": 45, "stage": "extracted"}, {"quad": [[414, 413], [41, 407], [49, 114], [414, 234]], "n": 33, "stage": "extracted"}]}
+{"id": "v7-s3-combined", "engine": "quirc", "ms": 0.427724, "times": [0.450259, 0.427724, 0.355671], "candidates": []}
+{"id": "negative-00", "engine": "quirc", "ms": 0.47119, "times": [0.492095, 0.47119, 0.45435], "candidates": []}
+{"id": "negative-01", "engine": "quirc", "ms": 1.309589, "times": [1.368938, 1.30278, 1.309589], "candidates": []}
+{"id": "negative-02", "engine": "quirc", "ms": 0.454128, "times": [0.454128, 0.444241, 0.455395], "candidates": []}
+{"id": "negative-03", "engine": "quirc", "ms": 0.499193, "times": [0.522633, 0.496145, 0.499193], "candidates": []}
+{"id": "negative-04", "engine": "quirc", "ms": 0.458714, "times": [0.459964, 0.458714, 0.444995], "candidates": []}
+{"id": "negative-05", "engine": "quirc", "ms": 1.383105, "times": [1.383105, 1.456304, 1.312453], "candidates": []}
+{"id": "negative-06", "engine": "quirc", "ms": 0.360601, "times": [0.364746, 0.360545, 0.360601], "candidates": []}
+{"id": "negative-07", "engine": "quirc", "ms": 0.501407, "times": [0.511057, 0.483527, 0.501407], "candidates": []}
+{"id": "negative-08", "engine": "quirc", "ms": 0.445124, "times": [0.444547, 0.451573, 0.445124], "candidates": []}
+{"id": "negative-09", "engine": "quirc", "ms": 1.300187, "times": [1.332759, 1.300187, 1.293366], "candidates": []}
+{"id": "negative-10", "engine": "quirc", "ms": 0.343144, "times": [0.349241, 0.343144, 0.330856], "candidates": []}
+{"id": "negative-11", "engine": "quirc", "ms": 0.501768, "times": [0.513872, 0.501768, 0.487834], "candidates": []}
+{"id": "negative-12", "engine": "quirc", "ms": 0.454509, "times": [0.460089, 0.444776, 0.454509], "candidates": []}
+{"id": "negative-13", "engine": "quirc", "ms": 1.354154, "times": [1.362932, 1.354154, 1.328802], "candidates": []}
+{"id": "negative-14", "engine": "quirc", "ms": 0.33377, "times": [0.327485, 0.334233, 0.33377], "candidates": []}
+{"id": "negative-15", "engine": "quirc", "ms": 0.497926, "times": [0.516795, 0.497926, 0.495403], "candidates": []}
+{"id": "negative-16", "engine": "quirc", "ms": 0.450423, "times": [0.460994, 0.450423, 0.446244], "candidates": []}
+{"id": "negative-17", "engine": "quirc", "ms": 1.348852, "times": [1.356144, 1.348852, 1.324551], "candidates": []}
+{"id": "negative-18", "engine": "quirc", "ms": 0.324925, "times": [0.324925, 0.328027, 0.324923], "candidates": []}
+{"id": "negative-19", "engine": "quirc", "ms": 0.507638, "times": [0.511345, 0.507638, 0.499759], "candidates": []}
+{"id": "negative-20", "engine": "quirc", "ms": 0.464285, "times": [0.464285, 0.464414, 0.456079], "candidates": []}
+{"id": "negative-21", "engine": "quirc", "ms": 1.311765, "times": [1.386848, 1.311765, 1.310723], "candidates": []}
+{"id": "negative-22", "engine": "quirc", "ms": 0.308054, "times": [0.308054, 0.318345, 0.305456], "candidates": []}
+{"id": "negative-23", "engine": "quirc", "ms": 0.503595, "times": [0.53467, 0.490155, 0.503595], "candidates": []}
