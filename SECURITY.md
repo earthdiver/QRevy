@@ -1,6 +1,6 @@
 # Security and privacy notes
 
-English | [日本語](SECURITY.ja.md)
+English | [Japanese](SECURITY.ja.md)
 
 QR Repair is designed for offline, on-device processing. The current Android manifest requests camera access only and does not request Internet access. Security-sensitive behavior is summarized below; implementation details remain subject to the tests and release checks in this repository.
 

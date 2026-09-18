@@ -1,6 +1,6 @@
 # Understanding recovery result fields
 
-English | [日本語](RECOVERY_RESULT_FIELDS.ja.md)
+English | [Japanese](RECOVERY_RESULT_FIELDS.ja.md)
 
 The main content display and diagnostic details describe candidate generation and consistency. Confidence is not a statistical probability, and Reed–Solomon (RS) success alone does not prove correctness.
 

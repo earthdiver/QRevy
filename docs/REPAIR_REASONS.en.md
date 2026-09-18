@@ -1,6 +1,6 @@
 # Understanding Decode and Repair Reasons
 
-English | [日本語](REPAIR_REASONS.ja.md)
+English | [Japanese](REPAIR_REASONS.ja.md)
 
 Tapping a cell in “Show result” displays the primary reason for its final value and any supporting evidence. These reasons explain provenance; they are not probabilities of correctness. RS success alone is not proof that a result is correct.
 

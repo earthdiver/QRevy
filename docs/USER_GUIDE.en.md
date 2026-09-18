@@ -1,6 +1,6 @@
 # QR Repair User Guide
 
-English | [日本語](USER_GUIDE.ja.md)
+English | [Japanese](USER_GUIDE.ja.md)
 
 This guide covers the Android workflow from importing a damaged QR through adjustment, recovery, review, and saving. See [Recovery Strategy](RECOVERY_STRATEGY.en.md) for the algorithms and [Understanding recovery result fields](RECOVERY_RESULT_FIELDS.en.md) for diagnostics.
 

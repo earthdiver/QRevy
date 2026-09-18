@@ -1,6 +1,6 @@
 # Privacy
 
-English | [日本語](PRIVACY.ja.md)
+English | [Japanese](PRIVACY.ja.md)
 
 QR Repair is designed for local, on-device processing.
 

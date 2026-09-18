@@ -85,6 +85,13 @@ On macOS, shared iOS compatibility must also pass:
 - Do not copy prose, images, or code from Robert Xiao's article. The recovery technique may be independently implemented and cited as inspiration.
 - Re-run dependency/license review after changing dependencies.
 
+## Language policy
+- English is the default language for repository content, including documentation, code comments, identifiers, commit messages, pull requests, tags, and release notes.
+- Japanese is allowed in documentation only in files whose names end in `.ja.md`.
+- `README.md` is the default English README; `README.ja.md` is its Japanese counterpart.
+- Product localization resources, user-facing Japanese strings, and tests that verify Japanese localization are exempt from the English-only rule.
+- Keep paired English and Japanese documentation aligned when behavior or user guidance changes.
+
 ## Publication blockers
 The permanent package/namespace is `io.github.earthdiver.qrrepair`. Do not invent signing credentials, store identifiers, or a public privacy-policy URL; those values must be supplied by a project maintainer before store release.
 

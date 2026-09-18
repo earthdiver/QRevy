@@ -1,63 +1,61 @@
 # QR Repair
 
-[English](README.en.md) | 日本語
+English | [Japanese](README.ja.md)
 
-QR Repairは、通常のQRリーダーでは読み取れない損傷したQR Code Model 2を、端末上で解析・修復するAndroidアプリです。画像の状態を確認しながら、位置、濃淡、位置検出パターン、セルを手動で補助でき、復元結果の根拠も確認できます。
+QR Repair is an Android application for analyzing and recovering damaged QR Code Model 2 symbols that conventional readers cannot decode. It lets the user assist with geometry, tone thresholds, finder patterns, and individual cells while inspecting the evidence behind the recovered result.
 
-修復結果の正しさを保証するものではありません。重要な内容は、必ず別の手段でも確認してください。
+Recovery does not guarantee correctness. Independently verify important recovered information.
 
-UIでは、位置検出パターンを「Finder」、モジュールを「セル」、形式情報を「形式」と短く表示する場合があります。
+For compactness, the UI uses “Finder” for a finder pattern, “cell” for a module, and “Format” for format information.
 
-文書の本文では「ビット」「モジュール」「コード語」「ECCレベル」「マスク」を使います。UI名・表示例・ソース識別子は原表記を維持します。UIの「セル」はモジュール、「Codeword」はコード語、「Finder」は位置検出パターンに対応します。
+## Current status
 
-## 現在の状態
-
-| 項目 | 状態 |
+| Area | Status |
 | --- | --- |
-| Android | ソースからビルド・テスト可能。対応範囲はAPI 26以上 |
-| iOS | 共有コアのXCFramework出力とブートストラップ例のみ。完成したXcodeアプリは未提供 |
-| 対応QR | QR Code Model 2、バージョン1～40 |
-| 非対応 | Model 1、Micro QR、rMQR |
-| 配布 | リリース署名設定と公式署名済みパッケージは未提供 |
-| ネットワーク | Androidの`INTERNET`権限を使用しない |
+| Android | Builds and tests from source; API 26 and newer |
+| iOS | Shared-core XCFramework output and bootstrap examples only; no complete Xcode app |
+| Supported QR | QR Code Model 2, versions 1–40 |
+| Unsupported | Model 1, Micro QR, and rMQR |
+| Distribution | No release-signing configuration or official signed package is provided |
+| Network | The Android app does not use the `INTERNET` permission |
 
-## 主な機能
+## Features
 
-- 画像ファイルの読み込みとカメラ撮影
-- `0 / 1 / ? / *`だけで構成されたQR行列テキストの読み込み
-- 回転、クロップ、四隅、濃淡、QRバージョンの調整
-- ZXing-C++、格子周期、2つのFinderによる四隅・バージョンの初期推定
-- 十分な画像一致がある場合のFinder位置・役割の自動設定、手動解除・指定と局所補正
-- 対角の2つのFinderも、横・縦のタイミング照合で右上・左下へ自動設定（バージョン2以上、位置合わせパターン不要）。曖昧な場合は未設定、設定後は手動解除可能
-- `0 / 1 / ? / *`によるセル編集とUndo／Redo
-- QR構造と誤り訂正を利用した修復
-- Binary、HEX、復号内容の確認
-- 復号不能時のモード・文字数（`mode／count`）と、数字・英数字・バイト・漢字モードで先頭から連続して確定した内容の部分情報表示
-- セル単位の修復理由と同じコード語の表示
-- 修復結果の画像保存
-- 作業履歴とセッション保存
-- インターネット接続を使用しない端末内処理
+- Image-file import and camera capture
+- Strict QR matrix text import using only `0 / 1 / ? / *`
+- Rotation, crop, corner, tone, and QR version adjustment
+- Initial corner and version estimation using ZXing-C++, grid periodicity, and two Finders
+- Automatic Finder positions and roles when image agreement is sufficient, with manual clearing, assignment, and local refinement
+- Automatic top-right/bottom-left assignment for two diagonal Finders using both timing axes (version 2 and later; no alignment pattern required); ambiguous roles remain unassigned, and assignments can be cleared manually
+- Cell editing with `0 / 1 / ? / *`, Undo, and Redo
+- Recovery using QR structure and error correction
+- Binary, hexadecimal, and decoded-content inspection
+- Diagnostic mode/count and the confirmed leading content in numeric, alphanumeric, byte, and Kanji modes when full decoding fails
+- Per-cell repair explanations and same-codeword highlighting
+- Recovered-image export
+- Work history and session storage
+- Offline, on-device processing
 
-対応対象はQR Code Model 2のバージョン1～40です。Model 1、Micro QR、rMQRには対応していません。
+The supported symbol family is QR Code Model 2, versions 1 through 40. Model 1, Micro QR, and rMQR are unsupported.
 
-## 使い方
+## Basic workflow
 
-1. 画像を読み込むか、カメラで撮影します。`0 / 1 / ? / *`のQR行列テキストを読み込むこともできます。
-2. 必要に応じて画像を回転し、QRの範囲をクロップします。
-3. 自動推定された四隅、バージョン、2峰／3峰の濃淡を確認し、必要なら調整します。色付き不明領域を使う場合は基本設定でONにできます（初期値はOFF）。
-4. Finderの位置・役割を確認します。十分な画像一致があれば自動設定されます。誤っている場合は「解除」を押して緑のFinderをタップし、必要な役割を指定し直します。
-5. 必要なら詳細設定でセルや探索条件を調整します。
-6. 修復を開始し、復号内容とセルの修復理由を確認します。
+1. Load an image, capture one with the camera, or import a QR matrix text file containing `0 / 1 / ? / *`.
+2. Rotate the image and crop the QR region when necessary.
+3. Review the estimated corners, version, and two-/three-class tone thresholds; adjust them if needed. Colored-unknown detection can be enabled in basic settings when needed and starts off.
+4. Review Finder positions and roles, which are assigned automatically when image agreement is sufficient. To correct an assignment, press **Clear**, tap the green Finder, and assign the intended role.
+5. Adjust cells and search options in advanced settings when needed.
+6. Start recovery and inspect the decoded content and per-cell explanations.
 
-セル編集、詳細設定、結果確認、保存、クラッシック／モダン画面の操作は[ユーザーガイド](docs/USER_GUIDE.ja.md)を参照してください。内部の探索順序、制約、Reed–Solomon処理、候補の検証方法は[修復戦略](docs/RECOVERY_STRATEGY.ja.md)にまとめています。
+See the [User Guide](docs/USER_GUIDE.en.md) for cell editing, advanced settings, result review, saved work, and Classic/Modern navigation. The search order, constraints, Reed–Solomon processing, and candidate-validation rules are collected in [Recovery Strategy](docs/RECOVERY_STRATEGY.en.md).
 
-## ローカルビルド
+## Local build
 
-必要環境:
+Requirements:
 
 - JDK 17
-- Android SDK（compile/target SDK 37）
-- Android API 26以上
+- Android SDK with compile/target SDK 37
+- Android API 26 or newer
 
 ```bash
 bash bootstrap-wrapper.sh
@@ -66,28 +64,28 @@ bash scripts/verify-wrapper.sh
 ./gradlew :androidApp:testDebugUnitTest :androidApp:lint :androidApp:assembleDebug
 ```
 
-debug APKは`build/androidApp/outputs/apk/debug/androidApp-debug.apk`に生成されます。
+The debug APK is written to `build/androidApp/outputs/apk/debug/androidApp-debug.apk`.
 
-公開用application IDは`io.github.earthdiver.qrrepair`です。リリース署名、ストア識別子、公開Privacy Policy URLはリポジトリに含まれていません。公開前の確認については[リリースチェックリスト](docs/RELEASE_CHECKLIST.md)を参照してください。
+The permanent application ID is `io.github.earthdiver.qrrepair`. Release signing, store identifiers, and a public privacy-policy URL are not included. See the [release checklist](docs/RELEASE_CHECKLIST.md) before publication.
 
-## ドキュメント
+## Documentation
 
-- [修復戦略](docs/RECOVERY_STRATEGY.ja.md)
-- [ユーザーガイド](docs/USER_GUIDE.ja.md)
-- [検出ライブラリの比較](docs/DETECTOR_COMPARISON.ja.md)
-- [初期グリッド推定とFinder自動設定](docs/ZXING_CPP_INTEGRATION.ja.md)
-- [幾何近傍探索の合成画像比較](docs/GEOMETRY_SEARCH_STUDY.ja.md)
-- [修復結果情報の読み方](docs/RECOVERY_RESULT_FIELDS.ja.md)
-- [復号・修復理由の読み方](docs/REPAIR_REASONS.ja.md)
-- [Kotlin Multiplatformの分離境界](docs/KMP_MIGRATION.md)
-- [iOS統合計画](iosApp/README.md)
-- [プライバシー](PRIVACY.ja.md)
-- [セキュリティ](SECURITY.ja.md)
-- [コントリビューションガイド](CONTRIBUTING.md)
-- [第三者ライセンス](THIRD_PARTY_NOTICES.md)
+- [Recovery strategy](docs/RECOVERY_STRATEGY.en.md)
+- [User guide](docs/USER_GUIDE.en.md)
+- [Detector library comparison (Japanese)](docs/DETECTOR_COMPARISON.ja.md)
+- [Initial grid estimation and automatic Finder assignment (Japanese)](docs/ZXING_CPP_INTEGRATION.ja.md)
+- [Synthetic geometry-search comparison](docs/GEOMETRY_SEARCH_STUDY.en.md)
+- [Understanding recovery result fields](docs/RECOVERY_RESULT_FIELDS.en.md)
+- [Understanding decode and repair reasons](docs/REPAIR_REASONS.en.md)
+- [Kotlin Multiplatform boundary](docs/KMP_MIGRATION.md)
+- [iOS integration plan](iosApp/README.md)
+- [Privacy](PRIVACY.md)
+- [Security](SECURITY.md)
+- [Contributing](CONTRIBUTING.md)
+- [Third-party licenses](THIRD_PARTY_NOTICES.md)
 
-## ライセンス
+## License
 
-本プロジェクトは[Apache License 2.0](LICENSE)で提供されます。著作権表示と依存コンポーネントのライセンスは[NOTICE.md](NOTICE.md)、[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)、`licenses/`を参照してください。
+This project is licensed under the [Apache License 2.0](LICENSE). See [NOTICE.md](NOTICE.md), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and `licenses/` for copyright and dependency-license information.
 
-修復手法はRobert Xiaoによる“MMA CTF 2015 - QR Code Recovery”の記事から着想を得ていますが、文章・画像・コードを複製せず独自に実装しています。“QR Code”は株式会社デンソーウェーブの登録商標です。本プロジェクトは同社の提携・推奨を受けたものではありません。
+The recovery approach was inspired by Robert Xiao’s “MMA CTF 2015 - QR Code Recovery” write-up, but its prose, images, and code are not reproduced; the implementation was independently developed. “QR Code” is a registered trademark of DENSO WAVE INCORPORATED. This project is not affiliated with or endorsed by DENSO WAVE INCORPORATED.
