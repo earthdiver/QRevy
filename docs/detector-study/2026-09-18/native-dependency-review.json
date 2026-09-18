@@ -1,0 +1,51 @@
+{
+  "artifact": "io.github.zxing-cpp:android:3.1.1",
+  "aar_sha256": "5266905154059e0ba12b55da66774394513855849965e9471169fcc4d144e23a",
+  "native": [
+    {
+      "abi": "arm64-v8a",
+      "uncompressed_bytes": 1746848,
+      "sha256": "b099f5bcc82028ac38ad6b0e5d1f4e3b76db6662d37ffe8734d6a13bc07b380b",
+      "load_segment_alignment_bytes": [
+        16384,
+        16384,
+        16384
+      ]
+    },
+    {
+      "abi": "armeabi-v7a",
+      "uncompressed_bytes": 1229592,
+      "sha256": "e124c92bf61d712757c536c2afbb1eedc27fa6c9d9a80dacba4b042dbe729335",
+      "load_segment_alignment_bytes": [
+        16384,
+        16384,
+        16384
+      ]
+    },
+    {
+      "abi": "x86",
+      "uncompressed_bytes": 1851612,
+      "sha256": "b7c25d132f60cb097d08c32528e617a1efec01d13f80bedc13e53ed6c7a79c2b",
+      "load_segment_alignment_bytes": [
+        16384,
+        16384,
+        16384
+      ]
+    },
+    {
+      "abi": "x86_64",
+      "uncompressed_bytes": 1815304,
+      "sha256": "c052ad4c60c1f7378d45fe94d027e0ec87178d4cddda61a9085c9f70333c23af",
+      "load_segment_alignment_bytes": [
+        16384,
+        16384,
+        16384
+      ]
+    }
+  ],
+  "consumer_rules": "-keep class zxingcpp.** { *; }",
+  "transitive_resolution": {
+    "androidx.camera:camera-core": "1.5.2 -> 1.6.1",
+    "org.jetbrains.kotlin:kotlin-stdlib": "2.3.20 -> 2.4.10"
+  }
+}

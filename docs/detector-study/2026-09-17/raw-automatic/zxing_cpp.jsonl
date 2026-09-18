@@ -1,0 +1,264 @@
+{"id": "v1-s0-clean", "engine": "zxing_cpp", "ms": 0.216152, "times": [0.216152, 0.299849, 0.196277], "candidates": [{"quad": [[183, 183], [330, 183], [330, 330], [183, 330]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s0-rotate17", "engine": "zxing_cpp", "ms": 0.246508, "times": [0.255338, 0.246508, 0.219927], "candidates": [{"quad": [[207, 164], [348, 207], [305, 348], [164, 305]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s0-rotate43", "engine": "zxing_cpp", "ms": 0.23428, "times": [0.31317, 0.23428, 0.222097], "candidates": [{"quad": [[252, 152], [360, 252], [259, 361], [152, 260]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s0-perspective_mild", "engine": "zxing_cpp", "ms": 0.255589, "times": [0.292209, 0.255589, 0.249366], "candidates": [{"quad": [[189, 197], [326, 171], [314, 335], [193, 326]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s0-perspective_strong", "engine": "zxing_cpp", "ms": 0.236166, "times": [0.236166, 0.248201, 0.226382], "candidates": [{"quad": [[196, 215], [324, 153], [294, 340], [207, 323]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s0-blur_mild", "engine": "zxing_cpp", "ms": 0.225126, "times": [0.234612, 0.225126, 0.212283], "candidates": [{"quad": [[182, 182], [329, 183], [328, 327], [182, 330]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s0-blur_strong", "engine": "zxing_cpp", "ms": 0.207106, "times": [0.27271, 0.207106, 0.199645], "candidates": [{"quad": [[183, 183], [330, 182], [329, 330], [183, 329]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s0-shadow", "engine": "zxing_cpp", "ms": 0.204425, "times": [0.214158, 0.195089, 0.204425], "candidates": [{"quad": [[182, 182], [330, 182], [329, 329], [183, 330]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s0-low_contrast", "engine": "zxing_cpp", "ms": 0.205136, "times": [0.226741, 0.205136, 0.200454], "candidates": [{"quad": [[183, 183], [330, 183], [330, 330], [183, 330]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s0-small_modules", "engine": "zxing_cpp", "ms": 0.180329, "times": [0.192627, 0.180018, 0.180329], "candidates": [{"quad": [[235, 235], [277, 235], [277, 277], [235, 277]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s0-no_quiet_zone", "engine": "zxing_cpp", "ms": 0.061391, "times": [0.061391, 0.068052, 0.048451], "candidates": [{"quad": [[0, 1], [147, 1], [148, 147], [0, 148]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s0-clutter", "engine": "zxing_cpp", "ms": 0.21004, "times": [0.230559, 0.21004, 0.207618], "candidates": [{"quad": [[183, 183], [330, 183], [330, 330], [183, 330]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s0-one_finder_missing", "engine": "zxing_cpp", "ms": 0.216808, "times": [0.215433, 0.222324, 0.216808], "candidates": [{"quad": [[329, 231], [25, 232], [24, 154], [330, 154]], "n": null, "stage": "ChecksumError @ QRDecoder.cpp:337"}]}
+{"id": "v1-s0-two_finders_missing", "engine": "zxing_cpp", "ms": 0.175461, "times": [0.175461, 0.172012, 0.180745], "candidates": []}
+{"id": "v1-s0-three_finders_missing", "engine": "zxing_cpp", "ms": 0.16175, "times": [0.199038, 0.156473, 0.16175], "candidates": []}
+{"id": "v1-s0-finder_ring_damage", "engine": "zxing_cpp", "ms": 0.166766, "times": [0.225043, 0.166766, 0.159252], "candidates": []}
+{"id": "v1-s0-gray_data_patch", "engine": "zxing_cpp", "ms": 0.264101, "times": [0.264101, 0.342944, 0.224235], "candidates": [{"quad": [[183, 183], [330, 183], [330, 330], [183, 330]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s0-white_data_patch", "engine": "zxing_cpp", "ms": 0.219032, "times": [0.258889, 0.219032, 0.214013], "candidates": [{"quad": [[183, 183], [330, 183], [330, 330], [183, 330]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s0-scratch", "engine": "zxing_cpp", "ms": 0.205732, "times": [0.228027, 0.205732, 0.199991], "candidates": [{"quad": [[183, 183], [330, 183], [330, 330], [183, 330]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s0-combined", "engine": "zxing_cpp", "ms": 0.284155, "times": [0.284155, 0.26207, 0.288681], "candidates": [{"quad": [[209, 180], [348, 196], [289, 349], [175, 305]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s1-clean", "engine": "zxing_cpp", "ms": 0.219297, "times": [0.222913, 0.20402, 0.219297], "candidates": [{"quad": [[330, 183], [330, 330], [182, 329], [183, 183]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s1-rotate17", "engine": "zxing_cpp", "ms": 0.230102, "times": [0.230102, 0.216209, 0.234851], "candidates": [{"quad": [[348, 207], [305, 348], [164, 305], [207, 164]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s1-rotate43", "engine": "zxing_cpp", "ms": 0.22393, "times": [0.237584, 0.22393, 0.213798], "candidates": [{"quad": [[360, 252], [260, 360], [151, 259], [252, 152]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s1-perspective_mild", "engine": "zxing_cpp", "ms": 0.229249, "times": [0.229249, 0.230584, 0.214151], "candidates": [{"quad": [[315, 189], [341, 326], [177, 314], [186, 193]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s1-perspective_strong", "engine": "zxing_cpp", "ms": 0.213377, "times": [0.229973, 0.213377, 0.210408], "candidates": [{"quad": [[297, 196], [359, 324], [172, 294], [189, 207]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s1-blur_mild", "engine": "zxing_cpp", "ms": 0.221367, "times": [0.224317, 0.221367, 0.197849], "candidates": [{"quad": [[330, 182], [329, 329], [184, 328], [182, 182]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s1-blur_strong", "engine": "zxing_cpp", "ms": 0.221799, "times": [0.225108, 0.221799, 0.209017], "candidates": [{"quad": [[329, 182], [329, 329], [184, 330], [182, 182]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s1-shadow", "engine": "zxing_cpp", "ms": 0.205827, "times": [0.225371, 0.205827, 0.202922], "candidates": [{"quad": [[330, 181], [330, 331], [184, 328], [183, 182]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s1-low_contrast", "engine": "zxing_cpp", "ms": 0.205975, "times": [0.205975, 0.196698, 0.215177], "candidates": [{"quad": [[330, 183], [330, 330], [182, 329], [183, 183]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s1-small_modules", "engine": "zxing_cpp", "ms": 0.170887, "times": [0.180982, 0.170887, 0.169986], "candidates": [{"quad": [[277, 235], [277, 277], [236, 276], [235, 235]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s1-no_quiet_zone", "engine": "zxing_cpp", "ms": 0.046789, "times": [0.056832, 0.046789, 0.042406], "candidates": [{"quad": [[148, 0], [148, 148], [1, 146], [1, 1]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s1-clutter", "engine": "zxing_cpp", "ms": 0.222638, "times": [0.222638, 0.226253, 0.209966], "candidates": [{"quad": [[330, 183], [330, 330], [182, 329], [183, 183]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s1-one_finder_missing", "engine": "zxing_cpp", "ms": 0.192232, "times": [0.192232, 0.195094, 0.182909], "candidates": []}
+{"id": "v1-s1-two_finders_missing", "engine": "zxing_cpp", "ms": 0.171476, "times": [0.171476, 0.170398, 0.180742], "candidates": []}
+{"id": "v1-s1-three_finders_missing", "engine": "zxing_cpp", "ms": 0.152905, "times": [0.154653, 0.152905, 0.150667], "candidates": []}
+{"id": "v1-s1-finder_ring_damage", "engine": "zxing_cpp", "ms": 0.154282, "times": [0.16304, 0.153109, 0.154282], "candidates": []}
+{"id": "v1-s1-gray_data_patch", "engine": "zxing_cpp", "ms": 0.211789, "times": [0.22779, 0.211789, 0.203496], "candidates": [{"quad": [[330, 183], [330, 330], [182, 329], [183, 183]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s1-white_data_patch", "engine": "zxing_cpp", "ms": 0.201945, "times": [0.208217, 0.201945, 0.200562], "candidates": [{"quad": [[330, 183], [330, 330], [182, 329], [183, 183]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s1-scratch", "engine": "zxing_cpp", "ms": 0.204414, "times": [0.219318, 0.204414, 0.202131], "candidates": [{"quad": [[330, 183], [330, 330], [182, 329], [183, 183]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s1-combined", "engine": "zxing_cpp", "ms": 0.239769, "times": [0.239769, 0.245212, 0.225243], "candidates": [{"quad": [[332, 209], [316, 348], [163, 289], [207, 175]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s2-clean", "engine": "zxing_cpp", "ms": 0.208236, "times": [0.211465, 0.208236, 0.197261], "candidates": [{"quad": [[330, 330], [183, 330], [183, 183], [330, 183]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s2-rotate17", "engine": "zxing_cpp", "ms": 0.22285, "times": [0.24515, 0.222458, 0.22285], "candidates": [{"quad": [[305, 348], [164, 305], [207, 164], [348, 207]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s2-rotate43", "engine": "zxing_cpp", "ms": 0.229785, "times": [0.316726, 0.229785, 0.217938], "candidates": [{"quad": [[260, 360], [151, 260], [253, 151], [360, 252]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s2-perspective_mild", "engine": "zxing_cpp", "ms": 0.250397, "times": [0.269787, 0.250397, 0.240472], "candidates": [{"quad": [[323, 315], [186, 341], [198, 177], [319, 186]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s2-perspective_strong", "engine": "zxing_cpp", "ms": 0.225606, "times": [0.225606, 0.214552, 0.229388], "candidates": [{"quad": [[316, 297], [188, 359], [218, 172], [305, 190]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s2-blur_mild", "engine": "zxing_cpp", "ms": 0.218677, "times": [0.227896, 0.218677, 0.201694], "candidates": [{"quad": [[330, 330], [183, 330], [183, 183], [330, 183]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s2-blur_strong", "engine": "zxing_cpp", "ms": 0.200821, "times": [0.223856, 0.200821, 0.198074], "candidates": [{"quad": [[329, 329], [183, 329], [182, 181], [329, 183]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s2-shadow", "engine": "zxing_cpp", "ms": 0.202546, "times": [0.217025, 0.202546, 0.199111], "candidates": [{"quad": [[330, 331], [183, 330], [184, 184], [330, 181]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s2-low_contrast", "engine": "zxing_cpp", "ms": 0.202092, "times": [0.219969, 0.202092, 0.195648], "candidates": [{"quad": [[330, 330], [183, 330], [183, 183], [330, 183]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s2-small_modules", "engine": "zxing_cpp", "ms": 0.167906, "times": [0.181893, 0.167906, 0.166213], "candidates": [{"quad": [[277, 277], [235, 277], [235, 235], [277, 235]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s2-no_quiet_zone", "engine": "zxing_cpp", "ms": 0.044947, "times": [0.056454, 0.044947, 0.040733], "candidates": [{"quad": [[148, 148], [1, 148], [1, 1], [148, 1]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s2-clutter", "engine": "zxing_cpp", "ms": 0.210506, "times": [0.226271, 0.210506, 0.207736], "candidates": [{"quad": [[330, 330], [183, 330], [183, 183], [330, 183]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s2-one_finder_missing", "engine": "zxing_cpp", "ms": 0.189764, "times": [0.194365, 0.189764, 0.181072], "candidates": []}
+{"id": "v1-s2-two_finders_missing", "engine": "zxing_cpp", "ms": 0.165729, "times": [0.17472, 0.165729, 0.165299], "candidates": []}
+{"id": "v1-s2-three_finders_missing", "engine": "zxing_cpp", "ms": 0.151289, "times": [0.154602, 0.151289, 0.149392], "candidates": []}
+{"id": "v1-s2-finder_ring_damage", "engine": "zxing_cpp", "ms": 0.160355, "times": [0.168604, 0.160355, 0.156099], "candidates": []}
+{"id": "v1-s2-gray_data_patch", "engine": "zxing_cpp", "ms": 0.205364, "times": [0.228981, 0.205364, 0.202638], "candidates": [{"quad": [[330, 330], [183, 330], [183, 183], [330, 183]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s2-white_data_patch", "engine": "zxing_cpp", "ms": 0.199778, "times": [0.220887, 0.199778, 0.196775], "candidates": [{"quad": [[330, 330], [183, 330], [183, 183], [330, 183]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s2-scratch", "engine": "zxing_cpp", "ms": 0.200347, "times": [0.200347, 0.209921, 0.196273], "candidates": [{"quad": [[330, 330], [183, 330], [183, 183], [330, 183]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s2-combined", "engine": "zxing_cpp", "ms": 0.225596, "times": [0.243471, 0.225596, 0.21954], "candidates": [{"quad": [[303, 332], [164, 316], [223, 163], [337, 207]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s3-clean", "engine": "zxing_cpp", "ms": 0.200067, "times": [0.215038, 0.200067, 0.195563], "candidates": [{"quad": [[183, 330], [183, 183], [329, 182], [330, 330]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s3-rotate17", "engine": "zxing_cpp", "ms": 0.221369, "times": [0.235097, 0.221369, 0.212928], "candidates": [{"quad": [[164, 305], [207, 164], [348, 207], [305, 348]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s3-rotate43", "engine": "zxing_cpp", "ms": 0.23066, "times": [0.254, 0.23066, 0.221852], "candidates": [{"quad": [[152, 260], [252, 152], [361, 253], [260, 360]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s3-perspective_mild", "engine": "zxing_cpp", "ms": 0.286018, "times": [0.287314, 0.286018, 0.254724], "candidates": [{"quad": [[197, 323], [171, 186], [335, 198], [326, 319]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s3-perspective_strong", "engine": "zxing_cpp", "ms": 0.234702, "times": [0.260326, 0.234702, 0.22897], "candidates": [{"quad": [[215, 316], [153, 188], [341, 218], [323, 306]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s3-blur_mild", "engine": "zxing_cpp", "ms": 0.21652, "times": [0.216831, 0.205006, 0.21652], "candidates": [{"quad": [[182, 330], [183, 183], [327, 184], [330, 330]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s3-blur_strong", "engine": "zxing_cpp", "ms": 0.206345, "times": [0.222137, 0.206345, 0.199334], "candidates": [{"quad": [[182, 330], [182, 182], [327, 186], [329, 329]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s3-shadow", "engine": "zxing_cpp", "ms": 0.199228, "times": [0.210071, 0.199228, 0.194357], "candidates": [{"quad": [[182, 330], [183, 182], [329, 183], [330, 330]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s3-low_contrast", "engine": "zxing_cpp", "ms": 0.19413, "times": [0.211343, 0.19413, 0.193892], "candidates": [{"quad": [[183, 330], [183, 183], [329, 182], [330, 330]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s3-small_modules", "engine": "zxing_cpp", "ms": 0.167596, "times": [0.177184, 0.167596, 0.167114], "candidates": [{"quad": [[235, 277], [235, 235], [276, 236], [277, 277]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s3-no_quiet_zone", "engine": "zxing_cpp", "ms": 0.064533, "times": [0.073709, 0.064533, 0.048198], "candidates": [{"quad": [[0, 147], [0, 0], [148, 1], [147, 147]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s3-clutter", "engine": "zxing_cpp", "ms": 0.215658, "times": [0.220049, 0.215658, 0.201896], "candidates": [{"quad": [[183, 330], [183, 183], [329, 182], [330, 330]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s3-one_finder_missing", "engine": "zxing_cpp", "ms": 0.190722, "times": [0.190722, 0.184864, 0.195669], "candidates": []}
+{"id": "v1-s3-two_finders_missing", "engine": "zxing_cpp", "ms": 0.167124, "times": [0.173381, 0.16539, 0.167124], "candidates": []}
+{"id": "v1-s3-three_finders_missing", "engine": "zxing_cpp", "ms": 0.148086, "times": [0.142616, 0.151638, 0.148086], "candidates": []}
+{"id": "v1-s3-finder_ring_damage", "engine": "zxing_cpp", "ms": 0.160372, "times": [0.160372, 0.16114, 0.154849], "candidates": []}
+{"id": "v1-s3-gray_data_patch", "engine": "zxing_cpp", "ms": 0.207548, "times": [0.225734, 0.207548, 0.201017], "candidates": [{"quad": [[183, 330], [183, 183], [329, 182], [330, 330]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s3-white_data_patch", "engine": "zxing_cpp", "ms": 0.202357, "times": [0.217894, 0.202357, 0.196177], "candidates": [{"quad": [[183, 330], [183, 183], [329, 182], [330, 330]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s3-scratch", "engine": "zxing_cpp", "ms": 0.200176, "times": [0.20827, 0.200176, 0.197914], "candidates": [{"quad": [[183, 330], [183, 183], [329, 182], [330, 330]], "n": 21, "stage": "decoded"}]}
+{"id": "v1-s3-combined", "engine": "zxing_cpp", "ms": 0.278647, "times": [0.306858, 0.278647, 0.27787], "candidates": [{"quad": [[180, 303], [196, 164], [349, 223], [305, 337]], "n": 21, "stage": "decoded"}]}
+{"id": "v3-s0-clean", "engine": "zxing_cpp", "ms": 0.253124, "times": [0.252927, 0.399287, 0.253124], "candidates": [{"quad": [[155, 154], [358, 154], [357, 358], [155, 357]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s0-rotate17", "engine": "zxing_cpp", "ms": 0.256831, "times": [0.335315, 0.256831, 0.2425], "candidates": [{"quad": [[189, 129], [383, 189], [323, 383], [129, 323]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s0-rotate43", "engine": "zxing_cpp", "ms": 0.26127, "times": [0.26127, 0.249441, 0.266204], "candidates": [{"quad": [[251, 113], [399, 251], [261, 400], [113, 261]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s0-perspective_mild", "engine": "zxing_cpp", "ms": 0.249023, "times": [0.271073, 0.249023, 0.242724], "candidates": [{"quad": [[163, 174], [352, 139], [337, 365], [169, 353]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s0-perspective_strong", "engine": "zxing_cpp", "ms": 0.264371, "times": [0.282502, 0.26409, 0.264371], "candidates": [{"quad": [[173, 200], [346, 118], [311, 376], [187, 348]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s0-blur_mild", "engine": "zxing_cpp", "ms": 0.241138, "times": [0.241138, 0.229782, 0.243229], "candidates": [{"quad": [[155, 154], [358, 154], [357, 358], [155, 357]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s0-blur_strong", "engine": "zxing_cpp", "ms": 0.254476, "times": [0.254476, 0.30074, 0.230036], "candidates": [{"quad": [[155, 154], [357, 155], [357, 358], [154, 358]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s0-shadow", "engine": "zxing_cpp", "ms": 0.226929, "times": [0.246574, 0.221928, 0.226929], "candidates": [{"quad": [[155, 154], [358, 154], [357, 358], [155, 357]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s0-low_contrast", "engine": "zxing_cpp", "ms": 0.217917, "times": [0.227221, 0.217599, 0.217917], "candidates": [{"quad": [[155, 155], [358, 155], [358, 358], [155, 358]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s0-small_modules", "engine": "zxing_cpp", "ms": 0.17846, "times": [0.191996, 0.177057, 0.17846], "candidates": [{"quad": [[227, 227], [285, 227], [285, 285], [227, 285]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s0-no_quiet_zone", "engine": "zxing_cpp", "ms": 0.076298, "times": [0.088723, 0.076298, 0.069657], "candidates": [{"quad": [[1, 1], [203, 1], [204, 204], [0, 203]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s0-clutter", "engine": "zxing_cpp", "ms": 0.243076, "times": [0.243076, 0.25548, 0.233169], "candidates": [{"quad": [[155, 154], [358, 154], [357, 358], [155, 357]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s0-one_finder_missing", "engine": "zxing_cpp", "ms": 0.207834, "times": [0.207834, 0.235559, 0.200651], "candidates": []}
+{"id": "v3-s0-two_finders_missing", "engine": "zxing_cpp", "ms": 0.178487, "times": [0.193435, 0.178487, 0.172536], "candidates": []}
+{"id": "v3-s0-three_finders_missing", "engine": "zxing_cpp", "ms": 0.161431, "times": [0.161431, 0.194498, 0.161121], "candidates": []}
+{"id": "v3-s0-finder_ring_damage", "engine": "zxing_cpp", "ms": 0.170202, "times": [0.170202, 0.173327, 0.166326], "candidates": []}
+{"id": "v3-s0-gray_data_patch", "engine": "zxing_cpp", "ms": 0.247796, "times": [0.271061, 0.247796, 0.231599], "candidates": [{"quad": [[155, 154], [358, 154], [357, 358], [155, 357]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s0-white_data_patch", "engine": "zxing_cpp", "ms": 0.226837, "times": [0.250639, 0.226837, 0.221175], "candidates": [{"quad": [[155, 154], [358, 154], [357, 358], [155, 357]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s0-scratch", "engine": "zxing_cpp", "ms": 0.233113, "times": [0.25038, 0.233113, 0.230819], "candidates": [{"quad": [[155, 154], [358, 154], [357, 358], [155, 357]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s0-combined", "engine": "zxing_cpp", "ms": 0.256483, "times": [0.265972, 0.256483, 0.242374], "candidates": [{"quad": [[191, 151], [382, 173], [302, 384], [144, 324]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s1-clean", "engine": "zxing_cpp", "ms": 0.262588, "times": [0.31613, 0.262588, 0.234623], "candidates": [{"quad": [[357, 155], [357, 357], [154, 358], [154, 154]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s1-rotate17", "engine": "zxing_cpp", "ms": 0.250216, "times": [0.267313, 0.250216, 0.247569], "candidates": [{"quad": [[383, 189], [323, 383], [129, 323], [189, 129]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s1-rotate43", "engine": "zxing_cpp", "ms": 0.251591, "times": [0.276418, 0.249184, 0.251591], "candidates": [{"quad": [[399, 251], [261, 399], [112, 261], [251, 113]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s1-perspective_mild", "engine": "zxing_cpp", "ms": 0.253084, "times": [0.253084, 0.239715, 0.256058], "candidates": [{"quad": [[338, 163], [373, 352], [147, 337], [159, 169]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s1-perspective_strong", "engine": "zxing_cpp", "ms": 0.268446, "times": [0.282136, 0.268446, 0.258527], "candidates": [{"quad": [[312, 173], [394, 346], [136, 311], [164, 187]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s1-blur_mild", "engine": "zxing_cpp", "ms": 0.252107, "times": [0.252107, 0.230342, 0.275813], "candidates": [{"quad": [[357, 154], [358, 357], [154, 358], [154, 155]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s1-blur_strong", "engine": "zxing_cpp", "ms": 0.237158, "times": [0.237158, 0.243287, 0.225113], "candidates": [{"quad": [[357, 155], [358, 358], [154, 358], [154, 154]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s1-shadow", "engine": "zxing_cpp", "ms": 0.235738, "times": [0.235738, 0.238112, 0.226805], "candidates": [{"quad": [[357, 155], [357, 357], [154, 358], [155, 155]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s1-low_contrast", "engine": "zxing_cpp", "ms": 0.224886, "times": [0.24563, 0.224886, 0.223643], "candidates": [{"quad": [[358, 155], [358, 358], [155, 358], [155, 155]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s1-small_modules", "engine": "zxing_cpp", "ms": 0.178286, "times": [0.201712, 0.178286, 0.17376], "candidates": [{"quad": [[285, 227], [285, 285], [227, 285], [227, 227]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s1-no_quiet_zone", "engine": "zxing_cpp", "ms": 0.068613, "times": [0.081393, 0.068613, 0.064146], "candidates": [{"quad": [[204, 1], [204, 204], [1, 204], [1, 1]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s1-clutter", "engine": "zxing_cpp", "ms": 0.238356, "times": [0.254362, 0.238356, 0.233139], "candidates": [{"quad": [[357, 155], [357, 357], [154, 358], [154, 154]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s1-one_finder_missing", "engine": "zxing_cpp", "ms": 0.203351, "times": [0.199324, 0.203351, 0.204387], "candidates": []}
+{"id": "v3-s1-two_finders_missing", "engine": "zxing_cpp", "ms": 0.181129, "times": [0.183796, 0.181129, 0.177751], "candidates": []}
+{"id": "v3-s1-three_finders_missing", "engine": "zxing_cpp", "ms": 0.157759, "times": [0.158739, 0.156519, 0.157759], "candidates": []}
+{"id": "v3-s1-finder_ring_damage", "engine": "zxing_cpp", "ms": 0.159851, "times": [0.168194, 0.159851, 0.156969], "candidates": []}
+{"id": "v3-s1-gray_data_patch", "engine": "zxing_cpp", "ms": 0.245359, "times": [0.252031, 0.235803, 0.245359], "candidates": [{"quad": [[357, 155], [357, 357], [154, 358], [154, 154]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s1-white_data_patch", "engine": "zxing_cpp", "ms": 0.248916, "times": [0.266594, 0.248916, 0.238164], "candidates": [{"quad": [[357, 155], [357, 357], [154, 358], [154, 154]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s1-scratch", "engine": "zxing_cpp", "ms": 0.240106, "times": [0.240106, 0.252988, 0.230881], "candidates": [{"quad": [[357, 155], [357, 357], [154, 358], [154, 154]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s1-combined", "engine": "zxing_cpp", "ms": 0.252623, "times": [0.258279, 0.252623, 0.242106], "candidates": [{"quad": [[361, 191], [339, 382], [128, 302], [188, 144]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s2-clean", "engine": "zxing_cpp", "ms": 0.260394, "times": [0.255915, 0.260394, 0.425078], "candidates": [{"quad": [[358, 358], [154, 358], [155, 155], [357, 155]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s2-rotate17", "engine": "zxing_cpp", "ms": 0.306019, "times": [0.306019, 0.285289, 0.331727], "candidates": [{"quad": [[323, 383], [129, 323], [189, 129], [383, 189]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s2-rotate43", "engine": "zxing_cpp", "ms": 0.25176, "times": [0.278761, 0.25176, 0.241718], "candidates": [{"quad": [[261, 399], [113, 261], [251, 112], [399, 251]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s2-perspective_mild", "engine": "zxing_cpp", "ms": 0.261455, "times": [0.261455, 0.240966, 0.262196], "candidates": [{"quad": [[349, 338], [160, 373], [175, 147], [343, 159]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s2-perspective_strong", "engine": "zxing_cpp", "ms": 0.245502, "times": [0.265698, 0.245502, 0.239585], "candidates": [{"quad": [[339, 312], [166, 394], [201, 136], [325, 164]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s2-blur_mild", "engine": "zxing_cpp", "ms": 0.230151, "times": [0.252813, 0.230151, 0.224], "candidates": [{"quad": [[358, 358], [154, 358], [155, 155], [357, 154]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s2-blur_strong", "engine": "zxing_cpp", "ms": 0.23006, "times": [0.272734, 0.23006, 0.216162], "candidates": [{"quad": [[358, 358], [154, 358], [155, 155], [358, 154]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s2-shadow", "engine": "zxing_cpp", "ms": 0.218022, "times": [0.237156, 0.218022, 0.217028], "candidates": [{"quad": [[357, 358], [155, 357], [155, 155], [357, 155]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s2-low_contrast", "engine": "zxing_cpp", "ms": 0.213884, "times": [0.235772, 0.213884, 0.2084], "candidates": [{"quad": [[358, 358], [155, 358], [155, 155], [358, 155]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s2-small_modules", "engine": "zxing_cpp", "ms": 0.185497, "times": [0.195499, 0.179068, 0.185497], "candidates": [{"quad": [[285, 285], [227, 285], [227, 227], [285, 227]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s2-no_quiet_zone", "engine": "zxing_cpp", "ms": 0.0761, "times": [0.095694, 0.0761, 0.065249], "candidates": [{"quad": [[204, 204], [0, 203], [1, 1], [204, 0]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s2-clutter", "engine": "zxing_cpp", "ms": 0.23685, "times": [0.266966, 0.23685, 0.227186], "candidates": [{"quad": [[358, 358], [154, 358], [155, 155], [357, 155]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s2-one_finder_missing", "engine": "zxing_cpp", "ms": 0.204113, "times": [0.206423, 0.204113, 0.196549], "candidates": []}
+{"id": "v3-s2-two_finders_missing", "engine": "zxing_cpp", "ms": 0.172395, "times": [0.177366, 0.172395, 0.170429], "candidates": []}
+{"id": "v3-s2-three_finders_missing", "engine": "zxing_cpp", "ms": 0.158118, "times": [0.1557, 0.166121, 0.158118], "candidates": []}
+{"id": "v3-s2-finder_ring_damage", "engine": "zxing_cpp", "ms": 0.166822, "times": [0.166822, 0.161634, 0.172457], "candidates": []}
+{"id": "v3-s2-gray_data_patch", "engine": "zxing_cpp", "ms": 0.249722, "times": [0.263364, 0.249722, 0.23066], "candidates": [{"quad": [[358, 358], [154, 358], [155, 155], [357, 155]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s2-white_data_patch", "engine": "zxing_cpp", "ms": 0.228813, "times": [0.235259, 0.228813, 0.225732], "candidates": [{"quad": [[358, 358], [154, 358], [155, 155], [357, 155]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s2-scratch", "engine": "zxing_cpp", "ms": 0.229925, "times": [0.245683, 0.229925, 0.224303], "candidates": [{"quad": [[358, 358], [154, 358], [155, 155], [357, 155]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s2-combined", "engine": "zxing_cpp", "ms": 0.316923, "times": [0.290889, 0.316923, 0.397765], "candidates": [{"quad": [[321, 361], [130, 339], [210, 128], [368, 188]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s3-clean", "engine": "zxing_cpp", "ms": 0.233493, "times": [0.270524, 0.233493, 0.228904], "candidates": [{"quad": [[154, 358], [154, 154], [357, 155], [357, 357]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s3-rotate17", "engine": "zxing_cpp", "ms": 0.255847, "times": [0.286623, 0.255847, 0.245788], "candidates": [{"quad": [[129, 323], [189, 129], [383, 189], [323, 383]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s3-rotate43", "engine": "zxing_cpp", "ms": 0.260277, "times": [0.260277, 0.269193, 0.24922], "candidates": [{"quad": [[113, 261], [251, 113], [400, 251], [261, 399]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s3-perspective_mild", "engine": "zxing_cpp", "ms": 0.239756, "times": [0.260784, 0.239756, 0.23672], "candidates": [{"quad": [[174, 349], [139, 160], [365, 175], [353, 343]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s3-perspective_strong", "engine": "zxing_cpp", "ms": 0.241042, "times": [0.262399, 0.241042, 0.229373], "candidates": [{"quad": [[200, 339], [118, 166], [376, 201], [348, 325]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s3-blur_mild", "engine": "zxing_cpp", "ms": 0.226647, "times": [0.239986, 0.226647, 0.224262], "candidates": [{"quad": [[155, 357], [154, 155], [358, 154], [358, 357]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s3-blur_strong", "engine": "zxing_cpp", "ms": 0.223214, "times": [0.240094, 0.223214, 0.218248], "candidates": [{"quad": [[155, 358], [154, 154], [357, 154], [358, 358]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s3-shadow", "engine": "zxing_cpp", "ms": 0.234233, "times": [0.234233, 0.24376, 0.220604], "candidates": [{"quad": [[154, 358], [154, 155], [357, 155], [357, 357]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s3-low_contrast", "engine": "zxing_cpp", "ms": 0.215719, "times": [0.228433, 0.21298, 0.215719], "candidates": [{"quad": [[155, 358], [155, 155], [358, 155], [358, 358]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s3-small_modules", "engine": "zxing_cpp", "ms": 0.191351, "times": [0.181879, 0.191351, 0.194911], "candidates": [{"quad": [[227, 285], [227, 227], [285, 227], [285, 285]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s3-no_quiet_zone", "engine": "zxing_cpp", "ms": 0.067321, "times": [0.082465, 0.067321, 0.061026], "candidates": [{"quad": [[0, 204], [1, 1], [203, 1], [204, 204]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s3-clutter", "engine": "zxing_cpp", "ms": 0.243107, "times": [0.244651, 0.243107, 0.227987], "candidates": [{"quad": [[154, 358], [154, 154], [357, 155], [357, 357]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s3-one_finder_missing", "engine": "zxing_cpp", "ms": 0.195172, "times": [0.207228, 0.195172, 0.190554], "candidates": []}
+{"id": "v3-s3-two_finders_missing", "engine": "zxing_cpp", "ms": 0.179192, "times": [0.191189, 0.179192, 0.174067], "candidates": []}
+{"id": "v3-s3-three_finders_missing", "engine": "zxing_cpp", "ms": 0.163483, "times": [0.163483, 0.165069, 0.160508], "candidates": []}
+{"id": "v3-s3-finder_ring_damage", "engine": "zxing_cpp", "ms": 0.163134, "times": [0.166617, 0.159724, 0.163134], "candidates": []}
+{"id": "v3-s3-gray_data_patch", "engine": "zxing_cpp", "ms": 0.238314, "times": [0.265693, 0.238314, 0.229156], "candidates": [{"quad": [[154, 358], [154, 154], [357, 155], [357, 357]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s3-white_data_patch", "engine": "zxing_cpp", "ms": 0.227146, "times": [0.23368, 0.227146, 0.223082], "candidates": [{"quad": [[154, 358], [154, 154], [357, 155], [357, 357]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s3-scratch", "engine": "zxing_cpp", "ms": 0.239307, "times": [0.24066, 0.223804, 0.239307], "candidates": [{"quad": [[154, 358], [154, 154], [357, 155], [357, 357]], "n": 29, "stage": "decoded"}]}
+{"id": "v3-s3-combined", "engine": "zxing_cpp", "ms": 0.262415, "times": [0.296389, 0.262415, 0.252441], "candidates": [{"quad": [[151, 321], [173, 130], [384, 210], [324, 368]], "n": 29, "stage": "decoded"}]}
+{"id": "v7-s0-clean", "engine": "zxing_cpp", "ms": 0.371179, "times": [0.390224, 0.357106, 0.371179], "candidates": [{"quad": [[99, 99], [413, 99], [414, 414], [99, 413]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s0-rotate17", "engine": "zxing_cpp", "ms": 0.446002, "times": [0.432893, 0.446002, 0.498712], "candidates": [{"quad": [[152, 59], [453, 151], [360, 453], [59, 360]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s0-rotate43", "engine": "zxing_cpp", "ms": 0.415631, "times": [0.424359, 0.415631, 0.407835], "candidates": [{"quad": [[248, 33], [479, 248], [264, 479], [33, 264]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s0-perspective_mild", "engine": "zxing_cpp", "ms": 0.41525, "times": [0.422364, 0.406022, 0.41525], "candidates": [{"quad": [[111, 130], [404, 77], [382, 426], [121, 407]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s0-perspective_strong", "engine": "zxing_cpp", "ms": 0.443456, "times": [0.501215, 0.432572, 0.443456], "candidates": [{"quad": [[392, 48], [368, 234], [251, 252], [253, 112]], "n": null, "stage": "ChecksumError @ QRDecoder.cpp:337"}, {"quad": [[126, 169], [399, 38], [347, 450], [148, 401]], "n": 41, "stage": "ChecksumError @ QRDecoder.cpp:337"}, {"quad": [[393, 48], [369, 234], [252, 249], [255, 111]], "n": null, "stage": "ChecksumError @ QRDecoder.cpp:337"}]}
+{"id": "v7-s0-blur_mild", "engine": "zxing_cpp", "ms": 0.394682, "times": [0.394682, 0.608908, 0.387747], "candidates": [{"quad": [[98, 99], [414, 98], [414, 414], [99, 413]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s0-blur_strong", "engine": "zxing_cpp", "ms": 0.355136, "times": [0.736155, 0.355136, 0.330617], "candidates": [{"quad": [[99, 98], [414, 98], [413, 413], [98, 414]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s0-shadow", "engine": "zxing_cpp", "ms": 0.357013, "times": [0.405327, 0.356746, 0.357013], "candidates": [{"quad": [[99, 98], [413, 99], [414, 414], [99, 414]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s0-low_contrast", "engine": "zxing_cpp", "ms": 0.337228, "times": [0.339888, 0.33088, 0.337228], "candidates": [{"quad": [[98, 98], [414, 99], [414, 414], [98, 414]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s0-small_modules", "engine": "zxing_cpp", "ms": 0.219938, "times": [0.232316, 0.219938, 0.211542], "candidates": [{"quad": [[211, 211], [301, 211], [301, 301], [211, 301]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s0-no_quiet_zone", "engine": "zxing_cpp", "ms": 0.1708, "times": [0.1708, 0.156135, 0.181461], "candidates": [{"quad": [[0, 0], [316, 1], [316, 316], [1, 316]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s0-clutter", "engine": "zxing_cpp", "ms": 0.347197, "times": [0.375609, 0.347197, 0.347113], "candidates": [{"quad": [[99, 99], [413, 99], [414, 414], [99, 413]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s0-one_finder_missing", "engine": "zxing_cpp", "ms": 0.269486, "times": [0.302957, 0.269486, 0.258164], "candidates": [{"quad": [[414, 98], [414, 217], [297, 215], [294, 98]], "n": null, "stage": "ChecksumError @ QRDecoder.cpp:337"}]}
+{"id": "v7-s0-two_finders_missing", "engine": "zxing_cpp", "ms": 0.224687, "times": [0.224687, 0.21199, 0.23637], "candidates": []}
+{"id": "v7-s0-three_finders_missing", "engine": "zxing_cpp", "ms": 0.193006, "times": [0.212871, 0.193006, 0.187325], "candidates": []}
+{"id": "v7-s0-finder_ring_damage", "engine": "zxing_cpp", "ms": 0.197169, "times": [0.197169, 0.191027, 0.199844], "candidates": []}
+{"id": "v7-s0-gray_data_patch", "engine": "zxing_cpp", "ms": 0.372867, "times": [0.39625, 0.372867, 0.355013], "candidates": [{"quad": [[99, 99], [413, 99], [414, 414], [99, 413]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s0-white_data_patch", "engine": "zxing_cpp", "ms": 0.379204, "times": [0.379204, 0.362203, 0.515888], "candidates": [{"quad": [[99, 99], [413, 99], [414, 414], [99, 413]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s0-scratch", "engine": "zxing_cpp", "ms": 0.355517, "times": [0.454237, 0.354804, 0.355517], "candidates": [{"quad": [[99, 99], [413, 99], [414, 414], [99, 413]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s0-combined", "engine": "zxing_cpp", "ms": 0.383146, "times": [0.407691, 0.383146, 0.370928], "candidates": [{"quad": [[154, 93], [450, 128], [327, 455], [82, 361]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s1-clean", "engine": "zxing_cpp", "ms": 0.359903, "times": [0.359903, 0.338169, 0.388162], "candidates": [{"quad": [[414, 98], [413, 413], [98, 414], [99, 99]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s1-rotate17", "engine": "zxing_cpp", "ms": 0.416371, "times": [0.431776, 0.416371, 0.395528], "candidates": [{"quad": [[453, 151], [361, 453], [59, 360], [152, 59]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s1-rotate43", "engine": "zxing_cpp", "ms": 0.374342, "times": [0.374342, 0.381716, 0.372246], "candidates": [{"quad": [[479, 248], [264, 479], [33, 264], [248, 33]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s1-perspective_mild", "engine": "zxing_cpp", "ms": 0.407605, "times": [0.407605, 0.41586, 0.375189], "candidates": [{"quad": [[382, 112], [435, 404], [86, 382], [105, 121]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s1-perspective_strong", "engine": "zxing_cpp", "ms": 0.390742, "times": [0.394417, 0.390742, 0.365807], "candidates": [{"quad": [[343, 126], [474, 399], [62, 347], [111, 148]], "n": 41, "stage": "ChecksumError @ QRDecoder.cpp:337"}, {"quad": [[464, 392], [317, 373], [295, 275], [412, 280]], "n": null, "stage": "ChecksumError @ QRDecoder.cpp:337"}]}
+{"id": "v7-s1-blur_mild", "engine": "zxing_cpp", "ms": 0.371361, "times": [0.385405, 0.356349, 0.371361], "candidates": [{"quad": [[413, 99], [413, 414], [99, 413], [98, 98]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s1-blur_strong", "engine": "zxing_cpp", "ms": 0.380529, "times": [0.401311, 0.380529, 0.354356], "candidates": [{"quad": [[413, 99], [414, 414], [99, 414], [98, 98]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s1-shadow", "engine": "zxing_cpp", "ms": 0.375904, "times": [0.363451, 0.375904, 0.377839], "candidates": [{"quad": [[414, 99], [413, 413], [98, 414], [99, 99]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s1-low_contrast", "engine": "zxing_cpp", "ms": 0.336477, "times": [0.33847, 0.325164, 0.336477], "candidates": [{"quad": [[414, 99], [413, 414], [99, 414], [98, 98]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s1-small_modules", "engine": "zxing_cpp", "ms": 0.219623, "times": [0.238642, 0.21943, 0.219623], "candidates": [{"quad": [[301, 211], [301, 301], [211, 301], [211, 211]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s1-no_quiet_zone", "engine": "zxing_cpp", "ms": 0.158788, "times": [0.175568, 0.158788, 0.152899], "candidates": [{"quad": [[315, 1], [315, 316], [1, 316], [0, 0]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s1-clutter", "engine": "zxing_cpp", "ms": 0.429453, "times": [0.510602, 0.429453, 0.334515], "candidates": [{"quad": [[414, 98], [413, 413], [98, 414], [99, 99]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s1-one_finder_missing", "engine": "zxing_cpp", "ms": 0.22948, "times": [0.2339, 0.219169, 0.22948], "candidates": []}
+{"id": "v7-s1-two_finders_missing", "engine": "zxing_cpp", "ms": 0.204836, "times": [0.204836, 0.19621, 0.211767], "candidates": []}
+{"id": "v7-s1-three_finders_missing", "engine": "zxing_cpp", "ms": 0.182877, "times": [0.181314, 0.194297, 0.182877], "candidates": []}
+{"id": "v7-s1-finder_ring_damage", "engine": "zxing_cpp", "ms": 0.187996, "times": [0.187996, 0.187008, 0.188629], "candidates": []}
+{"id": "v7-s1-gray_data_patch", "engine": "zxing_cpp", "ms": 0.358749, "times": [0.373208, 0.358749, 0.341064], "candidates": [{"quad": [[414, 99], [413, 413], [98, 414], [99, 99]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s1-white_data_patch", "engine": "zxing_cpp", "ms": 0.375471, "times": [0.375471, 0.365969, 0.420341], "candidates": [{"quad": [[414, 99], [413, 413], [98, 414], [99, 99]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s1-scratch", "engine": "zxing_cpp", "ms": 0.38746, "times": [0.397591, 0.38746, 0.356139], "candidates": [{"quad": [[414, 99], [413, 413], [98, 414], [99, 99]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s1-combined", "engine": "zxing_cpp", "ms": 0.426102, "times": [0.448576, 0.409293, 0.426102], "candidates": [{"quad": [[419, 154], [384, 450], [57, 327], [151, 82]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s2-clean", "engine": "zxing_cpp", "ms": 0.377646, "times": [0.377646, 0.379228, 0.367189], "candidates": [{"quad": [[413, 414], [99, 413], [98, 98], [413, 99]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s2-rotate17", "engine": "zxing_cpp", "ms": 0.404756, "times": [0.46546, 0.404756, 0.392009], "candidates": [{"quad": [[361, 453], [59, 361], [152, 59], [453, 151]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s2-rotate43", "engine": "zxing_cpp", "ms": 0.341949, "times": [0.388522, 0.341949, 0.326796], "candidates": [{"quad": [[264, 479], [33, 264], [248, 33], [479, 248]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s2-perspective_mild", "engine": "zxing_cpp", "ms": 0.377805, "times": [0.404144, 0.377805, 0.370342], "candidates": [{"quad": [[400, 382], [108, 435], [130, 86], [391, 105]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s2-perspective_strong", "engine": "zxing_cpp", "ms": 0.367897, "times": [0.392261, 0.367897, 0.363174], "candidates": [{"quad": [[386, 343], [113, 474], [165, 62], [364, 111]], "n": 41, "stage": "ChecksumError @ QRDecoder.cpp:337"}]}
+{"id": "v7-s2-blur_mild", "engine": "zxing_cpp", "ms": 0.384071, "times": [0.410133, 0.384071, 0.356412], "candidates": [{"quad": [[413, 414], [98, 414], [99, 99], [414, 98]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s2-blur_strong", "engine": "zxing_cpp", "ms": 0.383946, "times": [0.405486, 0.383946, 0.375613], "candidates": [{"quad": [[413, 414], [99, 414], [99, 99], [414, 98]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s2-shadow", "engine": "zxing_cpp", "ms": 0.368819, "times": [0.390081, 0.368819, 0.362252], "candidates": [{"quad": [[413, 413], [100, 413], [99, 98], [414, 98]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s2-low_contrast", "engine": "zxing_cpp", "ms": 0.34937, "times": [0.366645, 0.34937, 0.33146], "candidates": [{"quad": [[413, 414], [98, 414], [99, 99], [414, 99]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s2-small_modules", "engine": "zxing_cpp", "ms": 0.226208, "times": [0.226208, 0.214414, 0.227043], "candidates": [{"quad": [[301, 301], [211, 301], [211, 211], [301, 211]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s2-no_quiet_zone", "engine": "zxing_cpp", "ms": 0.178591, "times": [0.201449, 0.178591, 0.171202], "candidates": [{"quad": [[315, 316], [0, 316], [1, 1], [316, 1]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s2-clutter", "engine": "zxing_cpp", "ms": 0.385102, "times": [0.377924, 0.385102, 0.41523], "candidates": [{"quad": [[413, 414], [99, 413], [98, 98], [413, 99]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s2-one_finder_missing", "engine": "zxing_cpp", "ms": 0.25875, "times": [0.25875, 0.249368, 0.288956], "candidates": []}
+{"id": "v7-s2-two_finders_missing", "engine": "zxing_cpp", "ms": 0.216283, "times": [0.231753, 0.216283, 0.212492], "candidates": []}
+{"id": "v7-s2-three_finders_missing", "engine": "zxing_cpp", "ms": 0.195644, "times": [0.196497, 0.194422, 0.195644], "candidates": []}
+{"id": "v7-s2-finder_ring_damage", "engine": "zxing_cpp", "ms": 0.209634, "times": [0.22684, 0.208428, 0.209634], "candidates": []}
+{"id": "v7-s2-gray_data_patch", "engine": "zxing_cpp", "ms": 0.401487, "times": [0.409783, 0.401487, 0.384741], "candidates": [{"quad": [[414, 414], [99, 413], [99, 98], [413, 99]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s2-white_data_patch", "engine": "zxing_cpp", "ms": 0.389071, "times": [0.399512, 0.385566, 0.389071], "candidates": [{"quad": [[414, 414], [99, 413], [99, 98], [413, 99]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s2-scratch", "engine": "zxing_cpp", "ms": 0.397854, "times": [0.398786, 0.397854, 0.394189], "candidates": [{"quad": [[414, 414], [99, 413], [99, 98], [413, 99]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s2-combined", "engine": "zxing_cpp", "ms": 0.422921, "times": [0.448556, 0.422921, 0.413822], "candidates": [{"quad": [[358, 419], [62, 384], [185, 57], [430, 151]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s3-clean", "engine": "zxing_cpp", "ms": 0.369307, "times": [0.374422, 0.369307, 0.337865], "candidates": [{"quad": [[98, 414], [99, 99], [414, 99], [413, 414]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s3-rotate17", "engine": "zxing_cpp", "ms": 0.421778, "times": [0.442749, 0.421778, 0.408209], "candidates": [{"quad": [[59, 361], [151, 59], [453, 152], [360, 452]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s3-rotate43", "engine": "zxing_cpp", "ms": 0.380686, "times": [0.419941, 0.380686, 0.372354], "candidates": [{"quad": [[33, 264], [248, 33], [479, 248], [264, 479]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s3-perspective_mild", "engine": "zxing_cpp", "ms": 0.393986, "times": [0.43388, 0.393986, 0.382689], "candidates": [{"quad": [[130, 401], [76, 108], [426, 130], [407, 391]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s3-perspective_strong", "engine": "zxing_cpp", "ms": 0.385437, "times": [0.430831, 0.385437, 0.366594], "candidates": [{"quad": [[48, 120], [195, 139], [217, 237], [100, 233]], "n": null, "stage": "ChecksumError @ QRDecoder.cpp:337"}, {"quad": [[169, 386], [38, 113], [450, 165], [401, 364]], "n": 41, "stage": "ChecksumError @ QRDecoder.cpp:337"}]}
+{"id": "v7-s3-blur_mild", "engine": "zxing_cpp", "ms": 0.355284, "times": [0.38461, 0.355284, 0.343508], "candidates": [{"quad": [[98, 414], [97, 98], [414, 98], [414, 414]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s3-blur_strong", "engine": "zxing_cpp", "ms": 0.35602, "times": [0.437667, 0.351324, 0.35602], "candidates": [{"quad": [[98, 414], [98, 98], [413, 99], [413, 413]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s3-shadow", "engine": "zxing_cpp", "ms": 0.341015, "times": [0.344314, 0.341015, 0.31841], "candidates": [{"quad": [[99, 413], [99, 98], [414, 98], [413, 413]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s3-low_contrast", "engine": "zxing_cpp", "ms": 0.358839, "times": [0.358839, 0.405836, 0.334231], "candidates": [{"quad": [[98, 414], [98, 98], [414, 99], [413, 414]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s3-small_modules", "engine": "zxing_cpp", "ms": 0.222173, "times": [0.25756, 0.212702, 0.222173], "candidates": [{"quad": [[211, 301], [211, 211], [301, 211], [301, 301]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s3-no_quiet_zone", "engine": "zxing_cpp", "ms": 0.173368, "times": [0.185646, 0.173368, 0.163794], "candidates": [{"quad": [[0, 316], [0, 0], [316, 1], [315, 316]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s3-clutter", "engine": "zxing_cpp", "ms": 0.353195, "times": [0.359259, 0.353195, 0.343216], "candidates": [{"quad": [[98, 414], [99, 99], [414, 99], [413, 414]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s3-one_finder_missing", "engine": "zxing_cpp", "ms": 0.274335, "times": [0.279385, 0.274335, 0.252354], "candidates": [{"quad": [[98, 98], [188, 99], [188, 189], [98, 191]], "n": null, "stage": "ChecksumError @ QRDecoder.cpp:337"}]}
+{"id": "v7-s3-two_finders_missing", "engine": "zxing_cpp", "ms": 0.20688, "times": [0.219431, 0.20688, 0.203405], "candidates": []}
+{"id": "v7-s3-three_finders_missing", "engine": "zxing_cpp", "ms": 0.183378, "times": [0.183895, 0.174224, 0.183378], "candidates": []}
+{"id": "v7-s3-finder_ring_damage", "engine": "zxing_cpp", "ms": 0.189386, "times": [0.194172, 0.189386, 0.18437], "candidates": []}
+{"id": "v7-s3-gray_data_patch", "engine": "zxing_cpp", "ms": 0.381305, "times": [0.425933, 0.370049, 0.381305], "candidates": [{"quad": [[98, 414], [98, 99], [414, 99], [413, 413]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s3-white_data_patch", "engine": "zxing_cpp", "ms": 0.353691, "times": [0.365671, 0.350661, 0.353691], "candidates": [{"quad": [[98, 414], [98, 99], [414, 99], [413, 413]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s3-scratch", "engine": "zxing_cpp", "ms": 0.391482, "times": [0.394626, 0.391482, 0.367449], "candidates": [{"quad": [[98, 414], [99, 99], [414, 99], [413, 413]], "n": 45, "stage": "decoded"}]}
+{"id": "v7-s3-combined", "engine": "zxing_cpp", "ms": 0.41774, "times": [0.447787, 0.41774, 0.407769], "candidates": [{"quad": [[93, 358], [128, 62], [455, 186], [361, 430]], "n": 45, "stage": "decoded"}]}
+{"id": "negative-00", "engine": "zxing_cpp", "ms": 0.134439, "times": [0.143198, 0.134218, 0.134439], "candidates": []}
+{"id": "negative-01", "engine": "zxing_cpp", "ms": 1.463138, "times": [1.482478, 1.463138, 1.41618], "candidates": []}
+{"id": "negative-02", "engine": "zxing_cpp", "ms": 0.19758, "times": [0.19758, 0.199467, 0.193846], "candidates": []}
+{"id": "negative-03", "engine": "zxing_cpp", "ms": 0.163239, "times": [0.165232, 0.163239, 0.156941], "candidates": []}
+{"id": "negative-04", "engine": "zxing_cpp", "ms": 0.129953, "times": [0.129953, 0.134733, 0.125476], "candidates": []}
+{"id": "negative-05", "engine": "zxing_cpp", "ms": 1.459262, "times": [1.461233, 1.43787, 1.459262], "candidates": []}
+{"id": "negative-06", "engine": "zxing_cpp", "ms": 0.185929, "times": [0.185436, 0.192816, 0.185929], "candidates": []}
+{"id": "negative-07", "engine": "zxing_cpp", "ms": 0.155868, "times": [0.174003, 0.153077, 0.155868], "candidates": []}
+{"id": "negative-08", "engine": "zxing_cpp", "ms": 0.12913, "times": [0.135791, 0.12913, 0.128868], "candidates": []}
+{"id": "negative-09", "engine": "zxing_cpp", "ms": 1.449278, "times": [1.473067, 1.444308, 1.449278], "candidates": []}
+{"id": "negative-10", "engine": "zxing_cpp", "ms": 0.148527, "times": [0.156189, 0.148527, 0.147007], "candidates": []}
+{"id": "negative-11", "engine": "zxing_cpp", "ms": 0.166084, "times": [0.18318, 0.166084, 0.161365], "candidates": []}
+{"id": "negative-12", "engine": "zxing_cpp", "ms": 0.134241, "times": [0.128983, 0.137537, 0.134241], "candidates": []}
+{"id": "negative-13", "engine": "zxing_cpp", "ms": 1.457359, "times": [1.464413, 1.457359, 1.429356], "candidates": []}
+{"id": "negative-14", "engine": "zxing_cpp", "ms": 0.158956, "times": [0.166608, 0.158085, 0.158956], "candidates": []}
+{"id": "negative-15", "engine": "zxing_cpp", "ms": 0.172026, "times": [0.18216, 0.170307, 0.172026], "candidates": []}
+{"id": "negative-16", "engine": "zxing_cpp", "ms": 0.133378, "times": [0.166958, 0.133378, 0.128846], "candidates": []}
+{"id": "negative-17", "engine": "zxing_cpp", "ms": 1.485013, "times": [1.491996, 1.478336, 1.485013], "candidates": []}
+{"id": "negative-18", "engine": "zxing_cpp", "ms": 0.137536, "times": [0.137536, 0.15918, 0.136826], "candidates": []}
+{"id": "negative-19", "engine": "zxing_cpp", "ms": 0.18219, "times": [0.182526, 0.18219, 0.18048], "candidates": []}
+{"id": "negative-20", "engine": "zxing_cpp", "ms": 0.131915, "times": [0.132115, 0.131915, 0.131066], "candidates": []}
+{"id": "negative-21", "engine": "zxing_cpp", "ms": 1.473525, "times": [1.451152, 1.473525, 1.573579], "candidates": []}
+{"id": "negative-22", "engine": "zxing_cpp", "ms": 0.162879, "times": [0.180232, 0.162879, 0.160561], "candidates": []}
+{"id": "negative-23", "engine": "zxing_cpp", "ms": 0.164432, "times": [0.184766, 0.164432, 0.162762], "candidates": []}
