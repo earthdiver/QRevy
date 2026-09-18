@@ -1,6 +1,6 @@
 # Synthetic comparison of geometry-neighborhood search
 
-English | [日本語](GEOMETRY_SEARCH_STUDY.ja.md)
+English | [Japanese](GEOMETRY_SEARCH_STUDY.ja.md)
 
 ## Purpose
 

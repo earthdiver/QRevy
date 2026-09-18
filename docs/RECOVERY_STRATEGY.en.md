@@ -1,6 +1,6 @@
 # QR Repair Recovery Strategy
 
-English | [日本語](RECOVERY_STRATEGY.ja.md)
+English | [Japanese](RECOVERY_STRATEGY.ja.md)
 
 This document describes how QR Repair currently builds, validates, and explains recovery candidates for damaged QR Code Model 2 images. It is an implementation overview, not a replacement for the QR specification.
 
