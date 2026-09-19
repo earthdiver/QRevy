@@ -2099,8 +2099,7 @@ class MainActivity : Activity() {
                     lockCorners = true,
                     lockVersion = true,
                     manualQuad = quad,
-                    manualFinders = BitmapUtils.textMatrixFinders(parsed.matrix, moduleSize, quietModules),
-                    logicalGridAssigned = true,
+                    logicalGridAssigned = false,
                     preRecoveryEdits = priority.associateWith { ModuleValue.ERASED },
                     preRecoverySoftEdits = emptySet(),
                     preRecoveryPrioritySearch = priority,
@@ -2141,8 +2140,8 @@ class MainActivity : Activity() {
                     )
                     persistSessionAsync()
                     guideText.text = ui(
-                        "案内: テキスト行列から作成した疑似画像です。必要なら修復前設定でセルを編集してください。",
-                        "Guide: This synthetic image was created from the text matrix. Edit cells in pre-repair settings if needed.",
+                        "案内: テキスト行列から作成した疑似画像です。向きは未確定です。Finderの役割を指定すると向きが確定します。",
+                        "Guide: This synthetic image was created from the text matrix. Its orientation is unassigned. Assign a Finder role to set the orientation.",
                     )
                     contentPreviewText.text = getString(R.string.no_content_preview)
                     statusText.text = ui(

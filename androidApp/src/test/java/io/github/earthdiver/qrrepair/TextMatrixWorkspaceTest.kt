@@ -6,10 +6,8 @@ import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
-import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
-import com.google.zxing.qrcode.encoder.Encoder
 import io.github.earthdiver.qrrepair.core.*
-import io.github.earthdiver.qrrepair.ui.BitmapUtils
+import io.github.earthdiver.qrrepair.ui.QrEditorView
 import io.github.earthdiver.qrrepair.ui.PreprocessOverlayView
 import org.junit.Assert.*
 import org.junit.Test
@@ -41,7 +39,8 @@ class TextMatrixWorkspaceTest {
             (field("executor").get(activity) as ExecutorService).submit {}.get(30, TimeUnit.SECONDS)
             shadowOf(Looper.getMainLooper()).idle()
             val settings = field("preprocessSettings").get(activity) as PreprocessSettings
-            assertEquals(3, settings.manualFinders.size)
+            assertTrue(settings.manualFinders.isEmpty())
+            assertFalse(settings.logicalGridAssigned)
             var dialog = ShadowDialog.getLatestDialog() as AlertDialog
             for (action in listOf(R.string.workspace_navigation, 0)) {
                 label(dialog.window!!.decorView, activity.getString(R.string.home_navigation)).performClick()
@@ -63,33 +62,75 @@ class TextMatrixWorkspaceTest {
         } finally { controller.pause().stop().destroy() }
     }
 
-    @Test fun generatedQrAssignsAllThreeFinderCenters() {
-        val qr = Encoder.encode("Text matrix finder regression", ErrorCorrectionLevel.M).matrix
-        val text = (0 until qr.height).joinToString("\n") { y ->
-            (0 until qr.width).joinToString("") { x -> qr.get(x, y).toString() }
+    @Test fun importedMatricesRequireOrientationInBothEditors() {
+        for (intact in listOf(false, true)) for (large in listOf(false, true)) {
+            val input = if (intact) rows(25) else Array(25) { CharArray(25) { '?' } }
+            withImportedMatrix(input) { activity, dialog, settings ->
+                assertEquals(2, settings.version)
+                assertNotNull(settings.manualQuad)
+                assertFalse(settings.logicalGridAssigned)
+                assertTrue(settings.manualFinders.isEmpty())
+                val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
+                assertFalse(overlay.isLogicalGridAssigned())
+                assertTrue(label(dialog.window!!.decorView, "セル編集（長押し）").performLongClick())
+                val editor = if (large) {
+                    label(dialog.window!!.decorView, "大きな編集画面を開く").performClick()
+                    ShadowDialog.getLatestDialog() as AlertDialog
+                } else dialog
+                val root = editor.window!!.decorView
+                if (large) {
+                    label(root, activity.getString(R.string.switch_to_rectangle)).performClick()
+                    views(root).filterIsInstance<QrEditorView>().single().onCellSelected!!.invoke(17, 19)
+                } else overlay.onEditCellSelected!!.invoke(17, 19)
+                org.robolectric.shadows.ShadowToast.reset()
+                label(root, "*").performClick()
+                assertEquals(activity.getString(R.string.priority_requires_geometry),
+                    org.robolectric.shadows.ShadowToast.getTextOfLatestToast())
+                if (large) editor.dismiss()
+            }
         }
-        val matrix = QrTextMatrixParser.parse(text).matrix
-        val finders = BitmapUtils.textMatrixFinders(matrix)
-        assertEquals(setOf(FinderRole.TOP_LEFT, FinderRole.TOP_RIGHT, FinderRole.BOTTOM_LEFT), finders.keys)
-        val near = 59.5
-        val far = (matrix.dimension + .5) * 8 - .5
-        assertEquals(PointD(near, near), finders[FinderRole.TOP_LEFT])
-        assertEquals(PointD(far, near), finders[FinderRole.TOP_RIGHT])
-        assertEquals(PointD(near, far), finders[FinderRole.BOTTOM_LEFT])
     }
 
-    @Test fun damagedOrUnknownFindersAreNotAssignedAndOneFinderRemainsAvailable() {
-        for (dimension in listOf(21, 177)) {
-            val rows = rows(dimension)
-            rows[0][dimension - 7] = '0'
-            rows[dimension - 7][0] = '*'
-            val matrix = QrTextMatrixParser.parse(rows.joinToString("\n") { String(it) }).matrix
-            assertEquals(mapOf(FinderRole.TOP_LEFT to PointD(59.5, 59.5)), BitmapUtils.textMatrixFinders(matrix))
-            assertEquals(ModuleValue.ERASED, matrix[0, dimension - 7].value)
-            assertTrue(matrix[0, dimension - 7].prioritySearch)
-            assertEquals(ModuleSource.IMAGE, matrix[0, 0].source)
+    @Test fun finderAssignmentRotatesImportedEditsAndChecksPriorityPositions() {
+        val input = Array(25) { CharArray(25) { '?' } }
+        input[24][24] = '*'
+        input[10][10] = '*'
+        withImportedMatrix(input) { activity, dialog, settings ->
+            assertEquals(setOf(Coord(24, 24), Coord(10, 10)), settings.preRecoveryPrioritySearch)
+            val root = dialog.window!!.decorView
+            val overlay = views(root).filterIsInstance<PreprocessOverlayView>().single()
+            val quad = overlay.imageQuad()
+            overlay.setFinderPoint(FinderRole.TOP_LEFT, quad.topRight)
+            assertTrue(overlay.isLogicalGridAssigned())
+            assertEquals(quad.asList().toSet(), overlay.imageQuad().asList().toSet())
+            assertEquals(quad.topRight, overlay.imageQuad().topLeft)
+            val notice = ShadowDialog.getLatestDialog() as AlertDialog
+            assertTrue(notice.findViewById<TextView>(android.R.id.message).text.contains("(24,0)"))
+            notice.dismiss()
+            label(root, "保存").performClick()
+            val saved = field("preprocessSettings").get(activity) as PreprocessSettings
+            assertTrue(saved.logicalGridAssigned)
+            assertEquals(setOf(Coord(10, 14)), saved.preRecoveryPrioritySearch)
+            assertEquals(ModuleValue.ERASED, saved.preRecoveryEdits[Coord(24, 0)])
         }
-        assertTrue(BitmapUtils.textMatrixFinders(QrMatrix(21)).isEmpty())
+    }
+
+    private fun withImportedMatrix(input: Array<CharArray>, block: (MainActivity, AlertDialog, PreprocessSettings) -> Unit) {
+        AppStylePreferences.save(RuntimeEnvironment.getApplication(), AppStyle.CLASSIC)
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        try {
+            val uri = Uri.parse("content://qr-repair-test/matrix")
+            val text = input.joinToString("\n") { String(it) }
+            shadowOf(activity.contentResolver).registerInputStream(uri, ByteArrayInputStream(text.toByteArray()))
+            MainActivity::class.java.getDeclaredMethod("loadTextMatrix", Uri::class.java)
+                .apply { isAccessible = true }.invoke(activity, uri)
+            (field("executor").get(activity) as ExecutorService).submit {}.get(30, TimeUnit.SECONDS)
+            shadowOf(Looper.getMainLooper()).idle()
+            val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+            try { block(activity, dialog, field("preprocessSettings").get(activity) as PreprocessSettings) }
+            finally { dialog.dismiss() }
+        } finally { controller.pause().stop().destroy() }
     }
 
     private fun rows(dimension: Int): Array<CharArray> {
