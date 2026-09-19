@@ -40,6 +40,35 @@ class PostTerminatorAnalysisTest {
     private fun analyze(data: ByteArray, version: Int = 1, unknown: IntArray = IntArray(data.size)) =
         PostTerminatorAnalysis.analyze(data, version, ErrorCorrectionLevel.L, unknown)
 
+    @Test fun unverifiedBodyUsesOnlyThePrefixAndKeepsBinaryPayloadBytes() {
+        val data = PayloadBits().apply {
+            put(4, 4); put(3, 8); put(0, 8); put(255, 8); put(128, 8)
+            put(0, 4); byteSegment("tail")
+        }.finish()
+        val body = requireNotNull(QrContentPreviewParser.parseUnverifiedPrefix(data, 1, ErrorCorrectionLevel.L))
+        assertFalse(body.qrStructureValid)
+        assertFalse(StrictQrPayloadValidator.isValid(data, 1))
+        assertArrayEquals(byteArrayOf(0, -1, -128), body.byteSegments.single().second)
+        assertFalse(body.recoveredText.orEmpty().contains("tail"))
+        assertTrue(CodewordHex.payloadByteSegments(body.byteSegments).contains("00 FF 80"))
+        val bad = PayloadBits().apply { put(6, 4); put(0, 4); byteSegment("tail") }.finish()
+        assertNull(QrContentPreviewParser.parseUnverifiedPrefix(bad, 1, ErrorCorrectionLevel.L))
+    }
+
+    @Test fun unverifiedTextUsesTheNormalPresentationAndPreservesEci() {
+        val data = PayloadBits().apply {
+            put(7, 4); put(26, 8); byteSegment("本文\n")
+            put(0, 4); byteSegment("tail")
+        }.finish(40)
+        val body = requireNotNull(QrContentPreviewParser.parseUnverifiedPrefix(data, 1, ErrorCorrectionLevel.L))
+        assertEquals("本文\n", body.recoveredText)
+        assertEquals(QrContentKind.TEXT, body.kind)
+        val ranges = mutableListOf<IntRange>()
+        val rendered = body.resultContentText(null) { start, end -> ranges += start until end }
+        assertEquals("本文\n", rendered.substring(ranges.single()))
+        assertFalse(rendered.contains("tail"))
+    }
+
     @Test fun extractsSegmentsImmediatelyAfterAnUnalignedTerminator() {
         val data = PayloadBits().apply {
             put(2, 4); put(1, 9); put(10, 6) // Alphanumeric A, terminator starts at bit 19.

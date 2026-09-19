@@ -43,9 +43,19 @@ internal object PostTerminatorAnalysis {
             }
             views += View(source, report, changed, filled, forced)
         }
+        val rsData = conventionalData(de, conventional)
+        if (rsData != null) append(Source.CONVENTIONAL_RS, rsData)
+        candidate?.takeIf { it.dataBytes.size == observed.size }?.let {
+            append(Source.RECOVERY, it.dataBytes, it.constraintFilledBits > 0)
+        }
+        return Attempt(views, conventional?.succeeded == true && conventional.settingsAccepted != true)
+    }
+
+    /** Reconstruct only a conventional RS result that satisfies the input constraints. */
+    fun conventionalData(de: DeinterleavedQr, conventional: ConventionalRsDiagnostic?): ByteArray? {
         val raw = conventional?.correctedInterleaved?.takeIf { conventional.settingsAccepted == true }
-        val rsData = raw?.let {
-            require(it.size == extraction.codewords.size)
+        return raw?.let {
+            if (it.size != de.rawLocations.size) return null
             val restored = de.blocks.map { b -> IntArray(b.codewords.size) }
             de.rawLocations.forEachIndexed { i, location ->
                 val loc = requireNotNull(location)
@@ -54,11 +64,6 @@ internal object PostTerminatorAnalysis {
             de.blocks.indices.flatMap { i -> restored[i].take(de.blocks[i].numDataCodewords) }
                 .map { value -> value.toByte() }.toByteArray()
         }
-        if (rsData != null) append(Source.CONVENTIONAL_RS, rsData)
-        candidate?.takeIf { it.dataBytes.size == observed.size }?.let {
-            append(Source.RECOVERY, it.dataBytes, it.constraintFilledBits > 0)
-        }
-        return Attempt(views, conventional?.succeeded == true && conventional.settingsAccepted != true)
     }
 
     fun analyze(data: ByteArray, version: Int, ecLevel: ErrorCorrectionLevel,

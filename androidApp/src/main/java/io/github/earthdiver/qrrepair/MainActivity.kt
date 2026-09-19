@@ -1826,6 +1826,27 @@ class MainActivity : Activity() {
                         "今の形式設定では、入力済みの白黒をすべて正しいとした場合に、誤り訂正の条件を満たす組合せがありません。\nどのセルや設定が誤っているかは特定できていません。",
                         "With the current format, no combination meets the error-correction conditions while preserving every entered value.\nThe incorrect cells or settings have not been identified.")
                     else recoveryFailureReasonText(failure).substringBefore("。").substringBefore(". ")
+                if (failure.stage == io.github.earthdiver.qrrepair.core.RecoveryFailureStage.PAYLOAD_VALIDATION &&
+                    failure.reason == null && !hasInconsistentInputFailure() &&
+                    failure.conventionalRsDiagnostic?.settingsAccepted == true) {
+                    recoveryState.workingMatrix?.let { matrix ->
+                        val version = (matrix.dimension - 17) / 4
+                        val extraction = CodewordExtractor.extract(matrix, version, failure.dataMask)
+                        val de = io.github.earthdiver.qrrepair.core.QrBlockInterleaver.deinterleave(extraction, version, failure.ecLevel)
+                        val bytes = io.github.earthdiver.qrrepair.core.PostTerminatorAnalysis.conventionalData(de, failure.conventionalRsDiagnostic)
+                        val body = bytes?.let { QrContentPreviewParser.parseUnverifiedPrefix(it, version, failure.ecLevel) }
+                        if (body != null) {
+                            val prefix = contentPreviewText.text.toString() + ui(
+                                "\n\nRS訂正後の本文（未検証の候補）\n", "\n\nBody after RS correction (unverified candidate)\n")
+                            val ranges = mutableListOf<IntRange>()
+                            val text = body.resultContentText(body.recoveredText) { start, end ->
+                                ranges += (prefix.length + start) until (prefix.length + end)
+                            }
+                            val hex = if (body.byteSegments.isEmpty()) "" else "\n\n" + CodewordHex.payloadByteSegments(body.byteSegments)
+                            contentPreviewText.text = highlightedRecoveredText(prefix + text + hex, ranges)
+                        }
+                    }
+                }
                 setDiagnosticReport(failureDiagnosticReport(failure, geometry))
                 configureNextResultAction()
             }

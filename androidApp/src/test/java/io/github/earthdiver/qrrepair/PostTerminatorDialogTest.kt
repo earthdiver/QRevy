@@ -52,6 +52,13 @@ class PostTerminatorDialogTest {
                 state.showAttempt(0, GridGeometry(1, FinderRole.TOP_LEFT, 10.0, 10.0, 2.0, 0.0), matrix,
                     emptyList(), failure, -1)
                 refresh(activity)
+                val body = field<TextView>(activity, "contentPreviewText").text as android.text.Spanned
+                val bodyHighlights = body.getSpans(0, body.length, android.text.style.BackgroundColorSpan::class.java)
+                assertEquals(1, bodyHighlights.size)
+                assertEquals("A", body.subSequence(body.getSpanStart(bodyHighlights.single()), body.getSpanEnd(bodyHighlights.single())).toString())
+                assertTrue(body.contains("HEX"))
+                assertTrue(body.contains("41"))
+                assertFalse(body.contains(secret))
                 val actions = field<View>(activity, "resultActions")
                 assertEquals(View.VISIBLE, actions.visibility)
                 val button = field<Button>(activity, "resultTailAnalysisButton")
@@ -82,6 +89,10 @@ class PostTerminatorDialogTest {
                 assertSame(failure, state.failure)
                 assertEquals(View.GONE, field<View>(activity, "resultSavePngButton").visibility)
                 dialog.dismiss()
+                state.failure = failure.copy(conventionalRsDiagnostic = failure.conventionalRsDiagnostic!!.copy(
+                    knownBitMismatches = 1, knownBitMismatchLimit = 0))
+                refresh(activity)
+                assertFalse(field<TextView>(activity, "contentPreviewText").text.contains("HEX"))
                 state.clearAttempt()
                 refresh(activity)
                 assertEquals(View.GONE, actions.visibility)

@@ -26,17 +26,18 @@ internal object StrictQrPayloadValidator {
     }
 
     /** A diagnostic boundary scan. It never makes a noncanonical suffix a valid QR payload. */
-    internal data class Prefix(val terminatorBit: Int?, val endBit: Int, val modes: List<Int>)
+    internal data class Prefix(val terminatorBit: Int?, val endBit: Int, val modes: List<Int>, val byteSegments: List<Pair<Int, ByteArray>>)
 
     internal fun inspectPrefix(data: ByteArray, version: Int, unknownMasks: IntArray = IntArray(data.size),
         bitLength: Int = data.size * 8): Prefix? {
         require(version in 1..40 && unknownMasks.size == data.size && bitLength in 0..data.size * 8)
         val modes = mutableListOf<Int>()
+        val segments = mutableListOf<Pair<Int, ByteArray>>()
         var terminator: Int? = null
         var endBit = 0
-        val valid = validate(data, version, false, modes = modes, unknownMasks = unknownMasks,
+        val valid = validate(data, version, false, modes = modes, byteSegments = segments, unknownMasks = unknownMasks,
             bitLength = bitLength, onTerminator = { terminator = it }, onPayloadEnd = { endBit = it })
-        return if (valid) Prefix(terminator, endBit, modes) else null
+        return if (valid) Prefix(terminator, endBit, modes, segments) else null
     }
 
     private fun validate(data: ByteArray, version: Int, allowIncomplete: Boolean,

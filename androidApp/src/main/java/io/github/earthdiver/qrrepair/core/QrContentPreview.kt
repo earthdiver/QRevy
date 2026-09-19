@@ -81,7 +81,7 @@ data class QrContentPreview(
 
 object QrContentPreviewParser {
     fun parse(candidate: RecoveryCandidate?): QrContentPreview? = candidate?.let {
-        parseBody(it).copy(structuredAppend = it.structuredAppend,
+        parseBody(it.text, it.dataBytes.size).copy(structuredAppend = it.structuredAppend,
             fnc1ApplicationIndicator = it.fnc1ApplicationIndicator,
             encodingModes = StrictQrPayloadValidator.encodingModes(it.dataBytes, it.version),
             textRepresentation = it.text != null,
@@ -90,14 +90,33 @@ object QrContentPreviewParser {
             recoveredText = it.text)
     }
 
-    private fun parseBody(candidate: RecoveryCandidate): QrContentPreview {
-        val text = candidate.text
+    /** A validated prefix is diagnostic evidence, never an accepted recovery candidate. */
+    internal fun parseUnverifiedPrefix(data: ByteArray, version: Int,
+        ecc: com.google.zxing.qrcode.decoder.ErrorCorrectionLevel): QrContentPreview? {
+        val prefix = StrictQrPayloadValidator.inspectPrefix(data, version) ?: return null
+        if (prefix.terminatorBit == null || prefix.modes.isEmpty()) return null
+        val decoded = try { com.google.zxing.qrcode.decoder.ZxingPayloadBridge.decodeData(data, version, ecc, null) }
+            catch (_: com.google.zxing.FormatException) { null }
+            catch (_: IllegalArgumentException) { null }
+        val text = decoded?.text
+        return parseBody(text, prefix.byteSegments.sumOf { it.second.size }).copy(
+            encodingModes = prefix.modes, textRepresentation = text != null,
+            qrStructureValid = false, byteSegments = prefix.byteSegments, recoveredText = text,
+            structuredAppend = decoded?.takeIf { it.hasStructuredAppend() }?.let {
+                StructuredAppendInfo(it.structuredAppendSequenceNumber ushr 4,
+                    (it.structuredAppendSequenceNumber and 15) + 1, it.structuredAppendParity)
+            },
+            fnc1ApplicationIndicator = if (decoded != null)
+                com.google.zxing.qrcode.decoder.ZxingPayloadBridge.fnc1ApplicationIndicator(data) else null)
+    }
+
+    private fun parseBody(text: String?, dataSize: Int): QrContentPreview {
         if (text == null) {
             return QrContentPreview(
                 QrContentKind.BINARY,
                 localizedText("バイナリ/未解釈データ", "Binary/unparsed data"),
                 localizedText("内容を文字列として表示できませんでした。HEX／Binary表示で確認できます。", "The content could not be displayed as text. Check the Hex / Binary view."),
-                listOf(QrContentField(localizedText("データバイト数", "Data bytes"), candidate.dataBytes.size.toString())),
+                listOf(QrContentField(localizedText("データバイト数", "Data bytes"), dataSize.toString())),
                 contentFormatValid = false,
                 utf8Like = false,
             )
