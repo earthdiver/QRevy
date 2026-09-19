@@ -176,4 +176,5 @@
     <string name="cell_region_structure">a fixed structure</string>
     <string name="priority_revalidated">Removed * marks that are outside data/ECC after the orientation or version change. Their ? values are retained.\n%1$s</string>
     <string name="priority_revalidation_title">Rechecked priority-search cells</string>
+    <string name="analyze_post_terminator">Analyze additional segments after terminator</string>
 </resources>

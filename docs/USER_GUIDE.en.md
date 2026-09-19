@@ -83,6 +83,8 @@ Review results in this order:
 
 Open diagnostics with **Show detailed results**, then tap a cell to inspect provenance. **Show same Codeword** highlights the other cells in its eight-bit codeword. When multiple candidates remain, compare their content and candidate-agreement scope.
 
+On the recovery result screen, **Analyze additional segments after terminator** appears below the diagnostics as a secondary text button only when error-correction candidates were rejected because the QR data structure did not validate. It parses the data immediately after the four-bit terminator identified from the payload structure as QR segments (preserving ECI and FNC1 context).
+
 ## 7. Save, resume, and export
 
 Resume saved sessions from **Saved work**. **Operation history** shows the current edit history. QRR sessions and saved source images stay in app-private no-backup storage, but they are not encrypted files.

@@ -165,6 +165,7 @@ class MainActivity : Activity() {
     private lateinit var resultNextAction: Button
     private lateinit var resultActions: LinearLayout
     private lateinit var resultCopyButton: Button
+    private lateinit var resultTailAnalysisButton: Button
     private lateinit var resultSavePngButton: Button
     private lateinit var resultImageLabel: TextView
     private lateinit var mainResultSelector: LinearLayout
@@ -346,6 +347,20 @@ class MainActivity : Activity() {
         resultSavePngButton = button(getString(R.string.save_png)) { startSavePng() }.apply {
             visibility = View.GONE
         }
+        resultTailAnalysisButton = button(getString(R.string.analyze_post_terminator)) { showPostTerminatorAnalysis() }.apply {
+            visibility = View.GONE
+            val background = android.util.TypedValue()
+            theme.resolveAttribute(android.R.attr.selectableItemBackground, background, true)
+            backgroundTintList = null
+            setBackgroundResource(background.resourceId)
+            if (modernStyle) setTextColor(PrecisionStyle.MUTED)
+            else {
+                val colors = obtainStyledAttributes(intArrayOf(android.R.attr.textColorSecondary))
+                try { colors.getColorStateList(0)?.let { setTextColor(it) } } finally { colors.recycle() }
+            }
+            minHeight = dp(48)
+            minimumHeight = dp(48)
+        }
         resultActions = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(ResultActionRow(this@MainActivity).apply {
@@ -359,6 +374,7 @@ class MainActivity : Activity() {
         panel.addView(mainResultSelector)
         panel.addView(diagnosticToggle)
         panel.addView(diagnosticDetailsText)
+        panel.addView(resultTailAnalysisButton, LinearLayout.LayoutParams(-2, -2))
     }
 
     private fun buildClassicUi(): View {
@@ -598,6 +614,7 @@ class MainActivity : Activity() {
         if (::resultActions.isInitialized) {
             val hasAttempt = recoveryState.selectedRecovery != null || recoveryState.failure != null
             resultActions.visibility = if (hasAttempt) View.VISIBLE else View.GONE
+            refreshTailAnalysisVisibility()
             if (!hasAttempt) {
                 resultExplanationText.visibility = View.GONE
                 resultNextAction.visibility = View.GONE
@@ -726,6 +743,17 @@ class MainActivity : Activity() {
             else R.string.show_diagnostic_details,
         )
         diagnosticDetailsText.visibility = if (hasDetails && diagnosticDetailsExpanded) View.VISIBLE else View.GONE
+        refreshTailAnalysisVisibility()
+    }
+
+    private fun refreshTailAnalysisVisibility() {
+        if (!::resultTailAnalysisButton.isInitialized) return
+        val failure = recoveryState.failure
+        val structureFailure = recoveryState.selectedRecovery == null &&
+            failure?.stage == io.github.earthdiver.qrrepair.core.RecoveryFailureStage.PAYLOAD_VALIDATION &&
+            failure.reason == null && !hasInconsistentInputFailure()
+        resultTailAnalysisButton.visibility = if (structureFailure && diagnosticToggle.visibility == View.VISIBLE)
+            View.VISIBLE else View.GONE
     }
 
     private fun showAppMenu() {
@@ -858,6 +886,32 @@ class MainActivity : Activity() {
             .setView(panel)
             .create()
         dialog.show()
+    }
+
+    private fun showPostTerminatorAnalysis() {
+        if (resultTailAnalysisButton.visibility != View.VISIBLE) return
+        val candidate = recoveryState.selectedRecovery
+        val failure = recoveryState.failure
+        val matrix = recoveryState.workingMatrix?.copy() ?: return
+        val version = candidate?.version ?: (matrix.dimension - 17) / 4
+        val ecc = candidate?.ecLevel ?: failure?.ecLevel ?: return
+        val mask = candidate?.dataMask ?: failure?.dataMask ?: return
+        val diagnostic = if (candidate != null) candidate.conventionalRsDiagnostic else failure?.conventionalRsDiagnostic
+        val token = workGeneration.get()
+        resultTailAnalysisButton.isEnabled = false
+        ioExecutor.execute {
+            val attempt = runCatching {
+                val extraction = candidate?.extraction ?: CodewordExtractor.extract(matrix, version, mask)
+                io.github.earthdiver.qrrepair.core.PostTerminatorAnalysis.forAttempt(extraction, version, ecc, diagnostic, candidate)
+            }
+            runOnUiThread {
+                resultTailAnalysisButton.isEnabled = true
+                if (isFinishing || isDestroyed || token != workGeneration.get() ||
+                    recoveryState.selectedRecovery !== candidate || recoveryState.failure !== failure) return@runOnUiThread
+                attempt.onSuccess { showPostTerminatorDialog(this, it, version, ecc.toString(), mask) }
+                    .onFailure { Toast.makeText(this, ui("終端後データを解析できませんでした。", "Could not analyze post-terminator data."), Toast.LENGTH_LONG).show() }
+            }
+        }
     }
 
     private fun showZoomableResult() {

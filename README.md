@@ -34,6 +34,7 @@ For compactness, the UI uses “Finder” for a finder pattern, “cell” for a
 - Per-cell repair explanations and same-codeword highlighting
 - Recovered-image export
 - Work history and session storage
+- Diagnostic analysis of additional QR segments after the terminator, including raw tail bits and correction provenance
 - Offline, on-device processing
 
 The supported symbol family is QR Code Model 2, versions 1 through 40. Model 1, Micro QR, and rMQR are unsupported.

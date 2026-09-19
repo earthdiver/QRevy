@@ -173,4 +173,5 @@
     <string name="cell_region_structure">固定構造</string>
     <string name="priority_revalidated">向き・バージョンの変更によりデータ・ECC領域外になった*を解除しました。値の?は保持しています。\n%1$s</string>
     <string name="priority_revalidation_title">優先探索セルを再確認</string>
+    <string name="analyze_post_terminator">終端後の追加セグメントを解析</string>
 </resources>
