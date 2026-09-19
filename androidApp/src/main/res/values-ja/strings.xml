@@ -78,7 +78,6 @@
     <string name="reset_rotation">回転リセット</string>
     <string name="thresholding">白黒判定</string>
     <string name="geometry_search_note">ONでは0.6モジュールの位置・大きさ・一隅のずれを試します。Finder役割が1点だけ指定されている場合は、その隅を支点とする時計回り・反時計回りも試します。</string>
-    <string name="manual_bit_lock_note">ONでは手動0/1と矛盾する候補を棄却します（形式情報・機能モジュール・残余bitも含む）。ECC・mask指定との矛盾はON/OFFによらず編集・設定変更時に拒否します。</string>
     <string name="payload_header_trust_note">数字・英数字・バイト・漢字のいずれか1種類の単一セグメントにのみ使用できます。先頭の種類と文字数／バイト数がすべて読み取れている場合に選択できます。ECI、FNC1、構造的連接、Hanziには対応していません。複数セグメントのQRには使用しないでください。\n終端・バイト境界・埋め草の領域は、読み取った種類と文字数／バイト数に基づいて補正します。画像から読み取った0/1も変更されます。手動0/1の扱いは下の設定に従います。</string>
     <string name="format_mismatch_limit">形式情報の誤り上限</string>
     <string name="format_mismatch_limit_unlimited">制限なし</string>
@@ -127,13 +126,10 @@
     <string name="raw_data_view">HEX / Binary</string>
     <string name="partial_info_view">部分情報</string>
     <string name="data_extract_failed">データ領域を抽出できません。</string>
-    <string name="cell_make_manual">手動指定にする</string>
-    <string name="cell_restore_image">画像に戻す</string>
-    <string name="cell_source_manual">手動</string>
-    <string name="cell_source_image">画像</string>
-    <string name="cell_source_preview">由来: %1$s / 現在: %2$s / 画像に戻す値: %3$s</string>
-    <string name="cell_source_selection">選択: %1$dセル / 画像: %2$d / 手動: %3$d</string>
-    <string name="cell_source_legend">水色の四角: 手動指定 / 黄色の丸: 選択中</string>
+    <string name="cell_source_image">画像から判定</string>
+    <string name="cell_source_preview">現在: %1$s / 画像: %2$s</string>
+    <string name="cell_source_selection">選択%1$d / 画像%2$d・仮%3$d・固定%4$d</string>
+    <string name="cell_source_legend">水色枠: 固定 / 破線: 仮指定</string>
     <string name="appearance">画面スタイル（次回起動時）</string>
     <string name="style_classic">クラッシック</string>
     <string name="style_modern">モダン</string>
@@ -147,7 +143,7 @@
     <string name="saved_work">作業一覧</string>
     <string name="operation_history">操作履歴</string>
     <string name="show_evidence">修復根拠を表示／折りたたむ</string>
-    <string name="highlight_manual_only">手動指定セルだけ強調</string>
+    <string name="highlight_manual_only">指定セルを強調</string>
     <string name="cell_edit_tap">セル編集</string>
     <string name="import_before_work">作業する画像を読み込む</string>
     <string name="previous_result_notice">前回実行した修復結果です。編集中の変更はまだ反映されていません。</string>
@@ -156,4 +152,10 @@
     <string name="repair_settings_navigation">修復設定</string>
     <string name="repair_short">修復</string>
     <string name="show_detailed_result">詳細結果を表示</string>
+    <string name="cell_source_tentative">仮指定（訂正可）</string>
+    <string name="cell_source_fixed">固定（訂正不可）</string>
+    <string name="cell_source_mixed">複数の状態</string>
+    <string name="cell_source_menu">%1$s ▾</string>
+    <string name="allow_fixed_corrections">固定セルの0/1と矛盾する復元候補を許容する（仮指定セルと同じ扱い）</string>
+    <string name="cell_source_fixed_correctable">固定（修正可）</string>
 </resources>

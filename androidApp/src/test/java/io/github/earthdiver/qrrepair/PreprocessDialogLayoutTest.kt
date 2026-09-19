@@ -922,16 +922,15 @@ class PreprocessDialogLayoutTest {
         val geometrySearchNote = findText(decor, "ONでは0.6モジュールの位置・大きさ・一隅のずれを試します")
         val payloadTrust = findText(decor, "種類・文字数／バイト数が正しく読み取れている場合")
         val payloadTrustNote = findText(decor, "数字・英数字・バイト・漢字のいずれか1種類")
-        val manualLock = findText(decor, "手動指定した0/1と矛盾する")
+        assertNull("Global locking is replaced by per-cell modes", findText(decor, "手動指定した0/1と矛盾する"))
         assertNotNull("四隅近傍探索の説明がありません", geometrySearchNote)
         assertNotNull("単一セグメント前提の設定がありません", payloadTrust)
         assertNotNull("単一セグメント前提の説明がありません", payloadTrustNote)
         val detailedSettingsColumn = geometrySearch!!.parent as ViewGroup
         assertTrue("四隅近傍探索の説明が該当設定の直後にありません",
             detailedSettingsColumn.indexOfChild(geometrySearchNote!!) == detailedSettingsColumn.indexOfChild(geometrySearch) + 1)
-        assertTrue("単一セグメント前提の説明が手動0/1固定の後にあります",
-            detailedSettingsColumn.indexOfChild(payloadTrustNote!!) == detailedSettingsColumn.indexOfChild(payloadTrust!!) + 1 &&
-                detailedSettingsColumn.indexOfChild(payloadTrustNote) < detailedSettingsColumn.indexOfChild(manualLock!!))
+        assertTrue("Payload trust note must remain immediately below its control",
+            detailedSettingsColumn.indexOfChild(payloadTrustNote!!) == detailedSettingsColumn.indexOfChild(payloadTrust!!) + 1)
         assertTrue("微調整幅の既定値が0.10 moduleではありません",
             findText(decor, "微調整幅:")!!.text.toString() == "微調整幅: 0.10 module")
 

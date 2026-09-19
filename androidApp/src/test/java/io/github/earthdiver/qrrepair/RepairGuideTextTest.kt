@@ -317,7 +317,7 @@ class RepairGuideTextTest {
                 assertTrue(content.contains(if (language == AppLanguage.JAPANESE) "一致を確認できません" else "agreement cannot be checked"))
                 assertTrue(content.contains(if (language == AppLanguage.JAPANESE) "データ・ECC領域" else "Data/ECC region"))
                 assertTrue(content.contains(if (language == AppLanguage.JAPANESE) "適用しません" else "not applied"))
-                assertTrue(content.contains(if (language == AppLanguage.JAPANESE) "手動0/1の固定: ${if (locked) "ON" else "OFF"}" else "Manual 0/1 locking: ${if (locked) "ON" else "OFF"}"))
+                assertTrue(content.contains(if (language == AppLanguage.JAPANESE) "固定セルの0/1と矛盾する復元候補を許容する（仮指定セルと同じ扱い）: ${if (locked) "OFF" else "ON"}" else "Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells): ${if (locked) "OFF" else "ON"}"))
                 if (!locked && limit == 0) assertTrue(content.contains(if (language == AppLanguage.JAPANESE)
                     "この領域の入力済み0/1は変更していません" else "in that region"))
                 if (trust) assertTrue(text("diagnosticDetailsText").contains(if (language == AppLanguage.JAPANESE)

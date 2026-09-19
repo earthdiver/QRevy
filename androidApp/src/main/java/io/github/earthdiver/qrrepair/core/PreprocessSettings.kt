@@ -54,7 +54,7 @@ data class PreprocessSettings(
     val formatMismatchLimit: Int? = null,
     /** Maximum mismatches against known data/ECC modules after RS correction; null means unlimited. */
     val dataEccMismatchLimit: Int? = null,
-    /** Treat preprocessing 0/1 edits as hard pins. '?' and '*' remain recoverable erasures. */
+    /** Protect fixed 0/1 edits unless the user enables correction of fixed cells. */
     val lockManualBits: Boolean = true,
     /** Source-image quadrilateral rectified before all sampling; null leaves the rotated image intact. */
     val perspectiveCorrectionQuad: ImageQuad? = null,
@@ -67,8 +67,10 @@ data class PreprocessSettings(
     val detectedFinders: List<FinderCandidate> = emptyList(),
     /** Polarity established by an image-verified candidate that the user confirmed. */
     val confirmedFinderPolarity: FinderPolarity = FinderPolarity.UNKNOWN,
-    /** Hard 0/1/? overrides made before recovery, keyed by stable QR module coordinate. */
+    /** User 0/1/? overrides made before recovery, keyed by stable QR module coordinate. */
     val preRecoveryEdits: Map<Coord, ModuleValue> = emptyMap(),
+    /** Editable observations, never hard pins; values and user provenance are retained. */
+    val preRecoverySoftEdits: Set<Coord> = emptySet(),
     /** Erased data/ECC modules explicitly selected for the bounded priority 0/1 search. */
     val preRecoveryPrioritySearch: Set<Coord> = emptySet(),
 ) {
@@ -80,6 +82,7 @@ data class PreprocessSettings(
         manualFinders = manualFinders.toMap(),
         detectedFinders = detectedFinders.toList(),
         preRecoveryEdits = preRecoveryEdits.toMap(),
+        preRecoverySoftEdits = preRecoverySoftEdits.toSet(),
         preRecoveryPrioritySearch = preRecoveryPrioritySearch.toSet(),
     )
 
@@ -88,6 +91,7 @@ data class PreprocessSettings(
         require(blackMax in 0..254 && whiteMin in 1..255 && blackMax < whiteMin)
         require(unknownColorClusters.size <= 4)
         require(version in 1..40)
+        require(preRecoverySoftEdits.all { it in preRecoveryEdits })
         require(preRecoveryPrioritySearch.size <= 4)
         require(preRecoveryPrioritySearch.all { preRecoveryEdits[it] == ModuleValue.ERASED })
         require(formatMismatchLimit == null || formatMismatchLimit in 0..30)
@@ -106,8 +110,19 @@ data class PreprocessSettings(
         }
     }
 
-    fun sourceForPreRecoveryEdit(value: ModuleValue): ModuleSource =
-        if (value == ModuleValue.ERASED || lockManualBits) ModuleSource.USER else ModuleSource.IMAGE
+    /** Unknown edits, including priority-search erasures, are always tentative. */
+    val effectiveSoftEdits: Set<Coord> get() = preRecoverySoftEdits +
+        preRecoveryEdits.filterValues { it == ModuleValue.ERASED }.keys
+
+    // Explicit ECC/mask consistency remains enforced even when fixed-cell correction is allowed.
+    val fixedPreRecoveryEdits: Map<Coord, ModuleValue> get() = preRecoveryEdits - effectiveSoftEdits
+
+    fun sourceForPreRecoveryEdit(value: ModuleValue, coord: Coord? = null): ModuleSource = when {
+        value == ModuleValue.ERASED || coord in preRecoverySoftEdits -> ModuleSource.USER_SOFT
+        lockManualBits -> ModuleSource.USER
+        else -> ModuleSource.USER_UNLOCKED
+    }
+
 }
 
 data class SamplingProfile(val settings: PreprocessSettings, val inverted: Boolean) {

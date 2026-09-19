@@ -13,7 +13,12 @@ enum class ModuleValue {
     fun next(): ModuleValue = when (this) { ZERO -> ONE; ONE -> ERASED; ERASED -> ZERO }
 }
 
-enum class ModuleSource { IMAGE, USER, RECOVERED, STRUCTURAL, CONSTRAINT }
+// Append sources to preserve persisted ordinal values.
+enum class ModuleSource {
+    IMAGE, USER, RECOVERED, STRUCTURAL, CONSTRAINT, USER_SOFT, USER_UNLOCKED;
+
+    val isUserEdit: Boolean get() = this == USER || this == USER_SOFT || this == USER_UNLOCKED
+}
 
 data class QrCell(
     var value: ModuleValue = ModuleValue.ERASED,

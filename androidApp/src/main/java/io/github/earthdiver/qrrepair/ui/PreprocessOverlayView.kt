@@ -443,9 +443,9 @@ class PreprocessOverlayView(context: Context) : View(context) {
                 editSelectionIsRectangle -> drawEditRange(canvas, geometry, editSelection, ::v)
             }
             for (y in 0 until matrix.dimension) for (x in 0 until matrix.dimension) {
-                if (matrix[x, y].source != ModuleSource.USER) continue
+                if (!matrix[x, y].source.isUserEdit) continue
                 val q = v(geometry.moduleToImage(x.toDouble(), y.toDouble()))
-                manualCellMarker.draw(canvas, q.x.toFloat(), q.y.toFloat(), dp(5f), dp(1.5f))
+                manualCellMarker.draw(canvas, q.x.toFloat(), q.y.toFloat(), dp(5f), dp(1.5f), matrix[x, y].source == ModuleSource.USER_SOFT || matrix[x, y].value == ModuleValue.ERASED)
             }
             editCell?.takeIf { cellEditorTool == EditorTool.NAVIGATE }?.let { cell ->
                 val imagePoint = geometry.moduleToImage(cell.x.toDouble(), cell.y.toDouble())
@@ -540,7 +540,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
                     ModuleValue.ZERO -> zeros++
                     ModuleValue.ERASED -> unknown++
                 }
-                if (highlightManualOnly && editedCell?.source != ModuleSource.USER &&
+                if (highlightManualOnly && editedCell?.source?.isUserEdit != true &&
                     Coord(mx, my) != editCell && Coord(mx, my) !in editSelection) continue
                 drawClassificationValue(
                     canvas = canvas,
@@ -634,7 +634,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
                 ) continue
                 val labelX = dst.left + ((imagePoint.x - src.left) / src.width().coerceAtLeast(1)) * dst.width()
                 val labelY = dst.top + ((imagePoint.y - src.top) / src.height().coerceAtLeast(1)) * dst.height()
-                if (!highlightManualOnly || matrix[mx, my].source == ModuleSource.USER || Coord(mx, my) in selectedCells || Coord(mx, my) == editCell) {
+                if (!highlightManualOnly || matrix[mx, my].source.isUserEdit || Coord(mx, my) in selectedCells || Coord(mx, my) == editCell) {
                     drawClassificationValue(canvas, matrix[mx, my].value, labelX.toFloat(), labelY.toFloat(), textSize, unknownRadius, matrix[mx, my].prioritySearch)
                 }
                 if (Coord(mx, my) in selectedCells) {
@@ -642,9 +642,9 @@ class PreprocessOverlayView(context: Context) : View(context) {
                     selectedPaint.strokeWidth = dp(1.5f)
                     canvas.drawCircle(labelX.toFloat(), labelY.toFloat(), unknownRadius * 1.45f, selectedPaint)
                 }
-                if (matrix[mx, my].source == ModuleSource.USER) {
+                if (matrix[mx, my].source.isUserEdit) {
                     manualCellMarker.draw(canvas, labelX.toFloat(), labelY.toFloat(),
-                        (moduleSize * .38f).coerceIn(dp(5f), dp(16f)), dp(1.5f))
+                        (moduleSize * .38f).coerceIn(dp(5f), dp(16f)), dp(1.5f), matrix[mx, my].source == ModuleSource.USER_SOFT || matrix[mx, my].value == ModuleValue.ERASED)
                 }
             }
         }

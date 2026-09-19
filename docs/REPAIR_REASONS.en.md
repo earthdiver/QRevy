@@ -14,13 +14,15 @@ An attempt that fails payload validation does not modify the original matrix, so
 | RS | Orange | The value came from codeword erasure recovery or error correction | RS consistency alone does not prove correctness |
 | Payload constraint | Purple | Mode, count, terminator, padding, or another structure implied the value | May depend on a selected payload-structure hypothesis |
 | Bit-level candidate search | Magenta | A route used bounded 0/1 enumeration | This is not exhaustive brute force over every `?` |
-| User edit | Blue | The user selected the value or its source | With locking enabled, an incorrect pin is enforced too |
+| User edit | Blue | The user selected the value or its source | Fixed enforces even incorrect values unless conflicting candidates are allowed; Tentative allows correction |
 
 ### Example history for one cell
 
 Consider an illustrative data cell that was `?` in the input and is `1` in a final candidate. A payload constraint may first supply `1`, an RS route may then succeed using it, and final QR payload validation may pass. The UI distinguishes the main reason that wrote the final value, supporting evidence for the same value, and an intermediate value later overturned by RS. Multiple reasons are not independent votes and do not form a correctness probability.
 
 ## Why an overall decode succeeds or fails
+
+Fixed-value agreement checks below apply when **Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)** is OFF. With it ON, fixed values can be corrected while retaining their input and designation, as can tentative values.
 
 The app distinguishes these checks (some run more than once during search):
 
@@ -29,10 +31,10 @@ The app distinguishes these checks (some run more than once during search):
 3. extract codewords and deinterleave them into RS blocks;
 4. apply payload-structure hypotheses and generate block solutions through errors+erasures, bounded enumeration, and partial-bit RS constraints;
 5. prune block combinations using payload-prefix validation, then validate complete mode, count, data, terminator, alignment, and padding;
-6. reject corrected candidates that violate data/ECC manual pins or known-bit mismatch limits;
+6. reject corrected candidates with disallowed conflicts against fixed data/ECC values, or violations of known-bit mismatch limits;
 7. decode the validated data stream with ZXing.
 
-Format and non-codeword manual constraints are checked before RS. RS consistency and complete structural validation alone are insufficient: successful repair also requires final ZXing decoding.
+When conflicts with fixed values are not allowed, format and non-codeword fixed values are checked before RS. RS consistency and complete structural validation alone are insufficient: successful repair also requires final ZXing decoding.
 
 Only a candidate that reaches final payload validation is a successful decode. RS success without a parseable payload is shown as “Repair incomplete: an RS-consistent candidate is available”. If RS fails, only the best failed attempt is retained, favoring fewer format disagreements and a smaller erasure-capacity bit shortfall.
 
@@ -42,7 +44,7 @@ When BCH evidence confirms the format, RS or payload failure does not permit swi
 
 The BCH-confirmed and provisional single-format fast paths apply when both ECC and mask are automatic. With either selection explicit, recovery tries the permitted set in rank order: at most eight formats for ECC only, four for mask only, and one for both. A partial explicit selection does not narrow the set to a BCH-trusted format alone. Format-error limits and manual pins further restrict the attempted set.
 
-When “Exclude recovery candidates that conflict with manual 0/1 values” is ON, non-codeword manual values are checked before adopting a BCH-correctable candidate as the confirmed format. See [Recovery Strategy, section 3.2](RECOVERY_STRATEGY.en.md#32-format-cells-during-recovery).
+When conflicts with fixed values are not allowed, fixed non-codeword 0/1 values are checked before adopting a BCH-correctable candidate as the confirmed format; tentative values do not impose this veto. See [Recovery Strategy, section 3.2](RECOVERY_STRATEGY.en.md#32-format-cells-during-recovery).
 
 ## Displayed fields
 
@@ -60,7 +62,7 @@ Cell coordinates, codeword indices, bit positions, and RS block/local indices in
 
 ### `User-defined`
 
-The user explicitly fixed the module to `0` or `1`. This is a hard constraint, and candidates contradicting it are rejected. A user-assigned `?` requests an erasure; RS or another validated step may resolve it after successful decoding. With “Exclude recovery candidates that conflict with manual 0/1 values” OFF, manual 0/1 values are ordinary known bits and may be corrected.
+User edits retain provenance in both modes. **Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)** defaults to OFF, rejecting candidates that contradict fixed 0/1 values. ON retains their fixed designation, input values, and solid outlines while permitting correction; OFF protects them again. Tentative values permit correction regardless of this option. Error limits, explicit QR settings, and consistency between fixed cells and explicit ECC/mask selections remain enforced. Cell details distinguish tentative, correctable fixed, and image-derived input. `?` is image-derived or tentative; `*` is always tentative. Neither can be Fixed. Both are erasures that recovery can resolve.
 
 ## Reed–Solomon reasons
 

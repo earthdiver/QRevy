@@ -155,7 +155,7 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
                 val (matrix, stats) = MatrixSampler(image, profile).sample(hypothesis.geometry)
                 settings.preRecoveryEdits.forEach { (coord, value) ->
                     if (coord.x in 0 until matrix.dimension && coord.y in 0 until matrix.dimension) {
-                        matrix.set(coord.x, coord.y, value, 1f, settings.sourceForPreRecoveryEdit(value))
+                        matrix.set(coord.x, coord.y, value, 1f, settings.sourceForPreRecoveryEdit(value, coord))
                         matrix.setPrioritySearch(coord.x, coord.y, coord in settings.preRecoveryPrioritySearch)
                     }
                 }
@@ -165,8 +165,8 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
                     formatConstraint = settings.formatConstraint,
                     maxFormatMismatches = settings.formatMismatchLimit,
                     maxKnownDataEccMismatches = settings.dataEccMismatchLimit,
-                    manualEdits = settings.preRecoveryEdits,
-                displayLockManualBits = settings.lockManualBits,
+                    manualEdits = settings.fixedPreRecoveryEdits,
+                    displayLockManualBits = settings.lockManualBits,
                     retentionBudget = retentionBudget,
                     cancellation = cancellation,
                 ) { done, total ->

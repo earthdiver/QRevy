@@ -19,6 +19,8 @@ QR Repair does not guess one answer from an image and immediately declare it cor
 | Candidate agreement | The cell agrees across the validated candidates selected for comparison | Mathematical uniqueness across unretained or unexplored solutions |
 | Confidence | An explanatory comparison of image evidence and provenance | A statistical probability of correctness |
 
+Recovery checks described as requiring fixed-value agreement in this document apply when **Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)** is OFF. ON allows correction while retaining fixed designations. Consistency with explicit ECC/mask selections remains enforced (section 3.1).
+
 ## 1. Principles
 
 A conventional reader is fast when it can obtain reliable geometry and a binary image. QR Repair targets cases where that assumption fails, so every module is retained as one of three values:
@@ -46,7 +48,7 @@ One possible candidate:  1 0 0 1 1 0 0 1
 | --- | --- | --- |
 | Image is clearly read as black or white | `0` or `1` | Known image-derived value; it can still be corrected within configured limits |
 | Image is ambiguous | `?` | Retained as unknown for erasure decoding or partial-bit constraints |
-| User enters `0` or `1` | `0` or `1` | `USER` provenance; conflicting candidates are rejected when locking is enabled |
+| User enters `0` or `1` | `0` or `1` | Retain the input value and its fixed or tentative designation |
 | User applies `*` | `?` | Prioritizes bounded 0/1 enumeration for that cell if the ordinary route fails |
 
 Even if the last line in the example is RS-consistent, it is not accepted on that basis alone. It becomes a validated candidate only after format, manual constraints, QR payload structure, and final decoding also pass.
@@ -90,7 +92,7 @@ These estimates are editable starting values, not proof of recovery. If every es
 
 Physical corner positions and the choice of logical coordinate `(0, 0)` are separate. A grid derived from ZXing-C++ can automatically assign Finder centers and roles through the following gate: at most 2/49 mismatches per Finder, 1/15 per white separator, 5% timing mismatch, a score gap of at least 0.08 including rejected alternatives, and at least two pixels per module along every edge. Samples offset by 0.25 module in each axial direction must also have at most 2/49 mismatches per Finder. Weaker native grids and periodicity estimates do not assign roles automatically. Two-Finder estimates use the separate conditions above.
 
-Automatic assignment runs only on new image import and is recorded in history. Saved settings are not re-estimated. Press **Clear** and tap a green Finder to remove its assignment; clearing all roles also unassigns logical orientation. Corners and cell edits are retained, and cell provenance is not changed to `USER`. The thresholds are heuristics, not probabilities. See the [implementation and validation record (Japanese)](ZXING_CPP_INTEGRATION.ja.md) for details.
+Automatic assignment runs only on new image import and is recorded in history. Saved settings are not re-estimated. Press **Clear** and tap a green Finder to remove its assignment; clearing all roles also unassigns logical orientation. Corners and cell edits are retained, and cells are not marked as manually specified. The thresholds are heuristics, not probabilities. See the [implementation and validation record (Japanese)](ZXING_CPP_INTEGRATION.ja.md) for details.
 
 ### 2.3 Manual Finder-role assignment
 
@@ -117,7 +119,7 @@ If exactly one Finder role is assigned, two more base hypotheses rotate clockwis
 
 For each base hypothesis, when an interior alignment pattern available in version 2 or later has sufficient image evidence, the engine adds one alignment-refined geometry. The observed alignment pattern must differ from its predicted position by 0.1 to 1.25 modules; refinement moves only the nearest logical corner to fit that observation. A refinement is rejected if it materially worsens the independent timing pattern score. It never replaces the user-selected geometry: both the base and refined hypotheses are evaluated. If alignment refinement succeeds for every base hypothesis, the resulting maxima are two hypotheses normally, 38 with neighborhood search, and 42 with neighborhood search plus exactly one assigned Finder role. The engine-wide bound is 72 geometry hypotheses.
 
-The option that fixes manual 0/1 values applies the same hard constraint to every geometry hypothesis, including the baseline. Nearby sampling does not change logical module coordinates. An incorrect manual value can therefore exclude the correct recovery.
+Every geometry hypothesis uses fixed and tentative edits as input at the same cell coordinates. Sampled image values do not need to match the edits. With **Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)** OFF, candidates that contradict fixed values are rejected. ON permits correction, subject to error limits and explicit QR settings.
 
 ### 2.5 Module sampling
 
@@ -125,7 +127,7 @@ On image import, initial thresholds are estimated once without depending on find
 
 Colored unknown regions are initially estimated as approximate clusters in Lab color space. Cluster acceptance uses color frequency, color-density, and separation from black and white; it does not use spatial grouping, module size, finders, or version. “Treat detected color clusters as unknown (?),” directly below the Version button in basic settings, starts disabled and applies detected clusters only when enabled. Achromatic gray unknown regions are handled by the three-class luminance model instead.
 
-Each geometry samples luminance near module centers. The locally adjusted mean is rounded to an integer before values between the dark upper threshold and light lower threshold become `?`; adjacent thresholds therefore cannot create an unknown band solely from a fractional sample mean. A configured color cluster also takes precedence over luminance when its pixels occupy at least half of the sampling area. Local thresholding adjusts the decision for spatial illumination. Manual `0 / 1 / ?` edits override resampling. With “Exclude recovery candidates that conflict with manual 0/1 values” enabled, candidates that contradict those values are rejected.
+Each geometry samples luminance near module centers. The locally adjusted mean is rounded to an integer before values between the dark upper threshold and light lower threshold become `?`; adjacent thresholds therefore cannot create an unknown band solely from a fractional sample mean. A configured color cluster also takes precedence over luminance when its pixels occupy at least half of the sampling area. Local thresholding adjusts the decision for spatial illumination. Manual `0 / 1 / ?` edits override resampling. When conflicts with fixed values are not allowed, candidates contradicting them are rejected.
 
 ### 2.6 Reading three common scenarios
 
@@ -149,15 +151,15 @@ Seeing one Finder-like shape does not trigger this route automatically. Role ass
 
 #### Example C: a manual pin was wrong
 
-1. With locking enabled, any candidate that contradicts the incorrect manual 0/1 is rejected even when it is RS-consistent.
+1. When conflicts with fixed values are not allowed, any candidate that contradicts the incorrect manual 0/1 is rejected even when it is RS-consistent.
 2. When possible, a direct format conflict or the opposite value required by a candidate is reported with coordinates.
-3. Return a weakly supported pin to `?` or use **Restore image**, then retry.
+3. Change a weakly supported pin to **Tentative** to retain its value, or choose `?` / **From image**, then retry.
 
-Relaxing an error limit never grants permission to overwrite a locked manual value. Preserving explicit user control takes precedence.
+Changing an error limit alone does not permit correction of fixed values. Change the cell to Tentative or allow conflicting candidates in advanced settings to permit correction.
 
 ## 3. QR structures and format information
 
-Function modules determined by version, including finders, separators, timing and alignment patterns, and the fixed dark module, are filled from structure. Displayed remainder bits depend on the selected mask. Format candidates are assessed using BCH correction. For version 7 and later, version-information BCH codewords are generated from the user-selected version. The engine does not BCH-decode image-observed version information to validate that selection. Manually fixed version cells are checked against the generated expected values.
+Function modules determined by version, including finders, separators, timing and alignment patterns, and the fixed dark module, are filled from structure. Displayed remainder bits depend on the selected mask. Format candidates are assessed using BCH correction. For version 7 and later, version-information BCH codewords are generated from the user-selected version. The engine does not BCH-decode image-observed version information to validate that selection. When conflicts with fixed values are not allowed, manually fixed version cells are checked against the generated expected values.
 
 Format information has 32 combinations: four ECC levels times eight masks. A BCH-trusted candidate is tried alone first when:
 
@@ -177,9 +179,9 @@ The BCH-confirmed and provisional single-format fast paths apply when both ECC a
 
 ### 3.1 Manual format edits and ECC/mask selections
 
-In the tables below, “Setting ON/OFF” refers to “Exclude recovery candidates that conflict with manual 0/1 values” in advanced settings.
+Fixed and Tentative in the tables below are per-cell states. Recovery behavior in the Fixed column assumes **Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)** is OFF (the default). ON retains fixed designations, input values, and solid outlines while allowing correction as for tentative input. The edit-time consistency check between fixed cells and explicit ECC/mask selections, and the comparison exclusion for format positions determined by explicit selections alone, remain enforced. Switching OFF protects fixed values again.
 
-Consistency between manual format 0/1 values and explicit ECC/mask selections is checked **independently of the manual-lock setting**. Both 15-bit copies, including BCH parity, are checked together. A conflict means that no format permitted by the explicit selections matches all manual values. Image-derived values do not participate in this check.
+Consistency between **fixed** format 0/1 values and explicit ECC/mask selections is checked when editing, changing source, or changing selections. Both 15-bit copies, including BCH parity, are checked together. A conflict means that no format permitted by the explicit selections matches all manual values. Image-derived and tentative values do not participate in this check; explicit ECC/mask selections still constrain all recovery candidates.
 
 | ECC selection | Mask selection | Formats checked when editing or changing selections |
 | --- | --- | --- |
@@ -190,40 +192,40 @@ Consistency between manual format 0/1 values and explicit ECC/mask selections is
 
 With only one selection explicit, individually possible bits can still contradict one another collectively. The error identifies a group that cannot be satisfied together, without claiming that each bit is individually wrong.
 
-| Edit or ECC/mask change | Setting ON | Setting OFF |
+| Edit or ECC/mask change | Fixed | Tentative |
 | --- | --- | --- |
 | Manual 0/1 values agree with the resulting selections | Accept | Same as left |
-| Manual 0/1 values conflict with the resulting selections | Show an error and reject the whole change; retain previous values, settings, and undo/redo history | Same as left |
+| Manual 0/1 values conflict with the resulting selections | Reject the whole change and retain prior state/history | Accept the observation; recovery must still satisfy the explicit selection |
 | Only image-derived 0/1 values conflict | Accept | Same as left |
 | Set a format cell to `?` | Accept; removes its manual 0/1 value | Same as left |
 | Return ECC or mask to Auto | Accept | Same as left |
 | Set a format cell to `*` | Reject; `*` is restricted to data/ECC cells | Same as left |
 
-For both ordinary and format cells, entering the currently displayed 0/1/`?` does not change its source (`*` to `?` clears priority search). A different value creates a manual override; entering the image value later keeps that override manual. Use **Make manual** to explicitly pin an image-derived value without changing it.
+Entering the currently displayed 0/1/`?` does not change its source (`*` to `?` clears priority search). Changing an image-derived cell to a different 0/1 creates a fixed override; entering the image value later keeps it fixed. **Fixed** can pin an image-derived 0/1 directly. **Tentative (correctable)** retains the current value while allowing correction; changing a tentative 0/1 to another 0/1 retains that mode. Changing `?` or `*` to 0/1 makes it Fixed. When **Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)** in advanced settings is ON, the menu labels fixed values **Fixed (correction allowed)**.
 
-**Restore image** removes the selected overrides and priority-search marks, then samples the image using the current thresholds and geometry. It does not change explicit ECC/mask selections or the manual-lock setting. Mixed selections offer Restore image and clear only the manual overrides. Source changes participate in undo/redo and saved work.
+**From image** removes selected overrides and priority marks and resamples with the current thresholds and geometry. It does not alter ECC/mask selections. Source changes can apply to multiple selected cells and participate in undo/redo and saved work. `?` is image-derived or tentative; `*` is always tentative.
 
 Undo/redo is checked against the current selections; an operation that reintroduces a conflict is rejected without consuming history. Batch edits are atomic.
 
-Existing work containing a conflict loads its saved values unchanged, displays an error, and stops automatic recomputation/recovery. Set affected cells to `?` or return ECC/mask to Auto to correct it. Conflicts introduced by version/orientation changes are also checked before saving or repairing. QRR validation and file format remain unchanged.
+Existing work containing a conflict loads its saved values unchanged, displays an error, and stops automatic recomputation/recovery. Set affected cells to `?` or return ECC/mask to Auto to correct it. Conflicts introduced by version/orientation changes are also checked before saving or repairing.
 
 ### 3.2 Format cells during recovery
 
-A position determined by **explicit ECC/mask selections alone** has the same value across every format permitted by those selections. Positions determined only after narrowing candidates with manual edits do not qualify. Manual 0/1 values at selection-determined positions are protected by the consistency check above and excluded from format matches, mismatches, and compared-bit counts.
+A position determined by **explicit ECC/mask selections alone** has the same value across every format permitted by those selections. Positions determined only after narrowing candidates with manual edits do not qualify. Fixed 0/1 values at selection-determined positions are protected by the consistency check above and excluded from format matches, mismatches, and compared-bit counts.
 
-| Format-cell state | Setting ON | Setting OFF |
+| Format-cell state | Fixed (conflicts not allowed) | Tentative |
 | --- | --- | --- |
-| Manual 0/1 at a selection-determined position | Use the value consistent with the selection; exclude from the format error comparison | Same as left |
+| Manual 0/1 at a selection-determined position | Require agreement; exclude from format error comparison | Allow correction; include in format comparison |
 | Other manual 0/1 | Require matching recovery candidates; include in format comparison | Allow changes and count differences as format errors |
 | Image-derived 0/1 | Allow changes and count differences as format errors | Same as left |
-| `?` | Fill from the candidate format; exclude from comparison | Same as left |
+| `?` | Cannot be Fixed | Fill from the candidate format; exclude from comparison |
 | `*` | Not permitted | Same as left |
 
-A format error limit of zero requires exact agreement at compared known positions. When **both** ECC and mask are explicit, the existing bypass of this limit remains; the selected format is used. Manual conflicts are still rejected by the consistency check. Format cells never count toward the data/ECC error limit.
+A format error limit of zero requires exact agreement at compared known positions. When **both** ECC and mask are explicit, this limit is bypassed and the selected format is used. Fixed-value conflicts are still rejected by the consistency check. Format cells never count toward the data/ECC error limit.
 
-When ECC and mask are both automatic and “Exclude recovery candidates that conflict with manual 0/1 values” is ON, a BCH-correctable candidate is checked against manually entered 0/1 values in format, version, function and remainder modules before it becomes the confirmed format. A conflicting candidate is not confirmed; other formats consistent with the manual values remain eligible. When this setting is OFF, disagreements with manual values do not reject confirmation in this check. Other conditions, including the format-error limit, still apply.
+When ECC and mask are automatic and conflicts with fixed values are not allowed, a BCH-correctable candidate is checked against fixed 0/1 values in format, version, function, and remainder modules before confirmation. A conflict prevents confirmation and leaves other compatible formats eligible. Tentative values do not create this veto, but format-error limits still apply.
 
-Manual data/ECC values do not participate in this pre-confirmation check. With the same setting ON, they are checked against corrected candidates. Once a format is confirmed, RS or final payload failure does not reopen the format search. Consistency between explicit ECC/mask selections and manual format values remains independent of this setting.
+When conflicts with fixed values are not allowed, fixed data/ECC values are checked against corrected candidates, rather than during format confirmation. Once a format is confirmed, RS or final payload failure does not reopen format search. Explicit ECC/mask selections are enforced for every candidate.
 
 ## 4. Codewords, constraints, and Reed–Solomon
 
@@ -241,7 +243,7 @@ Before RS decoding, safe constraints are propagated from a known payload prefix:
 
 Ordinary structure propagation enumerates single-segment Numeric, Alphanumeric, Byte, and Kanji hypotheses. Among plans compatible with known bits, it selects those with the most known terminator, byte-alignment, and padding matches; fewer than six matches disables filling. It fills only values shared by all selected plans. This is inference within selected single-segment hypotheses, not proof of uniqueness across all QR streams, including multiple segments. Reaching the plan-enumeration limit also disables filling. Every mutation by these constraints retains an unconstrained retry, even after a successful constrained result.
 
-The explicit known-count option is valid only when the QR content consists of exactly one Numeric, Alphanumeric, Byte, or Kanji segment and its mode and character count (byte count in Byte mode) are fully and correctly observed. The option forces the area immediately after that segment to the terminator, byte-alignment, and padding values, replacing conflicting known image-derived 0/1 values as well. Whether manual 0/1 edits are protected follows the dedicated manual-bit option. It must not be used with ECI, FNC1, structured append, or multiple segments.
+The explicit known-count option is valid only when the QR content consists of exactly one Numeric, Alphanumeric, Byte, or Kanji segment and its mode and character count (byte count in Byte mode) are fully and correctly observed. The option forces the area immediately after that segment to the terminator, byte-alignment, and padding values, replacing conflicting known image-derived 0/1 values as well. Fixed 0/1 edits remain protected unless conflicting candidates are allowed; tentative edits may be corrected. It must not be used with ECI, FNC1, structured append, or multiple segments.
 
 The conventional route decodes each block as GF(256) errors plus erasures, with the capacity relation `2 × errors + erasures <= ECC symbols`. A complementary binary constraint route also uses known bits inside partial codewords, as described below. Mathematical RS success alone does not make a candidate correct.
 
@@ -257,23 +259,23 @@ For every RS-corrected candidate, the final codewords are mapped back to QR modu
 
 When the known data/ECC bit error limit is set, only candidates whose mismatch count is no greater than the limit are retained. `0 bits` requires an exact match against every comparable known data/ECC bit. With Unlimited, the mismatch count still affects candidate ranking but does not by itself reject a candidate. An image-derived known value replaced by forced payload structure is also counted as a mismatch.
 
-When “Exclude recovery candidates that conflict with manual 0/1 values” is enabled, a candidate that contradicts a manual value is rejected before applying the error-limit allowance. Such a conflict never consumes one bit of the allowance. When locking is disabled, a manually entered `0 / 1` is treated like an image-derived known bit: RS may change it, and any change counts toward the mismatch limit. A manually locked bit that agrees with the candidate is included in the known-bit denominator.
+When conflicts with fixed values are not allowed, a candidate that contradicts a fixed value is rejected before applying the error-limit allowance. Such a conflict never consumes one bit of the allowance. For tentative cells and fixed cells with conflicting candidates allowed, a manually entered `0 / 1` is treated like an image-derived known bit: RS may change it, and any change counts toward the mismatch limit. A manually locked bit that agrees with the candidate is included in the known-bit denominator.
 
 If no candidate remains within the limit, the app distinguishes this from ordinary RS failure. For the best limit-exceeded attempt, it reports the actual mismatch count, known-bit count, and configured limit. With a zero limit, an inconsistent exact-bit system is reported directly as no exact known-bit solution; an error count is not invented.
 
 The following table distinguishes cell regions. Format cells also follow the selection consistency and comparison exclusions in sections 3.1–3.2.
 
-| Cell region and state | Setting ON | Setting OFF | Data/ECC error limit |
+| Cell region and state | Fixed (conflicts not allowed) | Tentative | Data/ECC error limit |
 | --- | --- | --- | --- |
 | Manual data/ECC 0/1 | Reject conflicting candidates | Allow changes and count differences | Compared; matching locked bits also count as known |
 | Image-derived data/ECC 0/1 | Allow changes and count differences | Same as left | Compared |
-| Data/ECC `?` / `*` | Fill/search | Same as left | Excluded |
+| Data/ECC `?` / `*` | Cannot be Fixed | Fill/search | Excluded |
 | Manual format 0/1 | Reject conflicting candidates | Follow section 3.2 | Excluded |
 | Image-derived format 0/1 / `?` | Follow section 3.2 | Same as left | Excluded |
 | Manual version/function/remainder 0/1 | Reject candidates whose structure/selected format conflicts | Allow replacement from structure/selected format | Excluded |
 | Image-derived version/function/remainder 0/1 / `?` | Repair/fill from structure/selected format | Same as left | Excluded |
 
-Version information, other function modules, and remainder bits also stay outside the format error limit. Conflicting locked manual values in these regions produce a separate diagnostic with coordinates, manual values, and expected values. A positive or unlimited data/ECC limit never permits overriding locked manual values. At limit zero, all compared known data/ECC bits must agree even with locking OFF.
+Version information, other function modules, and remainder bits also stay outside the format error limit. Conflicting locked manual values in these regions produce a separate diagnostic with coordinates, manual values, and expected values. A positive or unlimited data/ECC limit never permits overriding locked manual values. At limit zero, all compared known data/ECC bits must agree even for tentative cells.
 
 ### 4.2 Priority `*` search
 
@@ -311,7 +313,7 @@ For example, twenty one-bit erasures scattered across twenty V1-L codewords can 
 
 ## 5. Candidate validation and ranking
 
-Manual pins, fixed modules outside codewords, configured error limits, and QR structure are rejection conditions. RS consistency alone is not success; final decoding is also checked.
+Candidates are rejected for violating fixed values when conflicts are not allowed, contradicting fixed structures outside codewords, exceeding configured error limits, or failing QR structure validation. RS consistency alone is not success; final decoding is also checked.
 
 The retained-candidate comparator uses this order:
 
@@ -355,7 +357,7 @@ Candidate retention has a shared 32 MiB accounting budget across formats, priori
 
 Consensus and candidate-based check guidance compare at most the top 16 distinct validated results, replacing the last entry with the selected validated result if it is outside that range. The compared and full validated counts are explicit; sample agreement is not treated as agreement among all candidates. Unvalidated candidates are excluded.
 
-Data/ECC pin conflicts reject the candidate and retain conflicting coordinates, input values, and required candidate values. Otherwise equivalent generic payload failures do not overwrite actionable diagnostics. Temporary priority assignments are not manual input pins.
+When conflicts with fixed values are not allowed, data/ECC pin conflicts reject the candidate and retain conflicting coordinates, input values, and required candidate values. Otherwise equivalent generic payload failures do not overwrite actionable diagnostics. Temporary priority assignments are not manual input pins.
 
 The result matrix retains a repair reason for each changed module. Tapping a cell displays its value, provenance, applicable structure/constraint/RS operations, and explanatory confidence. The eight modules belonging to its codeword are highlighted only after the user presses “Show same Codeword.”
 

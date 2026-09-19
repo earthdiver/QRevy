@@ -42,7 +42,7 @@ fun RecoveryDisplayConditions?.runSettingsText(): String = this?.let { settings 
         localizedText("指定 ($it)", "Specified ($it)")
     } ?: localizedText("自動", "Automatic"))
     settings.lockManualBits?.let { locked ->
-        append(localizedText("\n手動0/1の固定: ", "\nManual 0/1 locking: ")).append(if (locked) "ON" else "OFF")
+        append(localizedText("\n固定セルの0/1と矛盾する復元候補を許容する（仮指定セルと同じ扱い）: ", "\nAllow recovery candidates that conflict with fixed 0/1 values (as for tentative cells): ")).append(if (locked) "OFF" else "ON")
     }
     append(localizedText("\n単一セグメントの仮定: ", "\nSingle-segment assumption: "))
         .append(if (settings.trustSingleSegment) "ON" else "OFF")

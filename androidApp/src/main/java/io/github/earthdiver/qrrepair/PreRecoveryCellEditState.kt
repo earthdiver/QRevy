@@ -7,7 +7,10 @@ import io.github.earthdiver.qrrepair.localizedText
 internal data class PreRecoveryCellValue(
     val value: ModuleValue,
     val prioritySearch: Boolean,
+    val tentative: Boolean = false,
 )
+
+internal enum class CellEditSource { IMAGE, TENTATIVE, FIXED }
 
 internal enum class PriorityEditResult { CHANGED, UNCHANGED, LIMIT_EXCEEDED }
 
@@ -17,7 +20,12 @@ internal class PreRecoveryCellEditState(
     initialPrioritySearch: Set<Coord>,
     private val priorityLimit: Int = 4,
     private val validateEdits: (Map<Coord, ModuleValue>) -> Boolean = { true },
+    initialSoftEdits: Set<Coord> = emptySet(),
 ) {
+    private val mutableSoftEdits = linkedSetOf<Coord>().apply {
+        addAll(initialSoftEdits)
+        addAll(initialEdits.filterValues { it == ModuleValue.ERASED }.keys)
+    }
     private val mutableEdits = linkedMapOf<Coord, ModuleValue>().apply { putAll(initialEdits) }
     private val mutablePrioritySearch = linkedSetOf<Coord>().apply { addAll(initialPrioritySearch) }
     private val undo = ArrayDeque<Map<Coord, PreRecoveryCellValue?>>()
@@ -25,6 +33,13 @@ internal class PreRecoveryCellEditState(
 
     val edits: Map<Coord, ModuleValue> get() = mutableEdits
     val prioritySearch: Set<Coord> get() = mutablePrioritySearch
+    val softEdits: Set<Coord> get() = mutableSoftEdits
+    val fixedEdits: Map<Coord, ModuleValue> get() = mutableEdits - mutableSoftEdits
+    fun sourceAt(coord: Coord): CellEditSource = when (coord) {
+        in mutableSoftEdits -> CellEditSource.TENTATIVE
+        in mutableEdits -> CellEditSource.FIXED
+        else -> CellEditSource.IMAGE
+    }
     var selectedCells: Set<Coord> = emptySet()
         private set
     val undoCount: Int get() = undo.size
@@ -41,6 +56,7 @@ internal class PreRecoveryCellEditState(
         )
 
     init {
+        require(mutableSoftEdits.all { it in mutableEdits })
         require(priorityLimit >= 0)
         require(mutablePrioritySearch.size <= priorityLimit)
         mutablePrioritySearch.forEach { coord ->
@@ -64,7 +80,7 @@ internal class PreRecoveryCellEditState(
     fun copyForEditing(
         validateEdits: (Map<Coord, ModuleValue>) -> Boolean = { true },
     ): PreRecoveryCellEditState = PreRecoveryCellEditState(
-        mutableEdits, mutablePrioritySearch, priorityLimit, validateEdits,
+        mutableEdits, mutablePrioritySearch, priorityLimit, validateEdits, mutableSoftEdits,
     ).also { copy ->
         copy.undo.clear()
         copy.undo.addAll(undo.map { it.toMap() })
@@ -72,6 +88,7 @@ internal class PreRecoveryCellEditState(
     }
 
     fun clearAll() {
+        mutableSoftEdits.clear()
         mutableEdits.clear()
         mutablePrioritySearch.clear()
         undo.clear()
@@ -91,6 +108,9 @@ internal class PreRecoveryCellEditState(
         }
         fun <T> Map<Coord, T>.rotated(): Map<Coord, T> = entries.associate { rotate(it.key) to it.value }
 
+        val soft = mutableSoftEdits.mapTo(linkedSetOf(), ::rotate)
+        mutableSoftEdits.clear()
+        mutableSoftEdits.addAll(soft)
         val edits = mutableEdits.rotated()
         mutableEdits.clear()
         mutableEdits.putAll(edits)
@@ -114,19 +134,25 @@ internal class PreRecoveryCellEditState(
     ): Set<Coord> {
         val previous = linkedMapOf<Coord, PreRecoveryCellValue?>()
         val proposed = mutableEdits.toMutableMap()
+        val soft = mutableSoftEdits.toMutableSet()
         for (coord in coords.distinct()) {
             val baseline = baselineValue(coord) ?: continue
             val before = currentValue(coord)
             // An unchanged image value is not an explicit confirmation. Once edited, values
             // remain manual until the source button (or Undo) removes the override.
             if (before == null && value == baseline) continue
-            val after = PreRecoveryCellValue(value, false)
+            val tentative = value == ModuleValue.ERASED ||
+                (before?.value != ModuleValue.ERASED && coord in mutableSoftEdits)
+            val after = PreRecoveryCellValue(value, false, tentative)
             if (before == after) continue
             previous[coord] = before
             proposed[coord] = value
+            if (tentative) soft.add(coord) else soft.remove(coord)
         }
-        if (previous.isEmpty() || !accept(proposed)) return emptySet()
+        if (previous.isEmpty() || !accept(proposed, soft)) return emptySet()
         previous.keys.forEach(mutablePrioritySearch::remove)
+        mutableSoftEdits.clear()
+        mutableSoftEdits.addAll(soft)
         mutableEdits.clear()
         mutableEdits.putAll(proposed)
         undo.addLast(previous)
@@ -137,21 +163,36 @@ internal class PreRecoveryCellEditState(
     /** Mixed selections return to the image together, rather than inverting each cell. */
     val selectionHasManualEdits: Boolean get() = selectedCells.any { it in mutableEdits }
 
-    fun makeManual(
+    fun makeManual(coords: Collection<Coord>, baselineValue: (Coord) -> ModuleValue?): Set<Coord> =
+        setSource(coords, CellEditSource.FIXED, baselineValue)
+
+    /** Source changes retain the current value, including explicit unknowns. */
+    fun setSource(
         coords: Collection<Coord>,
+        source: CellEditSource,
         baselineValue: (Coord) -> ModuleValue?,
     ): Set<Coord> {
+        if (source == CellEditSource.IMAGE) return restoreImage(coords)
         val previous = linkedMapOf<Coord, PreRecoveryCellValue?>()
         val proposed = mutableEdits.toMutableMap()
+        val soft = mutableSoftEdits.toMutableSet()
         for (coord in coords.distinct()) {
-            if (coord in mutableEdits) continue
-            val baseline = baselineValue(coord) ?: continue
-            previous[coord] = null
-            proposed[coord] = baseline
+            val before = currentValue(coord)
+            val value = before?.value ?: baselineValue(coord) ?: continue
+            // Reject a mixed batch atomically; unknowns have no fixed state.
+            if (source == CellEditSource.FIXED && value == ModuleValue.ERASED) return emptySet()
+            val tentative = source == CellEditSource.TENTATIVE
+            val after = PreRecoveryCellValue(value, before?.prioritySearch == true, tentative)
+            if (before == after) continue
+            previous[coord] = before
+            proposed[coord] = value
+            if (tentative) soft.add(coord) else soft.remove(coord)
         }
-        if (previous.isEmpty() || !accept(proposed)) return emptySet()
+        if (previous.isEmpty() || !accept(proposed, soft)) return emptySet()
         mutableEdits.clear()
         mutableEdits.putAll(proposed)
+        mutableSoftEdits.clear()
+        mutableSoftEdits.addAll(soft)
         undo.addLast(previous)
         redo.clear()
         return select(previous.keys)
@@ -167,6 +208,7 @@ internal class PreRecoveryCellEditState(
         if (previous.isEmpty()) return emptySet()
         previous.keys.forEach {
             mutableEdits.remove(it)
+            mutableSoftEdits.remove(it)
             mutablePrioritySearch.remove(it)
         }
         undo.addLast(previous)
@@ -185,6 +227,7 @@ internal class PreRecoveryCellEditState(
             val before = currentValue(coord)
             if (before?.prioritySearch == true) return@forEach
             previous[coord] = before
+            mutableSoftEdits.add(coord)
             mutableEdits[coord] = ModuleValue.ERASED
             mutablePrioritySearch += coord
         }
@@ -197,7 +240,7 @@ internal class PreRecoveryCellEditState(
 
     fun undo(): Set<Coord> {
         val previous = undo.lastOrNull() ?: return emptySet()
-        if (!accept(restoredEdits(previous))) return emptySet()
+        if (!accept(restoredEdits(previous), restoredSoftEdits(previous))) return emptySet()
         undo.removeLast()
         redo.addLast(previous.keys.associateWith(::currentValue))
         restore(previous)
@@ -206,7 +249,7 @@ internal class PreRecoveryCellEditState(
 
     fun redo(): Set<Coord> {
         val next = redo.lastOrNull() ?: return emptySet()
-        if (!accept(restoredEdits(next))) return emptySet()
+        if (!accept(restoredEdits(next), restoredSoftEdits(next))) return emptySet()
         redo.removeLast()
         undo.addLast(next.keys.associateWith(::currentValue))
         restore(next)
@@ -218,26 +261,35 @@ internal class PreRecoveryCellEditState(
             values.forEach { (coord, value) -> if (value == null) remove(coord) else put(coord, value.value) }
         }
 
-    private fun accept(proposed: Map<Coord, ModuleValue>): Boolean {
-        // Allow clearing values even when a loaded legacy session has other conflicts to fix.
-        val onlyClears = proposed.all { (coord, value) ->
-            value == ModuleValue.ERASED || mutableEdits[coord] == value
+    private fun restoredSoftEdits(values: Map<Coord, PreRecoveryCellValue?>): Set<Coord> =
+        mutableSoftEdits.toMutableSet().apply {
+            values.forEach { (coord, value) -> if (value?.tentative == true) add(coord) else remove(coord) }
         }
-        return onlyClears || validateEdits(proposed)
+
+    private fun accept(proposed: Map<Coord, ModuleValue>, soft: Set<Coord> = mutableSoftEdits): Boolean {
+        // Allow clearing values even when a loaded legacy session has other conflicts to fix.
+        val fixed = proposed - soft
+        val currentFixed = fixedEdits
+        val onlyClears = fixed.all { (coord, value) ->
+            value == ModuleValue.ERASED || currentFixed[coord] == value
+        }
+        return onlyClears || validateEdits(fixed)
     }
 
     private fun restore(values: Map<Coord, PreRecoveryCellValue?>) {
         values.forEach { (coord, restored) ->
             mutablePrioritySearch.remove(coord)
+            mutableSoftEdits.remove(coord)
             if (restored == null) {
                 mutableEdits.remove(coord)
             } else {
                 mutableEdits[coord] = restored.value
+                if (restored.tentative) mutableSoftEdits.add(coord)
                 if (restored.prioritySearch) mutablePrioritySearch += coord
             }
         }
     }
 
     private fun currentValue(coord: Coord): PreRecoveryCellValue? =
-        mutableEdits[coord]?.let { PreRecoveryCellValue(it, coord in mutablePrioritySearch) }
+        mutableEdits[coord]?.let { PreRecoveryCellValue(it, coord in mutablePrioritySearch, coord in mutableSoftEdits) }
 }

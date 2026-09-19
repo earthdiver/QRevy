@@ -66,7 +66,8 @@ class ModernResultNavigationTest {
             assertTrue(result.isEnabled)
             val overlay = descendants(root).filterIsInstance<PreprocessOverlayView>().single()
             overlay.onEditCellSelected!!.invoke(10, 10)
-            text(activity.getString(R.string.cell_make_manual)).performClick()
+            text(activity.getString(R.string.cell_source_menu, activity.getString(R.string.cell_source_image))).performClick()
+            org.robolectric.shadows.ShadowPopupMenu.getLatestPopupMenu().menu.performIdentifierAction(CellEditSource.FIXED.ordinal, 0)
             val count = "変更操作: 1回・変更セル: 1セル　やり直し: 0回"
             assertNotNull(text(count))
             result.performClick()

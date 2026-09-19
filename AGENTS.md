@@ -14,7 +14,7 @@ Maintain and extend QR Repair, an offline Android/iOS-oriented tool for recoveri
 - Never treat Reed-Solomon success alone as proof that recovery is correct.
 - Preserve provenance for inferred or repaired modules.
 - Preserve manual `0 / 1 / ?` edits and hard FIXED constraints.
-- Here FIXED describes constraints, not a `ModuleSource` enum value: locked manual 0/1 cells use `USER`; explicit ECC/mask selections and the selected version/logical orientation are enforced separately.
+- Fixed cells are protected constraints unless the user explicitly permits conflicting recovery candidates. Explicit ECC/mask selections and the selected version/logical orientation remain enforced separately.
 - Keep one-finder recovery attempts available even when additional finder-like candidates exist.
 - Do not silently reduce validation of QRR session files, backup restrictions, or source-image integrity.
 - Confidence scores are explanatory heuristics, not statistical probabilities.
@@ -91,6 +91,12 @@ On macOS, shared iOS compatibility must also pass:
 - `README.md` is the default English README; `README.ja.md` is its Japanese counterpart.
 - Product localization resources, user-facing Japanese strings, and tests that verify Japanese localization are exempt from the English-only rule.
 - Keep paired English and Japanese documentation aligned when behavior or user guidance changes.
+
+## Documentation and test scope
+- Describe current behavior and UI, not the sequence of past implementation changes. Remove obsolete transition notes and redundant interaction details when updating guidance.
+- Use product terminology in documentation rather than internal enum names or implementation identifiers.
+- Name and structure tests around current observable behavior and supported guarantees. Keep compatibility and validation tests for formats and inputs the application still supports; remove obsolete UI assumptions rather than preserving change history in tests.
+- Keep release history in release notes instead of embedding it in current usage guidance.
 
 ## Publication blockers
 The permanent package/namespace is `io.github.earthdiver.qrrepair`. Do not invent signing credentials, store identifiers, or a public privacy-policy URL; those values must be supplied by a project maintainer before store release.

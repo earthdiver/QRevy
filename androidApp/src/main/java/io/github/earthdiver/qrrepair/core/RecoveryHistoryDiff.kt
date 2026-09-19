@@ -10,7 +10,7 @@ fun historyCellChangeCount(before: RecoverySnapshot, after: RecoverySnapshot): I
         for (y in 0 until beforeMatrix.dimension) for (x in 0 until beforeMatrix.dimension) {
             val a = beforeMatrix[x, y]
             val b = afterMatrix[x, y]
-            if (a.value != b.value || a.prioritySearch != b.prioritySearch) changed++
+            if (a.value != b.value || a.source != b.source || a.prioritySearch != b.prioritySearch) changed++
         }
         return changed
     }
@@ -21,6 +21,7 @@ fun historyCellChangeCount(before: RecoverySnapshot, after: RecoverySnapshot): I
         beforeSettings.preRecoveryPrioritySearch + afterSettings.preRecoveryPrioritySearch
     return coordinates.count { coord ->
         beforeSettings.preRecoveryEdits[coord] != afterSettings.preRecoveryEdits[coord] ||
+            (coord in beforeSettings.effectiveSoftEdits) != (coord in afterSettings.effectiveSoftEdits) ||
             (coord in beforeSettings.preRecoveryPrioritySearch) != (coord in afterSettings.preRecoveryPrioritySearch)
     }
 }

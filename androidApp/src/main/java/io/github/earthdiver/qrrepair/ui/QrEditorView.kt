@@ -349,7 +349,7 @@ class QrEditorView(context: Context) : View(context) {
             for (y in 0 until g.dimension) for (x in 0 until g.dimension) {
                 val cell = m[x, y]
                 val selected = selectedCells.any { it.x == x && it.y == y } || activeStroke.any { it.x == x && it.y == y }
-                if (highlightManualOnly && cell.source != ModuleSource.USER && !selected) continue
+                if (highlightManualOnly && !cell.source.isUserEdit && !selected) continue
                 val important = cell.value == ModuleValue.ERASED || cell.source != ModuleSource.IMAGE || selected
                 if (!important && !drawImageStates) continue
                 val p = g.moduleToImage(x.toDouble(), y.toDouble())
@@ -381,10 +381,10 @@ class QrEditorView(context: Context) : View(context) {
             // Draw provenance separately and last: selection, * and structure overlays must
             // not hide the fact that a value was explicitly assigned by the user.
             for (y in 0 until g.dimension) for (x in 0 until g.dimension) {
-                if (m[x, y].source != ModuleSource.USER) continue
+                if (!m[x, y].source.isUserEdit) continue
                 val point = g.moduleToImage(x.toDouble(), y.toDouble())
                 val halfSize = max(4f * invScale, (g.localModulePitch(x.toDouble(), y.toDouble()) * .38).toFloat())
-                manualCellMarker.draw(canvas, point.x.toFloat(), point.y.toFloat(), halfSize, 1.5f * invScale)
+                manualCellMarker.draw(canvas, point.x.toFloat(), point.y.toFloat(), halfSize, 1.5f * invScale, m[x, y].source == ModuleSource.USER_SOFT || m[x, y].value == ModuleValue.ERASED)
             }
 
             if (activeStroke.isNotEmpty() || previewRange.isNotEmpty()) {

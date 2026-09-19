@@ -183,7 +183,8 @@ class PrecisionDesignTest {
             fun <T : View> view(type: Class<T>): T = allViews(root).filter { type.isInstance(it) }.map { type.cast(it) }.first()!!
             val overlay = view(PreprocessOverlayView::class.java)
             overlay.onEditCellSelected?.invoke(10, 10)
-            find(root, activity.getString(R.string.cell_make_manual))!!.performClick()
+            find(root, activity.getString(R.string.cell_source_menu, activity.getString(R.string.cell_source_image)))!!.performClick()
+            org.robolectric.shadows.ShadowPopupMenu.getLatestPopupMenu().menu.performIdentifierAction(CellEditSource.FIXED.ordinal, 0)
             val focus = find(root, activity.getString(R.string.highlight_manual_only)) as CheckBox
             focus.performClick()
             assertTrue(overlay.highlightManualOnly)
@@ -325,7 +326,8 @@ class PrecisionDesignTest {
             val root = editor.window!!.decorView
             val overlay = allViews(root).filterIsInstance<PreprocessOverlayView>().single()
             overlay.onEditCellSelected!!.invoke(10, 10)
-            find(root, activity.getString(R.string.cell_make_manual))!!.performClick()
+            find(root, activity.getString(R.string.cell_source_menu, activity.getString(R.string.cell_source_image)))!!.performClick()
+            org.robolectric.shadows.ShadowPopupMenu.getLatestPopupMenu().menu.performIdentifierAction(CellEditSource.FIXED.ordinal, 0)
             val count = "変更操作: 1回・変更セル: 1セル　やり直し: 0回"
             assertNotNull(find(root, count))
             fun tabRect(view: View): android.graphics.Rect {

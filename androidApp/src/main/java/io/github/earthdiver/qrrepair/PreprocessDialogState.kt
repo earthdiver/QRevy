@@ -75,6 +75,7 @@ internal class PreprocessDialogState(private val initial: PreprocessSettings) {
         geometry: PreprocessGeometrySnapshot,
         edits: Map<Coord, ModuleValue>,
         prioritySearch: Set<Coord>,
+        softEdits: Set<Coord> = emptySet(),
     ): PreprocessSettings {
         val preview = previewSettings(controls)
         return preview.copy(
@@ -94,6 +95,7 @@ internal class PreprocessDialogState(private val initial: PreprocessSettings) {
             detectedFinders = emptyList(),
             confirmedFinderPolarity = geometry.confirmedFinderPolarity ?: FinderPolarity.UNKNOWN,
             preRecoveryEdits = edits,
+            preRecoverySoftEdits = softEdits,
             preRecoveryPrioritySearch = prioritySearch,
         )
     }

@@ -10,7 +10,7 @@ import java.util.zip.GZIPOutputStream
 
 /** Android-independent, bounded and checksummed persistence codec for repair sessions. */
 object RecoverySessionCodec {
-    const val CURRENT_VERSION = 15
+    const val CURRENT_VERSION = 17
     const val MAX_HISTORY_ENTRIES = 40
     const val MAX_SESSION_PAYLOAD_BYTES = 16 * 1024 * 1024
     const val MAX_SESSION_FILE_BYTES = 20 * 1024 * 1024
@@ -107,6 +107,8 @@ object RecoverySessionCodec {
             hasFormatConstraint = version >= 13,
             hasFormatMismatchLimit = version >= 14,
             hasDataEccMismatchLimit = version >= 15,
+            hasSoftEdits = version >= 16,
+            hasFixedCorrections = version >= 17,
         )
         requireCorrupt(input.available() == 0, "trailing bytes in session payload")
         payload
@@ -132,6 +134,8 @@ object RecoverySessionCodec {
         hasFormatConstraint: Boolean = false,
         hasFormatMismatchLimit: Boolean = false,
         hasDataEccMismatchLimit: Boolean = false,
+        hasSoftEdits: Boolean = false,
+        hasFixedCorrections: Boolean = false,
     ): Payload {
         val id = input.readUTF()
         requireCorrupt(isSafeSessionId(id), "invalid session id")
@@ -144,7 +148,7 @@ object RecoverySessionCodec {
         if (count == 0) requireCorrupt(cursor == -1, "empty history must have cursor -1")
         else requireCorrupt(cursor in 0 until count, "invalid history cursor")
         val history = ArrayList<RecoveryHistoryEntry>(count)
-        repeat(count) { history += readHistoryEntry(input, hasPreprocessSettings, hasGeometryLock, hasPrioritySearch, hasPerspectiveCorrection, hasUnknownColorClusters, hasLogicalGridAssignment, hasFormatConstraint, hasFormatMismatchLimit, hasDataEccMismatchLimit) }
+        repeat(count) { history += readHistoryEntry(input, hasPreprocessSettings, hasGeometryLock, hasPrioritySearch, hasPerspectiveCorrection, hasUnknownColorClusters, hasLogicalGridAssignment, hasFormatConstraint, hasFormatMismatchLimit, hasDataEccMismatchLimit, hasSoftEdits, hasFixedCorrections) }
         return Payload(id, updated, mode, history, cursor)
     }
 
@@ -181,6 +185,8 @@ object RecoverySessionCodec {
         hasFormatConstraint: Boolean,
         hasFormatMismatchLimit: Boolean,
         hasDataEccMismatchLimit: Boolean,
+        hasSoftEdits: Boolean,
+        hasFixedCorrections: Boolean,
     ): RecoveryHistoryEntry {
         val id = input.readUTF()
         requireCorrupt(id.length <= MAX_TEXT, "history id too long")
@@ -190,7 +196,7 @@ object RecoverySessionCodec {
         val label = input.readUTF()
         val detail = input.readUTF()
         requireCorrupt(label.length <= 400 && detail.length <= 1600, "history text too long")
-        return RecoveryHistoryEntry(id, timestamp, kind, label, detail, readSnapshot(input, hasPreprocessSettings, hasGeometryLock, hasPrioritySearch, hasPerspectiveCorrection, hasUnknownColorClusters, hasLogicalGridAssignment, hasFormatConstraint, hasFormatMismatchLimit, hasDataEccMismatchLimit))
+        return RecoveryHistoryEntry(id, timestamp, kind, label, detail, readSnapshot(input, hasPreprocessSettings, hasGeometryLock, hasPrioritySearch, hasPerspectiveCorrection, hasUnknownColorClusters, hasLogicalGridAssignment, hasFormatConstraint, hasFormatMismatchLimit, hasDataEccMismatchLimit, hasSoftEdits, hasFixedCorrections))
     }
 
     private fun writeSnapshot(out: DataOutputStream, snapshot: RecoverySnapshot) {
@@ -214,10 +220,12 @@ object RecoverySessionCodec {
         hasFormatConstraint: Boolean,
         hasFormatMismatchLimit: Boolean,
         hasDataEccMismatchLimit: Boolean,
+        hasSoftEdits: Boolean,
+        hasFixedCorrections: Boolean,
     ): RecoverySnapshot {
         val geometry = readGeometry(input)
-        val source = readMatrix(input, hasPrioritySearch)
-        val working = readMatrix(input, hasPrioritySearch)
+        val source = readMatrix(input, hasPrioritySearch, hasSoftEdits, hasFixedCorrections)
+        val working = readMatrix(input, hasPrioritySearch, hasSoftEdits, hasFixedCorrections)
         requireCorrupt(source == null || validPrioritySearch(source), "invalid source priority-search modules")
         requireCorrupt(working == null || validPrioritySearch(working), "invalid working priority-search modules")
         if (source != null && working != null) requireCorrupt(source.dimension == working.dimension, "matrix dimension mismatch")
@@ -227,7 +235,7 @@ object RecoverySessionCodec {
         }
         val recoveryIndex = input.readInt()
         requireCorrupt(recoveryIndex >= -1 && recoveryIndex <= 100_000, "invalid recovery index")
-        val settings = if (hasPreprocessSettings && input.readBoolean()) readPreprocessSettings(input, hasGeometryLock, hasPrioritySearch, hasPerspectiveCorrection, hasUnknownColorClusters, hasLogicalGridAssignment, hasFormatConstraint, hasFormatMismatchLimit, hasDataEccMismatchLimit) else null
+        val settings = if (hasPreprocessSettings && input.readBoolean()) readPreprocessSettings(input, hasGeometryLock, hasPrioritySearch, hasPerspectiveCorrection, hasUnknownColorClusters, hasLogicalGridAssignment, hasFormatConstraint, hasFormatMismatchLimit, hasDataEccMismatchLimit, hasSoftEdits, hasFixedCorrections) else null
         return RecoverySnapshot(geometry, source, working, recoveryIndex, settings)
     }
 
@@ -310,9 +318,11 @@ object RecoverySessionCodec {
         }
         out.writeInt(settings.preRecoveryPrioritySearch.size)
         settings.preRecoveryPrioritySearch.forEach { coord -> out.writeInt(coord.x); out.writeInt(coord.y) }
+        out.writeInt(settings.preRecoverySoftEdits.size)
+        settings.preRecoverySoftEdits.forEach { coord -> out.writeInt(coord.x); out.writeInt(coord.y) }
     }
 
-    private fun readPreprocessSettings(input: DataInputStream, hasGeometryLock: Boolean, hasPrioritySearch: Boolean, hasPerspectiveCorrection: Boolean, hasUnknownColorClusters: Boolean, hasLogicalGridAssignment: Boolean, hasFormatConstraint: Boolean, hasFormatMismatchLimit: Boolean, hasDataEccMismatchLimit: Boolean): PreprocessSettings {
+    private fun readPreprocessSettings(input: DataInputStream, hasGeometryLock: Boolean, hasPrioritySearch: Boolean, hasPerspectiveCorrection: Boolean, hasUnknownColorClusters: Boolean, hasLogicalGridAssignment: Boolean, hasFormatConstraint: Boolean, hasFormatMismatchLimit: Boolean, hasDataEccMismatchLimit: Boolean, hasSoftEdits: Boolean, hasFixedCorrections: Boolean): PreprocessSettings {
         val rotation = input.readFloat()
         requireCorrupt(rotation.isFinite() && rotation in -360f..360f, "invalid preprocessing rotation")
         val polarity = enumStrict<PolarityMode>(input.readInt(), "polarity")
@@ -408,6 +418,18 @@ object RecoverySessionCodec {
                 }
             }
         } else emptySet()
+        val softEdits = if (hasSoftEdits) {
+            val count = input.readInt()
+            requireCorrupt(count in 0..editCount, "invalid tentative edit count")
+            buildSet {
+                repeat(count) {
+                    val coord = Coord(input.readInt(), input.readInt())
+                    requireCorrupt(coord in edits, "tentative coordinate has no edit")
+                    requireCorrupt(hasFixedCorrections || coord !in priority, "legacy tentative edit cannot be a priority-search pin")
+                    requireCorrupt(add(coord), "duplicate tentative coordinate")
+                }
+            }
+        } else emptySet()
         return try {
             PreprocessSettings(
                 rotationDegrees = rotation,
@@ -434,6 +456,7 @@ object RecoverySessionCodec {
                 detectedFinders = candidates,
                 confirmedFinderPolarity = confirmedPolarity,
                 preRecoveryEdits = edits,
+                preRecoverySoftEdits = softEdits,
                 preRecoveryPrioritySearch = priority,
             )
         } catch (e: IllegalArgumentException) {
@@ -449,6 +472,7 @@ object RecoverySessionCodec {
         require(settings.manualFinders.size <= 3 && settings.detectedFinders.size <= 64)
         val dimension = 17 + 4 * settings.version
         require(settings.preRecoveryEdits.size <= dimension * dimension)
+        require(settings.preRecoverySoftEdits.all { it in settings.preRecoveryEdits })
         require(settings.preRecoveryPrioritySearch.size <= 4)
         require(settings.preRecoveryPrioritySearch.all { settings.preRecoveryEdits[it] == ModuleValue.ERASED })
         require(settings.formatMismatchLimit == null || settings.formatMismatchLimit in 0..30)
@@ -486,7 +510,7 @@ object RecoverySessionCodec {
         }
     }
 
-    private fun readMatrix(input: DataInputStream, hasPrioritySearch: Boolean): QrMatrix? {
+    private fun readMatrix(input: DataInputStream, hasPrioritySearch: Boolean, hasSoftEdits: Boolean, hasFixedCorrections: Boolean): QrMatrix? {
         if (!input.readBoolean()) return null
         val d = input.readInt()
         requireCorrupt(isValidQrDimension(d), "invalid QR dimension $d")
@@ -494,11 +518,14 @@ object RecoverySessionCodec {
         for (y in 0 until d) for (x in 0 until d) {
             val value = enumStrict<ModuleValue>(input.readUnsignedByte(), "module value")
             val source = enumStrict<ModuleSource>(input.readUnsignedByte(), "module source")
+            requireCorrupt(hasSoftEdits || source != ModuleSource.USER_SOFT, "unsupported module source")
+            requireCorrupt(hasFixedCorrections || source != ModuleSource.USER_UNLOCKED, "unsupported fixed-correction source")
             val confidence = input.readFloat()
             requireCorrupt(confidence.isFinite() && confidence in 0f..1f, "invalid confidence")
             matrix.set(x, y, value, confidence, source)
             if (hasPrioritySearch && input.readBoolean()) {
                 requireCorrupt(value == ModuleValue.ERASED, "priority-search module must be erased")
+                requireCorrupt(hasFixedCorrections || source != ModuleSource.USER_SOFT, "legacy tentative priority source")
                 matrix.setPrioritySearch(x, y, true)
             }
         }

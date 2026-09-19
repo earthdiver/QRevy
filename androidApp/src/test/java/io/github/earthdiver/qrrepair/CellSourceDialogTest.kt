@@ -41,6 +41,7 @@ class CellSourceDialogTest {
         val root get() = dialog.window!!.decorView
         val overlay get() = views(root).filterIsInstance<PreprocessOverlayView>().single()
         fun click(label: String) { text(root, label).performClick() }
+        fun choose(source: CellEditSource) = chooseSource(root, source)
         fun openEditor() { assertTrue(text(root, "セル編集（長押し）").performLongClick()) }
         fun select(coord: Coord) { overlay.onEditCellSelected!!.invoke(coord.x, coord.y) }
         fun snapshot(): PreprocessSave {
@@ -113,7 +114,7 @@ class CellSourceDialogTest {
                     if (input == baseline) assertTrue(saved.settings.preRecoveryEdits.isEmpty())
                     else assertEquals(mapOf(coord to input), saved.settings.preRecoveryEdits)
                     f.select(coord)
-                    if (input != baseline) f.click("画像に戻す")
+                    if (input != baseline) f.choose(CellEditSource.IMAGE)
                 }
             }
         }
@@ -121,18 +122,18 @@ class CellSourceDialogTest {
 
     @Test fun explicitSameValuePinAndUndoRedoPreserveSourceThroughSave() = withFixture { f ->
         val coord = Coord(8, 0)
-        assertFalse(text(f.root, "手動指定にする").isEnabled)
+        assertFalse(sourceButton(f.root).isEnabled)
         f.select(coord)
-        f.click("手動指定にする")
+        f.choose(CellEditSource.FIXED)
         assertEquals(coord, f.overlay.selectedEditCell())
-        assertTrue(text(f.root, "画像に戻す").isEnabled)
-        assertTrue(views(f.root).filterIsInstance<TextView>().any { it.text.contains("由来: 手動 / 現在: 0 / 画像に戻す値: 0") })
+        assertTrue(sourceButton(f.root).isEnabled)
+        assertTrue(views(f.root).filterIsInstance<TextView>().any { it.text.contains("現在: 0 / 画像: 0") })
         f.click("0")
         assertEquals(mapOf(coord to ModuleValue.ZERO), f.snapshot().settings.preRecoveryEdits)
         f.select(coord)
-        f.click("画像に戻す")
+        f.choose(CellEditSource.IMAGE)
         assertEquals(coord, f.overlay.selectedEditCell())
-        assertEquals("手動指定にする", text(f.root, "手動指定にする").text.toString())
+        assertEquals("画像から判定 ▾", sourceButton(f.root).text.toString())
         f.click("Undo")
         assertEquals(mapOf(coord to ModuleValue.ZERO), f.snapshot().cellEdits.edits)
         f.click("Redo")
@@ -145,7 +146,7 @@ class CellSourceDialogTest {
         for (lock in listOf(true, false)) withFixture(settings = PreprocessSettings(formatConstraint = constraint, lockManualBits = lock)) { f ->
             f.select(coord)
             f.click("0") // Same sampled value: no hidden format pin.
-            f.click("手動指定にする")
+            f.choose(CellEditSource.FIXED)
             val error = ShadowDialog.getLatestDialog() as AlertDialog
             assertNotSame(f.dialog, error)
             assertTrue(error.findViewById<TextView>(android.R.id.message).text.contains("(${coord.x},${coord.y})"))
@@ -153,7 +154,7 @@ class CellSourceDialogTest {
             assertTrue(f.snapshot().settings.preRecoveryEdits.isEmpty())
             f.select(coord)
             f.click("1") // A real change that agrees with the selected format.
-            f.click("画像に戻す")
+            f.choose(CellEditSource.IMAGE)
             val saved = f.snapshot()
             assertTrue(saved.settings.preRecoveryEdits.isEmpty())
             assertEquals(constraint, saved.settings.formatConstraint)
@@ -167,8 +168,8 @@ class CellSourceDialogTest {
         f.select(a)
         f.click("*")
         f.overlay.onCellRangeSelected!!.invoke(setOf(a, b))
-        assertTrue(views(f.root).filterIsInstance<TextView>().any { it.text.toString() == "選択: 2セル / 画像: 1 / 手動: 1" })
-        f.click("画像に戻す")
+        assertTrue(views(f.root).filterIsInstance<TextView>().any { it.text.toString() == "選択2 / 画像1・仮1・固定0" })
+        f.choose(CellEditSource.IMAGE)
         val restored = f.snapshot()
         assertTrue(restored.settings.preRecoveryEdits.isEmpty())
         assertTrue(restored.settings.preRecoveryPrioritySearch.isEmpty())
@@ -185,12 +186,12 @@ class CellSourceDialogTest {
             val root = large.window!!.decorView
             val editor = views(root).filterIsInstance<QrEditorView>().single()
             editor.onCellSelected!!.invoke(10, 10)
-            text(root, "手動指定にする").performClick()
+            chooseSource(root, CellEditSource.FIXED)
             shadowOf(Looper.getMainLooper()).idle()
             root.measure(View.MeasureSpec.makeMeasureSpec(360, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(640, View.MeasureSpec.EXACTLY))
             root.layout(0, 0, 360, 640)
-            val button = text(root, "画像に戻す") as Button
+            val button = sourceButton(root)
             val visible = android.graphics.Rect()
             assertTrue(views(root).joinToString("\n") { "${it.javaClass.simpleName} ${it.width}x${it.height} at ${it.top} visibility=${it.visibility}" }, button.getGlobalVisibleRect(visible))
             assertEquals(button.height, visible.height())
@@ -200,7 +201,60 @@ class CellSourceDialogTest {
         } finally { large.dismiss() }
     }
 
+    @Test fun tentativeValueSurvivesSaveReopenAndModeOnlyUndo() {
+        val coord = Coord(10, 10)
+        lateinit var saved: PreprocessSettings
+        withFixture { f ->
+            f.select(coord)
+            f.click("1")
+            f.choose(CellEditSource.TENTATIVE)
+            saved = f.snapshot().settings
+            assertEquals(ModuleValue.ONE, saved.preRecoveryEdits[coord])
+            assertEquals(setOf(coord), saved.preRecoverySoftEdits)
+            f.select(coord)
+            f.choose(CellEditSource.FIXED)
+            f.click("Undo")
+            assertEquals(setOf(coord), f.snapshot().settings.preRecoverySoftEdits)
+        }
+        withFixture(settings = saved) { f ->
+            f.select(coord)
+            assertEquals("仮指定（訂正可） ▾", sourceButton(f.root).text.toString())
+            assertTrue(views(f.root).filterIsInstance<TextView>().any { it.text.contains("現在: 1 / 画像: 0") })
+            f.choose(CellEditSource.IMAGE)
+            assertTrue(f.snapshot().settings.preRecoveryEdits.isEmpty())
+        }
+    }
+
+    @Test fun correctionOptionRetainsFixedFlagsAndCanBeTurnedOffAgain() {
+        val coord = Coord(10, 10)
+        withFixture(settings = PreprocessSettings(lockManualBits = false, preRecoveryEdits = mapOf(coord to ModuleValue.ONE))) { f ->
+            f.select(coord)
+            assertEquals("固定（修正可） ▾", sourceButton(f.root).text.toString())
+            val saved = f.snapshot().settings
+            assertFalse(saved.lockManualBits)
+            assertTrue(saved.preRecoverySoftEdits.isEmpty())
+            assertEquals(ModuleValue.ONE, saved.preRecoveryEdits[coord])
+            f.click("固定セルの0/1と矛盾する復元候補を許容する（仮指定セルと同じ扱い）")
+            val protected = f.snapshot().settings
+            assertTrue(protected.lockManualBits)
+            assertTrue(protected.preRecoverySoftEdits.isEmpty())
+            f.select(coord)
+            assertEquals("固定（訂正不可） ▾", sourceButton(f.root).text.toString())
+            assertEquals(ModuleValue.ONE, protected.preRecoveryEdits[coord])
+        }
+    }
+
     companion object {
+        private fun sourceButton(root: View): Button = views(root).filterIsInstance<Button>().first {
+            it.text.toString() in listOf("画像から判定 ▾", "仮指定（訂正可） ▾", "固定（訂正不可） ▾", "固定（修正可） ▾", "複数の状態 ▾")
+        }
+        private fun chooseSource(root: View, source: CellEditSource) {
+            sourceButton(root).performClick()
+            val popup = org.robolectric.shadows.ShadowPopupMenu.getLatestPopupMenu()
+            assertTrue(popup.menu.performIdentifierAction(source.ordinal, 0))
+            popup.dismiss()
+        }
+
         private fun views(view: View): List<View> = listOf(view) +
             if (view is ViewGroup) (0 until view.childCount).flatMap { views(view.getChildAt(it)) } else emptyList()
         private fun text(root: View, label: String): TextView = views(root).filterIsInstance<TextView>().first { it.text.toString() == label }

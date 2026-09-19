@@ -79,7 +79,6 @@
     <string name="reset_rotation">Reset rotation</string>
     <string name="thresholding">Thresholding</string>
     <string name="geometry_search_note">When enabled, recovery tests 0.6-module position, size, and one-corner adjustments. If exactly one Finder role is assigned, it also tests clockwise and counterclockwise rotation around that corner.</string>
-    <string name="manual_bit_lock_note">When ON, reject candidates that contradict manual 0/1, including format, function, and remainder cells. Conflicting ECC/mask selections and manual format edits are rejected regardless of locking.</string>
     <string name="payload_header_trust_note">Use only for a single numeric, alphanumeric, byte, or Kanji segment. Selectable when the leading mode and character/byte count are fully observed. ECI, FNC1, structured append, and Hanzi are unsupported. Do not use with multiple segments.\nThe terminator, byte-alignment, and padding region is corrected from the observed mode and count. Image-derived 0/1 values are also changed. Manual 0/1 handling follows the setting below.</string>
     <string name="format_mismatch_limit">Format-information error limit</string>
     <string name="format_mismatch_limit_unlimited">Unlimited</string>
@@ -130,13 +129,10 @@
     <string name="raw_data_view">Hex / Binary</string>
     <string name="partial_info_view">Partial info</string>
     <string name="data_extract_failed">Could not extract the data area.</string>
-    <string name="cell_make_manual">Make manual</string>
-    <string name="cell_restore_image">Restore image</string>
-    <string name="cell_source_manual">Manual</string>
-    <string name="cell_source_image">Image</string>
-    <string name="cell_source_preview">Source: %1$s / Current: %2$s / Image value: %3$s</string>
-    <string name="cell_source_selection">Selected: %1$d / Image: %2$d / Manual: %3$d</string>
-    <string name="cell_source_legend">Cyan square: manual / Yellow circle: selected</string>
+    <string name="cell_source_image">From image</string>
+    <string name="cell_source_preview">Current: %1$s / Image: %2$s</string>
+    <string name="cell_source_selection">Selected %1$d / Image %2$d · Tentative %3$d · Fixed %4$d</string>
+    <string name="cell_source_legend">Cyan border: fixed / Dashed: tentative</string>
     <string name="appearance">Appearance (next launch)</string>
     <string name="style_classic">Classic</string>
     <string name="style_modern">Modern</string>
@@ -150,7 +146,7 @@
     <string name="saved_work">Saved work</string>
     <string name="operation_history">Operation history</string>
     <string name="show_evidence">Show / hide repair evidence</string>
-    <string name="highlight_manual_only">Highlight manual cells only</string>
+    <string name="highlight_manual_only">Highlight edited cells</string>
     <string name="cell_edit_tap">Edit cells</string>
     <string name="import_before_work">Import an image to start work</string>
     <string name="previous_result_notice">This is the previous repair result. Your current draft changes have not been applied.</string>
@@ -159,4 +155,10 @@
     <string name="repair_settings_navigation">Repair settings</string>
     <string name="repair_short">Repair</string>
     <string name="show_detailed_result">Show detailed results</string>
+    <string name="cell_source_tentative">Tentative (correctable)</string>
+    <string name="cell_source_fixed">Fixed (no correction)</string>
+    <string name="cell_source_mixed">Mixed sources</string>
+    <string name="cell_source_menu">%1$s ▾</string>
+    <string name="allow_fixed_corrections">Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)</string>
+    <string name="cell_source_fixed_correctable">Fixed (correction allowed)</string>
 </resources>

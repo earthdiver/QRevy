@@ -1135,6 +1135,8 @@ class MainActivity : Activity() {
         val cell = matrix[x, y]
         val before = trace?.originalValue ?: recoveryState.sourceMatrix?.get(x, y)?.value ?: cell.value
         val reason = when {
+            cell.source == ModuleSource.USER_UNLOCKED -> ui("固定指定した値です。修正可の設定により復元時の訂正を許可しています。", "This fixed user value allows correction under the current option.")
+            cell.source == ModuleSource.USER_SOFT -> ui("仮指定した値です。復元時に訂正されることがあります。", "This tentative user value may be corrected during recovery.")
             cell.source == ModuleSource.USER -> ui("手動で指定した値です。", "This is a manually entered value.")
             before == cell.value -> ui("この候補では値を変更していません。", "The value is unchanged in this candidate.")
             trace?.bitConstraintSolved == true && trace.primaryReason in setOf(
@@ -1155,6 +1157,8 @@ class MainActivity : Activity() {
             append('\n').append(reason)
             val source = trace?.originalSource ?: recoveryState.sourceMatrix?.get(x, y)?.source
             if (source == ModuleSource.IMAGE) append(ui("\n入力：画像から読み取った値", "\nInput: sampled from the image"))
+            else if (source == ModuleSource.USER_UNLOCKED) append(ui("\n入力：固定指定（修正可）", "\nInput: fixed user value (correction allowed)"))
+            else if (source == ModuleSource.USER_SOFT) append(ui("\n入力：ユーザーの仮指定（訂正可）", "\nInput: tentative user value (correctable)"))
             else if (source == ModuleSource.USER) append(ui("\n入力：手動で指定した値", "\nInput: manually entered value"))
             recoveryState.confidenceMap[Coord(x, y)]?.let { c ->
                 if (c.comparedCandidates != null) append(ui(
@@ -1326,7 +1330,7 @@ class MainActivity : Activity() {
         val matrix = MatrixSampler(prepared.luma, profile).sample(geometry).first
         preprocessSettings.preRecoveryEdits.forEach { (coord, value) ->
             if (coord.x in 0 until matrix.dimension && coord.y in 0 until matrix.dimension) {
-                matrix.set(coord.x, coord.y, value, 1f, preprocessSettings.sourceForPreRecoveryEdit(value))
+                matrix.set(coord.x, coord.y, value, 1f, preprocessSettings.sourceForPreRecoveryEdit(value, coord))
                 matrix.setPrioritySearch(coord.x, coord.y, coord in preprocessSettings.preRecoveryPrioritySearch)
             }
         }
@@ -1516,7 +1520,7 @@ class MainActivity : Activity() {
         val geometry = snapshot.geometry
         val p = preparedFor(preprocessSettings)
         analysisPrepared = p
-        val restoredManual = matrix?.let(FormatEditPolicy::manualValues).orEmpty() + preprocessSettings.preRecoveryEdits
+        val restoredManual = matrix?.let(FormatEditPolicy::manualValues).orEmpty() + preprocessSettings.fixedPreRecoveryEdits
         FormatEditPolicy.conflict(preprocessSettings.version, preprocessSettings.formatConstraint, restoredManual)?.let {
             workGeneration.incrementAndGet()
             historyRestoreToken = null
@@ -1564,7 +1568,7 @@ class MainActivity : Activity() {
                 formatConstraint = requestSettings.formatConstraint,
                 maxFormatMismatches = requestSettings.formatMismatchLimit,
                 maxKnownDataEccMismatches = requestSettings.dataEccMismatchLimit,
-                manualEdits = requestSettings.preRecoveryEdits,
+                manualEdits = requestSettings.fixedPreRecoveryEdits,
                 displayLockManualBits = requestSettings.lockManualBits,
                 cancellation = RecoveryCancellation { token != workGeneration.get() || Thread.currentThread().isInterrupted },
             ) } catch (_: RecoveryCancelledException) { return@execute }
@@ -2098,6 +2102,7 @@ class MainActivity : Activity() {
                     manualFinders = BitmapUtils.textMatrixFinders(parsed.matrix, moduleSize, quietModules),
                     logicalGridAssigned = true,
                     preRecoveryEdits = priority.associateWith { ModuleValue.ERASED },
+                    preRecoverySoftEdits = emptySet(),
                     preRecoveryPrioritySearch = priority,
                 )
                 if (token != workGeneration.get()) {
@@ -2413,7 +2418,7 @@ class MainActivity : Activity() {
     }
 
     private fun settingsFormatConflict(settings: PreprocessSettings): FormatEditConflict? =
-        FormatEditPolicy.conflict(settings.version, settings.formatConstraint, settings.preRecoveryEdits)
+        FormatEditPolicy.conflict(settings.version, settings.formatConstraint, settings.fixedPreRecoveryEdits)
 
     private fun startAutoRecovery() {
         immediateResultShown = false

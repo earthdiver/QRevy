@@ -105,6 +105,7 @@ internal class PreprocessDialogController(
             preprocessSettings.preRecoveryEdits,
             preprocessSettings.preRecoveryPrioritySearch,
             validateEdits = { validateCellEdits(it) },
+            initialSoftEdits = preprocessSettings.effectiveSoftEdits,
         )
         var updatePageLayout: (PreprocessPage) -> Unit = {}
         var manualFocus = false
@@ -169,9 +170,9 @@ internal class PreprocessDialogController(
             text = ui("種類・文字数／バイト数が正しく読み取れている場合に、単一セグメントを仮定して後続構造を強制する。", "When the mode and character/byte count are read correctly, assume a single segment and force the following structure.")
             isChecked = preprocessSettings.trustKnownPayloadCount
         }
-        val lockManualBits = CheckBox(this).apply {
-            text = ui("手動指定した0/1と矛盾する復元候補を除外する", "Exclude recovery candidates that conflict with manual 0/1 values")
-            isChecked = preprocessSettings.lockManualBits
+        val allowFixedCorrections = CheckBox(this).apply {
+            setText(R.string.allow_fixed_corrections)
+            isChecked = !preprocessSettings.lockManualBits
         }
         var formatConstraintDraft = preprocessSettings.formatConstraint
         var formatMismatchLimitDraft = preprocessSettings.formatMismatchLimit
@@ -205,7 +206,7 @@ internal class PreprocessDialogController(
             formatConstraint = formatConstraintDraft,
             formatMismatchLimit = formatMismatchLimitDraft,
             dataEccMismatchLimit = dataEccMismatchLimitDraft,
-            lockManualBits = lockManualBits.isChecked,
+            lockManualBits = !allowFixedCorrections.isChecked,
         )
         fun refreshLabels() {
             val mode = selectedPolarity()
@@ -298,6 +299,10 @@ internal class PreprocessDialogController(
         useUnknownColors.setOnCheckedChangeListener { _, checked ->
             invalidateSamplingPreview(); refreshLabels()
             noteDraftChange("unknown-colors", ui("色付き不明領域を変更", "Changed colored unknown regions"), if (checked) "ON" else "OFF")
+        }
+        allowFixedCorrections.setOnCheckedChangeListener { _, checked ->
+            refreshClassificationMatrix()
+            noteDraftChange("fixed-corrections", getString(R.string.allow_fixed_corrections), if (checked) "ON" else "OFF")
         }
         searchQuadNeighborhood.setOnCheckedChangeListener { _, checked ->
             if (checked && cellEditState.edits.isNotEmpty()) {
@@ -485,7 +490,7 @@ internal class PreprocessDialogController(
             localThreshold = local,
             searchQuadNeighborhood = searchQuadNeighborhood,
             trustKnownPayloadCount = trustKnownPayloadCount,
-            lockManualBits = lockManualBits,
+            allowFixedCorrections = allowFixedCorrections,
             formatMismatchLimitControl = formatMismatchLimitControl,
             dataEccMismatchLimitControl = dataEccMismatchLimitControl,
             actions = DetailedSettingsPageActions(
@@ -520,7 +525,11 @@ internal class PreprocessDialogController(
             cellEditState.edits.forEach { (c, v) ->
                 if (c.x in 0 until matrix.dimension && c.y in 0 until matrix.dimension) {
                     // Explicit source overrides are independent of whether the image agrees.
-                    matrix.set(c.x, c.y, v, 1f, ModuleSource.USER)
+                    matrix.set(c.x, c.y, v, 1f, when {
+                        c in cellEditState.softEdits -> ModuleSource.USER_SOFT
+                        allowFixedCorrections.isChecked -> ModuleSource.USER_UNLOCKED
+                        else -> ModuleSource.USER
+                    })
                 }
                 if (c in cellEditState.prioritySearch) matrix.setPrioritySearch(c.x, c.y, true)
             }
@@ -535,8 +544,8 @@ internal class PreprocessDialogController(
         }
         refreshSourceControls = {
             val baseline = if (cellEditState.selectedCells.isNotEmpty()) sampleImageMatrix()?.second else null
-            preEditSourceControl?.update(cellEditState, baseline)
-            dedicatedSourceControl?.update(cellEditState, baseline)
+            preEditSourceControl?.update(cellEditState, baseline, allowFixedCorrections.isChecked)
+            dedicatedSourceControl?.update(cellEditState, baseline, allowFixedCorrections.isChecked)
         }
         refreshClassificationMatrix = {
             refreshSourceControls()
@@ -545,7 +554,7 @@ internal class PreprocessDialogController(
                     matrix,
                     formatConstraintDraft,
                     formatMismatchLimitDraft,
-                    manualEdits = cellEditState.edits,
+                    manualEdits = cellEditState.fixedEdits,
                 )
                 trustKnownPayloadCount.isEnabled = headerComplete
                 if (!headerComplete) trustKnownPayloadCount.isChecked = false
@@ -602,16 +611,13 @@ internal class PreprocessDialogController(
             updatePreEditCountStatus()
             noteDraftChange("cell-edit", ui("修復前セルを編集", "Edited pre-repair cells"), ui("${changed.size}セル", "${changed.size} cell(s)"))
         }
-        fun toggleCellSource() {
+        fun changeCellSource(source: CellEditSource) {
             val original = sampleImageMatrix()?.second ?: return
             val selected = cellEditState.selectedCells
             if (selected.isEmpty()) return
-            val restoringImage = cellEditState.selectionHasManualEdits
-            val changed = if (restoringImage) cellEditState.restoreImage(selected) else {
-                cellEditState.makeManual(selected) { coord ->
-                    original.takeIf { coord.x in 0 until it.dimension && coord.y in 0 until it.dimension }
-                        ?.get(coord.x, coord.y)?.value
-                }
+            val changed = cellEditState.setSource(selected, source) { coord ->
+                original.takeIf { coord.x in 0 until it.dimension && coord.y in 0 until it.dimension }
+                    ?.get(coord.x, coord.y)?.value
             }
             if (changed.isEmpty()) return
             // Recompute classification first; it clears overlay selection. Restore focus below
@@ -624,7 +630,11 @@ internal class PreprocessDialogController(
                 dedicatedEditor?.setDocument(working.bitmap, geometry, matrix, keepViewport = true)
                 dedicatedEditor?.setSelection(changed)
             }
-            val label = getString(if (restoringImage) R.string.cell_restore_image else R.string.cell_make_manual)
+            val label = getString(when (source) {
+                CellEditSource.IMAGE -> R.string.cell_source_image
+                CellEditSource.TENTATIVE -> R.string.cell_source_tentative
+                CellEditSource.FIXED -> R.string.cell_source_fixed
+            })
             preEditStatus?.text = ui("${changed.size}セル: $label", "${changed.size} cell(s): $label")
             dedicatedEditStatus?.text = preEditStatus?.text
             updatePreEditCountStatus()
@@ -789,7 +799,7 @@ internal class PreprocessDialogController(
                     setTool = ::setLargeEditorTool,
                     setValue = { value -> setPreEditValues(cellEditState.selectedCells, value) },
                     setPriority = { setPrioritySearch(cellEditState.selectedCells) },
-                    toggleSource = ::toggleCellSource,
+                    changeSource = ::changeCellSource,
                     undo = ::undoPreEdit,
                     redo = ::redoPreEdit,
                     showCodewords = { checked ->
@@ -838,7 +848,7 @@ internal class PreprocessDialogController(
                 move = ::movePreEditCell,
                 setValue = { value -> setPreEditValues(cellEditState.selectedCells, value) },
                 setPriority = { setPrioritySearch(cellEditState.selectedCells) },
-                toggleSource = ::toggleCellSource,
+                changeSource = ::changeCellSource,
                 undo = ::undoPreEdit,
                 redo = ::redoPreEdit,
                 selectMode = { tool ->
@@ -884,7 +894,7 @@ internal class PreprocessDialogController(
             val next = if (ecLevel == null && dataMask == null) null
             else QrFormatConstraint(ecLevel = ecLevel, dataMask = dataMask)
             if (!FormatEditPolicy.returnsToAuto(formatConstraintDraft, next)) {
-                val conflict = FormatEditPolicy.conflict(version.progress + 1, next, cellEditState.edits)
+                val conflict = FormatEditPolicy.conflict(version.progress + 1, next, cellEditState.fixedEdits)
                 if (conflict != null) {
                     showFormatEditError(conflict)
                     return
@@ -1095,6 +1105,7 @@ internal class PreprocessDialogController(
                     ),
                     edits = cellEditState.edits.toMap(),
                     prioritySearch = cellEditState.prioritySearch.toSet(),
+                    softEdits = cellEditState.softEdits.toSet(),
                 )
             }
             fun leaveEditor() {
@@ -1127,7 +1138,7 @@ internal class PreprocessDialogController(
             fun persistPreprocessDraft(): Boolean {
                 if (!requestValidDataEccLimit()) return false
                 val captured = capturePreprocessSettings()
-                FormatEditPolicy.conflict(captured.version, captured.formatConstraint, captured.preRecoveryEdits)?.let { showFormatEditError(it); return false }
+                FormatEditPolicy.conflict(captured.version, captured.formatConstraint, captured.fixedPreRecoveryEdits)?.let { showFormatEditError(it); return false }
                 val events = mutableListOf<PreprocessDraftEvent>()
                 draftState.commit(captured, events::add)
                 host.save(PreprocessSave(captured, cellEditState.copyForEditing(), working, events))

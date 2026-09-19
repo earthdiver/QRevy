@@ -47,16 +47,18 @@ With exactly one assigned role and **Automatically fine-tune sampling position**
 | `?` | Unknown | Treat a weak observation as an erasure |
 | `*` | Keep value `?`, but prioritize bounded 0/1 search | Mark at most four cells to try first if ordinary erasure handling fails |
 
-Use **Make manual / Restore image** to change the selected cells' source. Entering the displayed 0/1 again does not make it manual. Once changed, a value remains manual until Restore image or Undo removes the override.
+Choose **From image / Tentative (correctable) / Fixed (no correction)** from the source button. Changing an image-derived value to a different 0/1 makes it Fixed; entering the image value again keeps it Fixed. You can also fix the current image-derived 0/1 without changing it. Tentative keeps the edited value as recovery input but allows correction; changing a tentative 0/1 to another 0/1 keeps it tentative. Changing `?` or `*` to 0/1 makes it Fixed. From image removes the override and resamples with the current thresholds. Fixed and tentative edits survive threshold changes, Undo/Redo, and saving.
 
-In the regular and enlarged editors, cyan squares identify manual cells and yellow circles identify selected cells. **Highlight manual cells only** changes the overlay, not cell values, counts, or history. Multiple selection, Undo, and Redo are supported.
+Cyan solid squares mark fixed cells; dashed squares mark tentative cells. Yellow circles mark selections. **Highlight edited cells** includes both kinds and changes only the overlay. The menu also applies to multiple selected cells. `?` is image-derived or tentative; `*` is always tentative. Neither can be Fixed.
+
+**Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)** in advanced settings defaults to OFF. OFF rejects candidates that conflict with fixed 0/1 values. ON retains their fixed designation, input values, and solid outlines while allowing correction during recovery. Switching it OFF protects the fixed values again. As with tentative values, correction remains subject to format and data/ECC error limits. Explicit ECC/mask/version selections and consistency checks between fixed cells and explicit selections remain enforced.
 
 ## 5. Choose advanced settings
 
 | Setting | Consider it when | Main risk or limit |
 | --- | --- | --- |
+| Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells) | Retain fixed designations while allowing recovery to correct their values | Defaults to OFF; ON still enforces error limits and explicit ECC/mask selections |
 | Automatically fine-tune sampling position | Corners are close but module-center sampling is slightly displaced | Increases work; never changes version or logical orientation |
-| Exclude candidates conflicting with manual 0/1 | Manual values are trusted evidence that must remain fixed | One wrong bit can exclude the correct candidate |
 | Format-information error limit | ECC-level/mask candidates should closely match known format cells | Too strict a limit can remove every format before RS is attempted |
 | Data/ECC error limit | Candidates that overturn too much known evidence should be restricted | `0 bits` requires exact agreement with every comparable known bit |
 | Force following structure when mode and character/byte count are read correctly | One segment and its mode and character/byte count are known to be correct | Do not use with ECI, FNC1, Structured Append, or multiple segments |

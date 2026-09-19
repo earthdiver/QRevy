@@ -148,9 +148,9 @@ class PreprocessSettingsTest {
         val unlocked = PreprocessSettings(lockManualBits = false)
         assertEquals(ModuleSource.USER, locked.sourceForPreRecoveryEdit(ModuleValue.ONE))
         assertEquals(ModuleSource.USER, locked.sourceForPreRecoveryEdit(ModuleValue.ZERO))
-        assertEquals(ModuleSource.IMAGE, unlocked.sourceForPreRecoveryEdit(ModuleValue.ONE))
-        assertEquals(ModuleSource.IMAGE, unlocked.sourceForPreRecoveryEdit(ModuleValue.ZERO))
-        assertEquals(ModuleSource.USER, unlocked.sourceForPreRecoveryEdit(ModuleValue.ERASED))
+        assertEquals(ModuleSource.USER_UNLOCKED, unlocked.sourceForPreRecoveryEdit(ModuleValue.ONE))
+        assertEquals(ModuleSource.USER_UNLOCKED, unlocked.sourceForPreRecoveryEdit(ModuleValue.ZERO))
+        assertEquals(ModuleSource.USER_SOFT, unlocked.sourceForPreRecoveryEdit(ModuleValue.ERASED))
     }
 
     @Test fun finderDetectionAddsLogicalWhiteFourModuleBorder() {
