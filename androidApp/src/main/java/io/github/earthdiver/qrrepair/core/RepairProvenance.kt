@@ -319,7 +319,7 @@ object RepairTraceBuilder {
         PayloadConstraintSolver.ConstraintKind.STRUCTURE -> RepairReasonKind.PAYLOAD_STRUCTURE
     }
 
-    private fun structuralReason(dimension: Int, x: Int, y: Int): RepairReasonKind {
+    internal fun structuralReason(dimension: Int, x: Int, y: Int): RepairReasonKind {
         val version = (dimension - 17) / 4
         if (isFinder(x, y, dimension)) return RepairReasonKind.FINDER_PATTERN
         if (isSeparator(x, y, dimension)) return RepairReasonKind.SEPARATOR

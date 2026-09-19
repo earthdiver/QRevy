@@ -158,4 +158,19 @@
     <string name="cell_source_menu">%1$s ▾</string>
     <string name="allow_fixed_corrections">固定セルの0/1と矛盾する復元候補を許容する（仮指定セルと同じ扱い）</string>
     <string name="cell_source_fixed_correctable">固定（修正可）</string>
+    <string name="priority_requires_geometry">*を指定するには、先に四隅の位置と役割を指定してください。</string>
+    <string name="priority_invalid_position">指定位置は%1$sです。*はデータ・ECCセルにのみ指定できます。</string>
+    <string name="cell_region_outside">格子の範囲外</string>
+    <string name="cell_region_codeword">データ・ECC</string>
+    <string name="cell_region_finder">位置検出パターン</string>
+    <string name="cell_region_separator">分離パターン</string>
+    <string name="cell_region_timing">タイミングパターン</string>
+    <string name="cell_region_alignment">位置合せパターン</string>
+    <string name="cell_region_format">形式情報</string>
+    <string name="cell_region_version">型番情報</string>
+    <string name="cell_region_dark">固定暗モジュール</string>
+    <string name="cell_region_remainder">余りビット</string>
+    <string name="cell_region_structure">固定構造</string>
+    <string name="priority_revalidated">向き・バージョンの変更によりデータ・ECC領域外になった*を解除しました。値の?は保持しています。\n%1$s</string>
+    <string name="priority_revalidation_title">優先探索セルを再確認</string>
 </resources>

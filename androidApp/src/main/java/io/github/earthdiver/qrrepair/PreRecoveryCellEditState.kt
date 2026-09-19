@@ -238,6 +238,22 @@ internal class PreRecoveryCellEditState(
         return PriorityEditResult.CHANGED
     }
 
+    /** Geometry changes must not let undo/redo restore priority marks outside codewords. */
+    fun revalidatePrioritySearch(isAllowed: (Coord) -> Boolean): Set<Coord> {
+        val removed = mutablePrioritySearch.filterNot(isAllowed).toSet()
+        mutablePrioritySearch.removeAll(removed)
+        fun sanitize(history: ArrayDeque<Map<Coord, PreRecoveryCellValue?>>) {
+            val revised = history.map { entry -> entry.mapValues { (coord, value) ->
+                if (value?.prioritySearch == true && !isAllowed(coord)) value.copy(prioritySearch = false) else value
+            } }
+            history.clear()
+            history.addAll(revised)
+        }
+        sanitize(undo)
+        sanitize(redo)
+        return removed
+    }
+
     fun undo(): Set<Coord> {
         val previous = undo.lastOrNull() ?: return emptySet()
         if (!accept(restoredEdits(previous), restoredSoftEdits(previous))) return emptySet()

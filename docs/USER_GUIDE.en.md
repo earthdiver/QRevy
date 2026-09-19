@@ -53,6 +53,10 @@ Cyan solid squares mark fixed cells; dashed squares mark tentative cells. Yellow
 
 **Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)** in advanced settings defaults to OFF. OFF rejects candidates that conflict with fixed 0/1 values. ON retains their fixed designation, input values, and solid outlines while allowing correction during recovery. Switching it OFF protects the fixed values again. As with tentative values, correction remains subject to format and data/ECC error limits. Explicit ECC/mask/version selections and consistency checks between fixed cells and explicit selections remain enforced.
 
+Assign the four corner positions and roles before marking `*`. Fixed structures such as finder/alignment patterns and format information, and remainder bits, cannot be marked. Selecting an ineligible cell displays its type and coordinates. If a selection includes any ineligible cell, no cells in that selection are marked.
+
+Changing orientation rechecks existing `*` positions, removes only ineligible marks, and reports their coordinates. Their `?` values remain, and eligible marks are retained. Changing version clears all cell edits, including `*`, after confirmation.
+
 ## 5. Choose advanced settings
 
 | Setting | Consider it when | Main risk or limit |

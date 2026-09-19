@@ -279,7 +279,7 @@ Version information, other function modules, and remainder bits also stay outsid
 
 ### 4.2 Priority `*` search
 
-At most four `*` markers may be assigned, and only to data/ECC modules. Format information cannot be marked.
+At most four `*` markers may be assigned, and only to data/ECC modules. In the cell editors, first assign the four corner positions and roles. Selecting fixed structures or remainder bits displays their type and coordinates. Orientation changes recheck eligibility and turn ineligible `*` marks back into `?`. Version changes clear all cell edits after confirmation.
 
 1. First treat every marked cell as an ordinary erasure.
 2. If that fails, try at most `2^4 = 16` assignments for marked bits only.

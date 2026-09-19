@@ -161,4 +161,19 @@
     <string name="cell_source_menu">%1$s ▾</string>
     <string name="allow_fixed_corrections">Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)</string>
     <string name="cell_source_fixed_correctable">Fixed (correction allowed)</string>
+    <string name="priority_requires_geometry">Specify the four corner positions and their roles before assigning *.</string>
+    <string name="priority_invalid_position">The selected position is %1$s. * can be assigned only to data or ECC cells.</string>
+    <string name="cell_region_outside">outside the grid</string>
+    <string name="cell_region_codeword">data/ECC</string>
+    <string name="cell_region_finder">a finder pattern</string>
+    <string name="cell_region_separator">a separator</string>
+    <string name="cell_region_timing">a timing pattern</string>
+    <string name="cell_region_alignment">an alignment pattern</string>
+    <string name="cell_region_format">format information</string>
+    <string name="cell_region_version">version information</string>
+    <string name="cell_region_dark">the fixed dark module</string>
+    <string name="cell_region_remainder">a remainder bit</string>
+    <string name="cell_region_structure">a fixed structure</string>
+    <string name="priority_revalidated">Removed * marks that are outside data/ECC after the orientation or version change. Their ? values are retained.\n%1$s</string>
+    <string name="priority_revalidation_title">Rechecked priority-search cells</string>
 </resources>

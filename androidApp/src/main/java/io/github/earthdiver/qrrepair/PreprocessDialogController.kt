@@ -14,7 +14,8 @@ import android.widget.RadioGroup
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
-import io.github.earthdiver.qrrepair.core.CodewordExtractor
+import io.github.earthdiver.qrrepair.core.QrCellRegions
+import io.github.earthdiver.qrrepair.core.RepairReasonKind
 import io.github.earthdiver.qrrepair.core.Coord
 import io.github.earthdiver.qrrepair.core.FinderRole
 import io.github.earthdiver.qrrepair.core.FinderDetector
@@ -182,6 +183,27 @@ internal class PreprocessDialogController(
         val whiteLabel = TextView(this)
         val white = SeekBar(this).apply { max = 254; progress = preprocessSettings.whiteMin - 1 }
         val version = SeekBar(this).apply { max = 39; progress = preprocessSettings.version - 1 }
+        var cachedCellRegions = QrCellRegions(version.progress + 1)
+        fun cellRegions(): QrCellRegions {
+            if (cachedCellRegions.version != version.progress + 1) cachedCellRegions = QrCellRegions(version.progress + 1)
+            return cachedCellRegions
+        }
+        fun cellRegionLabel(coord: Coord): String {
+            val regions = cellRegions()
+            if (!regions.contains(coord)) return getString(R.string.cell_region_outside)
+            if (coord in regions.codewordCoordinates) return getString(R.string.cell_region_codeword)
+            return getString(when (regions.structureAt(coord)) {
+                RepairReasonKind.FINDER_PATTERN -> R.string.cell_region_finder
+                RepairReasonKind.SEPARATOR -> R.string.cell_region_separator
+                RepairReasonKind.TIMING_PATTERN -> R.string.cell_region_timing
+                RepairReasonKind.ALIGNMENT_PATTERN -> R.string.cell_region_alignment
+                RepairReasonKind.FORMAT_INFORMATION -> R.string.cell_region_format
+                RepairReasonKind.VERSION_INFORMATION -> R.string.cell_region_version
+                RepairReasonKind.FIXED_DARK_MODULE -> R.string.cell_region_dark
+                null -> R.string.cell_region_remainder
+                else -> R.string.cell_region_structure
+            })
+        }
         var versionButton: Button? = null
         var activePreviewProfile: SamplingProfile? = null
         var committedVersion = preprocessSettings.version
@@ -191,6 +213,15 @@ internal class PreprocessDialogController(
         var refreshPreRecoveryDataPage: () -> Unit = {}
         fun invalidateSamplingPreview() {
             overlay.clearCornerSelection()
+        }
+        fun revalidatePrioritySearch() {
+            val removed = cellEditState.revalidatePrioritySearch { it in cellRegions().codewordCoordinates }
+            if (removed.isEmpty()) return
+            updatePreEditCountStatus()
+            val coordinates = removed.joinToString(" ") { "(${it.x},${it.y})" }
+            val message = getString(R.string.priority_revalidated, coordinates)
+            AlertDialog.Builder(activity).setMessage(message).setPositiveButton(android.R.string.ok, null).show()
+            noteDraftChange("priority-validation", getString(R.string.priority_revalidation_title), coordinates)
         }
         fun controlSnapshot() = PreprocessControlSnapshot(
             polarity = selectedPolarity(),
@@ -253,6 +284,7 @@ internal class PreprocessDialogController(
             committedVersion = requested.coerceIn(1, 40)
             version.progress = committedVersion - 1
             overlay.setVersion(committedVersion)
+            revalidatePrioritySearch()
             refreshLabels()
             noteDraftChange("version", ui("QRバージョンを変更", "Changed QR Version"), committedVersion.toString())
             checkVersionErrorLimit()
@@ -315,6 +347,7 @@ internal class PreprocessDialogController(
             if (quarterTurns != 0) {
                 cellEditState.rotateCoordinates(17 + 4 * (version.progress + 1), quarterTurns)
             }
+            revalidatePrioritySearch()
             refreshClassificationMatrix()
         }
         overlay.onFinderPlacementRejected = {
@@ -575,7 +608,7 @@ internal class PreprocessDialogController(
                 dedicatedEditor?.setSelected(x, y)
             }
             val value = refreshed?.second?.get(x, y)?.value
-            val kind = if (QrFunctionMask.isFunction(version.progress + 1, x, y)) ui("固定構造（データ値には影響しません）", "Fixed structure (does not affect payload data)") else getString(R.string.data)
+            val kind = cellRegionLabel(Coord(x, y))
             val label = if (Coord(x, y) in cellEditState.prioritySearch) "*" else when (value) { ModuleValue.ZERO -> "0"; ModuleValue.ONE -> "1"; else -> "?" }
             preEditStatus?.text = ui("選択: ($x,$y) / $kind / 値=$label", "Selected: ($x,$y) / $kind / value=$label")
             dedicatedEditStatus?.text = preEditStatus?.text
@@ -643,13 +676,17 @@ internal class PreprocessDialogController(
         fun setPrioritySearch(coords: Collection<Coord>) {
             val distinct = coords.distinct()
             if (distinct.isEmpty()) return
-            val refreshed = refreshPreRecoveryMatrix() ?: return
-            val rsCoords = runCatching {
-                CodewordExtractor.extract(refreshed.second, version.progress + 1, 0)
-                    .codewords.flatMapTo(hashSetOf()) { it.coordinates }
-            }.getOrDefault(emptySet())
-            if (distinct.any { it !in rsCoords }) {
-                Toast.makeText(this, ui("*はデータ・ECCセルにのみ指定できます。", "* can be assigned only to data or ECC cells."), Toast.LENGTH_SHORT).show(); return
+            if (!overlay.isLogicalGridAssigned()) {
+                Toast.makeText(this, R.string.priority_requires_geometry, Toast.LENGTH_LONG).show()
+                return
+            }
+            val invalid = distinct.filter { it !in cellRegions().codewordCoordinates }
+            if (invalid.isNotEmpty()) {
+                val kinds = invalid.map(::cellRegionLabel).distinct().joinToString(" / ")
+                val message = getString(R.string.priority_invalid_position, kinds) + "\n" +
+                    invalid.joinToString(" ") { "(${it.x},${it.y})" }
+                AlertDialog.Builder(activity).setMessage(message).setPositiveButton(android.R.string.ok, null).show()
+                return
             }
             when (cellEditState.setPrioritySearch(distinct)) {
                 PriorityEditResult.LIMIT_EXCEEDED -> {
@@ -766,8 +803,8 @@ internal class PreprocessDialogController(
                 val codeword = largeEditor.codewordCellAt(coord)
                 val kind = when {
                     QrFunctionMask.isFunction(version.progress + 1, x, y) ->
-                        ui("固定構造（データ値には影響しません）", "Fixed structure (does not affect payload data)")
-                    codeword == null -> ui("余りビット", "Remainder bit")
+                        cellRegionLabel(coord)
+                    codeword == null -> cellRegionLabel(coord)
                     codeword.entry.kind == CodewordOverlayKind.UNCLASSIFIED ->
                         ui("コード語 #${codeword.entry.rawIndex} / 分類未確定 / bit ${codeword.bitIndex}",
                             "Codeword #${codeword.entry.rawIndex} / unclassified / bit ${codeword.bitIndex}")

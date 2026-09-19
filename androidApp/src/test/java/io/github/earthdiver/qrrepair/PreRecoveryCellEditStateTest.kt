@@ -10,6 +10,19 @@ class PreRecoveryCellEditStateTest {
     private val a = Coord(2, 3)
     private val b = Coord(4, 5)
 
+    @Test fun priorityValidationAlsoRemovesInvalidMarksFromRedoHistory() {
+        val coord = Coord(24, 24)
+        val state = PreRecoveryCellEditState(emptyMap(), emptySet())
+        state.setPrioritySearch(listOf(coord))
+        state.undo()
+        state.rotateCoordinates(25, 1)
+        val allowed = io.github.earthdiver.qrrepair.core.QrCellRegions(2).codewordCoordinates
+        assertTrue(state.revalidatePrioritySearch { it in allowed }.isEmpty())
+        state.redo()
+        assertTrue(state.prioritySearch.isEmpty())
+        assertEquals(ModuleValue.ERASED, state.edits[Coord(24, 0)])
+    }
+
     @Test
     fun returningToImageValueKeepsManualSourceUntilExplicitlyRestored() {
         val state = PreRecoveryCellEditState(emptyMap(), emptySet())
