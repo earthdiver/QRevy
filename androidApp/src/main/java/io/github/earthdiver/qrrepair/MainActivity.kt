@@ -1810,8 +1810,11 @@ class MainActivity : Activity() {
         resultSavePngButton.visibility = if (candidate.isSavableQrResult(preview)) View.VISIBLE else View.GONE
         when {
             candidate != null -> {
-                contentPreviewText.text = if (preview != null && (candidate.payloadParsed || preview.qrStructureValid)) preview.resultContentText(candidate.text)
-                    else ui("誤り訂正の条件は満たしましたが、内容は読み取れませんでした。", "The error-correction conditions were met, but the content could not be read.")
+                contentPreviewText.text = if (preview != null && (candidate.payloadParsed || preview.qrStructureValid)) {
+                    val ranges = mutableListOf<IntRange>()
+                    val text = preview.resultContentText(candidate.text) { start, end -> ranges += start until end }
+                    highlightedRecoveredText(text, ranges)
+                } else ui("誤り訂正の条件は満たしましたが、内容は読み取れませんでした。", "The error-correction conditions were met, but the content could not be read.")
                 resultExplanationText.text = candidate.resultExplanationText()
                 resultExplanationText.visibility = View.VISIBLE
                 setDiagnosticReport(candidateDiagnosticReport(candidate, geometry))

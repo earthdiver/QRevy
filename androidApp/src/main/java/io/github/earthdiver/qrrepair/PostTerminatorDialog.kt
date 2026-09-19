@@ -79,7 +79,9 @@ internal fun showPostTerminatorDialog(activity: Activity, attempt: PostTerminato
             if (group.text != null) paragraph(details, label("文字列候補（文字コードによっては正しく表示されません）",
                 "Text interpretation (may display incorrectly depending on the encoding)"))
             paragraph(details, group.text ?: label("文字列に変換できません。生データを確認してください。",
-                "Text conversion failed. Inspect the raw data."))
+                "Text conversion failed. Inspect the raw data.")).apply {
+                group.text?.let { text = highlightedRecoveredText(it) }
+            }
         }
         report.remainingStartBit?.let { paragraph(details, label("未解析部分の開始: bit $it", "Unparsed remainder starts at bit $it")) }
         if (report.tail.isNotEmpty()) {

@@ -67,7 +67,12 @@ class PostTerminatorDialogTest {
                 val dialog = ShadowDialog.getLatestDialog() as AlertDialog
                 assertTrue(dialog.isShowing)
                 val views = descendants(dialog.window!!.decorView)
-                assertTrue(views.filterIsInstance<TextView>().any { it.text.toString() == secret })
+                val extracted = views.filterIsInstance<TextView>().single { it.text.toString() == secret }
+                val styled = extracted.text as android.text.Spanned
+                val highlights = styled.getSpans(0, styled.length, android.text.style.BackgroundColorSpan::class.java)
+                assertEquals(1, highlights.size)
+                assertEquals(0, styled.getSpanStart(highlights.single()))
+                assertEquals(secret.length, styled.getSpanEnd(highlights.single()))
                 val radios = views.filterIsInstance<RadioButton>()
                 assertEquals(2, radios.size)
                 assertTrue(radios[1].isChecked)

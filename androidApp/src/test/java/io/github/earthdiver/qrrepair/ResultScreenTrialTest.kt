@@ -84,6 +84,10 @@ class ResultScreenTrialTest {
             val diagnostics = field<TextView>(activity, "diagnosticDetailsText")
             val parent = preview.parent as ViewGroup
             assertTrue(preview.text.contains(payload))
+            val styled = preview.text as android.text.Spanned
+            val highlights = styled.getSpans(0, styled.length, android.text.style.BackgroundColorSpan::class.java)
+            assertEquals(1, highlights.size)
+            assertEquals(payload, styled.subSequence(styled.getSpanStart(highlights.single()), styled.getSpanEnd(highlights.single())).toString())
             assertFalse(preview.text.contains("HEX"))
             assertTrue(parent.indexOfChild(preview) < parent.indexOfChild(explanation))
             assertTrue(parent.indexOfChild(explanation) < parent.indexOfChild(actions))
