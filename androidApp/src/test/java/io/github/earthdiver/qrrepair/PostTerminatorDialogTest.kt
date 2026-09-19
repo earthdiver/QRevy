@@ -101,6 +101,39 @@ class PostTerminatorDialogTest {
         }
     }
 
+    @Test fun beforeRepairPartialDataShowsEciBodyWhileAfterRepairRemainsRestricted() {
+        val matrix = postTerminatorMatrix(PayloadBits().apply {
+            put(7, 4); put(26, 8); byteSegment("人間"); put(0, 4)
+            byteSegment("万事"); put(0, 4); byteSegment("塞翁が馬")
+        }.finish(34), version = 2)
+        val engine = RecoveryEngine()
+        assertTrue(engine.recover(matrix, formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.L, 0),
+            maxKnownDataEccMismatches = 0).isEmpty())
+        val app = RuntimeEnvironment.getApplication()
+        AppLanguageManager.save(app, AppLanguage.JAPANESE)
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        try {
+            (ShadowDialog.getLatestDialog() as? AlertDialog)?.dismiss()
+            val activity = controller.get()
+            field<RecoveryUiState>(activity, "recoveryState").showAttempt(0,
+                GridGeometry(2, FinderRole.TOP_LEFT, 10.0, 10.0, 2.0, 0.0), matrix,
+                emptyList(), requireNotNull(engine.lastFailure), -1)
+            MainActivity::class.java.getDeclaredMethod("showCodewordHex").apply { isAccessible = true }.invoke(activity)
+            val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+            val toggles = descendants(dialog.window!!.decorView).filterIsInstance<android.widget.ToggleButton>()
+            toggles.single { it.textOff == activity.getString(R.string.raw_data_view) }.isChecked = true
+            fun content() = descendants(dialog.window!!.decorView).filterIsInstance<TextView>()
+                .map { it.text.toString() }.first { it.contains("未検証の診断情報") || it.contains("修復後候補はありません") }
+            assertTrue(content().contains("Text: 人間"))
+            assertTrue(content().contains("HEX: E4 BA BA E9 96 93"))
+            assertFalse(content().contains("万事"))
+            toggles.single { it.textOff == "制約・RS修復前" }.isChecked = true
+            assertTrue(content().contains("修復後候補はありません"))
+            assertFalse(content().contains("Text: 人間"))
+            dialog.dismiss()
+        } finally { controller.pause().stop().destroy() }
+    }
+
     @Test fun analysisActionIsHiddenForSuccessAndOtherFailureReasons() {
         val matrix = postTerminatorMatrix(PayloadBits().apply { byteSegment("VISIBLE") }.finish())
         val candidate = RecoveryEngine().recover(matrix, formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.L, 0)).first()
