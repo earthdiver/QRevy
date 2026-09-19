@@ -80,11 +80,16 @@ class PostTerminatorDialogTest {
                 assertEquals(1, highlights.size)
                 assertEquals(0, styled.getSpanStart(highlights.single()))
                 assertEquals(secret.length, styled.getSpanEnd(highlights.single()))
+                val combined = views.filterIsInstance<TextView>().single { it.text.toString() == "A" + secret }
+                assertTrue(combined.isTextSelectable)
+                val expectedHex = ("A" + secret).toByteArray().joinToString(" ") { "%02X".format(it.toInt() and 255) }
+                assertTrue(views.filterIsInstance<TextView>().single { it.text.toString() == expectedHex }.isTextSelectable)
                 val radios = views.filterIsInstance<RadioButton>()
                 assertEquals(2, radios.size)
                 assertTrue(radios[1].isChecked)
                 radios[0].performClick()
                 assertTrue(descendants(dialog.window!!.decorView).filterIsInstance<TextView>().any { it.text.toString() == secret })
+                assertTrue(descendants(dialog.window!!.decorView).filterIsInstance<TextView>().any { it.text.toString() == "A" + secret })
                 assertNull(state.selectedRecovery)
                 assertSame(failure, state.failure)
                 assertEquals(View.GONE, field<View>(activity, "resultSavePngButton").visibility)
@@ -99,6 +104,31 @@ class PostTerminatorDialogTest {
                 assertEquals(View.GONE, button.visibility)
             } finally { controller.pause().stop().destroy() }
         }
+    }
+
+    @Test fun selectingDifferentSourcesHidesIneligibleCombinedContent() {
+        AppLanguageManager.save(RuntimeEnvironment.getApplication(), AppLanguage.ENGLISH)
+        val same = PostTerminatorAnalysis.analyze(PayloadBits().apply {
+            byteSegment("A"); put(0, 4); byteSegment("B")
+        }.finish(), 1, ErrorCorrectionLevel.L)
+        val mixed = PostTerminatorAnalysis.analyze(PayloadBits().apply {
+            byteSegment("A"); put(0, 4); put(1, 4); put(3, 10); put(123, 10)
+        }.finish(), 1, ErrorCorrectionLevel.L)
+        val controller = Robolectric.buildActivity(android.app.Activity::class.java).setup()
+        try {
+            val dialog = showPostTerminatorDialog(controller.get(), PostTerminatorAnalysis.Attempt(listOf(
+                PostTerminatorAnalysis.View(PostTerminatorAnalysis.Source.OBSERVED, mixed),
+                PostTerminatorAnalysis.View(PostTerminatorAnalysis.Source.CONVENTIONAL_RS, same),
+            ), false), 1, "L", 0)
+            fun values() = descendants(dialog.window!!.decorView).filterIsInstance<TextView>().map { it.text.toString() }
+            assertTrue("AB" in values())
+            assertTrue("41 42" in values())
+            descendants(dialog.window!!.decorView).filterIsInstance<RadioButton>().first().performClick()
+            assertFalse("AB" in values())
+            assertFalse("41 42" in values())
+            assertTrue("123" in values())
+            dialog.dismiss()
+        } finally { controller.pause().stop().destroy() }
     }
 
     @Test fun beforeRepairPartialDataShowsEciBodyWhileAfterRepairRemainsRestricted() {

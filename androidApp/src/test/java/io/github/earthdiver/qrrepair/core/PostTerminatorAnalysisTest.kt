@@ -40,6 +40,84 @@ class PostTerminatorAnalysisTest {
     private fun analyze(data: ByteArray, version: Int = 1, unknown: IntArray = IntArray(data.size)) =
         PostTerminatorAnalysis.analyze(data, version, ErrorCorrectionLevel.L, unknown)
 
+    @Test fun combinesEverySupportedCommonModeInPayloadOrder() {
+        for ((mode, expected) in listOf(1 to "123123123", 2 to "AAA", 4 to "AAA", 8 to "\u3000\u3000\u3000", 13 to "\u3000\u3000\u3000")) {
+            val data = PayloadBits().apply {
+                repeat(3) { index ->
+                    if (index > 0) put(0, 4)
+                    when (mode) {
+                        1 -> { put(1, 4); put(3, 10); put(123, 10) }
+                        2 -> { put(2, 4); put(1, 9); put(10, 6) }
+                        4 -> byteSegment("A")
+                        8 -> { put(8, 4); put(1, 8); put(0, 13) }
+                        13 -> { put(13, 4); put(1, 4); put(1, 8); put(0, 13) }
+                    }
+                }
+            }.finish(40)
+            val combined = requireNotNull(analyze(data).combinedContent)
+            assertEquals(mode, combined.mode)
+            assertEquals(expected, combined.text)
+            if (mode == 4) assertArrayEquals(byteArrayOf(65, 65, 65), combined.bytes)
+            else assertNull(combined.bytes)
+            assertFalse(StrictQrPayloadValidator.isValid(data, 1))
+        }
+    }
+
+    @Test fun combinedBytePayloadRetainsBinaryBytesAndEciChanges() {
+        val data = PayloadBits().apply {
+            put(7, 4); put(3, 8)
+            put(4, 4); put(3, 8); put(0, 8); put(255, 8); put(128, 8)
+            put(0, 4)
+            put(7, 4); put(26, 8); byteSegment("人間")
+            put(0, 4); byteSegment("終")
+        }.finish(40)
+        val combined = requireNotNull(analyze(data).combinedContent)
+        assertEquals("\u0000ÿ\u0080人間終", combined.text)
+        assertArrayEquals(byteArrayOf(0, -1, -128) + "人間終".toByteArray(Charsets.UTF_8), combined.bytes)
+    }
+
+    @Test fun combinedAlphanumericTextPreservesFnc1Context() {
+        val data = PayloadBits().apply {
+            put(5, 4)
+            repeat(2) { index ->
+                if (index > 0) put(0, 4)
+                put(2, 4); put(1, 9); put(38, 6)
+            }
+        }.finish()
+        assertEquals("\u001d\u001d", analyze(data).combinedContent?.text)
+    }
+
+    @Test fun mixedModesOrMissingMainPayloadDoNotOfferCombinedContent() {
+        for (mixedMain in listOf(false, true)) {
+            val data = PayloadBits().apply {
+                byteSegment("A")
+                if (!mixedMain) put(0, 4)
+                put(1, 4); put(3, 10); put(123, 10)
+                put(0, 4); byteSegment("B")
+            }.finish(40)
+            assertTrue(analyze(data).groups.isNotEmpty())
+            assertNull(analyze(data).combinedContent)
+        }
+        val emptyMain = PayloadBits().apply { put(0, 4); byteSegment("B") }.finish()
+        assertNull(analyze(emptyMain).combinedContent)
+        assertNull(analyze(PayloadBits().apply { byteSegment("A") }.finish()).combinedContent)
+    }
+
+    @Test fun combinedContentStopsBeforeUnknownOrMalformedRemainder() {
+        val data = PayloadBits().apply {
+            byteSegment("A"); put(0, 4); byteSegment("B"); put(0, 4); byteSegment("C")
+        }.finish()
+        val unknown = IntArray(data.size).apply { this[7] = 0x80 }
+        val report = analyze(data, unknown = unknown)
+        assertEquals(Status.UNPARSED_TAIL, report.status)
+        assertEquals("AB", report.combinedContent?.text)
+        assertArrayEquals(byteArrayOf(65, 66), report.combinedContent?.bytes)
+        val invalid = PayloadBits().apply {
+            byteSegment("A"); put(0, 4); byteSegment("B"); put(0, 4); put(6, 4)
+        }.finish()
+        assertEquals("AB", analyze(invalid).combinedContent?.text)
+    }
+
     @Test fun unverifiedBodyUsesOnlyThePrefixAndKeepsBinaryPayloadBytes() {
         val data = PayloadBits().apply {
             put(4, 4); put(3, 8); put(0, 8); put(255, 8); put(128, 8)
@@ -192,6 +270,7 @@ class PostTerminatorAnalysisTest {
         val report = analyze(data)
         assertEquals(Status.LIMIT, report.status)
         assertEquals(16, report.groups.size)
+        assertEquals("A" + "B".repeat(16), report.combinedContent?.text)
         assertNotNull(report.remainingStartBit)
     }
 

@@ -83,6 +83,25 @@ internal fun showPostTerminatorDialog(activity: Activity, attempt: PostTerminato
                 group.text?.let { text = highlightedRecoveredText(it) }
             }
         }
+        report.combinedContent?.let { combined ->
+            paragraph(details, label("本文＋解析済み追加セグメント（連結）", "Main content + parsed additional segments (combined)"))
+            combined.text?.let { value ->
+                paragraph(details, label("文字列候補（文字コードによっては正しく表示されません）",
+                    "Text interpretation (may display incorrectly depending on the encoding)"))
+                paragraph(details, value).apply {
+                    text = highlightedRecoveredText(value)
+                    setTextIsSelectable(true)
+                }
+            } ?: paragraph(details, label("文字列に変換できません。生データを確認してください。",
+                "Text conversion failed. Inspect the raw data."))
+            combined.bytes?.let { bytes ->
+                paragraph(details, label("連結した実データ (HEX)", "Combined payload bytes (HEX)"))
+                paragraph(details, bytes.joinToString(" ") { "%02X".format(it.toInt() and 255) }).apply {
+                    typeface = Typeface.MONOSPACE
+                    setTextIsSelectable(true)
+                }
+            }
+        }
         report.remainingStartBit?.let { paragraph(details, label("未解析部分の開始: bit $it", "Unparsed remainder starts at bit $it")) }
         if (report.tail.isNotEmpty()) {
             val raw = TextView(activity).apply {

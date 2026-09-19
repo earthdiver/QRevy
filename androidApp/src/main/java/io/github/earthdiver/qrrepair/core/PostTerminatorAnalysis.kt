@@ -8,12 +8,14 @@ internal object PostTerminatorAnalysis {
     enum class Status { UNREADABLE_PREFIX, NO_TERMINATOR, STANDARD_PADDING, ADDITIONAL_SEGMENTS, UNPARSED_TAIL, LIMIT }
     enum class Source { OBSERVED, CONVENTIONAL_RS, RECOVERY }
     data class Group(val startBit: Int, val endBit: Int, val modes: List<Int>, val text: String?)
+    data class CombinedContent(val mode: Int, val text: String?, val bytes: ByteArray?)
     data class Report(
         val status: Status,
         val terminatorBit: Int? = null,
         val tail: String = "",
         val groups: List<Group> = emptyList(),
         val remainingStartBit: Int? = null,
+        val combinedContent: CombinedContent? = null,
     )
     data class View(
         val source: Source,
@@ -79,7 +81,16 @@ internal object PostTerminatorAnalysis {
         val firstTerminator = prefix.terminatorBit ?: return Report(Status.NO_TERMINATOR)
         val tail = original.drop(firstTerminator + 4).joinToString("") { it?.toString() ?: "?" }
         val groups = mutableListOf<Group>()
-        fun report(status: Status, remaining: Int? = null) = Report(status, firstTerminator, tail, groups.toList(), remaining)
+        val hasMainPayload = prefix.modes.isNotEmpty()
+        var parsedText: String? = null
+        fun report(status: Status, remaining: Int? = null): Report {
+            val commonMode = prefix.modes.distinct().singleOrNull()
+            val combined = if (hasMainPayload && groups.isNotEmpty() && commonMode != null) {
+                val bytes = if (commonMode == 4) prefix.byteSegments.flatMap { it.second.asList() }.toByteArray() else null
+                CombinedContent(commonMode, parsedText, bytes)
+            } else null
+            return Report(status, firstTerminator, tail, groups.toList(), remaining, combined)
+        }
         var removed = 0
         repeat(16) {
             val terminator = prefix.terminatorBit ?: return report(Status.ADDITIONAL_SEGMENTS)
@@ -100,6 +111,7 @@ internal object PostTerminatorAnalysis {
                 combinedText.substring(beforeText.length) else null
             groups += Group(originalStart, end + removed, newModes, text)
             prefix = next
+            parsedText = combinedText
             if (next.terminatorBit == null) return report(Status.ADDITIONAL_SEGMENTS)
         }
         val remaining = prefix.endBit + removed + 4
