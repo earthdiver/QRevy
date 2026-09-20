@@ -102,6 +102,7 @@ On macOS, shared iOS compatibility must also pass:
 The permanent package/namespace is `io.github.earthdiver.qrrepair`. Do not invent signing credentials, store identifiers, or a public privacy-policy URL; those values must be supplied by a project maintainer before store release.
 
 ## Collaboration and maintainer signing
+- Questions, requests for explanations, and diagnostic inquiries authorize investigation and answers only. Do not modify code, tests, documentation, or settings unless the user explicitly instructs or requests a change; do not interpret a suspected bug or a question about behavior as permission to fix it.
 - If a user instruction is ambiguous, ask the user to clarify it before proceeding instead of silently choosing an assumption.
 - Commits and tags created on behalf of a project maintainer must use cryptographic signatures (`git commit -S` and `git tag -s`). This does not impose a signing requirement on external contributors unless the repository contribution policy says otherwise.
 - Before creating the first signed commit or tag in a working session, if the signing-key passphrase is not already cached, ask the maintainer to unlock the key and prime the passphrase cache in their own terminal. Never ask anyone to disclose a passphrase or store signing credentials, key identifiers, or private publication details in the repository or its instructions.
