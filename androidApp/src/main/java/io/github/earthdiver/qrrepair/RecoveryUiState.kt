@@ -9,6 +9,7 @@ import io.github.earthdiver.qrrepair.core.ModuleRepairTrace
 import io.github.earthdiver.qrrepair.core.QrMatrix
 import io.github.earthdiver.qrrepair.core.RecoveryCandidate
 import io.github.earthdiver.qrrepair.core.RecoveryFailure
+import io.github.earthdiver.qrrepair.core.RecoverySearchDiagnostic
 
 /**
  * Mutable state for one displayed recovery attempt.
@@ -30,6 +31,10 @@ internal class RecoveryUiState {
     var recoveryIndex: Int = -1
     var confidenceMap: Map<Coord, CellConfidence> = emptyMap()
     var recommendation: CellRecommendation? = null
+    val searchDiagnostic: RecoverySearchDiagnostic?
+        get() = if (autoResult != null) autoResult?.searchDiagnostic
+            else if (recoveries.isNotEmpty()) selectedRecovery?.searchDiagnostic ?: recoveries.firstOrNull()?.searchDiagnostic
+            else failure?.searchDiagnostic
 
     fun clear() {
         autoResult = null
@@ -88,6 +93,7 @@ internal class RecoveryUiState {
     }
 
     fun restoreAttempt(geometry: GridGeometry, source: QrMatrix, working: QrMatrix) {
+        autoResult = null
         clearAttempt()
         this.geometry = geometry
         attemptIndex = 0

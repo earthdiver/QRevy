@@ -15,6 +15,11 @@ import io.github.earthdiver.qrrepair.core.usedMethodsText
 import io.github.earthdiver.qrrepair.core.searchDescription
 import io.github.earthdiver.qrrepair.core.codewordCellText
 import io.github.earthdiver.qrrepair.core.inputComparisonText
+import io.github.earthdiver.qrrepair.core.RecoverySearchDiagnostic
+import io.github.earthdiver.qrrepair.core.RecoveryInputBlocker
+import io.github.earthdiver.qrrepair.core.candidateCalculationPolicyText
+import io.github.earthdiver.qrrepair.core.searchResultText
+import io.github.earthdiver.qrrepair.core.identity
 
 import android.app.Activity
 import android.app.AlertDialog
@@ -1831,7 +1836,20 @@ class MainActivity : Activity() {
 
     private fun hasInconsistentInputFailure(): Boolean =
         recoveryState.selectedRecovery == null &&
-            recoveryState.failure?.rsBitDiagnostic?.let { it.dimension == null } == true
+            recoveryState.searchDiagnostic?.inputBlocker == RecoveryInputBlocker.ZERO_MISMATCH &&
+            recoveryState.searchDiagnostic?.coverageComplete == true
+
+    private fun searchCandidateCount(): Int = (recoveryState.autoResult?.attempts?.asSequence()
+        ?.flatMap { it.recoveries.asSequence() } ?: recoveryState.recoveries.asSequence())
+        .filter { it.payloadParsed || QrContentPreviewParser.parse(it)?.qrStructureValid == true }
+        .map { it.identity() }.distinct().count()
+
+    private fun searchHasUncheckedCombinations(): Boolean = recoveryState.searchDiagnostic?.unsearched == true ||
+        (recoveryState.searchDiagnostic == null &&
+            (recoveryState.selectedRecovery?.combinationSearch ?: recoveryState.failure?.combinationSearch)
+                ?.stops?.isNotEmpty() == true)
+
+    private fun searchResultDescription(): String = searchResultText(searchCandidateCount(), searchHasUncheckedCombinations())
 
     private fun updateContentPreview() {
         immediateResultShown = false
@@ -1866,11 +1884,9 @@ class MainActivity : Activity() {
                 if (!candidate.payloadParsed && preview?.qrStructureValid != true) configureNextResultAction()
             }
             failure != null -> {
-                contentPreviewText.text = ui("今回分かったこと\n", "What this attempt established\n") +
-                    if (hasInconsistentInputFailure()) ui(
-                        "今の形式設定では、入力済みの白黒をすべて正しいとした場合に、誤り訂正の条件を満たす組合せがありません。\nどのセルや設定が誤っているかは特定できていません。",
-                        "With the current format, no combination meets the error-correction conditions while preserving every entered value.\nThe incorrect cells or settings have not been identified.")
-                    else recoveryFailureReasonText(failure).substringBefore("。").substringBefore(". ")
+                contentPreviewText.text = listOf(searchResultDescription(),
+                    recoveryState.searchDiagnostic?.failureExplanation(failure.displayConditions).orEmpty())
+                    .filter(String::isNotBlank).joinToString("\n")
                 if (failure.stage == io.github.earthdiver.qrrepair.core.RecoveryFailureStage.PAYLOAD_VALIDATION &&
                     failure.reason == null && !hasInconsistentInputFailure() &&
                     failure.conventionalRsDiagnostic?.settingsAccepted == true) {
@@ -1913,12 +1929,12 @@ class MainActivity : Activity() {
 
     private fun configureNextResultAction() {
         arrangeResultGuide(beforeImage = true)
-        val reason = recoveryState.failure?.reason
-        val settings = reason in setOf(RecoveryFailureReason.FORMAT_MISMATCH_LIMIT, RecoveryFailureReason.FORMAT_EDIT_CONFLICT)
+        val blocker = recoveryState.searchDiagnostic?.takeIf { it.coverageComplete }?.inputBlocker
+        val settings = blocker in setOf(RecoveryInputBlocker.FORMAT_LIMIT, RecoveryInputBlocker.FORMAT_SELECTION)
         val recommendation = recoveryState.recommendation
         guideText.text = when {
             settings -> ui("次に試すこと\n形式情報と、ECC・マスクの指定を確認してください。", "Next step\nReview the format information and ECC/mask settings.")
-            reason == RecoveryFailureReason.MANUAL_PIN_CONFLICT -> ui("次に試すこと\n手動で固定したセルの白黒を確認してください。", "Next step\nReview the manually locked cell values.")
+            blocker == RecoveryInputBlocker.STRUCTURAL_FIXED_CELLS -> ui("次に試すこと\n手動で固定したセルの白黒を確認してください。", "Next step\nReview the manually locked cell values.")
             recommendation != null -> ui("次に試すこと\nセル (${recommendation.coord.x},${recommendation.coord.y}) の白黒を確認してください（座標は0から）。",
                 "Next step\nCheck cell (${recommendation.coord.x},${recommendation.coord.y}) (zero-based coordinates).")
             else -> ui("次に試すこと\n入力したセルの白黒を元画像と見比べてください。", "Next step\nCompare the entered cell values with the source image.")
@@ -1934,20 +1950,18 @@ class MainActivity : Activity() {
             geometry?.let(::geometryDiagnosticText).orEmpty(), candidate.rsBitDiagnostic,
             candidate.extraction.codewords.takeIf { it.isNotEmpty() }?.sumOf { (it.unknownBits and 255).countOneBits() },
             candidate.originalErasedCodewords, candidate.conventionalRsDiagnostic, candidate.correctedInterleaved,
-            candidate.actualBlockMethods.any { it.bitConstraintSolved } || candidate.repairInfo.any { it.bitConstraintSolved })
+            candidate.actualBlockMethods.any { it.bitConstraintSolved } || candidate.repairInfo.any { it.bitConstraintSolved },
+            conditions = candidate.displayConditions)
         val verification = buildString {
             append(if (preview?.qrStructureValid == true) ui("QRのデータ構造を確認できました。", "The QR data structure was verified.")
                 else ui("QRのデータ構造を確認できませんでした。", "The QR data structure could not be verified."))
             append('\n').append(candidate.inputComparisonText())
             append(ui("\n\n今回の探索全体\n", "\n\nSearch-wide results\n"))
-            append(ui("得られた候補: ", "Candidates obtained: "))
-                .append(decodedRecoveryEntries().size.takeIf { it > 0 } ?: recoveryState.recoveries.size)
-            if (candidate.combinationSearch.stops.isNotEmpty()) append(ui(
-                "\nまだ調べていない組合せがあります。", "\nSome combinations remain unchecked."))
+            append(searchResultDescription())
         }
-        val processing = listOf(candidate.usedMethodsText(), candidate.combinationSearch.stopReasonsText()
+        val processing = listOf(candidate.displayConditions.candidateCalculationPolicyText(), candidate.usedMethodsText(), candidate.combinationSearch.stopReasonsText()
             .takeIf { it.isNotBlank() }?.let { ui("今回の探索全体の終了理由\n", "Search-wide stop reasons\n") + it })
-            .filterNotNull().joinToString("\n\n")
+            .filterNotNull().filter(String::isNotBlank).joinToString("\n\n")
         return RecoveryDiagnosticReport(ui("選択中の候補の診断", "Diagnostics for the selected candidate"), listOf(
             DiagnosticSection(DiagnosticStage.SETTINGS, candidate.displayConditions.runSettingsText()),
             input,
@@ -1960,36 +1974,32 @@ class MainActivity : Activity() {
         val input = initialDiagnosticSection(geometry?.version, failure.ecLevel, failure.dataMask,
             geometry?.let(::geometryDiagnosticText).orEmpty(), failure.rsBitDiagnostic, null,
             failure.originalErasedCodewords.takeIf { failure.rsBitDiagnostic != null || failure.failedBlockIndex != null || it > 0 },
-            failure.conventionalRsDiagnostic)
+            failure.conventionalRsDiagnostic, conditions = failure.displayConditions)
         val processing = buildString {
-            append(recoveryFailureReasonText(failure))
-            if (failure.constraintFilledBits > 0) append(ui(
-                "\nこの試行で構造に基づいて補完・変更した値: ${failure.constraintFilledBits}bit",
-                "\nValues filled/changed using structure in this attempt: ${failure.constraintFilledBits} bits"))
-            if (failure.partialGuessedBits > 0) append(ui(
-                "\nこの試行のbit探索で扱った選択: ${failure.partialGuessedBits}bit分",
-                "\nBit-search choices in this attempt: ${failure.partialGuessedBits} bits"))
-            failure.combinationSearch.stopReasonsText().takeIf { it.isNotBlank() }?.let {
-                append(ui("\n\n今回の探索全体の終了理由\n", "\n\nSearch-wide stop reasons\n")).append(it)
+            append(failure.displayConditions.candidateCalculationPolicyText())
+            recoveryState.searchDiagnostic?.failureExplanation(failure.displayConditions)?.takeIf(String::isNotBlank)?.let {
+                if (isNotEmpty()) append("\n\n")
+                append(it)
             }
+            if (isEmpty()) append(ui("指定条件のもとで修復候補を探索しました。", "Recovery candidates were searched under the specified conditions."))
         }
         val verification = buildString {
-            append(ui("この試行では内容を読み取れませんでした。", "This attempt did not produce readable content."))
-            append(ui("\nこの形式と入力との比較\n", "\nComparison of this format with the input\n"))
+            append(searchResultDescription())
+            append(ui("\n\n参考診断の形式と入力との比較\n", "\n\nComparison of the reference format with the input\n"))
             append(inputAgreementText(failure.formatKnownBits, failure.formatMismatches, true))
             if (failure.knownBitMismatches != null && failure.knownBitsCompared != null) {
                 append(ui("\n採用できなかった候補と入力との比較\n", "\nComparison of the rejected candidate with the input\n"))
                 append(inputAgreementText(failure.knownBitsCompared, failure.knownBitMismatches, false))
             }
-            if (failure.combinationSearch.stops.isNotEmpty() || failure.reason in setOf(
-                    RecoveryFailureReason.RS_BIT_SPACE_LIMIT, RecoveryFailureReason.BOUNDED_BIT_SEARCH_LIMIT,
-                    RecoveryFailureReason.QR_COMBINATION_SEARCH_LIMIT)) append(ui(
-                "\nまだ調べていない組合せがあります。", "\nSome combinations remain unchecked."))
         }
-        return RecoveryDiagnosticReport(ui("表示中の試行の診断", "Diagnostics for the displayed attempt"), listOf(
+        return RecoveryDiagnosticReport(ui("修復結果の診断", "Recovery result diagnostics"), listOf(
             DiagnosticSection(DiagnosticStage.SETTINGS, failure.displayConditions.runSettingsText()),
             input,
-            DiagnosticSection(DiagnosticStage.PROCESSING, processing, failureProcessingText(failure)),
+            DiagnosticSection(DiagnosticStage.PROCESSING, processing, failureProcessingText(failure).takeIf(String::isNotBlank)?.let {
+                ui("参考：補完・探索後の計算記録（", "Reference: calculation after filling/search (") +
+                    (geometry?.version?.let { version -> "V$version / " }.orEmpty()) +
+                    "ECC ${failure.ecLevel} / " + ui("マスク${failure.dataMask}）\n", "mask ${failure.dataMask})\n") + it
+            }.orEmpty()),
             DiagnosticSection(DiagnosticStage.VERIFICATION, verification),
         ))
     }
@@ -2055,6 +2065,7 @@ class MainActivity : Activity() {
         }.trim()
         return processing
     }
+
 
     private fun failureProcessingText(failure: RecoveryFailure): String {
         val processing = buildString {
@@ -2599,7 +2610,11 @@ class MainActivity : Activity() {
                     }
                 }
                     ?: io.github.earthdiver.qrrepair.core.AutoRecoveryResult(emptyList(), emptyList())
-                val result = if (retentionBudget.exhausted) selectedResult.withRetentionLimit() else selectedResult
+                val combinedResult = selectedResult.copy(
+                    attempts = results.flatMap { it.attempts }.sortedWith(geometryAttemptComparator),
+                    searchDiagnostic = RecoverySearchDiagnostic.combine(results.map { it.searchDiagnostic }),
+                )
+                val result = if (retentionBudget.exhausted) combinedResult.withRetentionLimit() else combinedResult
                 if (token != workGeneration.get()) return@execute
                 runOnUiThread {
                     if (token != workGeneration.get()) return@runOnUiThread
@@ -2805,8 +2820,8 @@ class MainActivity : Activity() {
                 "Guide: The content could not be displayed as text. Check the Hex / Binary view.",
             )
             hasInconsistentInputFailure() -> ui(
-                "現在の形式設定では、読み取り済みセルをすべて正しいとした場合に整合する復元結果が見つかりませんでした。誤っているセルや設定は特定できていません。\n\n入力済みセルの白黒、QRの位置・向き、形式設定をご確認ください。",
-                "Under the current format settings, no consistent recovery was found assuming all observed cells are correct. The incorrect cells or settings have not been identified.\n\nReview the black/white values of entered cells, the QR position and orientation, and the format settings.",
+                "入力の0/1に対して、不一致上限（0bit）を満たすRS候補はありません。\n入力済みセルの白黒、QRの位置・向き、形式設定をご確認ください。",
+                "No RS candidate meets the zero-bit mismatch limit against entered 0/1 values.\nReview entered cell values, the QR position and orientation, and the format settings.",
             )
             recoveryState.workingMatrix != null -> {
                 if (rec?.exactSpaceDimension != null) {
@@ -2884,24 +2899,19 @@ class MainActivity : Activity() {
         val decoded = decodedRecoveryEntries().map { it.second }
         val distinctPayloads = decoded.asSequence().map { it.dataBytes.toList() }.distinct().count()
         val sharedResult = when {
-            decoded.size == 1 -> ui("QRデータを読み取れました\n修復候補: 1件", "QR data was read\nRecovery candidates: 1")
-            decoded.size > 1 && distinctPayloads == 1 -> ui(
-                "修復候補: ${decoded.size}件（データコード語列はすべて同じ）",
-                "Recovery candidates: ${decoded.size} (all have the same data codeword sequence)",
+            decoded.size == 1 -> searchResultDescription()
+            decoded.size > 1 && distinctPayloads == 1 -> searchResultDescription() + ui(
+                "\n表示中の読み取り結果のデータコード語列はすべて同じです。",
+                "\nCandidates for the displayed reading all have the same data codeword sequence.",
             )
-            decoded.size > 1 -> ui(
-                "修復候補: ${decoded.size}件（データコード語列は${distinctPayloads}種類）",
-                "Recovery candidates: ${decoded.size} ($distinctPayloads distinct data codeword sequences)",
+            decoded.size > 1 -> searchResultDescription() + ui(
+                "\n表示中の読み取り結果のデータコード語列は${distinctPayloads}種類です。",
+                "\nCandidates for the displayed reading have $distinctPayloads distinct data codeword sequences.",
             )
             c != null && QrContentPreviewParser.parse(c)?.qrStructureValid == true -> ui(
                 "QRのデータ形式を確認しました\n文字として表示できないデータです。", "The QR data format was verified\nThe data cannot be displayed as text.")
             c != null -> ui("誤り訂正の条件を満たす候補はありますが、内容を読み取れませんでした", "Error-correction candidates exist, but their content could not be read")
-            hasInconsistentInputFailure() -> ui("修復できませんでした", "Could not repair")
-            recoveryState.failure?.reason == RecoveryFailureReason.RS_BIT_SPACE_LIMIT -> ui("候補を絞り込めませんでした", "Could not narrow down the candidates")
-            recoveryState.failure?.reason in setOf(RecoveryFailureReason.BOUNDED_BIT_SEARCH_LIMIT, RecoveryFailureReason.QR_COMBINATION_SEARCH_LIMIT) ->
-                ui("候補が見つかりませんでした", "No candidate was found")
-            recoveryState.failure != null -> ui("修復できませんでした", "Could not repair")
-            else -> ui("修復候補なし", "No recovery candidate")
+            else -> searchResultDescription()
         }
         statusText.text = buildString {
             if (!prefix.isNullOrBlank()) append(prefix).append('\n')
@@ -2912,39 +2922,6 @@ class MainActivity : Activity() {
         updateContentPreview()
     }
 
-    private fun recoveryFailureReasonText(failure: RecoveryFailure): String = when (failure.reason) {
-        RecoveryFailureReason.ERASURE_CAPACITY_EXCEEDED ->
-            ui("不明なデータが誤り訂正容量を超えています", "The amount of unknown data exceeds the error-correction capacity")
-        RecoveryFailureReason.BOUNDED_BIT_SEARCH_LIMIT ->
-            ui("探索上限までに候補が見つかりませんでした。未探索の組合せがあるため、候補が存在しないとは判断できません", "No candidate was found within the search limit. Unchecked combinations remain, so this does not establish that no candidate exists")
-        RecoveryFailureReason.ERROR_ERASURE_CAPACITY_EXCEEDED ->
-            ui("不明なデータは容量内ですが、読み取り済みセルの誤りを含めると訂正容量を超えています。閾値・反転・グリッド、または固定セルをご確認ください", "The unknown data is within capacity, but errors in the observed cells exceed the correction capacity. Please review the thresholds, polarity, grid, or fixed cells")
-        RecoveryFailureReason.NO_RS_CONSISTENT_ASSIGNMENT ->
-            ui("現在のセル値から、誤り訂正と整合する結果を見つけられませんでした", "No result consistent with error correction could be found from the current cell values")
-        RecoveryFailureReason.RS_CORRECTION_FAILED ->
-            ui("誤り訂正を試みましたが、整合する結果を得られませんでした。読み取り済みセルの誤りが考えられますので、閾値・反転・グリッドをご確認ください", "Error correction was attempted, but no consistent result was obtained. Some observed cells may have been read incorrectly; please review the thresholds, polarity, and grid")
-        RecoveryFailureReason.QR_COMBINATION_SEARCH_LIMIT ->
-            ui("計算量の上限に達したため、途中で探索を終了しました。調べた範囲では読み取れる候補が見つかりませんでした", "Search stopped early at the computation limit. No readable candidate was found in the searched range")
-        RecoveryFailureReason.KNOWN_DATA_ECC_MISMATCH_LIMIT ->
-            ui("RSと整合する候補は得られましたが、既知のデータ・ECC bitとの不一致が指定された上限を超えました", "An RS-consistent candidate was found, but its differences from known data/ECC bits exceeded the specified limit")
-        RecoveryFailureReason.KNOWN_BIT_CONSTRAINT_CONFLICT ->
-            ui("既知のデータ・ECC bitと完全一致するRS解がありません。入力bit・固定セル・形式の指定をご確認ください", "No RS solution exactly matches the known data/ECC bits. Check input bits, fixed cells, and format settings")
-        RecoveryFailureReason.FORMAT_MISMATCH_LIMIT ->
-            ui("指定された形式情報の不一致上限を満たす形式が見つかりませんでした。形式セル・ECC・マスクの指定、または形式情報の誤り上限をご確認ください", "Every permitted format exceeds the format-error limit. Review format cells, ECC/mask selections, or the format-error limit")
-        RecoveryFailureReason.FORMAT_EDIT_CONFLICT ->
-            FormatEditConflict(failure.manualConflicts).message(changeRejected = false)
-        RecoveryFailureReason.MANUAL_PIN_CONFLICT ->
-            ui("手動固定値と矛盾するため、この候補は採用できません。", "This candidate conflicts with manually fixed values.") +
-                failure.manualConflicts.joinToString(prefix = "\n") { "(${it.coord.x},${it.coord.y}): ${it.actual.bitOrNull()} → ${it.expected?.bitOrNull()}" }
-        RecoveryFailureReason.RS_BIT_SPACE_LIMIT ->
-            ui("誤り訂正の条件を満たす組合せが多すぎるため、候補をすべて調べられませんでした。不明なセルの白黒を追加で確認してください", "Too many combinations satisfy the error-correction conditions to check every candidate. Check additional unknown cells.")
-        null -> when (failure.stage) {
-            io.github.earthdiver.qrrepair.core.RecoveryFailureStage.EXTRACTION -> ui("QR行列からデータを取り出せませんでした。バージョン・マスク・グリッドをご確認ください", "Data could not be extracted from the QR matrix. Please review the Version, mask, and grid")
-            io.github.earthdiver.qrrepair.core.RecoveryFailureStage.DEINTERLEAVE -> ui("抽出したデータをQRの誤り訂正ブロックとして解釈できませんでした。バージョンと形式情報をご確認ください", "The extracted data could not be interpreted as QR error-correction blocks. Please review the Version and format information")
-            io.github.earthdiver.qrrepair.core.RecoveryFailureStage.REED_SOLOMON -> ui("誤り訂正を完了できませんでした。閾値・反転・グリッドをご確認ください", "Error correction could not be completed. Please review the thresholds, polarity, and grid")
-            io.github.earthdiver.qrrepair.core.RecoveryFailureStage.PAYLOAD_VALIDATION -> ui("誤り訂正候補は得られましたが、QRデータ構造と一致しないため修復結果として採用できませんでした", "An error-correction candidate was obtained, but it could not be accepted as a repaired result because it did not match the QR data structure")
-        }
-    }
 
     private fun startSavePng() {
         val candidate = recoveryState.selectedRecovery

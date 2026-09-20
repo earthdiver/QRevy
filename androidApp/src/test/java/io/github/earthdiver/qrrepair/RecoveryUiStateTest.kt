@@ -5,6 +5,9 @@ import io.github.earthdiver.qrrepair.core.FinderRole
 import io.github.earthdiver.qrrepair.core.GridGeometry
 import io.github.earthdiver.qrrepair.core.QrMatrix
 import io.github.earthdiver.qrrepair.core.RecoveryCandidate
+import io.github.earthdiver.qrrepair.core.AutoRecoveryResult
+import io.github.earthdiver.qrrepair.core.RecoveryInputBlocker
+import io.github.earthdiver.qrrepair.core.RecoverySearchDiagnostic
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -33,6 +36,8 @@ class RecoveryUiStateTest {
         val state = RecoveryUiState().apply {
             recoveries = listOf(candidate(0))
             selectRecovery(0)
+            autoResult = AutoRecoveryResult(emptyList(), emptyList(), searchDiagnostic =
+                RecoverySearchDiagnostic(inputBlocker = RecoveryInputBlocker.ZERO_MISMATCH))
         }
         val source = QrMatrix(21)
         val working = QrMatrix(21)
@@ -46,6 +51,8 @@ class RecoveryUiStateTest {
         assertEquals(working, state.workingMatrix)
         assertEquals(emptyList<RecoveryCandidate>(), state.recoveries)
         assertNull(state.selectedRecovery)
+        assertNull(state.autoResult)
+        assertNull(state.searchDiagnostic)
         assertEquals(-1, state.recoveryIndex)
     }
 

@@ -801,6 +801,7 @@ class PreprocessDialogLayoutTest {
                 originalErasedCodewords = 42,
                 erasedCodewords = 42,
                 rsShortfallBits = 81,
+                searchDiagnostic = io.github.earthdiver.qrrepair.core.RecoverySearchDiagnostic(unsearched = true),
             ),
             -1,
         )
@@ -818,13 +819,13 @@ class PreprocessDialogLayoutTest {
         val guide = text("guideText")
         val candidateDetails = text("contentPreviewText")
         val diagnostics = (MainActivity::class.java.getDeclaredField("diagnosticReport").apply { isAccessible = true }.get(activity) as io.github.earthdiver.qrrepair.core.RecoveryDiagnosticReport).fullText()
-        assertEquals("候補が見つかりませんでした", status)
+        assertEquals(io.github.earthdiver.qrrepair.core.searchResultText(0, true), status)
         assertTrue(guide.contains("81"))
         assertTrue(!guide.contains("推奨セル"))
         assertTrue(!guide.contains("絞り込めるセル"))
         assertTrue(!guide.contains("探索上限"))
         assertTrue(diagnostics.contains("形式情報領域: 比較対象の読み取り済み25bitとの不一致 0bit"))
-        assertTrue(candidateDetails.contains("探索上限"))
+        assertTrue(candidateDetails.contains("探索範囲の上限"))
         assertTrue(diagnostics.contains("追加確認の目安: 81bit"))
         assertTrue(diagnostics.contains("最初に失敗したRSブロック: 1 / 全1ブロック"))
         assertTrue(diagnostics.contains("最初に失敗したRSブロック: 1 / 全1ブロック\n失敗ブロックのECCシンボル数: 20\n失敗ブロックの未知bitを含むコード語数（探索前）: 42"))

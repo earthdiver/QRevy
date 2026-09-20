@@ -26,15 +26,17 @@ data class GeometryAttempt(
     val samplingStats: MatrixSampler.SamplingStats,
     val recoveries: List<RecoveryCandidate>,
     val failure: RecoveryFailure? = null,
+    val searchDiagnostic: RecoverySearchDiagnostic? = recoveries.firstOrNull()?.searchDiagnostic ?: failure?.searchDiagnostic,
 )
 
 data class AutoRecoveryResult(
     val finders: List<FinderCandidate>,
     val attempts: List<GeometryAttempt>,
     val profile: SamplingProfile? = null,
+    val searchDiagnostic: RecoverySearchDiagnostic? = RecoverySearchDiagnostic.combine(attempts.map { it.searchDiagnostic }),
 ) {
     /** A later geometry/format may exhaust the shared request budget after this result was built. */
-    fun withRetentionLimit(): AutoRecoveryResult = copy(attempts = attempts.map { attempt ->
+    fun withRetentionLimit(): AutoRecoveryResult = copy(searchDiagnostic = searchDiagnostic?.withUnsearched(), attempts = attempts.map { attempt ->
         attempt.copy(
             recoveries = attempt.recoveries.map { it.copy(combinationSearch = it.combinationSearch.withRetentionLimit()) },
             failure = attempt.failure?.let { it.copy(combinationSearch = it.combinationSearch.withRetentionLimit()) },
@@ -118,7 +120,9 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
         require(maxFinders >= 0) { "maxFinders must be non-negative" }
         require(maxGeometryAttempts >= 0) { "maxGeometryAttempts must be non-negative" }
         val settings = profile?.settings ?: return AutoRecoveryResult(emptyList(), emptyList(), profile)
-        val baseHypotheses = manualGeometrySeeds(settings).take(maxGeometryAttempts).mapNotNull { (version, quad) ->
+        val seeds = manualGeometrySeeds(settings)
+        val selectedSeeds = seeds.take(maxGeometryAttempts)
+        val baseHypotheses = selectedSeeds.mapNotNull { (version, quad) ->
             cancellation.check()
             runCatching {
                 val dimension = 17 + 4 * version
@@ -142,6 +146,7 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
             base.copy(geometry = refined.first, quickScore = score, alignment = refined.second)
         }
         val hypotheses = (baseHypotheses + refinedHypotheses).take(maxGeometryAttempts)
+        val geometryLimit = seeds.size > maxGeometryAttempts || baseHypotheses.size + refinedHypotheses.size > maxGeometryAttempts
         val finders = settings.manualFinders.entries.take(maxFinders).map { (_, point) -> confirmedFinderCandidate(settings, point) }
         val attempts = hypotheses.mapIndexedNotNull { index, hypothesis ->
             cancellation.check()
@@ -175,11 +180,17 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
                         "Trying priority * cells… $done/$total",
                     ))
                 }
-                GeometryAttempt(hypothesis, matrix, stats, recoveries, recoveryEngine.lastFailure)
+                GeometryAttempt(hypothesis, matrix, stats, recoveries, recoveryEngine.lastFailure, recoveryEngine.lastSearchDiagnostic)
             }.onFailure { if (it is RecoveryCancelledException) throw it }.getOrNull()
         }
         onProgress?.invoke(attempts.size, hypotheses.size, localizedText("試行完了", "Search complete"))
-        val result = AutoRecoveryResult(finders, attempts.sortedWith(geometryAttemptComparator), profile)
+        val summary = RecoverySearchDiagnostic.combine(attempts.map { it.searchDiagnostic })
+        val result = AutoRecoveryResult(finders, attempts.sortedWith(geometryAttemptComparator), profile,
+            summary?.copy(
+                coverageComplete = summary.coverageComplete && attempts.size == hypotheses.size &&
+                    baseHypotheses.size == selectedSeeds.size && !geometryLimit,
+                unsearched = summary.unsearched || geometryLimit,
+            ))
         return if (retentionBudget.exhausted) result.withRetentionLimit() else result
     }
 

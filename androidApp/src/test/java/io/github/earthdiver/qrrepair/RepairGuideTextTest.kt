@@ -12,6 +12,10 @@ import io.github.earthdiver.qrrepair.core.Coord
 import io.github.earthdiver.qrrepair.core.RecoveryFailure
 import io.github.earthdiver.qrrepair.core.RecoveryFailureStage
 import io.github.earthdiver.qrrepair.core.RsBitDiagnostic
+import io.github.earthdiver.qrrepair.core.RecoverySearchDiagnostic
+import io.github.earthdiver.qrrepair.core.RecoveryInputBlocker
+import io.github.earthdiver.qrrepair.core.RecoveryDisplayConditions
+import io.github.earthdiver.qrrepair.core.searchResultText
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
@@ -134,19 +138,18 @@ class RepairGuideTextTest {
 
     @Test
     @Config(sdk = [35])
-    fun inconsistentKnownBitsOverrideBothZeroAndPositiveShortfallInBothLanguages() {
+    fun provenZeroMismatchConflictOverridesCapacityHeuristicsInBothLanguages() {
         for (language in AppLanguage.entries) {
             val activity = activity(language)
             for (shortfall in listOf(0, 8)) {
                 setFailure(activity, shortfall, RsBitDiagnostic(70, 56, null, 0, emptyList()))
                 val text = guide(activity).text.toString()
                 assertTrue(text.contains(if (language == AppLanguage.JAPANESE)
-                    "読み取り済みセルをすべて正しいとした場合に整合する復元結果が見つかりませんでした" else
-                    "no consistent recovery was found assuming all observed cells are correct"))
+                    "不一致上限（0bit）を満たすRS候補はありません" else
+                    "No RS candidate meets the zero-bit mismatch limit"))
                 assertTrue(text.contains(if (language == AppLanguage.JAPANESE)
-                    "誤っているセルや設定は特定できていません" else
-                    "The incorrect cells or settings have not been identified"))
-                assertFalse(text.contains("$shortfall"))
+                    "形式設定をご確認ください" else "Review entered cell values"))
+                assertFalse(text.contains(if (language == AppLanguage.JAPANESE) "追加確認の目安" else "Additional checks"))
             }
             activity.finish()
         }
@@ -264,17 +267,16 @@ class RepairGuideTextTest {
                 isAccessible = true
                 invoke(activity)
             }
-            assertEquals(if (language == AppLanguage.JAPANESE) "修復できませんでした" else "Could not repair",
+            assertEquals(searchResultText(0, false),
                 view("statusText").text.toString())
             assertEquals(View.VISIBLE, view("contentPreviewText").visibility)
             assertTrue(view("contentPreviewText").text.contains(if (language == AppLanguage.JAPANESE)
-                "どのセルや設定が誤っているかは特定できていません" else "have not been identified"))
+                "不一致上限（0bit）を満たすRS候補はありません" else "No RS candidate meets the zero-bit mismatch limit"))
             assertFalse(view("diagnosticDetailsText").text.contains(if (language == AppLanguage.JAPANESE)
                 "ECCシンボル数: 17" else "ECC symbols in the failing block: 17"))
             assertEquals(View.VISIBLE, view("diagnosticToggle").visibility)
-            assertFalse(guide(activity).text.any { it.isDigit() })
-            assertFalse(guide(activity).text.contains("RS"))
-            assertFalse(guide(activity).text.contains("bit"))
+            assertFalse(guide(activity).text.contains(if (language == AppLanguage.JAPANESE)
+                "追加確認の目安" else "Additional checks"))
 
             // Even a retained failure must not suppress a subsequently selected candidate.
             setCandidates(activity, listOf(candidate("decoded", byteArrayOf(1))))
@@ -365,14 +367,14 @@ class RepairGuideTextTest {
             assertTrue(processing.contains(if (language == AppLanguage.JAPANESE)
                 "不明コード語数（全ブロック合計）: 13" else "Unknown codewords after structure filling and priority assignments (all blocks): 13"))
             assertTrue(text.substring(positions[3]).contains(if (language == AppLanguage.JAPANESE)
-                "得られた候補: 2" else "Candidates obtained: 2"))
+                "修復候補が2件見つかりました" else "2 recovery candidates"))
             activity.finish()
         }
     }
 
     @Test
     @Config(sdk = [35])
-    fun failedResultsLeadWithReasonAndUseTheSameDiagnosticOrderInBothStylesAndLanguages() {
+    fun unrecordedSearchSummaryNeverPromotesRepresentativeFailureToWholeSearchReason() {
         for (style in AppStyle.entries) for (language in AppLanguage.entries) {
             val activity = activity(language, style)
             val geometry = io.github.earthdiver.qrrepair.core.GridGeometry(
@@ -398,19 +400,8 @@ class RepairGuideTextTest {
                     invoke(activity, null)
                 }
                 val preview = text("contentPreviewText")
-                val expectedReason = if (language == AppLanguage.JAPANESE) when (stage) {
-                    RecoveryFailureStage.EXTRACTION -> "QR行列からデータを取り出せませんでした"
-                    RecoveryFailureStage.DEINTERLEAVE -> "抽出したデータをQRの誤り訂正ブロックとして解釈できませんでした"
-                    RecoveryFailureStage.REED_SOLOMON -> "探索上限までに候補が見つかりませんでした"
-                    RecoveryFailureStage.PAYLOAD_VALIDATION -> "誤り訂正候補は得られましたが"
-                } else when (stage) {
-                    RecoveryFailureStage.EXTRACTION -> "Data could not be extracted"
-                    RecoveryFailureStage.DEINTERLEAVE -> "The extracted data could not be interpreted"
-                    RecoveryFailureStage.REED_SOLOMON -> "No candidate was found within the search limit"
-                    RecoveryFailureStage.PAYLOAD_VALIDATION -> "An error-correction candidate was obtained"
-                }
-                assertTrue("$style/$language/$stage: $preview", preview.startsWith(if (language == AppLanguage.JAPANESE) "今回分かったこと\n" else "What this attempt established\n"))
-                assertTrue(preview.contains(expectedReason))
+                assertEquals("$style/$language/$stage", searchResultText(0, false), preview)
+                assertFalse(preview.contains(if (language == AppLanguage.JAPANESE) "この試行" else "this attempt"))
                 assertFalse(preview.contains(if (language == AppLanguage.JAPANESE) "誤り訂正レベル:" else "Error correction level:"))
                 val report = MainActivity::class.java.getDeclaredField("diagnosticReport")
                     .apply { isAccessible = true }.get(activity) as io.github.earthdiver.qrrepair.core.RecoveryDiagnosticReport
@@ -437,7 +428,10 @@ class RepairGuideTextTest {
             workingMatrix = sourceMatrix!!.copy()
             recoveries = emptyList()
             failure = RecoveryFailure(ErrorCorrectionLevel.L, 0, 14, 0, 14, RecoveryFailureStage.REED_SOLOMON,
-                rsShortfallBits = shortfall, rsBitDiagnostic = diagnostic)
+                rsShortfallBits = shortfall, rsBitDiagnostic = diagnostic,
+                displayConditions = RecoveryDisplayConditions(false, true, null, null, 0),
+                searchDiagnostic = RecoverySearchDiagnostic(inputBlocker =
+                    if (diagnostic != null && diagnostic.dimension == null) RecoveryInputBlocker.ZERO_MISMATCH else null))
         }
         MainActivity::class.java.getDeclaredMethod("refreshInspector").apply {
             isAccessible = true

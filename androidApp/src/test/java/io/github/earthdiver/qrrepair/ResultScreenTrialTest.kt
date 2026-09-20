@@ -143,10 +143,12 @@ class ResultScreenTrialTest {
         withActivity(AppStyle.MODERN, AppLanguage.JAPANESE) { activity ->
             install(activity, matrix, listOf(result.copy(text = null)))
             assertTrue(field<TextView>(activity, "statusText").text.contains("QRのデータ形式を確認しました"))
+            assertTrue(field<TextView>(activity, "diagnosticDetailsText").text.contains("指定条件を満たす修復候補が1件見つかりました。"))
             assertEquals(View.GONE, field<View>(activity, "resultCopyButton").visibility)
             assertEquals(View.VISIBLE, field<View>(activity, "resultSavePngButton").visibility)
             install(activity, matrix, listOf(result.copy(text = null, dataBytes = byteArrayOf(0x01))))
             assertTrue(field<TextView>(activity, "contentPreviewText").text.contains("誤り訂正の条件は満たしましたが"))
+            assertTrue(field<TextView>(activity, "diagnosticDetailsText").text.contains("指定条件を満たす修復候補は見つかりませんでした。"))
             assertEquals(View.GONE, field<View>(activity, "resultCopyButton").visibility)
             assertEquals(View.GONE, field<View>(activity, "resultSavePngButton").visibility)
             MainActivity::class.java.getDeclaredMethod("startSavePng").apply { isAccessible = true }.invoke(activity)
@@ -163,7 +165,8 @@ class ResultScreenTrialTest {
             state.recoveries = emptyList()
             state.selectRecovery(-1)
             state.failure = RecoveryFailure(ErrorCorrectionLevel.M, 0, 0, 0, 0, RecoveryFailureStage.REED_SOLOMON,
-                reason = RecoveryFailureReason.QR_COMBINATION_SEARCH_LIMIT)
+                reason = RecoveryFailureReason.QR_COMBINATION_SEARCH_LIMIT,
+                searchDiagnostic = RecoverySearchDiagnostic(unsearched = true))
             refresh(activity)
             assertTrue(field<TextView>(activity, "contentPreviewText").text.contains("上限"))
             assertTrue(field<TextView>(activity, "guideText").text.startsWith("次に試すこと"))

@@ -57,6 +57,12 @@ Data/ECC comparisons exclude `?`, temporary priority `*` assignments, function m
 
 ## Diagnostic details
 
+Diagnostics separate execution settings, the initial input, processing, and verification. A zero data/ECC mismatch limit selects partial-bit constraints for candidate calculation. Only candidates matching every known initial data/ECC bit can be accepted; unknown bits may be filled. Allowing conflicts with fixed cells does not override this limit. Intermediate structure filling may change known suffix bits, so this guarantee describes accepted results, not every intermediate calculation.
+
+The initial-input section identifies the version, ECC, mask, and geometry used for its reference diagnosis. Conventional RS is evaluated separately before structure filling or bit search, including when the data/ECC limit is zero. Block results distinguish a correction result, correction skipped because codewords containing unknown bits outnumber ECC symbols, and correction attempted without a result. A missing diagnostic is reported as unrecorded, not unexecuted. RS results alone do not establish a correct QR payload.
+
+Final result messages aggregate evidence across formats, geometries, and sampling profiles. A representative failure cannot establish a search-wide reason. Fixed-cell or format conflicts are shown as whole-search reasons only when supported across the permitted inputs. “No RS candidate meets the zero-bit mismatch limit” requires inconsistent initial-input constraints for every permitted format, not just a failed structure-filling or priority assignment. Unknown or incomplete evidence suppresses that conclusion. Search limits report unchecked combinations rather than claiming that no candidate exists.
+
 ### Geometry
 
 “Manual projective” uses selected corners. “Projective” includes refinement supported by alignment-pattern image evidence. Logical orientation and version are preserved. References such as “top-left reference” describe geometry, not payload reading direction. `V<version>` is the QR version; each side has `17 + 4 × version` modules.
@@ -98,9 +104,9 @@ QR combination-search diagnostics are shown on success as well as failure. They 
 
 ## Failure reasons and additional checks
 
-Diagnostics cover explicit format/manual conflicts, pins outside codewords, and data/ECC pins conflicting with corrected candidates. Pin failures show coordinates, manual values, and values required by the rejected candidate. Required values are neither applied automatically nor guaranteed correct. Temporary priority-assignment conflicts are not reported as manual input pin conflicts.
+Whole-search reasons distinguish fixed format cells incompatible with explicit ECC/mask selections, fixed cells outside data/ECC incompatible with the QR structure, and calculated candidates rejected by fixed cells or mismatch limits. Temporary priority-assignment conflicts are not reported as manual input pin conflicts.
 
-Other reasons include known-bit mismatch limits, RS capacity failures, no exact solution, partial-bit search limits, and QR combination-search limits. “First failing RS block” uses one-based numbering.
+RS capacity and correction results appear in the format-specific reference diagnosis. Partial-bit and QR combination-search limits appear as search-limit notices. Block numbers are one-based.
 
 Erasure-capacity shortfall measures the minimum bits that must be decided to reduce each block's erasure count to its ECC symbol count. When used by guidance, zero can still fail because of known-bit errors or search limits. This is different from free dimension.
 

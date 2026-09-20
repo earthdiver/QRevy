@@ -343,7 +343,7 @@ When multiple RS blocks have alternatives, combinations are examined in an initi
 
 The best-first prefix traversal uses lazy siblings rather than a visited Cartesian grid. Each format/structure pass also has a 65,536 expanded-prefix-node limit, including prefixes rejected by QR validation. This bounds work and frontier memory even if almost no complete combination is valid. Hitting either bound is a search truncation, not proof that no valid payload exists.
 
-If no recovery candidate is produced, the engine retains only the best failed attempt. It is ranked by format disagreement, erasure-capacity bit shortfall, agreement with known bits, and erasure evidence. The original matrix remains unchanged; the failed attempt is displayed only as diagnostic information.
+If no recovery candidate is produced, the engine retains a representative failure for the format-specific reference diagnosis and cell guidance. It is ranked by format disagreement, erasure-capacity bit shortfall, agreement with known bits, and erasure evidence. Separate search-wide evidence aggregates input restrictions, candidate rejections, and unsearched ranges across formats, geometries, and sampling profiles. Final explanations use this aggregate rather than treating one failure as the reason for the entire search. The original matrix remains unchanged.
 
 While combining RS blocks, a prefix can end inside the next mode indicator. An incomplete tail alone does not reject the prefix; the complete stream still undergoes final validation of its terminator, byte alignment, and padding. Passing prefix validation does not constitute successful decoding.
 

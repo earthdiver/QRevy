@@ -1,6 +1,8 @@
 package io.github.earthdiver.qrrepair.core
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class AutoRecoveryLimitsTest {
@@ -42,6 +44,18 @@ class AutoRecoveryLimitsTest {
         )
 
         assertEquals(1, result.finders.size)
+    }
+
+    @Test fun skippedGeometryCannotSupportAWholeSearchFailureClaim() {
+        val settings = PreprocessSettings(manualQuad = quad, searchQuadNeighborhood = true,
+            formatConstraint = QrFormatConstraint(com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.M, 0),
+            dataEccMismatchLimit = 0)
+        val result = AutoRecoveryEngine().run(image, maxGeometryAttempts = 1,
+            profile = SamplingProfile(settings, inverted = false))
+        assertEquals(1, result.attempts.size)
+        assertTrue(result.searchDiagnostic!!.unsearched)
+        assertFalse(result.searchDiagnostic.coverageComplete)
+        assertEquals("", result.searchDiagnostic.failureExplanation(result.bestFailure?.displayConditions))
     }
 
     @Test fun degenerateManualQuadProducesNoAttemptInsteadOfEscapingAsAnException() {
