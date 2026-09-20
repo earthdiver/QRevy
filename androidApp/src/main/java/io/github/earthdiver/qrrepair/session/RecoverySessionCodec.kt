@@ -5,12 +5,14 @@ import io.github.earthdiver.qrrepair.localizedText
 import io.github.earthdiver.qrrepair.core.*
 import java.io.*
 import java.security.MessageDigest
+import java.security.DigestOutputStream
+import com.google.zxing.qrcode.decoder.Version
 import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
 
 /** Android-independent, bounded and checksummed persistence codec for repair sessions. */
 object RecoverySessionCodec {
-    const val CURRENT_VERSION = 18
+    const val CURRENT_VERSION = 19
     const val MAX_HISTORY_ENTRIES = 40
     const val MAX_SESSION_PAYLOAD_BYTES = 16 * 1024 * 1024
     const val MAX_SESSION_FILE_BYTES = 20 * 1024 * 1024
@@ -32,25 +34,20 @@ object RecoverySessionCodec {
     class CorruptSessionException(message: String, cause: Throwable? = null) : IOException(message, cause)
 
     fun encode(payload: Payload): ByteArray {
-        validatePayload(payload)
-        val raw = ByteArrayOutputStream().use { bytes ->
-            DataOutputStream(BufferedOutputStream(bytes)).use { out ->
-                writePayload(out, payload)
-            }
-            bytes.toByteArray()
-        }
-        require(raw.size <= MAX_SESSION_PAYLOAD_BYTES) { "session payload too large" }
-        val hash = sha256(raw)
-        val compressed = ByteArrayOutputStream().use { bytes ->
-            GZIPOutputStream(bytes).use { it.write(raw) }
-            bytes.toByteArray()
-        }
-        require(compressed.size <= MAX_SESSION_FILE_BYTES) { "compressed session too large" }
-        return ByteArrayOutputStream(8 + 8 + HASH_BYTES + compressed.size).use { bytes ->
+        val retained = fitHistoryToPayloadLimit(payload)
+        val digest = MessageDigest.getInstance("SHA-256")
+        val compressedBytes = ByteArrayOutputStream()
+        val filePayload = LimitedOutputStream(compressedBytes, MAX_SESSION_FILE_BYTES.toLong() - 16 - HASH_BYTES)
+        val raw = LimitedOutputStream(DigestOutputStream(GZIPOutputStream(filePayload), digest),
+            MAX_SESSION_PAYLOAD_BYTES.toLong())
+        DataOutputStream(BufferedOutputStream(raw)).use { writePayload(it, retained) }
+        val compressed = compressedBytes.toByteArray()
+        val hash = digest.digest()
+        return ByteArrayOutputStream(16 + HASH_BYTES + compressed.size).use { bytes ->
             DataOutputStream(bytes).use { out ->
                 out.writeInt(MAGIC)
                 out.writeInt(CURRENT_VERSION)
-                out.writeInt(raw.size)
+                out.writeInt(raw.written.toInt())
                 out.writeInt(compressed.size)
                 out.write(hash)
                 out.write(compressed)
@@ -59,7 +56,73 @@ object RecoverySessionCodec {
         }
     }
 
-    /** Decodes only the current format. Older QRR sessions are intentionally invalid. */
+    /** Trims live history before a save snapshot is captured; matrix sizing never scans cells. */
+    fun trimHistoryToPayloadLimit(
+        history: RecoverySessionHistory,
+        sessionId: String,
+        maxRetainedBytes: Long? = 32L * 1024 * 1024,
+    ): Int {
+        require(isSafeSessionId(sessionId)) { "invalid session id" }
+        var removed = if (maxRetainedBytes != null) history.trimToByteLimit(maxRetainedBytes, ::retainedHistoryEntryBytes) else 0
+        val header = encodedSize { writePayload(it, Payload(sessionId, 0, UiMode.SIMPLE, emptyList(), -1)) }
+        removed += history.trimToByteLimit(MAX_SESSION_PAYLOAD_BYTES - header, ::encodedHistoryEntryBytes)
+        return removed
+    }
+
+    /** Validates all supplied snapshots before trimming older history to the unchanged file limit. */
+    fun fitHistoryToPayloadLimit(payload: Payload): Payload {
+        validatePayload(payload)
+        val history = RecoverySessionHistory(MAX_HISTORY_ENTRIES)
+        history.replace(payload.historyEntries, payload.historyCursor)
+        if (trimHistoryToPayloadLimit(history, payload.id, maxRetainedBytes = null) == 0) return payload
+        return payload.copy(historyEntries = history.entries.toList(), historyCursor = history.cursor)
+    }
+
+    /** Conservative snapshot accounting, not an exact measurement of the Android heap. */
+    fun retainedHistoryEntryBytes(entry: RecoveryHistoryEntry): Long {
+        val snapshot = entry.snapshot
+        val cells = listOfNotNull(snapshot.sourceMatrix, snapshot.workingMatrix)
+            .sumOf { it.dimension.toLong() * it.dimension }
+        val settings = snapshot.preprocessSettings
+        return 4096L + cells * 48 + (entry.id.length + entry.label.length + entry.detail.length) * 2L +
+            (settings?.preRecoveryEdits?.size ?: 0) * 128L +
+            (settings?.preRecoverySoftEdits?.size ?: 0) * 64L +
+            (settings?.detectedFinders?.size ?: 0) * 256L +
+            (snapshot.selectedQr?.let { Version.getVersionForNumber(it.version).totalCodewords } ?: 0)
+    }
+
+    internal fun encodedHistoryEntryBytes(entry: RecoveryHistoryEntry): Long = encodedSize { writeHistoryEntry(it, entry) }
+
+    private fun encodedSize(write: (DataOutputStream) -> Unit): Long {
+        val stream = SizeOutputStream()
+        SizingDataOutputStream(stream).use(write)
+        return stream.written
+    }
+
+    private class SizeOutputStream : OutputStream() {
+        var written: Long = 0
+        override fun write(value: Int) { written++ }
+        override fun write(bytes: ByteArray, offset: Int, length: Int) { written += length }
+    }
+
+    private class SizingDataOutputStream(val counter: SizeOutputStream) : DataOutputStream(counter)
+
+    private class LimitedOutputStream(output: OutputStream, private val limit: Long) : FilterOutputStream(output) {
+        var written: Long = 0
+            private set
+        override fun write(value: Int) {
+            require(written < limit) { "session payload too large" }
+            out.write(value)
+            written++
+        }
+        override fun write(bytes: ByteArray, offset: Int, length: Int) {
+            require(length.toLong() <= limit - written) { "session payload too large" }
+            out.write(bytes, offset, length)
+            written += length
+        }
+    }
+
+    /** Decodes supported QRR schemas 9 through 19 with strict validation; earlier formats are rejected. */
     fun decode(fileBytes: ByteArray): Payload {
         if (fileBytes.size > MAX_SESSION_FILE_BYTES) throw CorruptSessionException("session file exceeds size limit")
         if (fileBytes.size < 4) throw CorruptSessionException("session file is truncated")
@@ -110,6 +173,7 @@ object RecoverySessionCodec {
             hasSoftEdits = version >= 16,
             hasFixedCorrections = version >= 17,
             hasAutomaticThresholds = version >= 18,
+            hasSelectionIdentity = version >= 19,
         )
         requireCorrupt(input.available() == 0, "trailing bytes in session payload")
         payload
@@ -138,6 +202,7 @@ object RecoverySessionCodec {
         hasSoftEdits: Boolean = false,
         hasFixedCorrections: Boolean = false,
         hasAutomaticThresholds: Boolean = false,
+        hasSelectionIdentity: Boolean = false,
     ): Payload {
         val id = input.readUTF()
         requireCorrupt(isSafeSessionId(id), "invalid session id")
@@ -150,7 +215,7 @@ object RecoverySessionCodec {
         if (count == 0) requireCorrupt(cursor == -1, "empty history must have cursor -1")
         else requireCorrupt(cursor in 0 until count, "invalid history cursor")
         val history = ArrayList<RecoveryHistoryEntry>(count)
-        repeat(count) { history += readHistoryEntry(input, hasPreprocessSettings, hasGeometryLock, hasPrioritySearch, hasPerspectiveCorrection, hasUnknownColorClusters, hasLogicalGridAssignment, hasFormatConstraint, hasFormatMismatchLimit, hasDataEccMismatchLimit, hasSoftEdits, hasFixedCorrections, hasAutomaticThresholds) }
+        repeat(count) { history += readHistoryEntry(input, hasPreprocessSettings, hasGeometryLock, hasPrioritySearch, hasPerspectiveCorrection, hasUnknownColorClusters, hasLogicalGridAssignment, hasFormatConstraint, hasFormatMismatchLimit, hasDataEccMismatchLimit, hasSoftEdits, hasFixedCorrections, hasAutomaticThresholds, hasSelectionIdentity) }
         return Payload(id, updated, mode, history, cursor)
     }
 
@@ -190,6 +255,7 @@ object RecoverySessionCodec {
         hasSoftEdits: Boolean,
         hasFixedCorrections: Boolean,
         hasAutomaticThresholds: Boolean,
+        hasSelectionIdentity: Boolean,
     ): RecoveryHistoryEntry {
         val id = input.readUTF()
         requireCorrupt(id.length <= MAX_TEXT, "history id too long")
@@ -199,17 +265,28 @@ object RecoverySessionCodec {
         val label = input.readUTF()
         val detail = input.readUTF()
         requireCorrupt(label.length <= 400 && detail.length <= 1600, "history text too long")
-        return RecoveryHistoryEntry(id, timestamp, kind, label, detail, readSnapshot(input, hasPreprocessSettings, hasGeometryLock, hasPrioritySearch, hasPerspectiveCorrection, hasUnknownColorClusters, hasLogicalGridAssignment, hasFormatConstraint, hasFormatMismatchLimit, hasDataEccMismatchLimit, hasSoftEdits, hasFixedCorrections, hasAutomaticThresholds))
+        return RecoveryHistoryEntry(id, timestamp, kind, label, detail, readSnapshot(input, hasPreprocessSettings, hasGeometryLock, hasPrioritySearch, hasPerspectiveCorrection, hasUnknownColorClusters, hasLogicalGridAssignment, hasFormatConstraint, hasFormatMismatchLimit, hasDataEccMismatchLimit, hasSoftEdits, hasFixedCorrections, hasAutomaticThresholds, hasSelectionIdentity))
     }
 
     private fun writeSnapshot(out: DataOutputStream, snapshot: RecoverySnapshot) {
-        validateSnapshot(snapshot)
+        if (out !is SizingDataOutputStream) validateSnapshot(snapshot)
         writeGeometry(out, snapshot.geometry)
         writeMatrix(out, snapshot.sourceMatrix)
         writeMatrix(out, snapshot.workingMatrix)
         out.writeInt(snapshot.recoveryIndex)
         out.writeBoolean(snapshot.preprocessSettings != null)
         snapshot.preprocessSettings?.let { writePreprocessSettings(out, it) }
+        out.writeBoolean(snapshot.selectedQr != null)
+        snapshot.selectedQr?.let { selection ->
+            out.writeInt(selection.version)
+            out.writeInt(selection.ecLevel)
+            out.writeInt(selection.mask)
+            val codewords = selection.codewordBytes()
+            out.writeInt(codewords.size)
+            out.write(codewords)
+        }
+        out.writeBoolean(snapshot.samplingInverted != null)
+        snapshot.samplingInverted?.let(out::writeBoolean)
     }
 
     private fun readSnapshot(
@@ -226,6 +303,7 @@ object RecoverySessionCodec {
         hasSoftEdits: Boolean,
         hasFixedCorrections: Boolean,
         hasAutomaticThresholds: Boolean,
+        hasSelectionIdentity: Boolean,
     ): RecoverySnapshot {
         val geometry = readGeometry(input)
         val source = readMatrix(input, hasPrioritySearch, hasSoftEdits, hasFixedCorrections)
@@ -240,7 +318,24 @@ object RecoverySessionCodec {
         val recoveryIndex = input.readInt()
         requireCorrupt(recoveryIndex >= -1 && recoveryIndex <= 100_000, "invalid recovery index")
         val settings = if (hasPreprocessSettings && input.readBoolean()) readPreprocessSettings(input, hasGeometryLock, hasPrioritySearch, hasPerspectiveCorrection, hasUnknownColorClusters, hasLogicalGridAssignment, hasFormatConstraint, hasFormatMismatchLimit, hasDataEccMismatchLimit, hasSoftEdits, hasFixedCorrections, hasAutomaticThresholds) else null
-        return RecoverySnapshot(geometry, source, working, recoveryIndex, settings)
+        val selectedQr = if (hasSelectionIdentity && input.readBoolean()) {
+            val version = input.readInt()
+            val ecLevel = input.readInt()
+            val mask = input.readInt()
+            requireCorrupt(version in 1..40, "invalid selected QR version")
+            requireCorrupt(ecLevel in 0..3, "invalid selected QR ECC")
+            requireCorrupt(mask in 0..7, "invalid selected QR mask")
+            val length = input.readInt()
+            requireCorrupt(length == Version.getVersionForNumber(version).totalCodewords, "invalid selected QR codeword count")
+            val codewords = ByteArray(length)
+            input.readFully(codewords)
+            requireCorrupt(source == null || source.dimension == 17 + 4 * version, "selected QR/source mismatch")
+            requireCorrupt(working == null || working.dimension == 17 + 4 * version, "selected QR/working mismatch")
+            requireCorrupt(geometry == null || geometry.version == version, "selected QR/geometry mismatch")
+            RecoverySelectionIdentity(version, ecLevel, mask, codewords)
+        } else null
+        val samplingInverted = if (hasSelectionIdentity && input.readBoolean()) input.readBoolean() else null
+        return RecoverySnapshot(geometry, source, working, recoveryIndex, settings, selectedQr, samplingInverted)
     }
 
     private fun validateSnapshot(snapshot: RecoverySnapshot) {
@@ -251,6 +346,15 @@ object RecoverySessionCodec {
         snapshot.geometry?.let { g -> if (d != null) require(g.dimension == d) }
         require(snapshot.recoveryIndex in -1..100_000)
         snapshot.preprocessSettings?.let(::validatePreprocessSettings)
+        for (matrix in listOfNotNull(snapshot.sourceMatrix, snapshot.workingMatrix)) {
+            for (y in 0 until matrix.dimension) for (x in 0 until matrix.dimension) {
+                require(matrix[x, y].confidence.isFinite() && matrix[x, y].confidence in 0f..1f)
+            }
+        }
+        snapshot.selectedQr?.let { selection ->
+            require(d == null || 17 + 4 * selection.version == d)
+            require(snapshot.geometry == null || snapshot.geometry.version == selection.version)
+        }
     }
 
     private fun validPrioritySearch(matrix: QrMatrix): Boolean {
@@ -515,6 +619,10 @@ object RecoverySessionCodec {
         out.writeBoolean(matrix != null)
         if (matrix == null) return
         out.writeInt(matrix.dimension)
+        if (out is SizingDataOutputStream) {
+            out.counter.written += matrix.dimension.toLong() * matrix.dimension * 7
+            return
+        }
         for (y in 0 until matrix.dimension) for (x in 0 until matrix.dimension) {
             val c = matrix[x, y]
             require(c.confidence.isFinite() && c.confidence in 0f..1f)

@@ -1,5 +1,6 @@
 package io.github.earthdiver.qrrepair.core
 
+import com.google.zxing.qrcode.decoder.Version
 import java.util.UUID
 
 enum class UiMode { SIMPLE, ANALYSIS }
@@ -15,6 +16,43 @@ enum class HistoryEventKind {
     SETTINGS,
 }
 
+/** Stable QR identity for restoring a selection after candidate ranking changes. */
+class RecoverySelectionIdentity(
+    val version: Int,
+    val ecLevel: Int,
+    val mask: Int,
+    correctedCodewords: ByteArray,
+) {
+    private val codewords = correctedCodewords.copyOf()
+
+    init {
+        require(version in 1..40 && ecLevel in 0..3 && mask in 0..7)
+        require(codewords.size == Version.getVersionForNumber(version).totalCodewords)
+    }
+
+    fun codewordBytes(): ByteArray = codewords.copyOf()
+
+    fun matches(candidate: RecoveryCandidate): Boolean = version == candidate.version &&
+        ecLevel == candidate.ecLevel.ordinal && mask == candidate.dataMask &&
+        codewords.size == candidate.correctedInterleaved.size && codewords.indices.all {
+            (codewords[it].toInt() and 0xff) == candidate.correctedInterleaved[it]
+        }
+
+    override fun equals(other: Any?): Boolean = other is RecoverySelectionIdentity &&
+        version == other.version && ecLevel == other.ecLevel && mask == other.mask &&
+        codewords.contentEquals(other.codewords)
+
+    override fun hashCode(): Int = 31 * (31 * (31 * version + ecLevel) + mask) + codewords.contentHashCode()
+
+    companion object {
+        fun from(candidate: RecoveryCandidate): RecoverySelectionIdentity {
+            require(candidate.correctedInterleaved.all { it in 0..255 })
+            return RecoverySelectionIdentity(candidate.version, candidate.ecLevel.ordinal, candidate.dataMask,
+                ByteArray(candidate.correctedInterleaved.size) { candidate.correctedInterleaved[it].toByte() })
+        }
+    }
+}
+
 data class RecoverySnapshot(
     val geometry: GridGeometry?,
     val sourceMatrix: QrMatrix?,
@@ -22,6 +60,10 @@ data class RecoverySnapshot(
     val recoveryIndex: Int,
     /** Present for reproducible repair-setting checkpoints; null in migrated older sessions. */
     val preprocessSettings: PreprocessSettings? = null,
+    /** Absent in older sessions; an unavailable identity must never select a different QR. */
+    val selectedQr: RecoverySelectionIdentity? = null,
+    /** Actual sampling polarity, independent of the saved automatic-search preference. */
+    val samplingInverted: Boolean? = null,
 )
 
 data class RecoveryHistoryEntry(
@@ -71,6 +113,29 @@ class RecoverySessionHistory(private val maxEntries: Int = 40) {
             repeat(removeCount) { items.removeAt(0) }
         }
         cursor = items.lastIndex
+    }
+
+    /** Drops oldest removable entries, keeping the active and newest snapshots and their order. */
+    fun trimToByteLimit(maxBytes: Long, entryBytes: (RecoveryHistoryEntry) -> Long): Int {
+        require(maxBytes >= 0)
+        if (items.isEmpty()) return 0
+        val sizes = items.map(entryBytes)
+        require(sizes.all { it >= 0 })
+        var total = sizes.fold(0L, Math::addExact)
+        if (total <= maxBytes) return 0
+        val retained = items.indices.toMutableList()
+        while (total > maxBytes) {
+            val removable = retained.indexOfFirst { it != cursor && it != items.lastIndex }
+            require(removable >= 0) { "Active and latest history snapshots exceed the byte limit" }
+            total -= sizes[retained.removeAt(removable)]
+        }
+        val nextCursor = retained.indexOf(cursor)
+        val next = retained.map(items::get)
+        val removed = items.size - next.size
+        items.clear()
+        items.addAll(next)
+        cursor = nextCursor
+        return removed
     }
 
     fun undo(): RecoveryHistoryEntry? {

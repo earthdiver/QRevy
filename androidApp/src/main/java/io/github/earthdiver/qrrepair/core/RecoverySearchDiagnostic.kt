@@ -16,6 +16,10 @@ data class RecoverySearchDiagnostic(
     val unsearched: Boolean = false,
     val coverageComplete: Boolean = true,
     val candidateCalculations: Int = 0,
+    /** Validated results omitted from the retained, ranked list; not an unexplored search branch. */
+    val candidatesOmitted: Boolean = false,
+    /** Equivalent explanations omitted while the representative's complete provenance is retained. */
+    val derivationsOmitted: Boolean = false,
 ) {
     fun withUnsearched() = copy(unsearched = true)
 
@@ -34,6 +38,8 @@ data class RecoverySearchDiagnostic(
                 unsearched = known.any { it.unsearched },
                 coverageComplete = parts.all { it?.coverageComplete == true },
                 candidateCalculations = known.sumOf { it.candidateCalculations },
+                candidatesOmitted = known.any { it.candidatesOmitted },
+                derivationsOmitted = known.any { it.derivationsOmitted },
             )
         }
     }

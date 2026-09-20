@@ -557,20 +557,30 @@ class PreprocessDialogLayoutTest {
     }
 
     @Test
-    fun resultInspectorShowsAndSwitchesOnlyDecodedResultsAsTabs() {
+    fun resultInspectorShowsAndSwitchesOnlyValidatedResultsAsTabs() {
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
         shadowOf(Looper.getMainLooper()).idle()
-        val matrix = QrMatrix(21)
+        val fixtures = listOf("first", "second").map { text ->
+            val encoded = com.google.zxing.qrcode.encoder.Encoder.encode(text, ErrorCorrectionLevel.M)
+            val matrix = QrMatrix(encoded.matrix.width)
+            for (y in 0 until matrix.dimension) for (x in 0 until matrix.dimension) {
+                matrix.set(x, y, if (encoded.matrix.get(x, y).toInt() == 1) ModuleValue.ONE else ModuleValue.ZERO,
+                    1f, ModuleSource.IMAGE)
+            }
+            val candidate = io.github.earthdiver.qrrepair.core.RecoveryEngine().recover(matrix,
+                formatConstraint = io.github.earthdiver.qrrepair.core.QrFormatConstraint(encoded.ecLevel, encoded.maskPattern))
+                .first { it.text == text }
+            matrix to candidate
+        }
+        val matrix = fixtures.first().first
         recoveryState(activity).apply {
             sourceMatrix = matrix
             workingMatrix = matrix
             inspectorMatrix = matrix
+            geometry = GridGeometry(1, FinderRole.TOP_LEFT, 10.0, 10.0, 2.0, 0.0)
         }
-        fun candidate(mask: Int, text: String?) = RecoveryCandidate(
-            1, ErrorCorrectionLevel.M, mask, text, text?.toByteArray() ?: byteArrayOf(),
-            15, 0, 0, 0, 0, 0, 8, intArrayOf(), CodewordExtraction(emptyList()),
-        )
-        val candidates = listOf(candidate(0, null), candidate(1, "first"), candidate(2, "second"))
+        val invalid = fixtures.first().second.copy(text = null, dataBytes = byteArrayOf(0xf0.toByte()))
+        val candidates = listOf(invalid) + fixtures.map { it.second }
         recoveryState(activity).apply {
             recoveries = candidates
             selectRecovery(1)
@@ -582,7 +592,7 @@ class PreprocessDialogLayoutTest {
         assertNotNull("最良の復号候補タブがありません", findText(decor, "候補1"))
         val secondTab = findText(decor, "候補2")
         assertNotNull("次点の復号結果タブがありません", secondTab)
-        assertNull("未復号候補が結果として表示されています", findText(decor, "候補3"))
+        assertNull("Invalid QR payload must not appear as a selectable result", findText(decor, "候補3"))
 
         secondTab!!.performClick()
 

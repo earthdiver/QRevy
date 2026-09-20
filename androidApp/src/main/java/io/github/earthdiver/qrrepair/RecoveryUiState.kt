@@ -9,10 +9,12 @@ import io.github.earthdiver.qrrepair.core.ModuleRepairTrace
 import io.github.earthdiver.qrrepair.core.QrMatrix
 import io.github.earthdiver.qrrepair.core.RecoveryCandidate
 import io.github.earthdiver.qrrepair.core.RecoveryFailure
+import io.github.earthdiver.qrrepair.core.SamplingProfile
+import io.github.earthdiver.qrrepair.core.isSelectableRecovery
 import io.github.earthdiver.qrrepair.core.RecoverySearchDiagnostic
 
 /**
- * Mutable state for one displayed recovery attempt.
+ * Mutable selection over retained results from every recovery attempt.
  *
  * Keeping these values together makes transitions explicit and prevents an old candidate,
  * inspector matrix, or recommendation from leaking into a newly selected geometry.
@@ -27,6 +29,26 @@ internal class RecoveryUiState {
     var traces: Map<Coord, ModuleRepairTrace> = emptyMap()
     var selectedRecovery: RecoveryCandidate? = null
     var recoveries: List<RecoveryCandidate> = emptyList()
+        set(value) {
+            field = value
+            selectableEntries = value.mapIndexedNotNull { index, candidate ->
+                (index to candidate).takeIf { candidate.isSelectableRecovery }
+            }
+        }
+    var selectableEntries: List<Pair<Int, RecoveryCandidate>> = emptyList()
+        private set
+    var samplingProfile: SamplingProfile? = null
+        private set
+    val candidatesOmitted: Boolean
+        get() = autoResult?.candidatesTruncated == true || searchDiagnostic?.candidatesOmitted == true
+
+    /** Consensus is meaningful only for candidates derived from the same sampled input. */
+    val guidanceRecoveries: List<RecoveryCandidate>
+        get() {
+            val entries = autoResult?.entries ?: return recoveries
+            val selected = entries.getOrNull(recoveryIndex) ?: return recoveries
+            return entries.filter { it.attempt.matrix === selected.attempt.matrix }.map { it.candidate }
+        }
     var failure: RecoveryFailure? = null
     var recoveryIndex: Int = -1
     var confidenceMap: Map<Coord, CellConfidence> = emptyMap()
@@ -39,6 +61,7 @@ internal class RecoveryUiState {
     fun clear() {
         autoResult = null
         attemptIndex = -1
+        samplingProfile = null
         geometry = null
         sourceMatrix = null
         workingMatrix = null
@@ -53,6 +76,7 @@ internal class RecoveryUiState {
     }
 
     fun clearAttempt() {
+        samplingProfile = null
         geometry = null
         sourceMatrix = null
         workingMatrix = null
@@ -67,12 +91,32 @@ internal class RecoveryUiState {
     }
 
     fun selectRecovery(index: Int) {
+        val entries = autoResult?.entries.orEmpty()
+        val origin = entries.getOrNull(index)?.takeIf { it.candidate === recoveries.getOrNull(index) }
+        if (origin != null) {
+            val previous = entries.getOrNull(recoveryIndex)
+            if (sourceMatrix == null || previous?.attempt?.matrix !== origin.attempt.matrix) {
+                sourceMatrix = origin.attempt.matrix.copy()
+                workingMatrix = origin.attempt.matrix.copy()
+            }
+            geometry = origin.attempt.hypothesis.geometry
+            attemptIndex = autoResult!!.attempts.indexOfFirst { it.matrix === origin.attempt.matrix }
+            samplingProfile = origin.profile
+            failure = origin.attempt.failure
+        }
         recoveryIndex = index
         selectedRecovery = recoveries.getOrNull(index)
         inspectorMatrix = null
         traces = emptyMap()
         confidenceMap = emptyMap()
         recommendation = null
+    }
+
+    fun showResults(result: AutoRecoveryResult, preferredIndex: Int = 0) {
+        clearAttempt()
+        autoResult = result
+        recoveries = result.entries.map { it.candidate }
+        selectRecovery(preferredIndex.takeIf { it in recoveries.indices } ?: -1)
     }
 
     fun showAttempt(
@@ -84,6 +128,7 @@ internal class RecoveryUiState {
         preferredIndex: Int,
     ) {
         attemptIndex = index
+        samplingProfile = autoResult?.profile
         this.geometry = geometry
         sourceMatrix = matrix.copy()
         workingMatrix = matrix.copy()
@@ -92,10 +137,11 @@ internal class RecoveryUiState {
         selectRecovery(preferredIndex)
     }
 
-    fun restoreAttempt(geometry: GridGeometry, source: QrMatrix, working: QrMatrix) {
+    fun restoreAttempt(geometry: GridGeometry, source: QrMatrix, working: QrMatrix, profile: SamplingProfile? = null) {
         autoResult = null
         clearAttempt()
         this.geometry = geometry
+        samplingProfile = profile
         attemptIndex = 0
         sourceMatrix = source
         workingMatrix = working

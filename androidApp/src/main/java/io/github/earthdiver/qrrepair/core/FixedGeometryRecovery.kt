@@ -34,25 +34,35 @@ data class AutoRecoveryResult(
     val attempts: List<GeometryAttempt>,
     val profile: SamplingProfile? = null,
     val searchDiagnostic: RecoverySearchDiagnostic? = RecoverySearchDiagnostic.combine(attempts.map { it.searchDiagnostic }),
+    val entries: List<RecoveryResultEntry> = attempts.flatMap { attempt ->
+        attempt.recoveries.mapIndexedNotNull { index, candidate ->
+            candidate.takeIf { it.isSelectableRecovery }?.let {
+                RecoveryResultEntry(attempt, it, profile, candidateIndex = index)
+            }
+        }
+    }.sortedWith(recoveryResultComparator),
+    val attemptedGeometries: Int = attempts.size,
+    val testedHypotheses: List<GeometryHypothesis> = attempts.map { it.hypothesis },
 ) {
+    val candidatesTruncated: Boolean get() = searchDiagnostic?.candidatesOmitted == true
     /** A later geometry/format may exhaust the shared request budget after this result was built. */
-    fun withRetentionLimit(): AutoRecoveryResult = copy(searchDiagnostic = searchDiagnostic?.withUnsearched(), attempts = attempts.map { attempt ->
-        attempt.copy(
+    fun withRetentionLimit(): AutoRecoveryResult {
+        val marked = attempts.associateWith { attempt -> attempt.copy(
             recoveries = attempt.recoveries.map { it.copy(combinationSearch = it.combinationSearch.withRetentionLimit()) },
             failure = attempt.failure?.let { it.copy(combinationSearch = it.combinationSearch.withRetentionLimit()) },
-        )
-    })
+        ) }
+        return copy(searchDiagnostic = searchDiagnostic?.withUnsearched(), attempts = attempts.map(marked::getValue),
+            entries = entries.map { entry ->
+                val attempt = marked.getValue(entry.attempt)
+                entry.copy(attempt = attempt,
+                    candidate = attempt.recoveries[entry.attempt.recoveries.indexOf(entry.candidate)])
+            })
+    }
     val successfulAttempts: List<GeometryAttempt>
         get() = attempts.filter { attempt -> attempt.recoveries.any { it.payloadParsed } }
     val bestAttempt: GeometryAttempt? get() = attempts.minWithOrNull(geometryAttemptComparator)
     val rankedRecoveries: List<Pair<GeometryAttempt, RecoveryCandidate>>
-        get() = attempts.flatMap { attempt -> attempt.recoveries.map { attempt to it } }
-            .sortedWith { first, second ->
-                recoveryCandidateComparator.compare(first.second, second.second).let { comparison ->
-                    if (comparison != 0) comparison
-                    else compareValues(first.first.hypothesis.quickScore, second.first.hypothesis.quickScore)
-                }
-            }
+        get() = entries.map { it.attempt to it.candidate }
     val bestFailure: RecoveryFailure? get() = bestAttempt?.takeIf { it.recoveries.isEmpty() }?.failure
 }
 
@@ -114,6 +124,7 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
         profile: SamplingProfile? = null,
         retentionBudget: RecoveryRetentionBudget = RecoveryRetentionBudget(),
         cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
+        resultAccumulator: RecoveryResultAccumulator = RecoveryResultAccumulator(retentionBudget),
         onProgress: ((done: Int, total: Int, message: String) -> Unit)? = null,
     ): AutoRecoveryResult {
         cancellation.check()
@@ -148,9 +159,9 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
         val hypotheses = (baseHypotheses + refinedHypotheses).take(maxGeometryAttempts)
         val geometryLimit = seeds.size > maxGeometryAttempts || baseHypotheses.size + refinedHypotheses.size > maxGeometryAttempts
         val finders = settings.manualFinders.entries.take(maxFinders).map { (_, point) -> confirmedFinderCandidate(settings, point) }
-        val attempts = hypotheses.mapIndexedNotNull { index, hypothesis ->
+        var completed = 0
+        hypotheses.forEachIndexed { index, hypothesis ->
             cancellation.check()
-            if (retentionBudget.exhausted) return@mapIndexedNotNull null
             onProgress?.invoke(index, hypotheses.size, localizedText(
                 "指定QR格子 / V${hypothesis.geometry.version} を試行中",
                 "Trying selected QR grid / V${hypothesis.geometry.version}",
@@ -172,7 +183,7 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
                     maxKnownDataEccMismatches = settings.dataEccMismatchLimit,
                     manualEdits = settings.fixedPreRecoveryEdits,
                     displayLockManualBits = settings.lockManualBits,
-                    retentionBudget = retentionBudget,
+                    retentionBudget = retentionBudget.fresh(),
                     cancellation = cancellation,
                 ) { done, total ->
                     onProgress?.invoke(index, hypotheses.size, localizedText(
@@ -181,17 +192,19 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
                     ))
                 }
                 GeometryAttempt(hypothesis, matrix, stats, recoveries, recoveryEngine.lastFailure, recoveryEngine.lastSearchDiagnostic)
-            }.onFailure { if (it is RecoveryCancelledException) throw it }.getOrNull()
+            }.onFailure {
+                if (it is RecoveryCancelledException || it is Error) throw it
+                resultAccumulator.markIncomplete(hasUnsearched = true)
+            }.getOrNull()?.let {
+                completed++
+                resultAccumulator.add(it, profile)
+            }
         }
-        onProgress?.invoke(attempts.size, hypotheses.size, localizedText("試行完了", "Search complete"))
-        val summary = RecoverySearchDiagnostic.combine(attempts.map { it.searchDiagnostic })
-        val result = AutoRecoveryResult(finders, attempts.sortedWith(geometryAttemptComparator), profile,
-            summary?.copy(
-                coverageComplete = summary.coverageComplete && attempts.size == hypotheses.size &&
-                    baseHypotheses.size == selectedSeeds.size && !geometryLimit,
-                unsearched = summary.unsearched || geometryLimit,
-            ))
-        return if (retentionBudget.exhausted) result.withRetentionLimit() else result
+        onProgress?.invoke(completed, hypotheses.size, localizedText("試行完了", "Search complete"))
+        if (completed != hypotheses.size || baseHypotheses.size != selectedSeeds.size || geometryLimit) {
+            resultAccumulator.markIncomplete(hasUnsearched = true)
+        }
+        return resultAccumulator.result(finders)
     }
 
     private fun quickGeometryScore(image: LumaImage, geometry: GridGeometry, profile: SamplingProfile): Double {

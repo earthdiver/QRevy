@@ -74,8 +74,8 @@ class AlignmentDetectorPolarityTest {
 
         val autoProfile = profile.copy(settings = profile.settings.copy(manualQuad = base.moduleCenterQuad()))
         val auto = AutoRecoveryEngine().run(image, maxGeometryAttempts = 2, profile = autoProfile)
-        assertEquals(2, auto.attempts.size)
-        assertTrue(auto.attempts.any { it.hypothesis.alignment == null })
-        assertNotNull(auto.attempts.single { it.hypothesis.alignment != null }.hypothesis.alignment)
+        assertEquals(2, auto.attemptedGeometries)
+        assertTrue(auto.testedHypotheses.any { it.alignment == null })
+        assertNotNull(auto.testedHypotheses.single { it.alignment != null }.alignment)
     }
 }

@@ -20,6 +20,12 @@ import io.github.earthdiver.qrrepair.core.RecoveryInputBlocker
 import io.github.earthdiver.qrrepair.core.candidateCalculationPolicyText
 import io.github.earthdiver.qrrepair.core.searchResultText
 import io.github.earthdiver.qrrepair.core.identity
+import io.github.earthdiver.qrrepair.core.isSelectableRecovery
+import io.github.earthdiver.qrrepair.core.RecoveryMemoryPolicy
+import io.github.earthdiver.qrrepair.core.RecoveryResultAccumulator
+import io.github.earthdiver.qrrepair.core.RecoveryRetentionBudget
+import io.github.earthdiver.qrrepair.core.RecoverySelectionIdentity
+import io.github.earthdiver.qrrepair.core.SamplingProfile
 
 import android.app.Activity
 import android.app.AlertDialog
@@ -193,6 +199,10 @@ class MainActivity : Activity() {
     private val ioExecutor = Executors.newSingleThreadExecutor()
     private val workGeneration = AtomicInteger(0)
     private val saveGeneration = AtomicInteger(0)
+    private data class PendingSessionSave(
+        val id: String, val entries: List<RecoveryHistoryEntry>, val cursor: Int, val generation: Int,
+    )
+    private val pendingSessionSave = java.util.concurrent.atomic.AtomicReference<PendingSessionSave?>(null)
     private val finderSearchGeneration = AtomicInteger(0)
     @Volatile private var lastPersistenceWarningAtMs = 0L
     private val recoveryEngine = RecoveryEngine()
@@ -1122,6 +1132,7 @@ class MainActivity : Activity() {
     private fun selectRecoveryCandidate(index: Int, recordSelection: Boolean) {
         val candidate = recoveryState.recoveries.getOrNull(index) ?: return
         recoveryState.selectRecovery(index)
+        updateSelectedSamplingSettings()
         refreshInspector()
         updateSummary()
         if (recordSelection) recordHistory(
@@ -1132,13 +1143,15 @@ class MainActivity : Activity() {
     }
 
     private fun decodedRecoveryEntries(): List<Pair<Int, RecoveryCandidate>> =
-        recoveryState.recoveries.mapIndexedNotNull { index, candidate -> (index to candidate).takeIf { candidate.payloadParsed } }
+        recoveryState.selectableEntries
 
     private fun displayedDecodedRecoveryEntries(): List<Pair<Int, RecoveryCandidate>> =
         decodedRecoveryEntries().take(MAX_DISPLAYED_RECOVERY_CANDIDATES)
 
     private fun candidateSelectionLabel(total: Int): String =
-        if (total > MAX_DISPLAYED_RECOVERY_CANDIDATES) {
+        if (recoveryState.candidatesOmitted) {
+            ui("優先度の高い${total}候補を表示（ほかの候補は省略）", "Showing $total highest-ranked candidates (others omitted)")
+        } else if (total > MAX_DISPLAYED_RECOVERY_CANDIDATES) {
             getString(R.string.select_result_truncated, MAX_DISPLAYED_RECOVERY_CANDIDATES, total)
         } else {
             getString(R.string.select_result_limited, MAX_DISPLAYED_RECOVERY_CANDIDATES)
@@ -1148,6 +1161,7 @@ class MainActivity : Activity() {
         if (!::mainResultSelector.isInitialized) return
         val allResults = decodedRecoveryEntries()
         val results = allResults.take(MAX_DISPLAYED_RECOVERY_CANDIDATES)
+        if (results.size <= 1) comparisonCandidate = null
         for (selector in listOf(upperResultSelector, mainResultSelector)) {
             selector.removeAllViews()
             selector.visibility = if (results.size > 1) View.VISIBLE else View.GONE
@@ -1298,7 +1312,7 @@ class MainActivity : Activity() {
             attemptedCandidate == null -> savedPreRecoveryData()
             else -> null
         }
-        val matrix = recoveryState.workingMatrix?.takeIf { attemptedCandidate != null } ?: savedData?.matrix
+        val fallbackMatrix = recoveryState.workingMatrix?.takeIf { attemptedCandidate != null } ?: savedData?.matrix
             ?: run { Toast.makeText(this, ui("表示できるデータがありません。", "No data is available."), Toast.LENGTH_SHORT).show(); return }
         val text = TextView(this).apply {
             typeface = Typeface.MONOSPACE
@@ -1306,10 +1320,11 @@ class MainActivity : Activity() {
             setTextIsSelectable(true)
             setPadding(dp(10), dp(8), dp(10), dp(8))
         }
-        val displayState = RecoveryDataDisplayState(repairedStage = recoveryState.selectedRecovery?.payloadParsed == true)
+        val displayState = RecoveryDataDisplayState(repairedStage = recoveryState.selectedRecovery?.isSelectableRecovery == true)
         fun render() {
             val candidate = recoveryState.selectedRecovery
-            val validatedCandidate = candidate?.takeIf { it.payloadParsed }
+            val matrix = recoveryState.workingMatrix ?: fallbackMatrix
+            val validatedCandidate = candidate?.takeIf { it.isSelectableRecovery }
             val version = candidate?.version ?: savedData!!.version
             val mask = candidate?.dataMask ?: savedData!!.mask
             val extraction = candidate?.extraction ?: savedData!!.extraction
@@ -1440,6 +1455,8 @@ class MainActivity : Activity() {
         workingMatrix = recoveryState.workingMatrix?.copy(),
         recoveryIndex = recoveryState.recoveryIndex,
         preprocessSettings = preprocessSettings,
+        selectedQr = recoveryState.selectedRecovery?.takeIf { it.isSelectableRecovery }?.let(RecoverySelectionIdentity::from),
+        samplingInverted = recoveryState.samplingProfile?.inverted,
     )
 
     private fun preparedFor(settings: PreprocessSettings): BitmapUtils.Prepared? {
@@ -1494,14 +1511,21 @@ class MainActivity : Activity() {
     private fun persistSessionAsync() {
         val id = sessionId ?: return
         if (sessionHistory.entries.isEmpty()) return
-        val entries = sessionHistory.entries.toList()
-        val cursor = sessionHistory.cursor
-        val mode = UiMode.SIMPLE
+        val removed = RecoverySessionCodec.trimHistoryToPayloadLimit(sessionHistory, id,
+            maxRetainedBytes = RecoveryMemoryPolicy.current().historyBytes)
+        if (removed > 0) Toast.makeText(this, ui(
+            "履歴の容量上限により古い履歴を${removed}件整理しました。現在の作業は保持しています。",
+            "Removed $removed older history entries at the size limit. Current work is preserved."), Toast.LENGTH_SHORT).show()
         val token = saveGeneration.incrementAndGet()
+        // Queued jobs capture only a generation, never old matrix snapshots. Keeping their FIFO
+        // positions also preserves ordering with source-image writes and session deletion.
+        pendingSessionSave.set(PendingSessionSave(id, sessionHistory.entries.toList(), sessionHistory.cursor, token))
         ioExecutor.execute {
-            if (token != saveGeneration.get()) return@execute
+            val request = pendingSessionSave.get() ?: return@execute
+            if (token != saveGeneration.get() || request.generation != token ||
+                !pendingSessionSave.compareAndSet(request, null)) return@execute
             try {
-                sessionStore.save(id, mode, entries, cursor)
+                sessionStore.save(request.id, UiMode.SIMPLE, request.entries, request.cursor)
             } catch (t: Throwable) {
                 reportPersistenceFailure(ui("セッションの自動保存に失敗", "Automatic session save failed"), t)
             }
@@ -1645,7 +1669,8 @@ class MainActivity : Activity() {
         val token = workGeneration.incrementAndGet()
         historyRestoreToken = token
         // A restored snapshot represents one concrete saved geometry even though auto recovery is not persisted.
-        recoveryState.restoreAttempt(geometry, source, matrix)
+        recoveryState.restoreAttempt(geometry, source, matrix,
+            snapshot.samplingInverted?.let { SamplingProfile(preprocessSettings, it) })
         statusText.text = ui("$prefix。復号候補を再計算中…", "$prefix. Recalculating decode candidates…")
         executor.execute {
             if (token != workGeneration.get()) return@execute
@@ -1657,6 +1682,9 @@ class MainActivity : Activity() {
                 maxKnownDataEccMismatches = requestSettings.dataEccMismatchLimit,
                 manualEdits = requestSettings.fixedPreRecoveryEdits,
                 displayLockManualBits = requestSettings.lockManualBits,
+                retentionBudget = RecoveryMemoryPolicy.current().let {
+                    RecoveryRetentionBudget(it.retainedBytes, workingLimitBytes = it.workingBytes)
+                },
                 cancellation = RecoveryCancellation { token != workGeneration.get() || Thread.currentThread().isInterrupted },
             ) } catch (_: RecoveryCancelledException) { return@execute }
             val failure = recoveryEngine.lastFailure
@@ -1667,12 +1695,15 @@ class MainActivity : Activity() {
                 }
                 recoveryState.updateRecoveries(
                     ranked,
-                    preferredRecoveryIndex(ranked, snapshot.recoveryIndex),
+                    snapshot.selectedQr?.let { identity -> ranked.indexOfFirst(identity::matches) }
+                        ?: preferredRecoveryIndex(ranked, snapshot.recoveryIndex),
                     failure,
                 )
                 if (historyRestoreToken == token) historyRestoreToken = null
                 refreshInspector()
-                updateSummary(prefix)
+                updateSummary(if (snapshot.selectedQr != null && recoveryState.selectedRecovery == null)
+                    ui("$prefix。保存時の選択候補は今回の探索範囲では再現できませんでした。",
+                        "$prefix. The saved selection could not be reproduced within this search.") else prefix)
                 updateContentPreview()
                 onRestored?.invoke()
             }
@@ -1839,17 +1870,20 @@ class MainActivity : Activity() {
             recoveryState.searchDiagnostic?.inputBlocker == RecoveryInputBlocker.ZERO_MISMATCH &&
             recoveryState.searchDiagnostic?.coverageComplete == true
 
-    private fun searchCandidateCount(): Int = (recoveryState.autoResult?.attempts?.asSequence()
-        ?.flatMap { it.recoveries.asSequence() } ?: recoveryState.recoveries.asSequence())
-        .filter { it.payloadParsed || QrContentPreviewParser.parse(it)?.qrStructureValid == true }
-        .map { it.identity() }.distinct().count()
+    private fun searchCandidateCount(): Int = decodedRecoveryEntries().size
 
     private fun searchHasUncheckedCombinations(): Boolean = recoveryState.searchDiagnostic?.unsearched == true ||
         (recoveryState.searchDiagnostic == null &&
             (recoveryState.selectedRecovery?.combinationSearch ?: recoveryState.failure?.combinationSearch)
                 ?.stops?.isNotEmpty() == true)
 
-    private fun searchResultDescription(): String = searchResultText(searchCandidateCount(), searchHasUncheckedCombinations())
+    private fun searchResultDescription(): String {
+        val count = searchCandidateCount()
+        if (!recoveryState.candidatesOmitted) return searchResultText(count, searchHasUncheckedCombinations())
+        return ui("優先度の高い修復候補を${count}件保持しています。ほかの候補の詳細は保持上限により省略しています。",
+            "Retained $count highest-ranked recovery candidates. Other candidate details were omitted at the retention limit.") +
+            if (searchHasUncheckedCombinations()) ui("\n未探索の組合せが残っています。", "\nSome combinations remain unchecked.") else ""
+    }
 
     private fun updateContentPreview() {
         immediateResultShown = false
@@ -1861,11 +1895,11 @@ class MainActivity : Activity() {
         arrangeResultGuide(beforeImage = false)
         if (::resultImageLabel.isInitialized) {
             resultImageLabel.visibility = if (candidate != null || failure != null) View.VISIBLE else View.GONE
-            resultImageLabel.text = if (candidate?.payloadParsed == true) ui("選択中の候補のQR", "QR for the selected candidate")
+            resultImageLabel.text = if (candidate?.isSelectableRecovery == true) ui("選択中の候補のQR", "QR for the selected candidate")
                 else ui("入力のQR（修復前）", "Input QR (before repair)")
         }
         contentPreviewText.visibility = View.VISIBLE
-        guideText.visibility = if (candidate?.payloadParsed == true) View.GONE else View.VISIBLE
+        guideText.visibility = if (candidate?.isSelectableRecovery == true) View.GONE else View.VISIBLE
         resultExplanationText.visibility = View.GONE
         resultNextAction.visibility = View.GONE
         resultActions.visibility = if (candidate != null || failure != null) View.VISIBLE else View.GONE
@@ -2062,6 +2096,18 @@ class MainActivity : Activity() {
                     route.actualBlockMethods.forEach { append("\n  ").append(it.searchDescription()) }
                 }
             }
+            val selectedEntry = recoveryState.autoResult?.entries?.getOrNull(recoveryState.recoveryIndex)
+                ?.takeIf { it.candidate === candidate }
+            selectedEntry?.alternativeDerivations?.forEachIndexed { index, route ->
+                append(ui("\n同じQRを得た別の試行${index + 1}: ", "\nAnother attempt yielding the same QR ${index + 1}: "))
+                append(route.profile?.label.orEmpty()).append(" / ").append(geometryDiagnosticText(route.hypothesis.geometry))
+                append("\n").append(route.candidate.usedMethodsText())
+                route.samplingStats.thresholds?.let { append(ui("\n閾値: ${it.blackMax} / ${it.whiteMin}",
+                    "\nThresholds: ${it.blackMax} / ${it.whiteMin}")) }
+            }
+            if (candidate.derivationsOmitted || selectedEntry?.derivationsOmitted == true) append(ui(
+                "\n保持上限により、同じQRを得た一部の別経路の詳細を省略しています。",
+                "\nSome alternative derivation details for this QR were omitted at the retention limit."))
         }.trim()
         return processing
     }
@@ -2578,14 +2624,17 @@ class MainActivity : Activity() {
             if (token != workGeneration.get()) return@execute
             try {
                 val variants = requestSettings.variants()
-                val retentionBudget = io.github.earthdiver.qrrepair.core.RecoveryRetentionBudget()
-                val results = mutableListOf<io.github.earthdiver.qrrepair.core.AutoRecoveryResult>()
+                val memoryPolicy = RecoveryMemoryPolicy.current()
+                val retentionBudget = RecoveryRetentionBudget(memoryPolicy.retainedBytes,
+                    workingLimitBytes = memoryPolicy.workingBytes)
+                val resultAccumulator = RecoveryResultAccumulator(retentionBudget)
+                var finders = emptyList<io.github.earthdiver.qrrepair.core.FinderCandidate>()
                 for ((variantIndex, profile) in variants.withIndex()) {
-                    if (retentionBudget.exhausted) break
-                    val variantResult = AutoRecoveryEngine(recoveryEngine).run(
+                    finders = AutoRecoveryEngine(recoveryEngine).run(
                         p.luma,
                         profile = profile,
                         retentionBudget = retentionBudget,
+                        resultAccumulator = resultAccumulator,
                         cancellation = RecoveryCancellation { token != workGeneration.get() || Thread.currentThread().isInterrupted },
                         onProgress = { done, total, message ->
                             if (token == workGeneration.get() && (done % 3 == 0 || done == total)) {
@@ -2596,29 +2645,20 @@ class MainActivity : Activity() {
                                 }
                             }
                         },
-                    )
-                    results += variantResult
+                    ).finders
                 }
-                val selectedResult = results.minWithOrNull { first, second ->
-                    val a = first.bestAttempt
-                    val b = second.bestAttempt
-                    when {
-                        a != null && b != null -> geometryAttemptComparator.compare(a, b)
-                        a != null -> -1
-                        b != null -> 1
-                        else -> 0
-                    }
-                }
-                    ?: io.github.earthdiver.qrrepair.core.AutoRecoveryResult(emptyList(), emptyList())
-                val combinedResult = selectedResult.copy(
-                    attempts = results.flatMap { it.attempts }.sortedWith(geometryAttemptComparator),
-                    searchDiagnostic = RecoverySearchDiagnostic.combine(results.map { it.searchDiagnostic }),
-                )
-                val result = if (retentionBudget.exhausted) combinedResult.withRetentionLimit() else combinedResult
+                val result = resultAccumulator.result(finders)
                 if (token != workGeneration.get()) return@execute
                 runOnUiThread {
                     if (token != workGeneration.get()) return@runOnUiThread
                     recoveryState.autoResult = result
+                    if (result.attempts.isEmpty() && result.attemptedGeometries > 0) {
+                        statusText.text = ui("表示用の修復結果を保持できませんでした。", "Could not retain a recovery result for display.")
+                        guideText.text = ui("メモリの保持上限に達しました。作業を保存してアプリを開き直し、再実行してください。",
+                            "The memory retention limit was reached. Save the work, reopen the app and try again.")
+                        recordRecoveryAttempt(statusText.text.toString(), searchResultDescription())
+                        return@runOnUiThread
+                    }
                     if (result.finders.isEmpty() && result.attempts.isEmpty()) {
                         statusText.text = ui("論理四隅が未確定のため、QR行列を作成できませんでした。四隅とFinder役割を確認してください。", "The QR matrix could not be built because the logical corners are not assigned. Check the corners and Finder roles.")
                         guideText.text = ui("案内: QR行列を作成できなかったため、修復を開始できませんでした。四隅・Finderの役割・バージョンをご確認ください。QR行列がないため、追加で確定が必要なbit数と推奨セルは算出できません。", "Guide: Repair could not be started because a QR matrix could not be created. Please review the corners, Finder roles, and Version. Without a QR matrix, the number of additional bits that must be determined and a recommended cell cannot be calculated.")
@@ -2637,7 +2677,7 @@ class MainActivity : Activity() {
                     recordHistory(
                         HistoryEventKind.AUTO_RECOVERY,
                         ui("修復処理", "Repair"),
-                        ui("幾何候補 ${result.attempts.size}件 / 復号候補 ${recoveryState.recoveries.size}件", "${result.attempts.size} geometry candidate(s) / ${recoveryState.recoveries.size} decode candidate(s)"),
+                        ui("試行 ${result.attemptedGeometries}件 / 保持候補 ${recoveryState.selectableEntries.size}件", "${result.attemptedGeometries} attempts / ${recoveryState.selectableEntries.size} retained candidates"),
                     )
                 }
             } catch (_: RecoveryCancelledException) {
@@ -2741,29 +2781,33 @@ class MainActivity : Activity() {
 
     private fun showAttempt(index: Int) {
         val result = recoveryState.autoResult ?: return
-        if (result.attempts.isEmpty()) return
-        val normalizedIndex = ((index % result.attempts.size) + result.attempts.size) % result.attempts.size
-        val attempt = result.attempts[normalizedIndex]
-        recoveryState.showAttempt(
-            normalizedIndex,
-            attempt.hypothesis.geometry,
-            attempt.matrix,
-            attempt.recoveries,
-            attempt.failure,
-            preferredRecoveryIndex(attempt.recoveries),
-        )
+        if (result.entries.isNotEmpty()) {
+            recoveryState.showResults(result)
+        } else {
+            if (result.attempts.isEmpty()) return
+            val normalizedIndex = ((index % result.attempts.size) + result.attempts.size) % result.attempts.size
+            val attempt = result.attempts[normalizedIndex]
+            recoveryState.showAttempt(normalizedIndex, attempt.hypothesis.geometry, attempt.matrix,
+                attempt.recoveries, attempt.failure, preferredRecoveryIndex(attempt.recoveries))
+        }
+        updateSelectedSamplingSettings()
+        refreshInspector()
+        updateSummary()
+    }
+
+    private fun updateSelectedSamplingSettings() {
+        val result = recoveryState.autoResult ?: return
+        val attempt = result.entries.getOrNull(recoveryState.recoveryIndex)?.attempt
+            ?: result.attempts.getOrNull(recoveryState.attemptIndex) ?: return
         attempt.samplingStats.thresholds?.let { pair ->
             preprocessSettings = preprocessSettings.copy(blackMax = pair.blackMax, whiteMin = pair.whiteMin)
         }
-        refreshInspector()
-        updateSummary()
-        updateContentPreview()
     }
 
     private fun preferredRecoveryIndex(candidates: List<RecoveryCandidate>, requested: Int = -1): Int {
         if (candidates.isEmpty()) return -1
         val displayedDecoded = candidates.indices.asSequence()
-            .filter { candidates[it].payloadParsed }
+            .filter { candidates[it].isSelectableRecovery }
             .take(MAX_DISPLAYED_RECOVERY_CANDIDATES)
             .toList()
         if (requested in displayedDecoded) return requested
@@ -2775,7 +2819,7 @@ class MainActivity : Activity() {
         val source = recoveryState.sourceMatrix ?: return
         val working = recoveryState.workingMatrix ?: return
         val candidate = recoveryState.selectedRecovery
-        val validatedCandidate = candidate?.takeIf { it.payloadParsed }
+        val validatedCandidate = candidate?.takeIf { it.isSelectableRecovery }
         val after = if (validatedCandidate != null) {
             RepairTraceBuilder.candidateMatrix(working, validatedCandidate, recoveryEngine)
         } else {
@@ -2784,7 +2828,7 @@ class MainActivity : Activity() {
         recoveryState.inspectorMatrix = after
         recoveryState.traces = RepairTraceBuilder.build(source, after, validatedCandidate)
 
-        val guidance = io.github.earthdiver.qrrepair.core.guidanceCandidates(recoveryState.recoveries, validatedCandidate)
+        val guidance = io.github.earthdiver.qrrepair.core.guidanceCandidates(recoveryState.guidanceRecoveries, validatedCandidate)
         val candidateMatrices = guidance.candidates.map {
             RepairTraceBuilder.candidateMatrix(working, it, recoveryEngine)
         }
@@ -2899,6 +2943,9 @@ class MainActivity : Activity() {
         val decoded = decodedRecoveryEntries().map { it.second }
         val distinctPayloads = decoded.asSequence().map { it.dataBytes.toList() }.distinct().count()
         val sharedResult = when {
+            c != null && !c.payloadParsed && c.isSelectableRecovery -> searchResultDescription() + ui(
+                "\nQRのデータ形式を確認しました\n文字として表示できないデータです。",
+                "\nThe QR data format was verified\nThe data cannot be displayed as text.")
             decoded.size == 1 -> searchResultDescription()
             decoded.size > 1 && distinctPayloads == 1 -> searchResultDescription() + ui(
                 "\n表示中の読み取り結果のデータコード語列はすべて同じです。",
