@@ -50,8 +50,9 @@ class PreprocessDialogControllerTest {
         views(dialog.window!!.decorView).filterIsInstance<CheckBox>()
             .single { it.text.toString() == "閾値を自動設定" }
 
-    private fun withDialog(settings: PreprocessSettings? = null, block: (AlertDialog, Host, BitmapUtils.Prepared, BitmapUtils.Prepared) -> Unit) {
+    private fun withDialog(settings: PreprocessSettings? = null, style: AppStyle = AppStyle.CLASSIC, block: (AlertDialog, Host, BitmapUtils.Prepared, BitmapUtils.Prepared) -> Unit) {
         val activity = Robolectric.buildActivity(Activity::class.java).setup()
+        activity.get().setTheme(style.theme)
         val source = BitmapUtils.prepare(Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888).apply {
             eraseColor(Color.WHITE)
         })
@@ -70,6 +71,47 @@ class PreprocessDialogControllerTest {
             if (!working.bitmap.isRecycled) working.bitmap.recycle()
             if (!source.bitmap.isRecycled) source.bitmap.recycle()
         }
+    }
+
+    @Suppress("DEPRECATION")
+    @Test fun systemBackConfirmsBeforeDiscardingUnsavedChangesInBothStyles() {
+        for (style in AppStyle.entries) withDialog(style = style) { dialog, host, _, _ ->
+            automaticThresholdControl(dialog).performClick()
+            dialog.onBackPressed()
+            shadowOf(Looper.getMainLooper()).idle()
+            val confirmation = ShadowDialog.getLatestDialog() as AlertDialog
+            assertNotSame(dialog, confirmation)
+            assertTrue(dialog.isShowing)
+            confirmation.getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(dialog.isShowing)
+            assertTrue(host.saves.isEmpty())
+            dialog.onBackPressed()
+            shadowOf(Looper.getMainLooper()).idle()
+            (ShadowDialog.getLatestDialog() as AlertDialog).getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(dialog.isShowing)
+            assertTrue(host.saves.isEmpty())
+        }
+    }
+
+    @Test fun dialogCancellationAlsoProtectsUnsavedChanges() = withDialog { dialog, host, _, _ ->
+        automaticThresholdControl(dialog).performClick()
+        dialog.cancel()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(dialog.isShowing)
+        assertNotSame(dialog, ShadowDialog.getLatestDialog())
+        assertTrue(host.saves.isEmpty())
+        (ShadowDialog.getLatestDialog() as AlertDialog).dismiss()
+    }
+
+    @Suppress("DEPRECATION")
+    @Test fun systemBackClosesSavedWorkWithoutAnExtraConfirmation() = withDialog { dialog, host, _, _ ->
+        click(dialog, "保存")
+        dialog.onBackPressed()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(dialog.isShowing)
+        assertEquals(1, host.saves.size)
     }
 
     @Test fun eitherSliderUnchecksAutomaticThresholdsUntilTheyAreEnabledAgain() {

@@ -1161,9 +1161,13 @@ internal class PreprocessDialogController(
         updatePageLayout = { page -> scaffold.showPage(page) }
         classificationLegend = scaffold.classificationLegend
         val root = scaffold.view
-        val dialog = AlertDialog.Builder(this).apply {
+        val dialog = object : AlertDialog(this) {
+            // Both system Back (including gesture navigation) and outside touches call cancel.
+            // Explicit dismissals are reserved for confirmed exits and lifecycle cleanup.
+            override fun cancel() = cancelPreprocess()
+        }.apply {
             if (!modernStyle) setView(root)
-        }.create()
+        }
         lateinit var captureEditorDraft: () -> PreprocessEditorDraft
         val session = PreprocessEditorSession(
             open = { page -> dialog.show(); pageHost.navigateTo(page) },
