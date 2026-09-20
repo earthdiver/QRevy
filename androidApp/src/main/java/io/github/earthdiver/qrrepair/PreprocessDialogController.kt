@@ -51,10 +51,19 @@ internal data class PreprocessSave(
     val events: List<PreprocessDraftEvent>,
 )
 
+/** View-free editor state retained across configuration changes without saving it to disk. */
+internal data class PreprocessEditorDraft(
+    val settings: PreprocessSettings,
+    val cellEdits: PreRecoveryCellEditState,
+    val changes: PreprocessDraftState,
+    val page: PreprocessPage,
+)
+
 /** Keeps the same draft alive while the result page is visible. */
 internal class PreprocessEditorSession(
     val open: (PreprocessPage) -> Unit,
     val close: () -> Unit,
+    val captureDraft: () -> PreprocessEditorDraft,
 )
 
 /** Session effects owned outside the dialog. Unsaved edits remain local to the dialog. */
@@ -82,8 +91,10 @@ internal class PreprocessDialogController(
     private val finderSearchGeneration: AtomicInteger,
     private val recoveryEngine: RecoveryEngine,
     private val host: PreprocessDialogHost,
+    private val restoredDraft: PreprocessEditorDraft? = null,
 ) {
     fun show(initialPage: PreprocessPage = PreprocessPage.BASIC) = with(activity) {
+        val preprocessSettings = restoredDraft?.settings ?: this@PreprocessDialogController.preprocessSettings
         val modernStyle = AppStylePreferences.isModern(this)
         val dialogState = PreprocessDialogState(preprocessSettings)
         var working = initialWorking
@@ -98,10 +109,10 @@ internal class PreprocessDialogController(
         var savePreprocess: () -> Unit = {}
         var submitPreprocess: () -> Unit = {}
         var cancelPreprocess: () -> Unit = {}
-        val draftState = PreprocessDraftState(preprocessSettings)
+        val draftState = restoredDraft?.changes?.copyForEditing() ?: PreprocessDraftState(preprocessSettings)
         var noteDraftChange: (String, String, String) -> Unit = { _, _, _ -> }
         var validateCellEdits: (Map<Coord, ModuleValue>) -> Boolean = { true }
-        val cellEditState = savedCellEditState?.copyForEditing { validateCellEdits(it) } ?: PreRecoveryCellEditState(
+        val cellEditState = (restoredDraft?.cellEdits ?: savedCellEditState)?.copyForEditing { validateCellEdits(it) } ?: PreRecoveryCellEditState(
             preprocessSettings.preRecoveryEdits,
             preprocessSettings.preRecoveryPrioritySearch,
             validateEdits = { validateCellEdits(it) },
@@ -1153,9 +1164,11 @@ internal class PreprocessDialogController(
         val dialog = AlertDialog.Builder(this).apply {
             if (!modernStyle) setView(root)
         }.create()
+        lateinit var captureEditorDraft: () -> PreprocessEditorDraft
         val session = PreprocessEditorSession(
             open = { page -> dialog.show(); pageHost.navigateTo(page) },
             close = { dialog.dismiss() },
+            captureDraft = { captureEditorDraft() },
         )
         showResultPage = {
             dialog.hide()
@@ -1196,6 +1209,11 @@ internal class PreprocessDialogController(
                     softEdits = cellEditState.softEdits.toSet(),
                 )
             }
+            captureEditorDraft = {
+                PreprocessEditorDraft(capturePreprocessSettings(), cellEditState.copyForEditing(),
+                    draftState.copyForEditing(), pageHost.currentPage())
+            }
+            host.editorOpened(session)
             fun leaveEditor() {
                 dialog.dismiss()
                 if (modernStyle) host.showHome()
@@ -1243,7 +1261,6 @@ internal class PreprocessDialogController(
                 dialog.dismiss(); host.startRecovery()
             }
         }
-        if (modernStyle) host.editorOpened(session)
         dialog.show()
         pageHost.navigateTo(initialPage)
     }

@@ -100,3 +100,5 @@ Explicitly exporting a recovered image or other result moves it outside app-priv
 Choose Classic or Modern under **Menu → Appearance (next launch)**, then save. Classic is the default. The choice takes effect on the next launch; screen rotation and language changes keep the active style.
 
 Modern uses the **01 Repair settings**, **02 Edit cells**, and **03 Result** tabs. The result tab is enabled only when a result exists. Switching tabs preserves the unsaved draft and Undo history. Returning Home asks before discarding unsaved changes.
+
+Unsaved settings, cell edits, and Undo/Redo history survive screen rotation in both styles. They remain unsaved until you choose **Save** or run repair.

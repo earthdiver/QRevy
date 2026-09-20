@@ -132,7 +132,20 @@ class MainActivity : Activity() {
 
     private lateinit var activeStyle: AppStyle
     private val modernStyle: Boolean get() = activeStyle == AppStyle.MODERN
-    private data class RetainedActivityState(val style: AppStyle, val history: RetainedCellHistory?)
+    private data class RetainedActivityState(
+        val style: AppStyle,
+        val history: RetainedCellHistory?,
+        val editorWork: RetainedEditorWork?,
+    )
+    private data class RetainedEditorWork(
+        val sessionId: String?,
+        val source: BitmapUtils.Prepared,
+        val savedSettings: PreprocessSettings,
+        val savedEdits: PreRecoveryCellEditState?,
+        val history: List<RecoveryHistoryEntry>,
+        val cursor: Int,
+        val draft: PreprocessEditorDraft,
+    )
 
     private var immediateResultShown = false
     private lateinit var modernHeader: View
@@ -223,6 +236,16 @@ class MainActivity : Activity() {
         sessionStore = RecoverySessionStore(this)
         purgeStaleCameraCaptures()
         setContentView(buildUi())
+        retained?.editorWork?.let { work ->
+            sessionId = work.sessionId
+            prepared = work.source
+            analysisPrepared = work.source
+            preprocessSettings = work.savedSettings
+            savedCellEditState = work.savedEdits
+            sessionHistory.replace(work.history, work.cursor)
+            showPreprocessPage(work.draft.page, work.draft)
+            return
+        }
         val restoredSessionId = savedInstanceState?.getString(STATE_SESSION_ID)
         if (restoredSessionId != null && RecoverySessionCodec.isSafeSessionId(restoredSessionId)) {
             pendingRetainedCellHistory = retained?.history
@@ -243,7 +266,13 @@ class MainActivity : Activity() {
         val history = if (id != null && state != null) {
             RetainedCellHistory(id, preprocessSettings, state.copyForEditing())
         } else null
-        return RetainedActivityState(activeStyle, history)
+        val editorWork = prepared?.let { source ->
+            preprocessEditor?.let { editor ->
+                RetainedEditorWork(id, source, preprocessSettings, state?.copyForEditing(),
+                    sessionHistory.entries.toList(), sessionHistory.cursor, editor.captureDraft())
+            }
+        }
+        return RetainedActivityState(activeStyle, history, editorWork)
     }
 
     private fun purgeStaleCameraCaptures() {
@@ -2596,7 +2625,7 @@ class MainActivity : Activity() {
 
     private fun showCellEditor() = showPreprocessPage(PreprocessPage.CELL_EDITOR)
 
-    private fun showPreprocessPage(initialPage: PreprocessPage) {
+    private fun showPreprocessPage(initialPage: PreprocessPage, restoredDraft: PreprocessEditorDraft? = null) {
         showWorkspace()
         val source = prepared ?: run {
             statusText.text = ui("先に画像を選択してください。", "Select an image first.")
@@ -2610,8 +2639,9 @@ class MainActivity : Activity() {
             activity = this,
             preprocessSettings = preprocessSettings,
             source = source,
-            initialWorking = preparedFor(preprocessSettings) ?: source,
+            initialWorking = preparedFor(restoredDraft?.settings ?: preprocessSettings) ?: source,
             savedCellEditState = savedCellEditState,
+            restoredDraft = restoredDraft,
             executor = executor,
             finderSearchGeneration = finderSearchGeneration,
             recoveryEngine = recoveryEngine,

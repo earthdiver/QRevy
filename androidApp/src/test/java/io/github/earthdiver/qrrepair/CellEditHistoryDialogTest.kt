@@ -212,4 +212,57 @@ class CellEditHistoryDialogTest {
         count(reopened, 2, 0)
         reopened.dismiss()
     }
+
+    @Test fun recreationRetainsUnsavedCellsSettingsAndUndoWithoutSavingThem() = checkUnsavedRecreation(saveFirst = false)
+
+    @Test fun recreationKeepsUnsavedChangesSeparateFromTheSavedCheckpoint() = checkUnsavedRecreation(saveFirst = true)
+
+    private fun checkUnsavedRecreation(saveFirst: Boolean) {
+        for (style in AppStyle.entries) {
+            val context = org.robolectric.RuntimeEnvironment.getApplication()
+            AppStylePreferences.save(context, style)
+            val activity = activity()
+            val dialog = open(activity)
+            edit(dialog, a)
+            if (saveFirst) click(dialog, "保存")
+            edit(dialog, b)
+            click(dialog, "Undo")
+            val automatic = views(dialog.window!!.decorView).filterIsInstance<android.widget.CheckBox>()
+                .single { it.text.toString() == "閾値を自動設定" }
+            automatic.isChecked = false
+            val threshold = views(dialog.window!!.decorView).filterIsInstance<android.widget.SeekBar>()
+                .first { it.max == 254 }
+            threshold.progress = 73
+            // Navigate away from the basic page to check that the editor page is retained too.
+            val session = field("preprocessEditor").get(activity) as PreprocessEditorSession
+            session.open(PreprocessPage.CELL_EDITOR)
+            shadowOf(Looper.getMainLooper()).idle()
+            val captured = session.captureDraft()
+            val baseline = field("preprocessSettings").get(activity) as PreprocessSettings
+            (field("ioExecutor").get(activity) as ExecutorService).submit {}.get(30, TimeUnit.SECONDS)
+            val recreated = controllers.last().recreate().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val reopened = ShadowDialog.getLatestDialog() as AlertDialog
+            val restoredSession = field("preprocessEditor").get(recreated) as PreprocessEditorSession
+            assertEquals(captured.settings, restoredSession.captureDraft().settings)
+            assertEquals(PreprocessPage.CELL_EDITOR, restoredSession.captureDraft().page)
+            assertEquals(baseline, field("preprocessSettings").get(recreated))
+            if (!saveFirst) assertNull(field("sessionId").get(recreated))
+            count(reopened, 1, 1)
+            click(reopened, "Redo")
+            count(reopened, 2, 0)
+            // Discard still returns to the saved checkpoint rather than treating the draft as saved.
+            restoredSession.open(PreprocessPage.BASIC)
+            click(reopened, if (style == AppStyle.MODERN) "ホーム" else "キャンセル")
+            val confirm = ShadowDialog.getLatestDialog() as AlertDialog
+            assertNotSame(reopened, confirm)
+            confirm.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(reopened.isShowing)
+            val checkpoint = open(recreated)
+            count(checkpoint, if (saveFirst) 1 else 0, 0)
+            checkpoint.dismiss()
+        }
+    }
+
 }
