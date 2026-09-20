@@ -53,7 +53,7 @@ For Hanzi, the four-bit subset indicator after the mode is read before the chara
 
 When explicit ECC and mask selections leave only one format, the format-error limit is bypassed. Among attempts without validated payloads, stronger format agreement takes precedence over RS success.
 
-Data/ECC comparisons exclude `?`, temporary priority `*` assignments, function modules, and remainder bits. The data/ECC error limit retains candidates at or below the limit; zero requires exact agreement. With “Exclude recovery candidates that conflict with manual 0/1 values” ON, pin conflicts are rejected separately. Without locking, manual 0/1 values are ordinary known bits and may be corrected by RS.
+Data/ECC comparisons exclude `?`, temporary priority `*` assignments, function modules, and remainder bits. The data/ECC error limit retains candidates at or below the limit; zero requires exact agreement. “Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)” defaults to OFF: candidates that conflict with fixed cells are rejected separately. ON allows their values to be corrected while retaining their fixed designation and input values. Tentative cells are correctable in either setting. Corrections remain subject to the format and data/ECC error limits; explicit ECC/mask/version selections and conflicts between fixed cells and explicit selections remain enforced.
 
 ## Diagnostic details
 

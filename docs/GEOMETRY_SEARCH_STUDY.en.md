@@ -69,15 +69,15 @@ In the initial comparison, the existing 19 baseline candidates recovered 70/72 c
 
 After the partial-bit RS route was added, the current synthetic regression recovers 72/72 width-0.6 cases with the ordinary 19 candidates alone. Current tests ensure that the dedicated rotations do not worsen that result and still improve on the ordinary candidates for at least one tested width. The initial measurements remain as the rationale for adding the candidates, not as current absolute performance figures.
 
-## Candidate exclusion for manual input values
+## Correction of fixed input values
 
-This comparison toggles **Exclude recovery candidates that conflict with manual 0/1 values**.
+The comparison below uses the current setting **Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)**. OFF protects fixed cells; ON permits their correction.
 
 It covers 72 cases: 2 QR symbols × 12 data positions × 0, 2, or 4 erased codewords. Correct and incorrect manual values are tested separately.
 
-| Manual value | Setting ON | Setting OFF |
+| Fixed value | Setting OFF (protected) | Setting ON (correctable) |
 | --- | ---: | ---: |
 | Correct | 72/72 | 72/72 |
 | Incorrect | 0/72 | 72/72 |
 
-With the setting ON, every explicit 0/1 must be preserved. A correct pin caused no loss in these cases, but even one incorrect bit excluded every correct RS recovery. With the setting OFF, manual 0/1 values are treated as ordinary known bits derived from the image, so RS could correct the tested errors. The UI must therefore describe ON as rejecting every conflicting candidate, not merely as preferring the user's input.
+With the setting OFF, every fixed 0/1 must be preserved. A correct fixed value caused no loss in these cases, but even one incorrect bit excluded every correct RS recovery. With the setting ON, fixed input values remain designated as fixed but may be corrected, as tentative values are; RS could correct the tested errors. The setting does not relax explicit ECC/mask/version selections or their consistency checks with fixed cells.
