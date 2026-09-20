@@ -2629,6 +2629,20 @@ class MainActivity : Activity() {
                     draft.events.forEach { event ->
                         recordPreprocessHistory(event.settings, event.label, event.detail)
                     }
+                    // Deletion detaches the open work from storage. Only an explicit save may
+                    // create a new session; never resurrect the deleted session automatically.
+                    if (sessionId == null) {
+                        val newId = sessionStore.newId()
+                        val sourceBitmap = source.bitmap
+                        sessionId = newId
+                        ioExecutor.execute {
+                            try {
+                                sessionStore.saveSourceBitmap(newId, sourceBitmap)
+                            } catch (t: Throwable) {
+                                reportPersistenceFailure(ui("元画像の保存に失敗", "Source image save failed"), t)
+                            }
+                        }
+                    }
                     persistSessionAsync()
                     analysisPrepared = draft.image
                 }

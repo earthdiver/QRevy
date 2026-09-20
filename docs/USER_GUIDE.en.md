@@ -91,6 +91,8 @@ On the recovery result screen, **Analyze additional segments after terminator** 
 
 Resume saved sessions from **Saved work**. **Operation history** shows the current edit history. QRR sessions and saved source images stay in app-private no-backup storage, but they are not encrypted files.
 
+Deleting the currently open saved work leaves the on-screen work available. Choosing **Save** or running repair afterward saves it as a new session.
+
 Explicitly exporting a recovered image or other result moves it outside app-private storage. Review sharing and backup behavior at the destination. See [Privacy](../PRIVACY.md) and [Security](../SECURITY.md).
 
 ## 8. Appearance and navigation
