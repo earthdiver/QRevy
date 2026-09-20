@@ -41,9 +41,7 @@ class SavedWorkGuidanceTest {
                 MainActivity::class.java.getDeclaredMethod("showRecentSessions").apply { isAccessible = true }.invoke(activity)
                 val io = MainActivity::class.java.getDeclaredField("ioExecutor").apply { isAccessible = true }
                     .get(activity) as ExecutorService
-                io.submit {}.get(30, TimeUnit.SECONDS)
-                shadowOf(Looper.getMainLooper()).idle()
-                val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+                val dialog = awaitSessionList(io, expectedCount = 2)
                 assertTrue(dialog.listView.isShown)
                 assertEquals(2, dialog.listView.adapter.count)
                 val labels = descendants(dialog.window!!.decorView).filterIsInstance<TextView>().map { it.text.toString() }
@@ -59,13 +57,9 @@ class SavedWorkGuidanceTest {
                 assertNotSame(dialog, confirmation)
                 assertNotNull(store.load("guidance"))
                 confirmation.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
-                repeat(2) {
-                    io.submit {}.get(30, TimeUnit.SECONDS)
-                    shadowOf(Looper.getMainLooper()).idle()
-                }
+                val remaining = awaitSessionList(io, expectedCount = 1)
                 assertNull(store.load("guidance"))
                 assertNotNull(store.load("keep-other-work"))
-                val remaining = ShadowDialog.getLatestDialog() as AlertDialog
                 assertEquals(1, remaining.listView.adapter.count)
                 remaining.dismiss()
             } finally {
@@ -73,6 +67,19 @@ class SavedWorkGuidanceTest {
                 store.deleteAll()
             }
         }
+    }
+
+    private fun awaitSessionList(io: ExecutorService, expectedCount: Int): AlertDialog {
+        repeat(10) {
+            io.submit {}.get(30, TimeUnit.SECONDS)
+            shadowOf(Looper.getMainLooper()).idle()
+            ShadowDialog.getShownDialogs()
+                .filterIsInstance<AlertDialog>()
+                .lastOrNull { it.listView?.adapter?.count == expectedCount }
+                ?.let { return it }
+        }
+        fail("Saved-work dialog with $expectedCount entries was not shown")
+        throw AssertionError("unreachable")
     }
 
     private fun descendants(view: View): List<View> = listOf(view) +
