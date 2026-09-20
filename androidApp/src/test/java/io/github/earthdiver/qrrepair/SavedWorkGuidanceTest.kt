@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class SavedWorkGuidanceTest {
-    @Test fun retentionNoticeDoesNotHideSavedWorkInEitherStyleOrLanguage() {
+    @Test fun savedWorkExplainsRetentionAndIndividualDeletionInEitherStyleOrLanguage() {
         for (style in AppStyle.entries) for (language in AppLanguage.entries) {
             val context = RuntimeEnvironment.getApplication()
             AppStylePreferences.save(context, style)
@@ -35,6 +35,9 @@ class SavedWorkGuidanceTest {
                 store.save("guidance", UiMode.SIMPLE, listOf(RecoveryHistoryEntry(
                     kind = HistoryEventKind.IMPORT, label = "Synthetic work",
                     snapshot = RecoverySnapshot(null, null, null, -1))), 0)
+                store.save("keep-other-work", UiMode.SIMPLE, listOf(RecoveryHistoryEntry(
+                    kind = HistoryEventKind.IMPORT, label = "Other synthetic work",
+                    snapshot = RecoverySnapshot(null, null, null, -1))), 0)
                 MainActivity::class.java.getDeclaredMethod("showRecentSessions").apply { isAccessible = true }.invoke(activity)
                 val io = MainActivity::class.java.getDeclaredField("ioExecutor").apply { isAccessible = true }
                     .get(activity) as ExecutorService
@@ -42,10 +45,29 @@ class SavedWorkGuidanceTest {
                 shadowOf(Looper.getMainLooper()).idle()
                 val dialog = ShadowDialog.getLatestDialog() as AlertDialog
                 assertTrue(dialog.listView.isShown)
-                assertEquals(1, dialog.listView.adapter.count)
+                assertEquals(2, dialog.listView.adapter.count)
                 val labels = descendants(dialog.window!!.decorView).filterIsInstance<TextView>().map { it.text.toString() }
                 assertTrue(labels.contains(activity.getString(R.string.saved_work_retention, RecoverySessionStore.MAX_SAVED_SESSIONS)))
-                dialog.dismiss()
+                assertTrue(labels.contains(activity.getString(R.string.saved_work_actions_hint)))
+                val list = dialog.listView
+                val selectedIndex = (0 until list.adapter.count).single {
+                    list.adapter.getItem(it).toString().contains("Synthetic work")
+                }
+                assertTrue(list.onItemLongClickListener!!.onItemLongClick(list, list, selectedIndex, selectedIndex.toLong()))
+                shadowOf(Looper.getMainLooper()).idle()
+                val confirmation = ShadowDialog.getLatestDialog() as AlertDialog
+                assertNotSame(dialog, confirmation)
+                assertNotNull(store.load("guidance"))
+                confirmation.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+                repeat(2) {
+                    io.submit {}.get(30, TimeUnit.SECONDS)
+                    shadowOf(Looper.getMainLooper()).idle()
+                }
+                assertNull(store.load("guidance"))
+                assertNotNull(store.load("keep-other-work"))
+                val remaining = ShadowDialog.getLatestDialog() as AlertDialog
+                assertEquals(1, remaining.listView.adapter.count)
+                remaining.dismiss()
             } finally {
                 controller.pause().stop().destroy()
                 store.deleteAll()

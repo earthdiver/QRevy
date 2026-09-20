@@ -18,9 +18,10 @@
     <string name="select_image_prompt">Select an image.</string>
     <string name="initial_guide">Guide: Select an image, then review the settings under “Repair.”</string>
     <string name="no_content_preview">Content preview: No repair result.</string>
+    <string name="saved_work_actions_hint">Tap an item to resume it. Touch and hold an item to delete only that work.</string>
     <string name="saved_work_retention">Imports are saved automatically. Saved work limit: %1$d. Beyond this limit, new imports delete the least recently saved work and its source image.</string>
     <string name="recent_work">Recent work</string>
-    <string name="recent_work_select_format">Recent work (%1$d/%2$d) — tap to resume, touch and hold to delete</string>
+    <string name="recent_work_select_format">Recent work (%1$d/%2$d)</string>
     <string name="delete_recent_work">Delete saved work</string>
     <string name="delete_recent_work_message">Delete this saved work and its source image? This cannot be undone.</string>
     <string name="delete">Delete</string>

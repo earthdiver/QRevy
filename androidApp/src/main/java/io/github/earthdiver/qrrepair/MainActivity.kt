@@ -1696,6 +1696,11 @@ class MainActivity : Activity() {
                     addView(TextView(this@MainActivity).apply {
                         textSize = 14f
                         setPadding(0, dp(8), 0, 0)
+                        setText(R.string.saved_work_actions_hint)
+                    })
+                    addView(TextView(this@MainActivity).apply {
+                        textSize = 14f
+                        setPadding(0, dp(8), 0, 0)
                         text = getString(R.string.saved_work_retention, RecoverySessionStore.MAX_SAVED_SESSIONS)
                     })
                 }
