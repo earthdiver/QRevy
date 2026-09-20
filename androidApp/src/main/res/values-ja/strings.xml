@@ -32,7 +32,7 @@
     </plurals>
     <string name="all_recent_work_deleted">保存済み作業をすべて削除しました。</string>
     <string name="version_info">バージョン情報</string>
-    <string name="licenses_privacy">ライセンス / Privacy</string>
+    <string name="licenses_privacy">ライセンス / プライバシー</string>
     <string name="language">言語 / Language</string>
     <string name="language_dialog_title">言語 / Language</string>
     <string name="language_english">English</string>
