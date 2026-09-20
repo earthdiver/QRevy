@@ -20,7 +20,7 @@ Do not attach a real sensitive QR image, decoded payload, QRR session, applicati
 
 ## Session file hardening
 
-Current sessions use bounded QRR schema 12 with SHA-256 integrity verification and GZIP compression. The decoder retains explicit compatibility with schemas 9 through 11; earlier schemas are rejected. Decoding validates QR dimensions, enums, coordinates, confidence values, geometry values, counts, priority-search markers, preprocessing settings, and total sizes before reconstructing state. Invalid session files are quarantined rather than loaded.
+Current sessions use bounded QRR schema 18 with SHA-256 integrity verification and GZIP compression. The decoder retains explicit compatibility with schemas 9 through 17; earlier schemas are rejected. Decoding validates QR dimensions, enums, coordinates, confidence values, geometry values, counts, priority-search markers, preprocessing settings, and total sizes before reconstructing state. Invalid session files are quarantined rather than loaded.
 
 Source images are stored under `noBackupFilesDir` as content-addressed lossless PNG files. The PNG is written and synced first; an atomic `source.ref` pointer is switched only after the content is durable. Restore verifies the pointer format, expected filename, SHA-256, byte-size limit, image dimensions, and pixel count before decoding. Early-v0.6 `source.png + source.sha256` and v0.5 `source.jpg` are read only for migration compatibility.
 
