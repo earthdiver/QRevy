@@ -92,7 +92,7 @@ These estimates are editable starting values, not proof of recovery. If every es
 
 Physical corner positions and the choice of logical coordinate `(0, 0)` are separate. A grid derived from ZXing-C++ can automatically assign Finder centers and roles through the following gate: at most 2/49 mismatches per Finder, 1/15 per white separator, 5% timing mismatch, a score gap of at least 0.08 including rejected alternatives, and at least two pixels per module along every edge. Samples offset by 0.25 module in each axial direction must also have at most 2/49 mismatches per Finder. Weaker native grids and periodicity estimates do not assign roles automatically. Two-Finder estimates use the separate conditions above.
 
-Automatic assignment runs only on new image import and is recorded in history. Saved Finder assignments are not re-estimated. Press **Clear** and tap a green Finder to remove its assignment; clearing all roles also unassigns logical orientation. Corners and cell edits are retained, and cells are not marked as manually specified. The thresholds are heuristics, not probabilities. See the [implementation and validation record (Japanese)](ZXING_CPP_INTEGRATION.ja.md) for details.
+Automatic assignment runs only on new image import and is recorded in history. Saved Finder assignments are not re-estimated. Press **Clear** and tap a green Finder to remove its assignment; clearing all roles also unassigns logical orientation. Corners and cell edits are retained, and cells are not marked as manually specified. The thresholds are heuristics, not probabilities. See the [implementation and validation record](ZXING_CPP_INTEGRATION.en.md) for details.
 
 ### 2.3 Manual Finder-role assignment
 

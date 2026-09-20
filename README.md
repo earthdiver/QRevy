@@ -74,7 +74,7 @@ The permanent application ID is `io.github.earthdiver.qrrepair`. Release signing
 - [Recovery strategy](docs/RECOVERY_STRATEGY.en.md)
 - [User guide](docs/USER_GUIDE.en.md)
 - [Detector library comparison (Japanese)](docs/DETECTOR_COMPARISON.ja.md)
-- [Initial grid estimation and automatic Finder assignment (Japanese)](docs/ZXING_CPP_INTEGRATION.ja.md)
+- [Initial grid estimation and automatic Finder assignment](docs/ZXING_CPP_INTEGRATION.en.md)
 - [Synthetic geometry-search comparison](docs/GEOMETRY_SEARCH_STUDY.en.md)
 - [Understanding recovery result fields](docs/RECOVERY_RESULT_FIELDS.en.md)
 - [Understanding decode and repair reasons](docs/REPAIR_REASONS.en.md)

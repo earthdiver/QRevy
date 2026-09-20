@@ -21,8 +21,10 @@ Prefer an image containing the complete QR and, when possible, its surrounding q
 1. Rotate in 90°, 1°, or 0.1° increments when needed.
 2. Crop to the QR region.
 3. Review the estimated corners and version.
-4. Review the black/unknown/white thresholds so gray damage remains `?` where appropriate. **Set thresholds automatically** starts checked for a new image and updates one global pair when the grid changes. Moving either threshold slider unchecks it; unchecking it directly keeps the current values. With it unchecked, both values remain manual during corner adjustment and repair fine-tuning. Checking it again recalculates the thresholds. Reopening a session restores its saved checkbox state. Unstable sampling also produces `?`; fixed and tentative cell edits are retained.
+4. Review the black/unknown/white thresholds so gray damage remains `?` where appropriate.
 5. Enable **Treat detected color clusters as unknown (?)** only when colored damage should be treated as unknown. It starts disabled.
+
+**Set thresholds automatically** is enabled by default for a new image. While enabled, the app recalculates one global threshold pair when the grid changes. Moving either slider switches to manual thresholds; turning the option off directly keeps the current pair. Manual thresholds remain unchanged during corner adjustment and repair fine-tuning. Turn the option on again to recalculate them. A reopened session restores its saved mode and values. Unstable sampling can also produce `?`; fixed and tentative edits are not overwritten.
 
 Automatic estimates are starting values, not proof of the correct symbol. Align corners with the centers of the outer modules and confirm that the selected version agrees with the number of cells along one side.
 
@@ -47,13 +49,21 @@ With exactly one assigned role and **Automatically fine-tune sampling position**
 | `?` | Unknown | Treat a weak observation as an erasure |
 | `*` | Keep value `?`, but prioritize bounded 0/1 search | Mark at most four cells to try first if ordinary erasure handling fails |
 
-Choose **From image / Tentative (correctable) / Fixed (no correction)** from the source button. Changing an image-derived value to a different 0/1 makes it Fixed; entering the image value again keeps it Fixed. You can also fix the current image-derived 0/1 without changing it. Tentative keeps the edited value as recovery input but allows correction; changing a tentative 0/1 to another 0/1 keeps it tentative. Changing `?` or `*` to 0/1 makes it Fixed. From image removes the override and resamples with the current thresholds. Fixed and tentative edits survive threshold changes, Undo/Redo, and saving.
+Choose a source for the selected cells:
+
+| Source | Behavior during recovery |
+| --- | --- |
+| **From image** | Remove the edit and resample with the current thresholds |
+| **Tentative (correctable)** | Keep the edited value as input, but allow recovery to correct it |
+| **Fixed (no correction)** | Protect the edited 0/1 from conflicting candidates by default |
+
+Changing an image-derived value to a different 0/1 makes it Fixed; entering the image value again does not remove that designation. You can also fix the current image-derived 0/1 without changing it. Editing a tentative 0/1 keeps it tentative, while changing `?` or `*` to 0/1 makes it Fixed. Fixed and tentative edits survive threshold changes, Undo/Redo, and saving.
 
 In the enlarged cell editor, dragging or pinching temporarily hides cell symbols and overlays, leaving the image and QR boundary visible. The overlays return when all fingers are lifted or the gesture is canceled. Cell values and edits are unchanged.
 
 Cyan solid squares mark fixed cells; dashed squares mark tentative cells. Yellow circles mark selections. **Highlight edited cells** includes both kinds and changes only the overlay. The menu also applies to multiple selected cells. `?` is image-derived or tentative; `*` is always tentative. Neither can be Fixed.
 
-**Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)** in advanced settings defaults to OFF. OFF rejects candidates that conflict with fixed 0/1 values. ON retains their fixed designation, input values, and solid outlines while allowing correction during recovery. Switching it OFF protects the fixed values again. As with tentative values, correction remains subject to format and data/ECC error limits. Explicit ECC/mask/version selections and consistency checks between fixed cells and explicit selections remain enforced.
+**Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)** in advanced settings defaults to OFF. Turning it ON is an explicit exception to the normal Fixed behavior: the cells retain their Fixed provenance, input values, and solid outlines, but recovery may correct them as if they were tentative. Turning it OFF protects those values again. Either way, format and data/ECC error limits, explicit ECC/mask/version selections, and consistency checks between fixed cells and explicit selections remain enforced.
 
 Assign the four corner positions and roles before marking `*`. Fixed structures such as finder/alignment patterns and format information, and remainder bits, cannot be marked. Selecting an ineligible cell displays its type and coordinates. If a selection includes any ineligible cell, no cells in that selection are marked.
 
@@ -85,7 +95,7 @@ Review results in this order:
 
 Open diagnostics with **Show detailed results**, then tap a cell to inspect provenance. **Show same Codeword** highlights the other cells in its eight-bit codeword. When multiple candidates remain, compare their content and candidate-agreement scope.
 
-On the recovery result screen, **Analyze additional segments after terminator** appears below the diagnostics as a secondary text button only when error-correction candidates were rejected because the QR data structure did not validate. It parses the data immediately after the four-bit terminator identified from the payload structure as QR segments (preserving ECI and FNC1 context).
+On the recovery result screen, **Analyze additional segments after terminator** appears below the diagnostics only when error-correction candidates were rejected because the QR data structure did not validate. It parses the data immediately after the four-bit terminator identified from the payload structure as QR segments, preserving ECI and FNC1 context. This is diagnostic evidence only: it does not make a rejected candidate valid, and any displayed content still requires independent verification.
 
 ## 7. Save, resume, and export
 
