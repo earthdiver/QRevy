@@ -1685,11 +1685,23 @@ class MainActivity : Activity() {
                 val labels = recent.map {
                     "${DateFormat.format("MM/dd HH:mm", Date(it.updatedAtMs))}  ${it.lastLabel.ifBlank { ui("QR修復", "QR repair") }}  (${it.historyCount}${ui("履歴", " entries")})"
                 }.toTypedArray()
+                val title = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(24), dp(16), dp(24), dp(8))
+                    addView(TextView(this@MainActivity).apply {
+                        textSize = 20f
+                        text = if (modernStyle) getString(R.string.saved_work) + " (${recent.size}/${RecoverySessionStore.MAX_SAVED_SESSIONS})"
+                            else getString(R.string.recent_work_select_format, recent.size, RecoverySessionStore.MAX_SAVED_SESSIONS)
+                    })
+                    addView(TextView(this@MainActivity).apply {
+                        textSize = 14f
+                        setPadding(0, dp(8), 0, 0)
+                        text = getString(R.string.saved_work_retention, RecoverySessionStore.MAX_SAVED_SESSIONS)
+                    })
+                }
                 val dialog = AlertDialog.Builder(this)
-                    // AlertDialog does not attach its ListView when both a message and setItems
-                    // are supplied. Keep the guidance in the title so the saved sessions remain
-                    // visible and tappable.
-                    .setTitle(if (modernStyle) getString(R.string.saved_work) + " (${recent.size}/${RecoverySessionStore.MAX_SAVED_SESSIONS})" else getString(R.string.recent_work_select_format, recent.size, RecoverySessionStore.MAX_SAVED_SESSIONS))
+                    // Keep guidance outside setMessage, which would hide the session ListView.
+                    .setCustomTitle(title)
                     .setItems(labels) { _, which -> restoreSessionById(recent[which].id) }
                     .setNeutralButton(R.string.delete_all) { _, _ -> confirmDeleteAllRecentSessions(recent.size) }
                     .setNegativeButton(R.string.close, null)

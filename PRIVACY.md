@@ -6,13 +6,14 @@ QR Repair is designed for local, on-device processing.
 
 | Data | When it exists | Storage or destination | Removal or retention |
 | --- | --- | --- | --- |
-| Imported image | While editing; persisted only when a repair session is saved | App-private `noBackupFilesDir` as a lossless content-addressed PNG | Removed with the saved session through the app's deletion flow |
+| Imported image or image rendered from matrix text | Automatically persisted when import is accepted, before Save or Repair is pressed | App-private `noBackupFilesDir` as a lossless content-addressed PNG | Removed with its session by user deletion or automatic removal beyond the 20-session limit |
 | Camera hand-off JPEG | Between camera capture and import | App-private cache | Deleted after import or failure; stale matching files are purged on next startup |
-| QRR repair session | After the user saves work | App-private `noBackupFilesDir` | Retained until the user deletes the saved work or app data |
+| QRR repair session | Automatically created on import; updated when work is saved or repair runs | App-private `noBackupFilesDir` | Up to 20 sessions, ordered by most recent save; older sessions and their source images are automatically deleted when the limit is exceeded, or removed by user deletion |
 | Recovered image or other export | Only after an explicit export action | Destination selected or authorized by the user | Controlled by the destination rather than QR Repair's private storage |
 
 - The app does not request the Internet permission.
-- Repair sessions and source images are stored under Android's app-private `noBackupFilesDir`. Imported/captured source images are persisted as lossless, content-addressed PNG files only when a repair session is saved.
+- Repair sessions and source images are stored under Android's app-private `noBackupFilesDir`. Imported/captured images and images rendered from matrix text are automatically persisted as lossless, content-addressed PNG files as soon as import is accepted, even without pressing Save or Repair.
+- Saved work keeps at most 20 sessions. Saving a new session beyond this limit automatically deletes the least recently saved session and its source image. The limit is also enforced on startup. To remove an individual session sooner, open Saved work and touch and hold its entry, then confirm deletion; Delete all removes every saved session.
 - Legacy version 0.5 sessions previously stored under app-private `filesDir` are migrated to the no-backup area on a best-effort basis when opened.
 - Automatic Android cloud backup and device-transfer backup are disabled/excluded because QR content may contain sensitive data such as Wi-Fi credentials, contact information, authentication URLs, or other private text. Manifest backup settings and XML exclusion rules remain defense-in-depth in addition to the no-backup storage location.
 - Recovered URLs are never opened automatically.

@@ -18,6 +18,7 @@
     <string name="select_image_prompt">画像を選択してください。</string>
     <string name="initial_guide">案内: 画像を選択後、「修復する」から設定を確認してください。</string>
     <string name="no_content_preview">内容プレビュー: 修復結果はありません。</string>
+    <string name="saved_work_retention">読込み時に自動保存します。最大%1$d件を保持し、新しい読込みで上限を超えると最終保存日時が古い作業と元画像を自動削除します。</string>
     <string name="recent_work">最近の作業</string>
     <string name="recent_work_select_format">最近の作業（%1$d/%2$d件）— タップで再開、長押しで削除</string>
     <string name="delete_recent_work">保存済み作業を削除</string>
