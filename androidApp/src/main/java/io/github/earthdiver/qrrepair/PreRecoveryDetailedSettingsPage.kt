@@ -21,10 +21,9 @@ internal class PreRecoveryDetailedSettingsPage(
     buttonFactory: (String, () -> Unit) -> Button,
     scrollRow: (Array<out View>) -> View,
     polarity: RadioGroup,
-    localThreshold: CheckBox,
     searchQuadNeighborhood: CheckBox,
     trustKnownPayloadCount: CheckBox,
-    lockManualBits: CheckBox,
+    allowFixedCorrections: CheckBox,
     formatMismatchLimitControl: View,
     dataEccMismatchLimitControl: View,
     actions: DetailedSettingsPageActions,
@@ -45,7 +44,6 @@ internal class PreRecoveryDetailedSettingsPage(
             )))
             addView(TextView(context).apply { setText(R.string.thresholding) })
             addView(polarity)
-            addView(localThreshold)
             addView(searchQuadNeighborhood)
             addView(TextView(context).apply {
                 setText(R.string.geometry_search_note)
@@ -56,11 +54,7 @@ internal class PreRecoveryDetailedSettingsPage(
                 setText(R.string.payload_header_trust_note)
                 textSize = 12f
             })
-            addView(lockManualBits)
-            addView(TextView(context).apply {
-                setText(R.string.manual_bit_lock_note)
-                textSize = 12f
-            })
+            addView(allowFixedCorrections)
             addView(formatMismatchLimitControl)
             addView(dataEccMismatchLimitControl)
             addView(buttonFactory(context.getString(R.string.save_debug_input), actions.saveDiagnosticInput))

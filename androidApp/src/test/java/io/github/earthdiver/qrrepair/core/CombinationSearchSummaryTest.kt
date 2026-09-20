@@ -69,10 +69,12 @@ class CombinationSearchSummaryTest {
         }
         val engine = RecoveryEngine()
         val results = engine.recover(matrix, maxKnownDataEccMismatches = 0)
-        assertEquals(4096, results.size)
+        assertEquals(256, results.size)
+        assertTrue(results.all { it.searchDiagnostic?.candidatesOmitted == true })
         assertTrue(results.all { it.payloadParsed && CombinationSearchStop.SUCCESS_WINDOW in it.combinationSearch.stops })
         val clean = engine.recover(source, maxKnownDataEccMismatches = 0).single()
         assertTrue(clean.combinationSearch.stops.isEmpty())
         assertEquals(1, clean.combinationSearch.passes)
+        assertFalse(clean.searchDiagnostic!!.candidatesOmitted)
     }
 }

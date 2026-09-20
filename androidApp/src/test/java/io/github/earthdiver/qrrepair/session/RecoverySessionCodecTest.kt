@@ -58,7 +58,7 @@ class RecoverySessionCodecTest {
         val settings = PreprocessSettings(
             rotationDegrees = -1.5f,
             polarity = PolarityMode.INVERTED,
-            thresholdMode = ThresholdMode.GLOBAL,
+            automaticThresholds = false,
             blackMax = 72,
             whiteMin = 181,
             quietZoneCorrection = false,
@@ -89,6 +89,57 @@ class RecoverySessionCodecTest {
         val decoded = RecoverySessionCodec.decode(RecoverySessionCodec.encode(payload))
 
         assertEquals(settings, decoded.historyEntries.single().snapshot.preprocessSettings)
+    }
+
+    @Test fun roundTripPreservesAutomaticModeAndIndependentFallback() {
+        val settings = PreprocessSettings(automaticThresholds = true, blackMax = 117, whiteMin = 118,
+            provisionalBlackMax = 96, provisionalWhiteMin = 160)
+        val payload = settingsPayload(settings)
+        assertEquals(settings, RecoverySessionCodec.decode(RecoverySessionCodec.encode(payload))
+            .historyEntries.single().snapshot.preprocessSettings)
+    }
+
+    @Test fun legacyGlobalAndLocalSettingsKeepTheirSavedPairAsManual() {
+        for (mode in 0..1) {
+            val settings = RecoverySessionCodec.decode(legacyThresholdSettings(mode))
+                .historyEntries.single().snapshot.preprocessSettings!!
+            assertEquals(false, settings.automaticThresholds)
+            assertEquals(72, settings.blackMax)
+            assertEquals(181, settings.whiteMin)
+            assertEquals(72, settings.provisionalBlackMax)
+            assertEquals(181, settings.provisionalWhiteMin)
+        }
+    }
+
+    @Test fun invalidLegacyThresholdModeRemainsRejected() {
+        assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) {
+            RecoverySessionCodec.decode(legacyThresholdSettings(2))
+        }
+    }
+
+    private fun settingsPayload(settings: PreprocessSettings) = RecoverySessionCodec.Payload(
+        "threshold-settings", 2L, UiMode.ANALYSIS, listOf(RecoveryHistoryEntry(kind = HistoryEventKind.SETTINGS,
+            label = "thresholds", snapshot = RecoverySnapshot(null, null, null, -1, settings))), 0)
+
+    private fun legacyThresholdSettings(mode: Int): ByteArray {
+        val current = RecoverySessionCodec.encode(settingsPayload(PreprocessSettings(blackMax = 72, whiteMin = 181)))
+        val raw = java.util.zip.GZIPInputStream(java.io.ByteArrayInputStream(current, 48, current.size - 48)).readBytes().let {
+            it.copyOf(it.size - 11) // Remove schema 18 thresholds and schema 19 optional selection metadata.
+        }
+        val bytes = java.io.ByteArrayInputStream(raw)
+        val input = java.io.DataInputStream(bytes)
+        input.readUTF(); input.readLong(); repeat(3) { input.readInt() }
+        input.readUTF(); input.readLong(); input.readInt(); input.readUTF(); input.readUTF()
+        repeat(3) { assertEquals(false, input.readBoolean()) }
+        input.readInt(); assertEquals(true, input.readBoolean())
+        input.readFloat(); input.readInt()
+        val offset = raw.size - bytes.available()
+        java.nio.ByteBuffer.wrap(raw, offset, 4).putInt(mode)
+        val compressed = ByteArrayOutputStream().also { out -> GZIPOutputStream(out).use { it.write(raw) } }.toByteArray()
+        return ByteArrayOutputStream().also { buffer -> DataOutputStream(buffer).use { out ->
+            out.writeInt(0x5152523A); out.writeInt(17); out.writeInt(raw.size); out.writeInt(compressed.size)
+            out.write(java.security.MessageDigest.getInstance("SHA-256").digest(raw)); out.write(compressed)
+        } }.toByteArray()
     }
 
     @Test fun tamperingIsRejectedByChecksum() {

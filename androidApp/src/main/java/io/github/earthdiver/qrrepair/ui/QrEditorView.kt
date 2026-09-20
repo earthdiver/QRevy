@@ -75,6 +75,7 @@ class QrEditorView(context: Context) : View(context) {
             rangeStart = null
             rangeEnd = null
             editGestureCancelledByMultiTouch = false
+            navigatingViewport = false
             invalidate()
         }
 
@@ -102,6 +103,7 @@ class QrEditorView(context: Context) : View(context) {
     private var rangeEnd: Coord? = null
     private var editGestureCancelledByMultiTouch = false
     private var pendingClickCell: Coord? = null
+    private var navigatingViewport = false
 
     private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val manualCellMarker = ManualCellMarker()
@@ -147,6 +149,13 @@ class QrEditorView(context: Context) : View(context) {
     }
 
     private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
+            if (draggingCorner != null) return false
+            navigatingViewport = true
+            invalidate()
+            return true
+        }
+
         override fun onScale(detector: ScaleGestureDetector): Boolean {
             if (draggingCorner != null) return false
             val old = viewScale
@@ -165,6 +174,7 @@ class QrEditorView(context: Context) : View(context) {
         override fun onDown(e: MotionEvent): Boolean = true
         override fun onScroll(e1: MotionEvent?, e2: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
             if (scaleDetector.isInProgress || draggingCorner != null || editorTool != EditorTool.NAVIGATE) return false
+            navigatingViewport = true
             offsetX -= distanceX; offsetY -= distanceY; invalidate(); return true
         }
         override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
@@ -333,6 +343,13 @@ class QrEditorView(context: Context) : View(context) {
             boundaryPath.close()
             canvas.drawPath(boundaryPath, boundaryPaint)
 
+            // Navigation changes only the viewport. Skip the cell-sized overlay loops until
+            // all fingers are released, including the one-finger tail after a pinch.
+            if (navigatingViewport) {
+                canvas.restore()
+                return
+            }
+
             if (heatmapEnabled) drawHeatmap(canvas, g, invScale)
 
             val onScreenPitch = g.localModulePitch() * viewScale
@@ -349,7 +366,7 @@ class QrEditorView(context: Context) : View(context) {
             for (y in 0 until g.dimension) for (x in 0 until g.dimension) {
                 val cell = m[x, y]
                 val selected = selectedCells.any { it.x == x && it.y == y } || activeStroke.any { it.x == x && it.y == y }
-                if (highlightManualOnly && cell.source != ModuleSource.USER && !selected) continue
+                if (highlightManualOnly && !cell.source.isUserEdit && !selected) continue
                 val important = cell.value == ModuleValue.ERASED || cell.source != ModuleSource.IMAGE || selected
                 if (!important && !drawImageStates) continue
                 val p = g.moduleToImage(x.toDouble(), y.toDouble())
@@ -381,10 +398,10 @@ class QrEditorView(context: Context) : View(context) {
             // Draw provenance separately and last: selection, * and structure overlays must
             // not hide the fact that a value was explicitly assigned by the user.
             for (y in 0 until g.dimension) for (x in 0 until g.dimension) {
-                if (m[x, y].source != ModuleSource.USER) continue
+                if (!m[x, y].source.isUserEdit) continue
                 val point = g.moduleToImage(x.toDouble(), y.toDouble())
                 val halfSize = max(4f * invScale, (g.localModulePitch(x.toDouble(), y.toDouble()) * .38).toFloat())
-                manualCellMarker.draw(canvas, point.x.toFloat(), point.y.toFloat(), halfSize, 1.5f * invScale)
+                manualCellMarker.draw(canvas, point.x.toFloat(), point.y.toFloat(), halfSize, 1.5f * invScale, m[x, y].source == ModuleSource.USER_SOFT || m[x, y].value == ModuleValue.ERASED)
             }
 
             if (activeStroke.isNotEmpty() || previewRange.isNotEmpty()) {
@@ -532,6 +549,7 @@ class QrEditorView(context: Context) : View(context) {
 
     @android.annotation.SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) navigatingViewport = false
         if (cornerEditEnabled && geometry != null) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
@@ -678,6 +696,10 @@ class QrEditorView(context: Context) : View(context) {
 
         val scaleHandled = scaleDetector.onTouchEvent(event)
         val gestureHandled = gestureDetector.onTouchEvent(event)
+        if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            navigatingViewport = false
+            invalidate()
+        }
         return scaleHandled || gestureHandled || super.onTouchEvent(event)
     }
 

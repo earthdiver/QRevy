@@ -33,6 +33,7 @@ internal class PreRecoveryBasicSettingsPage(
     whiteSeekBar: SeekBar,
     useUnknownColors: CheckBox,
     scrollContentFooter: View? = null,
+    automaticThresholds: CheckBox? = null,
     private val actions: BasicSettingsPageActions,
 ) {
     private val nudgeSteps = listOf(.05, .10, .25, .50, 1.0)
@@ -74,6 +75,7 @@ internal class PreRecoveryBasicSettingsPage(
             )))
             addView(versionButton)
             addView(useUnknownColors)
+            automaticThresholds?.let { addView(it) }
             addView(blackLabel)
             addView(blackSeekBar)
             addView(whiteLabel)

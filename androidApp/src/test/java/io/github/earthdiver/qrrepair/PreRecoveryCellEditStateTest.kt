@@ -10,6 +10,19 @@ class PreRecoveryCellEditStateTest {
     private val a = Coord(2, 3)
     private val b = Coord(4, 5)
 
+    @Test fun priorityValidationAlsoRemovesInvalidMarksFromRedoHistory() {
+        val coord = Coord(24, 24)
+        val state = PreRecoveryCellEditState(emptyMap(), emptySet())
+        state.setPrioritySearch(listOf(coord))
+        state.undo()
+        state.rotateCoordinates(25, 1)
+        val allowed = io.github.earthdiver.qrrepair.core.QrCellRegions(2).codewordCoordinates
+        assertTrue(state.revalidatePrioritySearch { it in allowed }.isEmpty())
+        state.redo()
+        assertTrue(state.prioritySearch.isEmpty())
+        assertEquals(ModuleValue.ERASED, state.edits[Coord(24, 0)])
+    }
+
     @Test
     fun returningToImageValueKeepsManualSourceUntilExplicitlyRestored() {
         val state = PreRecoveryCellEditState(emptyMap(), emptySet())
@@ -32,7 +45,7 @@ class PreRecoveryCellEditStateTest {
     fun equalValueTapsDoNotCreateOverridesOrConsumeRedo() {
         for (baseline in ModuleValue.entries) {
             val state = PreRecoveryCellEditState(emptyMap(), emptySet())
-            state.makeManual(listOf(b)) { baseline }
+            state.setSource(listOf(b), if (baseline == ModuleValue.ERASED) CellEditSource.TENTATIVE else CellEditSource.FIXED) { baseline }
             state.undo()
             assertTrue(state.applyValues(listOf(a), baseline) { baseline }.isEmpty())
             assertTrue(state.edits.isEmpty())
@@ -112,12 +125,12 @@ class PreRecoveryCellEditStateTest {
         assertTrue(state.edits.isEmpty())
         assertEquals(0, state.undoCount)
         assertEquals(setOf(a, b), state.selectedCells)
-        val legacy = PreRecoveryCellEditState(mapOf(a to ModuleValue.ONE, b to ModuleValue.ONE), emptySet(),
+        val saved = PreRecoveryCellEditState(mapOf(a to ModuleValue.ONE, b to ModuleValue.ONE), emptySet(),
             validateEdits = { it.isEmpty() })
-        assertEquals(setOf(a), legacy.restoreImage(listOf(a)))
-        assertEquals(mapOf(b to ModuleValue.ONE), legacy.edits)
-        assertTrue(legacy.undo().isEmpty())
-        assertEquals(mapOf(b to ModuleValue.ONE), legacy.edits)
+        assertEquals(setOf(a), saved.restoreImage(listOf(a)))
+        assertEquals(mapOf(b to ModuleValue.ONE), saved.edits)
+        assertTrue(saved.undo().isEmpty())
+        assertEquals(mapOf(b to ModuleValue.ONE), saved.edits)
     }
 
     @Test

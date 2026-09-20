@@ -34,6 +34,7 @@ For compactness, the UI uses “Finder” for a finder pattern, “cell” for a
 - Per-cell repair explanations and same-codeword highlighting
 - Recovered-image export
 - Work history and session storage
+- Diagnostic analysis of additional QR segments after the terminator, including raw tail bits and correction provenance
 - Offline, on-device processing
 
 The supported symbol family is QR Code Model 2, versions 1 through 40. Model 1, Micro QR, and rMQR are unsupported.
@@ -42,7 +43,7 @@ The supported symbol family is QR Code Model 2, versions 1 through 40. Model 1, 
 
 1. Load an image, capture one with the camera, or import a QR matrix text file containing `0 / 1 / ? / *`.
 2. Rotate the image and crop the QR region when necessary.
-3. Review the estimated corners, version, and two-/three-class tone thresholds; adjust them if needed. Colored-unknown detection can be enabled in basic settings when needed and starts off.
+3. Review the estimated corners, version, and black/unknown/white thresholds; adjust them if needed. Unstable observations remain `?`. Colored-unknown detection can be enabled in basic settings when needed and starts off.
 4. Review Finder positions and roles, which are assigned automatically when image agreement is sufficient. To correct an assignment, press **Clear**, tap the green Finder, and assign the intended role.
 5. Adjust cells and search options in advanced settings when needed.
 6. Start recovery and inspect the decoded content and per-cell explanations.
@@ -73,7 +74,7 @@ The permanent application ID is `io.github.earthdiver.qrrepair`. Release signing
 - [Recovery strategy](docs/RECOVERY_STRATEGY.en.md)
 - [User guide](docs/USER_GUIDE.en.md)
 - [Detector library comparison (Japanese)](docs/DETECTOR_COMPARISON.ja.md)
-- [Initial grid estimation and automatic Finder assignment (Japanese)](docs/ZXING_CPP_INTEGRATION.ja.md)
+- [Initial grid estimation and automatic Finder assignment](docs/ZXING_CPP_INTEGRATION.en.md)
 - [Synthetic geometry-search comparison](docs/GEOMETRY_SEARCH_STUDY.en.md)
 - [Understanding recovery result fields](docs/RECOVERY_RESULT_FIELDS.en.md)
 - [Understanding decode and repair reasons](docs/REPAIR_REASONS.en.md)

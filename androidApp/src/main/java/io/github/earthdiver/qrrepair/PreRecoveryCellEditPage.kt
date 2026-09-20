@@ -16,7 +16,7 @@ internal data class CellEditPageActions(
     val move: (Int, Int) -> Unit,
     val setValue: (ModuleValue) -> Unit,
     val setPriority: () -> Unit,
-    val toggleSource: () -> Unit,
+    val changeSource: (CellEditSource) -> Unit,
     val undo: () -> Unit,
     val redo: () -> Unit,
     val selectMode: (EditorTool) -> Unit,
@@ -42,7 +42,7 @@ internal class PreRecoveryCellEditPage(
             PrecisionStyle.numbers(this)
         }
     }
-    val sourceControl = CellSourceControl(context, buttonFactory, actions.toggleSource)
+    val sourceControl = CellSourceControl(context, buttonFactory, actions.changeSource)
     val view: View = ScrollView(context).apply {
         isFillViewport = true
         addView(LinearLayout(context).apply {
@@ -114,7 +114,7 @@ internal data class LargeCellEditPageActions(
     val setTool: (EditorTool) -> Unit,
     val setValue: (ModuleValue) -> Unit,
     val setPriority: () -> Unit,
-    val toggleSource: () -> Unit,
+    val changeSource: (CellEditSource) -> Unit,
     val undo: () -> Unit,
     val redo: () -> Unit,
     val showCodewords: (Boolean) -> Unit,
@@ -139,7 +139,7 @@ internal class PreRecoveryLargeCellEditPage(
         textSize = 12f
         setPadding(dp(context, 8), 0, dp(context, 8), dp(context, 4))
     }
-    val sourceControl = CellSourceControl(context, buttonFactory, actions.toggleSource)
+    val sourceControl = CellSourceControl(context, buttonFactory, actions.changeSource)
     val view: View = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         addView(LinearLayout(context).apply {

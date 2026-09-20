@@ -31,6 +31,46 @@ class RecoveryDiagnosticPresentationTest {
         if (success) intArrayOf(1, 2) else null,
     )
 
+    @Test fun referenceDiagnosticDistinguishesSkippedFailedSuccessfulAndUnrecordedCalculations() = inBothLanguages { ja ->
+        fun section(diagnostic: ConventionalRsDiagnostic?) = initialDiagnosticSection(1, ErrorCorrectionLevel.M, 2,
+            "", null, null, null, diagnostic)
+        val skipped = conventional(false)
+        assertTrue(section(skipped).summary.contains(if (ja) "訂正計算を省略しました" else "correction was skipped"))
+        val mixed = skipped.copy(blocks = listOf(skipped.blocks.single(), conventional().blocks.single(),
+            skipped.blocks.single().copy(status = ConventionalRsStatus.CORRECTION_FAILED)))
+        val report = section(mixed)
+        assertTrue(report.summary.contains(if (ja) "訂正結果あり：1ブロック" else "Correction result: 1 blocks"))
+        assertTrue(report.summary.contains(if (ja) "計算したが訂正結果なし：1ブロック" else "correction attempted without a result: 1 blocks"))
+        assertTrue(report.details.contains(if (ja) "12個がECCの10個を超える" else "12 codewords contain unknown bits, exceeding 10"))
+        assertTrue(section(null).summary.contains(if (ja) "結果は記録されていません" else "was not recorded"))
+        assertFalse(section(null).summary.contains(if (ja) "省略しました" else "was skipped"))
+    }
+
+    @Test fun zeroLimitPolicyAndReferenceResultDoNotClaimTheSameExecution() = inBothLanguages { ja ->
+        val settings = RecoveryDisplayConditions(true, false, null, null, 0)
+        assertTrue(settings.candidateCalculationPolicyText().contains(if (ja) "部分bit制約を使う設定" else "configured to use partial-bit constraints"))
+        assertTrue(settings.runSettingsText().contains(if (ja) "完全に一致する候補だけ" else "matching every entered"))
+        assertTrue(settings.runSettingsText().contains(if (ja) "固定セルとの矛盾を許容していても" else "does not override"))
+        val input = initialDiagnosticSection(1, ErrorCorrectionLevel.M, 2, "", null, null, null, conventional(), conditions = settings)
+        assertTrue(input.summary.contains(if (ja) "別に評価しています" else "separately from calculating recovery candidates"))
+        assertEquals("", settings.copy(dataEccLimit = 1).candidateCalculationPolicyText())
+        assertEquals("", (null as RecoveryDisplayConditions?).candidateCalculationPolicyText())
+    }
+
+    @Test fun finalResultsSeparateNotFoundFromUnsearchedAndMixedRejectionReasons() = inBothLanguages { ja ->
+        val settings = RecoveryDisplayConditions(false, true, null, null, 2)
+        val mixed = RecoverySearchDiagnostic(candidateRejections = setOf(
+            RecoveryCandidateRejection.FIXED_CELLS, RecoveryCandidateRejection.MISMATCH_LIMIT))
+        assertTrue(mixed.failureExplanation(settings).contains(if (ja) "不一致上限を超えるものや" else "exceeded the mismatch limit or"))
+        assertEquals("", mixed.copy(unsearched = true).failureExplanation(settings))
+        assertEquals("", mixed.copy(acceptedCandidate = true).failureExplanation(settings))
+        assertTrue(searchResultText(0, false).contains(if (ja) "見つかりませんでした" else "was found"))
+        assertFalse(searchResultText(0, false).contains(if (ja) "候補はありません" else "No RS candidate meets"))
+        assertTrue(searchResultText(0, true).contains(if (ja) "未探索" else "unchecked"))
+        assertTrue(searchResultText(2, true).contains(if (ja) "ほかにも候補" else "additional candidates"))
+        assertTrue(searchResultText(2, false).contains(if (ja) "2件" else "2 recovery candidates"))
+    }
+
     @Test fun successfulConventionalCalculationKeepsInconsistentBitAnalysisInDetails() = inBothLanguages { ja ->
         val section = initialDiagnosticSection(1, ErrorCorrectionLevel.M, 2, "",
             RsBitDiagnostic(16, 0, null, 0, emptyList()), null, 2, conventional())

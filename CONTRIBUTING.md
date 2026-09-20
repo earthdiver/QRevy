@@ -15,6 +15,7 @@ Thank you for helping improve QR Repair. Contributions should preserve explainab
 - Preserve provenance for inferred, corrected, and user-edited modules.
 - Preserve manual `0 / 1 / ?` edits and hard constraints.
 - Do not silently weaken QRR validation, backup exclusions, source-image integrity checks, or bounded-search diagnostics.
+- When changing the QRR schema or supported versions, update both `SECURITY.md` and `SECURITY.ja.md` and retain compatibility/validation tests for every supported input format.
 - Confidence values are explanatory heuristics, not probabilities.
 
 ## Platform boundary

@@ -20,7 +20,7 @@ class GeometryNeighborhoodExpandedRegressionTest {
     )
 
     @Test
-    fun comparesTransformFamiliesWidthPairsAndOneFinderRotation() {
+    fun exactWidthCorrectionsAndOneFinderRotationRecoverSupportedPerturbations() {
         val casesByWidth = widths.associateWith { linkedSetOf<String>() }
         val familyWins = widths.associateWith { width ->
             Family.entries.associateWith { linkedSetOf<String>() }.toMutableMap()
@@ -46,6 +46,7 @@ class GeometryNeighborhoodExpandedRegressionTest {
                             }
                         }
                         if (any) casesByWidth.getValue(searchWidth) += caseId
+                        if (searchWidth == injectedWidth) assertTrue("Exact-width correction failed: $caseId", any)
                     }
                 }
 
@@ -100,14 +101,14 @@ class GeometryNeighborhoodExpandedRegressionTest {
             append(" withRotation=").append(rotationCasesByWidth.mapValues { it.value.size })
         }
         assertEquals(report, 216, ordinaryCaseCount)
-        assertEquals(report, casesByWidth.values.maxOf { it.size }, casesByWidth.getValue(0.6).size)
-        assertEquals(report, ordinaryCaseCount, pairScores.getValue(0.3 to 0.6))
-        assertEquals(report, pairScores.values.maxOrNull(), pairScores[0.3 to 0.6])
+        // Stability-aware sampling can change which width wins on a displaced, narrow patch.
+        // The default must improve on the input; complementary widths must cover every case.
+        assertTrue(report, casesByWidth.getValue(0.6).size > baselineCases.size)
+        assertEquals(report, ordinaryCaseCount, pairScores.values.maxOrNull())
         assertTrue(report, familyBeyondBaseline.getValue(Family.DIAGONAL).size >=
             familyBeyondBaseline.getValue(Family.AXIS).size)
         assertEquals(report, 72, rotationCaseCount)
-        // Partial-bit RS now also recovers all 72 ordinary 0.6-width rotation cases. Additional
-        // rotation hypotheses must never regress that result and must still help at some width.
+        assertEquals(report, rotationCaseCount, rotationCasesByWidth.getValue(0.6).size)
         assertTrue(report, rotationCasesByWidth.getValue(0.6).size >=
             rotationCasesWithoutRotation.getValue(0.6).size)
         assertTrue(report, widths.any { rotationCasesByWidth.getValue(it).size > rotationCasesWithoutRotation.getValue(it).size })
@@ -225,7 +226,7 @@ class GeometryNeighborhoodExpandedRegressionTest {
                     manualQuad = truth,
                     blackMax = 80,
                     whiteMin = 175,
-                    thresholdMode = ThresholdMode.GLOBAL,
+                    automaticThresholds = false,
                 ),
                 inverted = false,
             ),

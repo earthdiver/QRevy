@@ -183,7 +183,8 @@ class PrecisionDesignTest {
             fun <T : View> view(type: Class<T>): T = allViews(root).filter { type.isInstance(it) }.map { type.cast(it) }.first()!!
             val overlay = view(PreprocessOverlayView::class.java)
             overlay.onEditCellSelected?.invoke(10, 10)
-            find(root, activity.getString(R.string.cell_make_manual))!!.performClick()
+            find(root, activity.getString(R.string.cell_source_menu, activity.getString(R.string.cell_source_image)))!!.performClick()
+            org.robolectric.shadows.ShadowPopupMenu.getLatestPopupMenu().menu.performIdentifierAction(CellEditSource.FIXED.ordinal, 0)
             val focus = find(root, activity.getString(R.string.highlight_manual_only)) as CheckBox
             focus.performClick()
             assertTrue(overlay.highlightManualOnly)
@@ -325,7 +326,8 @@ class PrecisionDesignTest {
             val root = editor.window!!.decorView
             val overlay = allViews(root).filterIsInstance<PreprocessOverlayView>().single()
             overlay.onEditCellSelected!!.invoke(10, 10)
-            find(root, activity.getString(R.string.cell_make_manual))!!.performClick()
+            find(root, activity.getString(R.string.cell_source_menu, activity.getString(R.string.cell_source_image)))!!.performClick()
+            org.robolectric.shadows.ShadowPopupMenu.getLatestPopupMenu().menu.performIdentifierAction(CellEditSource.FIXED.ordinal, 0)
             val count = "変更操作: 1回・変更セル: 1セル　やり直し: 0回"
             assertNotNull(find(root, count))
             fun tabRect(view: View): android.graphics.Rect {
@@ -442,19 +444,27 @@ class PrecisionDesignTest {
         val activity = controller.get()
         try {
             val state = field<RecoveryUiState>(activity, "recoveryState")
-            val matrix = io.github.earthdiver.qrrepair.core.QrMatrix(21)
+            val fixtures = listOf("first", "second").map { text ->
+                val encoded = com.google.zxing.qrcode.encoder.Encoder.encode(text,
+                    com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.M)
+                val matrix = io.github.earthdiver.qrrepair.core.QrMatrix(encoded.matrix.width)
+                for (y in 0 until matrix.dimension) for (x in 0 until matrix.dimension) {
+                    matrix.set(x, y, if (encoded.matrix.get(x, y).toInt() == 1)
+                        io.github.earthdiver.qrrepair.core.ModuleValue.ONE else io.github.earthdiver.qrrepair.core.ModuleValue.ZERO,
+                        1f, io.github.earthdiver.qrrepair.core.ModuleSource.IMAGE)
+                }
+                val candidate = io.github.earthdiver.qrrepair.core.RecoveryEngine().recover(matrix,
+                    formatConstraint = io.github.earthdiver.qrrepair.core.QrFormatConstraint(encoded.ecLevel, encoded.maskPattern))
+                    .first { it.text == text }
+                matrix to candidate
+            }
+            val matrix = fixtures.first().first
             state.sourceMatrix = matrix
             state.workingMatrix = matrix
             state.geometry = io.github.earthdiver.qrrepair.core.GridGeometry(
                 1, io.github.earthdiver.qrrepair.core.FinderRole.TOP_LEFT, 10.0, 10.0, 2.0, 0.0,
             )
-            state.recoveries = listOf("first", "second").mapIndexed { index, text ->
-                io.github.earthdiver.qrrepair.core.RecoveryCandidate(
-                    1, com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.M, index, text,
-                    byteArrayOf(0x40, 0x14, 0x10), 15, 0, 0, 0, 0, 0, 8, intArrayOf(),
-                    io.github.earthdiver.qrrepair.core.CodewordExtraction(emptyList()),
-                )
-            }
+            state.recoveries = fixtures.map { it.second }
             state.selectRecovery(0)
             fun refresh() = MainActivity::class.java.getDeclaredMethod("updateSummary", String::class.java)
                 .apply { isAccessible = true }.invoke(activity, null)

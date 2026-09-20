@@ -42,11 +42,22 @@ fun RecoveryDisplayConditions?.runSettingsText(): String = this?.let { settings 
         localizedText("指定 ($it)", "Specified ($it)")
     } ?: localizedText("自動", "Automatic"))
     settings.lockManualBits?.let { locked ->
-        append(localizedText("\n手動0/1の固定: ", "\nManual 0/1 locking: ")).append(if (locked) "ON" else "OFF")
+        append(localizedText("\n固定セルの0/1と矛盾する復元候補を許容する（仮指定セルと同じ扱い）: ", "\nAllow recovery candidates that conflict with fixed 0/1 values (as for tentative cells): ")).append(if (locked) "OFF" else "ON")
     }
     append(localizedText("\n単一セグメントの仮定: ", "\nSingle-segment assumption: "))
         .append(if (settings.trustSingleSegment) "ON" else "OFF")
     append('\n').append(settings.limitText(true)).append('\n').append(settings.limitText(false))
+    if (settings.dataEccLimit == 0) {
+        append(localizedText(
+            "\n入力のデータ・ECCの0/1と完全に一致する候補だけを採用します。「?」の補完はできます。",
+            "\nOnly candidates matching every entered data/ECC 0/1 value can be accepted. Unknown (?) bits may be filled."))
+        if (settings.lockManualBits == false) append(localizedText(
+            "\n固定セルとの矛盾を許容していても、データ・ECCの不一致上限は0bitです。この領域の入力済み0/1と異なる候補は採用できません。",
+            "\nAllowing conflicts with fixed cells does not override the zero data/ECC mismatch limit; candidates differing from entered 0/1 values in this region cannot be accepted."))
+    }
+    if (settings.lockManualBits == false && settings.format != null) append(localizedText(
+        "\n固定セルとの矛盾を許容していても、形式情報の固定セルとECC・マスクの指定は両立している必要があります。",
+        "\nEven when conflicts with fixed cells are allowed, fixed format cells must remain compatible with the ECC/mask selection."))
 } } ?: localizedText("実行時点の設定は記録されていません。", "The settings for this run were not recorded.")
 
 fun initialDiagnosticSection(
@@ -54,11 +65,12 @@ fun initialDiagnosticSection(
     diagnostic: RsBitDiagnostic?, unknownBits: Int?, unknownCodewords: Int?,
     conventional: ConventionalRsDiagnostic? = null, candidateRaw: IntArray? = null,
     candidateUsesBitConstraints: Boolean = false,
+    conditions: RecoveryDisplayConditions? = null,
 ): DiagnosticSection {
     val qr = version?.let(Version::getVersionForNumber)
     val blocks = qr?.getECBlocksForLevel(ecLevel)
     val summary = buildString {
-        append(localizedText("この解析で使った形式: ", "Format used for this analysis: "))
+        append(localizedText("参考診断の対象: ", "Reference diagnostic for: "))
         version?.let { append("V$it / ") }
         append("ECC $ecLevel / ").append(localizedText("マスク$mask", "mask $mask"))
         if (geometryDescription.isNotBlank()) append('\n').append(geometryDescription)
@@ -79,17 +91,39 @@ fun initialDiagnosticSection(
             append(localizedText("\n不明なbitを含むコード語（全ブロック合計）: $it",
                 "\nCodewords containing unknown bits (all blocks): $it"))
         }
-        append(localizedText("\n\n通常RSだけを使った初期入力の計算\n", "\n\nConventional RS applied to the initial input alone\n"))
-        if (conventional == null) append(localizedText("計算結果は記録されていません。", "The calculation was not recorded."))
+        append(localizedText("\n\n参考診断：修復開始時の入力に対する通常RS\n", "\n\nReference diagnostic: conventional RS on the initial input\n"))
+        if (conventional == null || conventional.blocks.isEmpty()) append(localizedText(
+            "通常RSの参考診断の結果は記録されていません。", "The conventional RS reference diagnostic was not recorded."))
         else {
-            append(if (conventional.succeeded) localizedText("RSの条件を満たす結果を得ました。", "A result satisfying the RS conditions was obtained.")
-                else localizedText("全ブロックの訂正結果は得られませんでした。", "A correction result was not obtained for every block."))
+            append(localizedText(
+                "構造補完やbit探索を加える前の入力を評価した結果です。修復候補を求める計算とは別に評価しています。\n",
+                "This evaluates the input before structure filling or bit search, separately from calculating recovery candidates.\n"))
+            val total = conventional.blocks.size
+            val succeeded = conventional.blocks.count { it.status == ConventionalRsStatus.SUCCESS }
+            val skipped = conventional.blocks.count { it.status == ConventionalRsStatus.ERASURE_CAPACITY_EXCEEDED }
+            val failed = conventional.blocks.count { it.status == ConventionalRsStatus.CORRECTION_FAILED }
+            append(when {
+                succeeded == total -> localizedText(
+                    "全${total}ブロックで、RSの条件を満たす訂正結果が得られました。",
+                    "Correction results satisfying the RS conditions were obtained for all $total blocks.")
+                skipped == total -> localizedText(
+                    "全${total}ブロックで、不明bitを含むコード語の数がECCの数を超えるため、通常RSの訂正計算を省略しました。",
+                    "Conventional RS correction was skipped for all $total blocks because codewords containing unknown bits outnumber ECC symbols.")
+                else -> localizedText(
+                    "訂正結果あり：${succeeded}ブロック／不明なコード語が多いため計算省略：${skipped}ブロック／計算したが訂正結果なし：${failed}ブロック",
+                    "Correction result: $succeeded blocks / skipped because too many codewords contain unknown bits: $skipped blocks / correction attempted without a result: $failed blocks")
+            })
             if (conventional.succeeded) conventional.minMargin?.let {
                 append(localizedText("\nこの計算の訂正余裕（ブロック最小）: $it", "\nCorrection margin for this calculation (minimum across blocks): $it"))
             }
-            if (conventional.settingsAccepted == false) append(localizedText(
-                "\n固定した手動値、または入力値の変更上限を満たさないため、そのまま採用できません。",
-                "\nThis result cannot be accepted as-is: it violates manual locks or the limit on changes to entered values."))
+            if (conventional.succeeded && conventional.manualConflicts.isNotEmpty()) append(localizedText(
+                "\nこの参考診断の結果は、固定セル${conventional.manualConflicts.size}個の0/1と一致しないため、そのまま採用できません。",
+                "\nThis reference result conflicts with ${conventional.manualConflicts.size} fixed 0/1 values and cannot be accepted as-is."))
+            val mismatches = conventional.knownBitMismatches
+            val limit = conventional.knownBitMismatchLimit
+            if (conventional.succeeded && mismatches != null && limit != null && mismatches > limit) append(localizedText(
+                "\nこの参考診断の結果は、入力のデータ・ECCと${mismatches}bit異なります。不一致上限の${limit}bitを超えるため、そのまま採用できません。",
+                "\nThis reference result differs from entered data/ECC by $mismatches bits, exceeding the $limit-bit mismatch limit, and cannot be accepted as-is."))
             if (candidateRaw != null) append(conventional.comparisonText(candidateRaw))
         }
         diagnostic?.takeIf { conventional?.succeeded != true || candidateUsesBitConstraints }?.let {
@@ -104,9 +138,11 @@ fun initialDiagnosticSection(
                 "Conventional RS is a separate calculation on the initial input, without structure filling or bit search.\nMargin = ECC symbols − erased codewords − 2 × erroneous codewords. Error counts and margins are unknown for failed blocks."))
             conventional.blocks.forEach { block ->
                 val status = when (block.status) {
-                    ConventionalRsStatus.SUCCESS -> localizedText("計算できました", "calculated")
-                    ConventionalRsStatus.ERASURE_CAPACITY_EXCEEDED -> localizedText("消失コード語数がECC数を超えています", "erasures exceed ECC symbols")
-                    ConventionalRsStatus.CORRECTION_FAILED -> localizedText("訂正結果を得られませんでした", "no correction result")
+                    ConventionalRsStatus.SUCCESS -> localizedText("訂正結果が得られました", "correction result obtained")
+                    ConventionalRsStatus.ERASURE_CAPACITY_EXCEEDED -> localizedText(
+                        "不明bitを含むコード語${block.erasures}個がECCの${block.eccSymbols}個を超えるため、訂正計算を省略しました",
+                        "correction skipped: ${block.erasures} codewords contain unknown bits, exceeding ${block.eccSymbols} ECC symbols")
+                    ConventionalRsStatus.CORRECTION_FAILED -> localizedText("訂正計算を行いましたが、訂正結果は得られませんでした", "correction attempted without a result")
                 }
                 append(localizedText(
                     "\nブロック${block.blockIndex + 1}: データ${block.dataSymbols} + ECC${block.eccSymbols} = ${block.totalSymbols}シンボル / 消失${block.erasures} / 誤り${block.errors ?: "—"} / 余裕${block.margin ?: "—"}",
@@ -125,7 +161,10 @@ fun initialDiagnosticSection(
             if (blocks != null) append(localizedText(
                 "\nRSの式: ${blocks.totalECCodewords * 8}本（全ブロック合計）。式の本数と独立な条件の数（rank）は別です。",
                 "\nRS equations: ${blocks.totalECCodewords * 8} across all blocks. Equation count and independent constraint count (rank) are different."))
-            if (analysis.dimension == null) append(localizedText(
+            if (analysis.dimension == null && conditions?.dataEccLimit == 0) append(localizedText(
+                "\n上記の型番・ECC・マスクでは、入力の0/1に対して、不一致上限（0bit）を満たすRS候補はありません。自由度0とは異なります。",
+                "\nFor the version/ECC/mask above, no RS candidate meets the zero-bit mismatch limit against entered 0/1 values. This is not zero free bits."))
+            else if (analysis.dimension == null) append(localizedText(
                 "\n入力済みの白黒をすべて維持する条件では両立しません。自由度0とは異なります。通常RSでは入力済みの誤りを訂正できる場合があります。",
                 "\nThe constraints are inconsistent when all entered values are preserved; this is not zero free bits. Conventional RS may still correct errors in entered values."))
             else {
@@ -168,8 +207,8 @@ fun RecoveryCandidate.usedMethodsText(): String = buildString {
         "\nTentative values for prioritized cells: $priorityGuessedBits bits"))
     actualBlockMethods.forEach { append('\n').append(it.searchDescription()) }
     if (usesBitConstraints()) append(localizedText(
-        "\n部分bit制約で、入力済みのbitを保つ不明部分の組合せを計算しました。",
-        "\nPartial-bit constraints calculated unknown values while preserving the entered bits."))
+        "\n部分bit制約で、不明なbitの組合せを計算しました。",
+        "\nPartial-bit constraints calculated combinations of unknown bits."))
     if (usesConventionalRs()) append(if (correctedErrataSymbols > 0)
         localizedText("\n通常RSによる確認・補完・訂正を使いました。", "\nConventional RS was used to check, fill or correct values.")
         else localizedText("\n通常RSで条件を確認しました。", "\nConventional RS checked the conditions."))

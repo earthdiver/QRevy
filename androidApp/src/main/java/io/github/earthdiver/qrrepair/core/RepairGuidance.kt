@@ -76,6 +76,7 @@ object RepairGuidance {
             val trace = traces[coord]
 
             var base = when (cell.source) {
+                ModuleSource.USER_SOFT, ModuleSource.USER_UNLOCKED -> 0.5f
                 ModuleSource.USER -> 1.0f
                 ModuleSource.STRUCTURAL -> 0.99f
                 ModuleSource.CONSTRAINT -> 0.91f
@@ -83,6 +84,8 @@ object RepairGuidance {
                 ModuleSource.IMAGE -> src.confidence.coerceIn(0f, 1f)
             }
             var detail = when (cell.source) {
+                ModuleSource.USER_UNLOCKED -> "ユーザーの固定指定（修正可オプションON）"
+                ModuleSource.USER_SOFT -> "ユーザーの仮指定（訂正可、確率ではありません）"
                 ModuleSource.USER -> "ユーザー指定"
                 ModuleSource.STRUCTURAL -> "QR固定構造から確定"
                 ModuleSource.CONSTRAINT -> "ペイロード構造制約から推定"
@@ -90,6 +93,8 @@ object RepairGuidance {
                 ModuleSource.IMAGE -> "画像サンプリングの相対信頼度=${"%.2f".format(src.confidence)}（確率ではありません）"
             }
             var detailEn = when (cell.source) {
+                ModuleSource.USER_UNLOCKED -> "Fixed user value (correction allowed by option)"
+                ModuleSource.USER_SOFT -> "Tentative user value (correctable; not a probability)"
                 ModuleSource.USER -> "User-defined"
                 ModuleSource.STRUCTURAL -> "Determined from fixed QR structure"
                 ModuleSource.CONSTRAINT -> "Inferred from payload structure constraints"

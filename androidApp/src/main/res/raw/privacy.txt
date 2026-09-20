@@ -3,9 +3,12 @@ Privacy
 QR Repair is designed for local, on-device processing.
 
 • The app does not request the Internet permission.
+• Import automatically saves a session and its source image, including images rendered from matrix text, before you press Save or Repair.
+• At most 20 saved sessions are kept. New imports count toward the limit; the least recently saved work and its source image are automatically deleted when the limit is exceeded, including on startup. Touch and hold an entry in Saved work (Recent work in Classic) to delete it sooner, or choose Delete all.
 • Sessions/source images are kept in Android app-private no-backup storage. Source images are stored losslessly and integrity-checked.
 • Android cloud backup and device-transfer backup are disabled/excluded because QR data can contain sensitive information.
 • Recovered URLs are never opened automatically.
 • Recovered text is displayed and compared without masking or redaction. Copying preserves the complete recovered text.
 • Temporary camera JPEGs are deleted after decoding; stale capture files are purged on the next app start.
 • Data leaves app-private storage only when you explicitly export/save a result.
+• Session compression and integrity checks do not encrypt QR content.

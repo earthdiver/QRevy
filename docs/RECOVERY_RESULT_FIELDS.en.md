@@ -14,21 +14,26 @@ Invalid Kanji/Hanzi character codes are rejected by structure validation even wh
 | Repair incomplete | An RS-consistent candidate exists, but payload validation or final decoding did not succeed | Format information, version/geometry, partial diagnostics, and failure reason |
 | Repair failed | Format conditions prevented RS attempts, or the performed search found no RS-consistent candidate | First failing block, erasure-capacity shortfall bits, and known-bit conflicts |
 | Combination/node limit | Search stopped with part of the candidate space unexplored | Do not treat candidate counts as uniqueness; review settings or an additional-check cell |
-| Candidate retention budget | The 32 MiB accounting budget was reached | Results and agreement cover retained candidates only |
+| Candidates omitted (retention limit) | Only some of the candidates found are displayed | Omitted candidates are not included in the displayed count and cannot be selected |
+| Working-memory limit | Search stopped at the memory limit for calculation | Some combinations remain unchecked |
 
 ### Short reading example
 
-Suppose Repair succeeded with three validated candidates, two distinct contents, and candidate agreement of `2 / 3` for one cell. At least one compared candidate differs at that cell, so inspect its source-image evidence and repair reason instead of silently choosing the selected payload. Agreement of `3 / 3` still does not prove uniqueness across unretained or unexplored solutions.
+Suppose Repair succeeded and three candidates from the same reading attempt are compared. Candidate agreement of `2 / 3` means one candidate differs from the selected candidate at that cell. Inspect its source-image evidence and repair reason. Agreement of `3 / 3` still does not prove uniqueness across candidates outside the comparison or unexplored solutions.
 
 ## Results and counts
 
-“Candidate retention budget” means the shared request budget stopped further search. Previously validated results remain available, but counts and consensus cover only retained results. This warning also applies when repair succeeds. Cell explanations are generated when accessed; the accounting budget and its scope are described in [Recovery Strategy](RECOVERY_STRATEGY.en.md#6-explanation-of-results).
+The result list shows up to 256 of the highest-ranked candidates from all reading attempts. Result switching, comparison of two candidates, and PNG export all use this list.
 
-“Repair succeeded” means a result passed QR structure validation, including terminator and filler, and final ZXing decoding. It does not prove identity with the original content. The old `Payload parse: ✓`, `Text: ✓`, and `RS: ✓` labels are no longer separate UI fields.
+When many candidates are found, or memory limits apply, only some candidates may be displayed. The displayed count is the number of selectable candidates in the list, not necessarily the total number found.
 
-Within one geometry, identical version, ECC level, mask, and corrected codewords identify one result. Derivations with and without structure constraints retain their individual metrics and cell provenance. “Derivations of the same QR” lists their counts and constraint/search bit counts. Regular diagnostics and cell reasons describe the best-ranked derivation, route 1.
+“Others omitted” means some candidates that were found are absent from the list. “Some combinations remain unchecked” means some combinations have not been examined. Both notices can appear together.
 
-“Distinct contents” compares data-codeword sequences; equal displayed text can still count as different content. Result switching and PNG candidate selection display at most the top 256 results. This is a display limit, not a claim of exhaustive search.
+“Repair succeeded” means a result passed QR structure validation, including terminator and filler, and final ZXing decoding. It does not prove identity with the original content.
+
+Results with identical version, ECC level, mask, and corrected codewords appear as one candidate, even when reading positions or polarity differ. “Derivations of the same QR” shows constraint and search-bit counts for routes that produced that QR. Regular diagnostics and cell reasons describe the best-ranked route, route 1. A route-detail omission notice means not every route is available for inspection.
+
+“Distinct contents” compares data-codeword sequences; equal displayed text can still count as different content. Switching candidates updates the QR display, the input before repair, and diagnostics to match that candidate.
 
 When decoded text can also be interpreted as a URL, email, SMS, contact, or another structured type, the display shows the complete original string in addition to parsed fields. It is not silently truncated or replaced by selected fields. Copying preserves that same complete string.
 
@@ -53,9 +58,15 @@ For Hanzi, the four-bit subset indicator after the mode is read before the chara
 
 When explicit ECC and mask selections leave only one format, the format-error limit is bypassed. Among attempts without validated payloads, stronger format agreement takes precedence over RS success.
 
-Data/ECC comparisons exclude `?`, temporary priority `*` assignments, function modules, and remainder bits. The data/ECC error limit retains candidates at or below the limit; zero requires exact agreement. With “Exclude recovery candidates that conflict with manual 0/1 values” ON, pin conflicts are rejected separately. Without locking, manual 0/1 values are ordinary known bits and may be corrected by RS.
+Data/ECC comparisons exclude `?`, temporary priority `*` assignments, function modules, and remainder bits. The data/ECC error limit retains candidates at or below the limit; zero requires exact agreement. “Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)” defaults to OFF: candidates that conflict with fixed cells are rejected separately. ON allows their values to be corrected while retaining their fixed designation and input values. Tentative cells are correctable in either setting. Corrections remain subject to the format and data/ECC error limits; explicit ECC/mask/version selections and conflicts between fixed cells and explicit selections remain enforced.
 
 ## Diagnostic details
+
+Diagnostics separate execution settings, the initial input, processing, and verification. A zero data/ECC mismatch limit selects partial-bit constraints for candidate calculation. Only candidates matching every known initial data/ECC bit can be accepted; unknown bits may be filled. Allowing conflicts with fixed cells does not override this limit. Intermediate structure filling may change known suffix bits, so this guarantee describes accepted results, not every intermediate calculation.
+
+The initial-input section identifies the version, ECC, mask, and geometry used for its reference diagnosis. Conventional RS is evaluated separately before structure filling or bit search, including when the data/ECC limit is zero. Block results distinguish a correction result, correction skipped because codewords containing unknown bits outnumber ECC symbols, and correction attempted without a result. A missing diagnostic is reported as unrecorded, not unexecuted. RS results alone do not establish a correct QR payload.
+
+Final result messages aggregate evidence across formats, geometries, and sampling profiles. A representative failure cannot establish a search-wide reason. Fixed-cell or format conflicts are shown as whole-search reasons only when supported across the permitted inputs. “No RS candidate meets the zero-bit mismatch limit” requires inconsistent initial-input constraints for every permitted format, not just a failed structure-filling or priority assignment. Unknown or incomplete evidence suppresses that conclusion. Search limits report unchecked combinations rather than claiming that no candidate exists.
 
 ### Geometry
 
@@ -94,13 +105,13 @@ Shows unknown bits, independent constraint rank, free dimension, and bits fixed 
 
 Zero freedom means a unique RS solution under those assumptions. An inconsistent space is reported as “no exact solution,” without guessing an error count. Exceeding the enumeration dimension limit does not mean no solution exists.
 
-QR combination-search diagnostics are shown on success as well as failure. They distinguish a window ending after success, the combination limit, and the expanded-node limit. An unexplored remainder in any pass is retained even if an unconstrained retry exhausts its combinations. Candidate counts cover validated results found so far. Exhausting attempted passes does not imply exhaustive formats, geometries, or solution spaces.
+QR combination-search diagnostics are shown on success as well as failure. They distinguish a window ending after success, the combination limit, and the expanded-node limit. An unexplored remainder in any pass is retained even if an unconstrained retry exhausts its combinations. Exhausting attempted passes does not imply exhaustive formats, geometries, or solution spaces.
 
 ## Failure reasons and additional checks
 
-Diagnostics cover explicit format/manual conflicts, pins outside codewords, and data/ECC pins conflicting with corrected candidates. Pin failures show coordinates, manual values, and values required by the rejected candidate. Required values are neither applied automatically nor guaranteed correct. Temporary priority-assignment conflicts are not reported as manual input pin conflicts.
+Whole-search reasons distinguish fixed format cells incompatible with explicit ECC/mask selections, fixed cells outside data/ECC incompatible with the QR structure, and calculated candidates rejected by fixed cells or mismatch limits. Temporary priority-assignment conflicts are not reported as manual input pin conflicts.
 
-Other reasons include known-bit mismatch limits, RS capacity failures, no exact solution, partial-bit search limits, and QR combination-search limits. “First failing RS block” uses one-based numbering.
+RS capacity and correction results appear in the format-specific reference diagnosis. Partial-bit and QR combination-search limits appear as search-limit notices. Block numbers are one-based.
 
 Erasure-capacity shortfall measures the minimum bits that must be decided to reduce each block's erasure count to its ECC symbol count. When used by guidance, zero can still fail because of known-bit errors or search limits. This is different from free dimension.
 
@@ -114,8 +125,10 @@ For Structured Append, the preview and success display include this symbol’s o
 
 ## Cell confidence and candidate agreement
 
-Consensus and candidate-based guidance use only distinct validated candidates. At most the top 16 matrices are compared; if the selected validated result is outside that range, it replaces the last entry.
+“Candidate agreement” shows how many compared candidates have the same black or white value as the selected QR at a given cell. For example, `12 / 16` means 12 of the 16 compared candidates agree with the selected candidate at that cell. Agreement is displayed when at least two candidates can be compared.
 
-Candidate agreement shows both the compared count and the full validated count. When the comparison is a subset, candidate split and information-gain guidance explicitly apply only to that subset. Agreement within the sample does not establish agreement among unexamined candidates or unexplored solutions.
+The comparison uses at most 16 candidates decoded as text from the same reading attempt as the selected candidate. It uses the highest-ranked candidates and always includes the selected candidate if it was decoded as text. This comparison scope is separate from the result list of up to 256 candidates.
+
+The accompanying “validated candidates in total” count covers decoded candidates still listed from that reading attempt; it excludes candidates from other attempts. Candidate splits and additional-check guidance also apply only to the candidates actually compared. Even `16 / 16` neither guarantees agreement with candidates outside the comparison nor expresses the probability that the cell is correct.
 
 See [Understanding repair reasons](REPAIR_REASONS.en.md) for cell reasons and intermediate history.

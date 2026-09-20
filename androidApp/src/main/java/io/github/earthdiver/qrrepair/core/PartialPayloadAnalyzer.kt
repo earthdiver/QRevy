@@ -14,10 +14,27 @@ data class PartialPayloadReport(
     val note: String? = null,
     /** Hanzi subset indicator; null when its four bits are not fully observed. */
     val hanziSubset: Int? = null,
+    val eci: Int? = null,
+    val fnc1Mode: Int? = null,
+    val fnc1ApplicationIndicator: Int? = null,
+    val controlIncomplete: Boolean = false,
+    val knownEncodedCharacters: Int? = null,
+    val textUnavailable: Boolean = false,
 ) {
     fun displayText(japanese: Boolean): String = buildString {
         append(if (japanese) "未検証の診断情報（復号結果ではありません）" else "Unvalidated diagnostic information (not a decoded result)")
         append('\n')
+        eci?.let { append("ECI: ").append(it).append('\n') }
+        fnc1Mode?.let {
+            append(if (it == 5) "FNC1 (1st position)" else "FNC1 (2nd position)")
+            fnc1ApplicationIndicator?.let { value -> append(" / ").append(value) }
+            append('\n')
+        }
+        if (controlIncomplete) {
+            append(if (japanese) "制御情報が不明または不正なため、後続の本文は解釈しません。" else
+                "Control information is unknown or invalid; the following payload is not interpreted.")
+            return@buildString
+        }
         if (mode == null) {
             append(if (japanese) "Mode: 不明（先頭4bitに?を含みます）" else "Mode: unknown (? in the first 4 bits)")
             return@buildString
@@ -52,11 +69,14 @@ data class PartialPayloadReport(
                     if (value in 0x20..0x7E) value.toChar().toString() else "."
                 })
             }
+            if (knownTextPrefix.isNotEmpty()) append("\nText: ").append(knownTextPrefix)
+            if (textUnavailable) append('\n').append(if (japanese) "ECIの文字コードが未対応、または既知バイト列を文字列に変換できません。HEXで確認してください。" else
+                "The ECI charset is unsupported or known bytes cannot be converted to text. Inspect HEX.")
             if (stoppedAtUnknownBit) append('\n').append(if (japanese) "次のbyteに?があるため、そこで表示を停止しました。" else "Stopped because the next byte contains ?.")
         }
         if (mode in setOf(1, 2, 8) && count != null) {
             append('\n').append(if (japanese) "先頭から連続して確定したpayload文字: " else "Known consecutive payload characters from start: ")
-            append(knownTextPrefix.length).append('/').append(count)
+            append(knownEncodedCharacters ?: knownTextPrefix.length).append('/').append(count)
             if (knownTextPrefix.isNotEmpty()) append("\nText: ").append(knownTextPrefix)
             if (stoppedAtUnknownBit) append('\n').append(if (japanese) "次の文字groupに?があるため、そこで表示を停止しました。" else "Stopped because the next character group contains ?.")
             if (stoppedAtInvalidValue) append('\n').append(if (japanese) "次の文字groupが規格上の値域外のため、そこで表示を停止しました。" else "Stopped because the next character group is outside the valid range.")
@@ -105,6 +125,83 @@ object PartialPayloadAnalyzer {
                 if ((byte.unknownBits and (1 shl bit)) != 0) null else (byte.value shr bit) and 1
             }
         }
+        var offset = 0
+        var eci: Int? = null
+        var fnc1: Int? = null
+        var application: Int? = null
+        var structured = false
+        var sawEci = false
+        fun readControl(width: Int): Int? {
+            if (offset + width > bits.size || bits.subList(offset, offset + width).any { it == null }) return null
+            var result = 0
+            repeat(width) { result = (result shl 1) or bits[offset++]!! }
+            return result
+        }
+        fun stopped(mode: Int, unknown: Boolean) = PartialPayloadReport(mode, null, false, emptyList(), "", unknown,
+            stoppedAtInvalidValue = !unknown, eci = eci, fnc1Mode = fnc1,
+            fnc1ApplicationIndicator = application, controlIncomplete = true)
+        while (true) {
+            val start = offset
+            val mode = readControl(4) ?: break
+            when (mode) {
+                3 -> {
+                    if (start != 0 || structured) return stopped(mode, false)
+                    val header = readControl(16) ?: return stopped(mode, true)
+                    val sequence = header ushr 8
+                    if ((sequence and 15) == 0 || (sequence ushr 4) > (sequence and 15)) return stopped(mode, false)
+                    structured = true
+                }
+                5, 9 -> {
+                    if (fnc1 != null || sawEci) return stopped(mode, false)
+                    fnc1 = mode
+                    if (mode == 9) application = readControl(8) ?: return stopped(mode, true)
+                }
+                7 -> {
+                    val first = readControl(8) ?: return stopped(mode, true)
+                    eci = when {
+                        first and 0x80 == 0 -> first and 0x7F
+                        first and 0xC0 == 0x80 -> ((first and 0x3F) shl 8) or (readControl(8) ?: return stopped(mode, true))
+                        first and 0xE0 == 0xC0 -> ((first and 0x1F) shl 16) or (readControl(16) ?: return stopped(mode, true))
+                        else -> return stopped(mode, false)
+                    }
+                    if (eci > 999999) return stopped(mode, false)
+                    sawEci = true
+                }
+                else -> { offset = start; break }
+            }
+        }
+        var report = analyzePayload(bits.drop(offset), version)
+        if (fnc1 != null && report.mode == 2) {
+            val encoded = report.knownTextPrefix
+            val converted = StringBuilder()
+            var index = 0
+            while (index < encoded.length) {
+                val ch = encoded[index++]
+                if (ch != '%') converted.append(ch)
+                else if (index < encoded.length && encoded[index] == '%') { converted.append('%'); index++ }
+                else if (index != encoded.length || (!report.stoppedAtUnknownBit && !report.stoppedAtInvalidValue)) converted.append('\u001D')
+            }
+            report = report.copy(knownTextPrefix = converted.toString(), knownEncodedCharacters = encoded.length)
+        }
+        if (eci != null && report.mode == 4 && report.knownBytePrefix.isNotEmpty()) {
+            val converted = decodeEciPrefix(report.knownBytePrefix, eci, !report.stoppedAtUnknownBit)
+            report = report.copy(knownTextPrefix = converted.orEmpty(), textUnavailable = converted == null)
+        }
+        return report.copy(eci = eci, fnc1Mode = fnc1, fnc1ApplicationIndicator = application)
+    }
+
+    private fun decodeEciPrefix(bytes: List<Int>, eci: Int, complete: Boolean): String? = runCatching {
+        val charset = com.google.zxing.common.CharacterSetECI.getCharacterSetECIByValue(eci)?.charset ?: return null
+        val decoder = charset.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT)
+        val input = java.nio.ByteBuffer.wrap(bytes.map { it.toByte() }.toByteArray())
+        val output = java.nio.CharBuffer.allocate((bytes.size * decoder.maxCharsPerByte()).toInt() + 1)
+        val result = decoder.decode(input, output, complete)
+        if (result.isError) result.throwException()
+        output.flip()
+        output.toString()
+    }.getOrNull()
+
+    private fun analyzePayload(bits: List<Int?>, version: Int): PartialPayloadReport {
         var position = 0
         fun read(width: Int): Int? {
             if (position + width > bits.size) return null

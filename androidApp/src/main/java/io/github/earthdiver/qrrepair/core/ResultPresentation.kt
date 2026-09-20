@@ -3,17 +3,26 @@ package io.github.earthdiver.qrrepair.core
 import io.github.earthdiver.qrrepair.localizedText
 
 /** Result overview. Technical encoding/HEX information remains available in diagnostics. */
-fun QrContentPreview.resultContentText(fullText: String?): String = buildString {
+fun QrContentPreview.resultContentText(fullText: String?, onRecoveredText: ((Int, Int) -> Unit)? = null): String = buildString {
+    fun appendRecovered(value: String) {
+        val start = length
+        append(value)
+        if (value.isNotEmpty()) onRecoveredText?.invoke(start, length)
+    }
     val rawText = recoveredText ?: fullText
     append(localizedText("読み取れた内容", "Read content")).append(" — ").append(title)
     if (!qrStructureValid) append(localizedText("\nQRのデータ構造を確認できませんでした。", "\nThe QR data structure could not be verified."))
-    if (summary.isNotBlank()) append('\n').append(if (kind == QrContentKind.TEXT) rawText ?: summary else summary)
+    if (summary.isNotBlank()) {
+        append('\n')
+        val value = if (kind == QrContentKind.TEXT) rawText ?: summary else summary
+        if (rawText != null && value == rawText) appendRecovered(value) else append(value)
+    }
     fields.filter { kind != QrContentKind.TEXT }.forEach { field ->
         append('\n').append(field.label).append(": ").append(field.value)
     }
     rawText?.takeIf { kind != QrContentKind.TEXT && it != summary }?.let { raw ->
         append(localizedText("\n\n復元した文字列（原文）\n", "\n\nRecovered text (original)\n"))
-        append(raw)
+        appendRecovered(raw)
     }
     if (textRepresentation && !contentFormatValid) append(localizedText(
         "\n必要な情報が不足しているか、形式に不備があります。", "\nRequired information is missing or malformed."))

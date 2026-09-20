@@ -14,7 +14,8 @@ import android.widget.RadioGroup
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
-import io.github.earthdiver.qrrepair.core.CodewordExtractor
+import io.github.earthdiver.qrrepair.core.QrCellRegions
+import io.github.earthdiver.qrrepair.core.RepairReasonKind
 import io.github.earthdiver.qrrepair.core.Coord
 import io.github.earthdiver.qrrepair.core.FinderRole
 import io.github.earthdiver.qrrepair.core.FinderDetector
@@ -34,7 +35,6 @@ import io.github.earthdiver.qrrepair.core.FormatEditConflict
 import io.github.earthdiver.qrrepair.core.QrFormatConstraint
 import io.github.earthdiver.qrrepair.core.QrFunctionMask
 import io.github.earthdiver.qrrepair.core.RecoveryEngine
-import io.github.earthdiver.qrrepair.core.ThresholdMode
 import io.github.earthdiver.qrrepair.ui.BitmapUtils
 import io.github.earthdiver.qrrepair.ui.EditorTool
 import io.github.earthdiver.qrrepair.ui.CodewordOverlayKind
@@ -51,10 +51,19 @@ internal data class PreprocessSave(
     val events: List<PreprocessDraftEvent>,
 )
 
+/** View-free editor state retained across configuration changes without saving it to disk. */
+internal data class PreprocessEditorDraft(
+    val settings: PreprocessSettings,
+    val cellEdits: PreRecoveryCellEditState,
+    val changes: PreprocessDraftState,
+    val page: PreprocessPage,
+)
+
 /** Keeps the same draft alive while the result page is visible. */
 internal class PreprocessEditorSession(
     val open: (PreprocessPage) -> Unit,
     val close: () -> Unit,
+    val captureDraft: () -> PreprocessEditorDraft,
 )
 
 /** Session effects owned outside the dialog. Unsaved edits remain local to the dialog. */
@@ -82,8 +91,10 @@ internal class PreprocessDialogController(
     private val finderSearchGeneration: AtomicInteger,
     private val recoveryEngine: RecoveryEngine,
     private val host: PreprocessDialogHost,
+    private val restoredDraft: PreprocessEditorDraft? = null,
 ) {
     fun show(initialPage: PreprocessPage = PreprocessPage.BASIC) = with(activity) {
+        val preprocessSettings = restoredDraft?.settings ?: this@PreprocessDialogController.preprocessSettings
         val modernStyle = AppStylePreferences.isModern(this)
         val dialogState = PreprocessDialogState(preprocessSettings)
         var working = initialWorking
@@ -98,13 +109,14 @@ internal class PreprocessDialogController(
         var savePreprocess: () -> Unit = {}
         var submitPreprocess: () -> Unit = {}
         var cancelPreprocess: () -> Unit = {}
-        val draftState = PreprocessDraftState(preprocessSettings)
+        val draftState = restoredDraft?.changes?.copyForEditing() ?: PreprocessDraftState(preprocessSettings)
         var noteDraftChange: (String, String, String) -> Unit = { _, _, _ -> }
         var validateCellEdits: (Map<Coord, ModuleValue>) -> Boolean = { true }
-        val cellEditState = savedCellEditState?.copyForEditing { validateCellEdits(it) } ?: PreRecoveryCellEditState(
+        val cellEditState = (restoredDraft?.cellEdits ?: savedCellEditState)?.copyForEditing { validateCellEdits(it) } ?: PreRecoveryCellEditState(
             preprocessSettings.preRecoveryEdits,
             preprocessSettings.preRecoveryPrioritySearch,
             validateEdits = { validateCellEdits(it) },
+            initialSoftEdits = preprocessSettings.effectiveSoftEdits,
         )
         var updatePageLayout: (PreprocessPage) -> Unit = {}
         var manualFocus = false
@@ -152,9 +164,10 @@ internal class PreprocessDialogController(
         }
         fun selectedPolarity(): PolarityMode =
             polarity.findViewById<RadioButton>(polarity.checkedRadioButtonId)?.tag as? PolarityMode ?: PolarityMode.AUTO
-        val local = CheckBox(this).apply {
-            text = ui("場所ごとに閾値を補正（照明むら・反射がある画像向け）", "Local threshold (uneven lighting or glare)")
-            isChecked = preprocessSettings.thresholdMode == ThresholdMode.LOCAL_ADAPTIVE
+        var updatingThresholdControls = false
+        val automaticThresholds = CheckBox(this).apply {
+            text = ui("閾値を自動設定", "Set thresholds automatically")
+            isChecked = preprocessSettings.automaticThresholds
         }
         val useUnknownColors = CheckBox(this).apply {
             text = ui("自動検出された色クラスタを不明領域（?）として扱う", "Treat detected color clusters as unknown (?)")
@@ -169,9 +182,9 @@ internal class PreprocessDialogController(
             text = ui("種類・文字数／バイト数が正しく読み取れている場合に、単一セグメントを仮定して後続構造を強制する。", "When the mode and character/byte count are read correctly, assume a single segment and force the following structure.")
             isChecked = preprocessSettings.trustKnownPayloadCount
         }
-        val lockManualBits = CheckBox(this).apply {
-            text = ui("手動指定した0/1と矛盾する復元候補を除外する", "Exclude recovery candidates that conflict with manual 0/1 values")
-            isChecked = preprocessSettings.lockManualBits
+        val allowFixedCorrections = CheckBox(this).apply {
+            setText(R.string.allow_fixed_corrections)
+            isChecked = !preprocessSettings.lockManualBits
         }
         var formatConstraintDraft = preprocessSettings.formatConstraint
         var formatMismatchLimitDraft = preprocessSettings.formatMismatchLimit
@@ -181,6 +194,27 @@ internal class PreprocessDialogController(
         val whiteLabel = TextView(this)
         val white = SeekBar(this).apply { max = 254; progress = preprocessSettings.whiteMin - 1 }
         val version = SeekBar(this).apply { max = 39; progress = preprocessSettings.version - 1 }
+        var cachedCellRegions = QrCellRegions(version.progress + 1)
+        fun cellRegions(): QrCellRegions {
+            if (cachedCellRegions.version != version.progress + 1) cachedCellRegions = QrCellRegions(version.progress + 1)
+            return cachedCellRegions
+        }
+        fun cellRegionLabel(coord: Coord): String {
+            val regions = cellRegions()
+            if (!regions.contains(coord)) return getString(R.string.cell_region_outside)
+            if (coord in regions.codewordCoordinates) return getString(R.string.cell_region_codeword)
+            return getString(when (regions.structureAt(coord)) {
+                RepairReasonKind.FINDER_PATTERN -> R.string.cell_region_finder
+                RepairReasonKind.SEPARATOR -> R.string.cell_region_separator
+                RepairReasonKind.TIMING_PATTERN -> R.string.cell_region_timing
+                RepairReasonKind.ALIGNMENT_PATTERN -> R.string.cell_region_alignment
+                RepairReasonKind.FORMAT_INFORMATION -> R.string.cell_region_format
+                RepairReasonKind.VERSION_INFORMATION -> R.string.cell_region_version
+                RepairReasonKind.FIXED_DARK_MODULE -> R.string.cell_region_dark
+                null -> R.string.cell_region_remainder
+                else -> R.string.cell_region_structure
+            })
+        }
         var versionButton: Button? = null
         var activePreviewProfile: SamplingProfile? = null
         var committedVersion = preprocessSettings.version
@@ -191,9 +225,18 @@ internal class PreprocessDialogController(
         fun invalidateSamplingPreview() {
             overlay.clearCornerSelection()
         }
+        fun revalidatePrioritySearch() {
+            val removed = cellEditState.revalidatePrioritySearch { it in cellRegions().codewordCoordinates }
+            if (removed.isEmpty()) return
+            updatePreEditCountStatus()
+            val coordinates = removed.joinToString(" ") { "(${it.x},${it.y})" }
+            val message = getString(R.string.priority_revalidated, coordinates)
+            AlertDialog.Builder(activity).setMessage(message).setPositiveButton(android.R.string.ok, null).show()
+            noteDraftChange("priority-validation", getString(R.string.priority_revalidation_title), coordinates)
+        }
         fun controlSnapshot() = PreprocessControlSnapshot(
             polarity = selectedPolarity(),
-            localThreshold = local.isChecked,
+            automaticThresholds = automaticThresholds.isChecked,
             blackProgress = black.progress,
             whiteProgress = white.progress,
             useUnknownColors = useUnknownColors.isChecked,
@@ -205,13 +248,17 @@ internal class PreprocessDialogController(
             formatConstraint = formatConstraintDraft,
             formatMismatchLimit = formatMismatchLimitDraft,
             dataEccMismatchLimit = dataEccMismatchLimitDraft,
-            lockManualBits = lockManualBits.isChecked,
+            lockManualBits = !allowFixedCorrections.isChecked,
         )
-        fun refreshLabels() {
+        fun updateThresholdLabels() {
             val mode = selectedPolarity()
             val (darkMeaning, lightMeaning) = polarityThresholdMeanings(mode, isJapaneseUi())
             blackLabel.text = ui("画像の暗部（$darkMeaning）: ${black.progress}", "Dark pixels ($darkMeaning): ${black.progress}")
             whiteLabel.text = ui("画像の明部（$lightMeaning）: ${white.progress + 1}", "Light pixels ($lightMeaning): ${white.progress + 1}")
+        }
+        fun refreshLabels() {
+            updateThresholdLabels()
+            val mode = selectedPolarity()
             val selectedVersion = version.progress + 1
             val selectedDimension = 17 + 4 * selectedVersion
             versionButton?.text = ui("QRバージョン: $selectedVersion / $selectedDimension×${selectedDimension}セル", "QR Version: $selectedVersion / $selectedDimension modules")
@@ -220,15 +267,18 @@ internal class PreprocessDialogController(
                 inverted = mode == PolarityMode.INVERTED,
             )
             activePreviewProfile = profile
-            overlay.setClassificationPreview(working.luma, profile)
             refreshClassificationMatrix()
         }
         val listener = object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (updatingThresholdControls) return
+                updatingThresholdControls = true
+                if (fromUser) automaticThresholds.isChecked = false
                 if (black.progress >= white.progress + 1) {
-                    if (seekBar === black) white.progress = (black.progress + 1).coerceAtMost(254)
-                    else black.progress = white.progress.coerceAtMost(253)
+                    if (seekBar === black) white.progress = black.progress
+                    else black.progress = white.progress
                 }
+                updatingThresholdControls = false
                 if (fromUser) invalidateSamplingPreview()
                 refreshLabels()
             }
@@ -252,6 +302,7 @@ internal class PreprocessDialogController(
             committedVersion = requested.coerceIn(1, 40)
             version.progress = committedVersion - 1
             overlay.setVersion(committedVersion)
+            revalidatePrioritySearch()
             refreshLabels()
             noteDraftChange("version", ui("QRバージョンを変更", "Changed QR Version"), committedVersion.toString())
             checkVersionErrorLimit()
@@ -291,13 +342,18 @@ internal class PreprocessDialogController(
             noteDraftChange("polarity", ui("白黒極性を変更", "Changed polarity"), label)
             refreshLabels()
         }
-        local.setOnCheckedChangeListener { _, checked ->
+        automaticThresholds.setOnCheckedChangeListener { _, checked ->
+            if (updatingThresholdControls) return@setOnCheckedChangeListener
             invalidateSamplingPreview(); refreshLabels()
-            noteDraftChange("local", ui("場所ごとの白黒判定を変更", "Changed local thresholding"), if (checked) "ON" else "OFF")
+            noteDraftChange("threshold-auto", ui("閾値を自動設定", "Set thresholds automatically"), if (checked) "ON" else "OFF")
         }
         useUnknownColors.setOnCheckedChangeListener { _, checked ->
             invalidateSamplingPreview(); refreshLabels()
             noteDraftChange("unknown-colors", ui("色付き不明領域を変更", "Changed colored unknown regions"), if (checked) "ON" else "OFF")
+        }
+        allowFixedCorrections.setOnCheckedChangeListener { _, checked ->
+            refreshClassificationMatrix()
+            noteDraftChange("fixed-corrections", getString(R.string.allow_fixed_corrections), if (checked) "ON" else "OFF")
         }
         searchQuadNeighborhood.setOnCheckedChangeListener { _, checked ->
             if (checked && cellEditState.edits.isNotEmpty()) {
@@ -310,6 +366,7 @@ internal class PreprocessDialogController(
             if (quarterTurns != 0) {
                 cellEditState.rotateCoordinates(17 + 4 * (version.progress + 1), quarterTurns)
             }
+            revalidatePrioritySearch()
             refreshClassificationMatrix()
         }
         overlay.onFinderPlacementRejected = {
@@ -346,6 +403,7 @@ internal class PreprocessDialogController(
                         Toast.makeText(this, ui("周辺でFinderを確定できませんでした。指定点をヒントとして解析します。", "The Finder could not be confirmed nearby. The selected point will be used as a hint."), Toast.LENGTH_LONG).show()
                     } else {
                         overlay.setVerifiedFinder(role, refined)
+                        refreshClassificationMatrix()
                         Toast.makeText(this, ui("Finder位置を自動補正しました（モジュール幅 ${"%.1f".format(refined.moduleSize)}px）", "Finder position refined (module width ${"%.1f".format(refined.moduleSize)} px)"), Toast.LENGTH_SHORT).show()
                     }
                 }
@@ -361,6 +419,7 @@ internal class PreprocessDialogController(
                 FinderRole.BOTTOM_LEFT -> getString(R.string.bottom_left)
             }
             userGeometryEdited = true
+            refreshClassificationMatrix()
             noteDraftChange("finder-$role", ui("$label Finderを解除", "Removed $label Finder"), role.name)
             Toast.makeText(this, ui("$label のFinder確定を解除しました。", "The $label Finder was unconfirmed."), Toast.LENGTH_SHORT).show()
         }
@@ -482,10 +541,9 @@ internal class PreprocessDialogController(
             buttonFactory = ::button,
             scrollRow = { views -> scrollRow(*views) },
             polarity = polarity,
-            localThreshold = local,
             searchQuadNeighborhood = searchQuadNeighborhood,
             trustKnownPayloadCount = trustKnownPayloadCount,
-            lockManualBits = lockManualBits,
+            allowFixedCorrections = allowFixedCorrections,
             formatMismatchLimitControl = formatMismatchLimitControl,
             dataEccMismatchLimitControl = dataEccMismatchLimitControl,
             actions = DetailedSettingsPageActions(
@@ -505,6 +563,12 @@ internal class PreprocessDialogController(
             ),
         ).view
         var singleCellEditMode = true
+        var sampledImage: io.github.earthdiver.qrrepair.core.LumaImage? = null
+        var sampledGeometry: GridGeometry? = null
+        var sampledProfile: SamplingProfile? = null
+        var sampledResult: Pair<QrMatrix, MatrixSampler.SamplingStats>? = null
+        var sampledObservations: Array<io.github.earthdiver.qrrepair.core.ModuleObservation?>? = null
+        var provisionalImage = initialWorking
         fun sampleImageMatrix(): Pair<GridGeometry, QrMatrix>? {
             val q = overlay.imageQuad()
             val dimension = 17 + 4 * (version.progress + 1)
@@ -513,14 +577,50 @@ internal class PreprocessDialogController(
                 version.progress + 1, FinderRole.TOP_LEFT, q.topLeft.x, q.topLeft.y,
                 pitch, 0.0, q, io.github.earthdiver.qrrepair.core.GeometryModel.MANUAL_PROJECTIVE,
             ).reanchored() }.getOrNull() ?: return null
-            return g to MatrixSampler(working.luma, activePreviewProfile).sample(g).first
+            if (working !== provisionalImage) {
+                dialogState.updateProvisionalThresholds(io.github.earthdiver.qrrepair.core.InitialThresholdEstimator.estimate(working.bitmap))
+                provisionalImage = working
+            }
+            val requested = SamplingProfile(dialogState.previewSettings(controlSnapshot()),
+                inverted = when (overlay.confirmedFinderPolarity()) {
+                    io.github.earthdiver.qrrepair.core.FinderPolarity.INVERTED -> true
+                    io.github.earthdiver.qrrepair.core.FinderPolarity.NORMAL -> false
+                    else -> selectedPolarity() == PolarityMode.INVERTED
+                })
+            // Effective slider values are outputs in automatic mode, not inputs to the next fit.
+            val profile = if (requested.settings.automaticThresholds) requested.copy(settings = requested.settings.copy(
+                blackMax = requested.settings.provisionalBlackMax, whiteMin = requested.settings.provisionalWhiteMin,
+                automaticThresholds = overlay.isLogicalGridAssigned(),
+            )) else requested
+            if (sampledImage !== working.luma || sampledGeometry != g || sampledProfile != profile) {
+                if (sampledImage !== working.luma || sampledGeometry != g || sampledProfile?.inverted != profile.inverted) {
+                    sampledObservations = io.github.earthdiver.qrrepair.core.GridThresholdEstimator.observe(working.luma, g, profile.inverted)
+                }
+                sampledResult = MatrixSampler(working.luma, profile).sampleObserved(g, profile, requireNotNull(sampledObservations))
+                sampledImage = working.luma; sampledGeometry = g; sampledProfile = profile
+            }
+            val (matrix, stats) = requireNotNull(sampledResult)
+            stats.thresholds?.let { pair ->
+                updatingThresholdControls = true
+                black.progress = pair.blackMax; white.progress = pair.whiteMin - 1
+                updatingThresholdControls = false
+                updateThresholdLabels()
+            }
+            activePreviewProfile = requested.copy(settings = requested.settings.copy(
+                blackMax = black.progress, whiteMin = white.progress + 1,
+            ))
+            return g to matrix.copy()
         }
         fun refreshPreRecoveryMatrix(): Pair<GridGeometry, QrMatrix>? {
             val (g, matrix) = sampleImageMatrix() ?: return null
             cellEditState.edits.forEach { (c, v) ->
                 if (c.x in 0 until matrix.dimension && c.y in 0 until matrix.dimension) {
                     // Explicit source overrides are independent of whether the image agrees.
-                    matrix.set(c.x, c.y, v, 1f, ModuleSource.USER)
+                    matrix.set(c.x, c.y, v, 1f, when {
+                        c in cellEditState.softEdits -> ModuleSource.USER_SOFT
+                        allowFixedCorrections.isChecked -> ModuleSource.USER_UNLOCKED
+                        else -> ModuleSource.USER
+                    })
                 }
                 if (c in cellEditState.prioritySearch) matrix.setPrioritySearch(c.x, c.y, true)
             }
@@ -535,8 +635,8 @@ internal class PreprocessDialogController(
         }
         refreshSourceControls = {
             val baseline = if (cellEditState.selectedCells.isNotEmpty()) sampleImageMatrix()?.second else null
-            preEditSourceControl?.update(cellEditState, baseline)
-            dedicatedSourceControl?.update(cellEditState, baseline)
+            preEditSourceControl?.update(cellEditState, baseline, allowFixedCorrections.isChecked)
+            dedicatedSourceControl?.update(cellEditState, baseline, allowFixedCorrections.isChecked)
         }
         refreshClassificationMatrix = {
             refreshSourceControls()
@@ -545,7 +645,7 @@ internal class PreprocessDialogController(
                     matrix,
                     formatConstraintDraft,
                     formatMismatchLimitDraft,
-                    manualEdits = cellEditState.edits,
+                    manualEdits = cellEditState.fixedEdits,
                 )
                 trustKnownPayloadCount.isEnabled = headerComplete
                 if (!headerComplete) trustKnownPayloadCount.isChecked = false
@@ -553,8 +653,11 @@ internal class PreprocessDialogController(
                 dedicatedEditor?.setDocument(working.bitmap, geometry, matrix, keepViewport = true)
             }
         }
+        val refreshDraggedGrid = Runnable { if (overlay.isAttachedToWindow) refreshClassificationMatrix() }
         overlay.onGeometryEdited = {
             userGeometryEdited = true
+            overlay.removeCallbacks(refreshDraggedGrid)
+            overlay.postDelayed(refreshDraggedGrid, 120L)
         }
         fun selectPreEditCell(x: Int, y: Int) {
             overlay.selectEditCell(Coord(x, y))
@@ -566,7 +669,7 @@ internal class PreprocessDialogController(
                 dedicatedEditor?.setSelected(x, y)
             }
             val value = refreshed?.second?.get(x, y)?.value
-            val kind = if (QrFunctionMask.isFunction(version.progress + 1, x, y)) ui("固定構造（データ値には影響しません）", "Fixed structure (does not affect payload data)") else getString(R.string.data)
+            val kind = cellRegionLabel(Coord(x, y))
             val label = if (Coord(x, y) in cellEditState.prioritySearch) "*" else when (value) { ModuleValue.ZERO -> "0"; ModuleValue.ONE -> "1"; else -> "?" }
             preEditStatus?.text = ui("選択: ($x,$y) / $kind / 値=$label", "Selected: ($x,$y) / $kind / value=$label")
             dedicatedEditStatus?.text = preEditStatus?.text
@@ -602,16 +705,13 @@ internal class PreprocessDialogController(
             updatePreEditCountStatus()
             noteDraftChange("cell-edit", ui("修復前セルを編集", "Edited pre-repair cells"), ui("${changed.size}セル", "${changed.size} cell(s)"))
         }
-        fun toggleCellSource() {
+        fun changeCellSource(source: CellEditSource) {
             val original = sampleImageMatrix()?.second ?: return
             val selected = cellEditState.selectedCells
             if (selected.isEmpty()) return
-            val restoringImage = cellEditState.selectionHasManualEdits
-            val changed = if (restoringImage) cellEditState.restoreImage(selected) else {
-                cellEditState.makeManual(selected) { coord ->
-                    original.takeIf { coord.x in 0 until it.dimension && coord.y in 0 until it.dimension }
-                        ?.get(coord.x, coord.y)?.value
-                }
+            val changed = cellEditState.setSource(selected, source) { coord ->
+                original.takeIf { coord.x in 0 until it.dimension && coord.y in 0 until it.dimension }
+                    ?.get(coord.x, coord.y)?.value
             }
             if (changed.isEmpty()) return
             // Recompute classification first; it clears overlay selection. Restore focus below
@@ -624,7 +724,11 @@ internal class PreprocessDialogController(
                 dedicatedEditor?.setDocument(working.bitmap, geometry, matrix, keepViewport = true)
                 dedicatedEditor?.setSelection(changed)
             }
-            val label = getString(if (restoringImage) R.string.cell_restore_image else R.string.cell_make_manual)
+            val label = getString(when (source) {
+                CellEditSource.IMAGE -> R.string.cell_source_image
+                CellEditSource.TENTATIVE -> R.string.cell_source_tentative
+                CellEditSource.FIXED -> R.string.cell_source_fixed
+            })
             preEditStatus?.text = ui("${changed.size}セル: $label", "${changed.size} cell(s): $label")
             dedicatedEditStatus?.text = preEditStatus?.text
             updatePreEditCountStatus()
@@ -633,13 +737,17 @@ internal class PreprocessDialogController(
         fun setPrioritySearch(coords: Collection<Coord>) {
             val distinct = coords.distinct()
             if (distinct.isEmpty()) return
-            val refreshed = refreshPreRecoveryMatrix() ?: return
-            val rsCoords = runCatching {
-                CodewordExtractor.extract(refreshed.second, version.progress + 1, 0)
-                    .codewords.flatMapTo(hashSetOf()) { it.coordinates }
-            }.getOrDefault(emptySet())
-            if (distinct.any { it !in rsCoords }) {
-                Toast.makeText(this, ui("*はデータ・ECCセルにのみ指定できます。", "* can be assigned only to data or ECC cells."), Toast.LENGTH_SHORT).show(); return
+            if (!overlay.isLogicalGridAssigned()) {
+                Toast.makeText(this, R.string.priority_requires_geometry, Toast.LENGTH_LONG).show()
+                return
+            }
+            val invalid = distinct.filter { it !in cellRegions().codewordCoordinates }
+            if (invalid.isNotEmpty()) {
+                val kinds = invalid.map(::cellRegionLabel).distinct().joinToString(" / ")
+                val message = getString(R.string.priority_invalid_position, kinds) + "\n" +
+                    invalid.joinToString(" ") { "(${it.x},${it.y})" }
+                AlertDialog.Builder(activity).setMessage(message).setPositiveButton(android.R.string.ok, null).show()
+                return
             }
             when (cellEditState.setPrioritySearch(distinct)) {
                 PriorityEditResult.LIMIT_EXCEEDED -> {
@@ -756,8 +864,8 @@ internal class PreprocessDialogController(
                 val codeword = largeEditor.codewordCellAt(coord)
                 val kind = when {
                     QrFunctionMask.isFunction(version.progress + 1, x, y) ->
-                        ui("固定構造（データ値には影響しません）", "Fixed structure (does not affect payload data)")
-                    codeword == null -> ui("余りビット", "Remainder bit")
+                        cellRegionLabel(coord)
+                    codeword == null -> cellRegionLabel(coord)
                     codeword.entry.kind == CodewordOverlayKind.UNCLASSIFIED ->
                         ui("コード語 #${codeword.entry.rawIndex} / 分類未確定 / bit ${codeword.bitIndex}",
                             "Codeword #${codeword.entry.rawIndex} / unclassified / bit ${codeword.bitIndex}")
@@ -789,7 +897,7 @@ internal class PreprocessDialogController(
                     setTool = ::setLargeEditorTool,
                     setValue = { value -> setPreEditValues(cellEditState.selectedCells, value) },
                     setPriority = { setPrioritySearch(cellEditState.selectedCells) },
-                    toggleSource = ::toggleCellSource,
+                    changeSource = ::changeCellSource,
                     undo = ::undoPreEdit,
                     redo = ::redoPreEdit,
                     showCodewords = { checked ->
@@ -838,7 +946,7 @@ internal class PreprocessDialogController(
                 move = ::movePreEditCell,
                 setValue = { value -> setPreEditValues(cellEditState.selectedCells, value) },
                 setPriority = { setPrioritySearch(cellEditState.selectedCells) },
-                toggleSource = ::toggleCellSource,
+                changeSource = ::changeCellSource,
                 undo = ::undoPreEdit,
                 redo = ::redoPreEdit,
                 selectMode = { tool ->
@@ -884,7 +992,7 @@ internal class PreprocessDialogController(
             val next = if (ecLevel == null && dataMask == null) null
             else QrFormatConstraint(ecLevel = ecLevel, dataMask = dataMask)
             if (!FormatEditPolicy.returnsToAuto(formatConstraintDraft, next)) {
-                val conflict = FormatEditPolicy.conflict(version.progress + 1, next, cellEditState.edits)
+                val conflict = FormatEditPolicy.conflict(version.progress + 1, next, cellEditState.fixedEdits)
                 if (conflict != null) {
                     showFormatEditError(conflict)
                     return
@@ -951,6 +1059,7 @@ internal class PreprocessDialogController(
             buttonFactory = ::button,
             compactRow = { views -> compactRow(*views) },
             versionButton = requireNotNull(versionButton),
+            automaticThresholds = automaticThresholds,
             blackLabel = blackLabel,
             blackSeekBar = black,
             whiteLabel = whiteLabel,
@@ -1052,12 +1161,18 @@ internal class PreprocessDialogController(
         updatePageLayout = { page -> scaffold.showPage(page) }
         classificationLegend = scaffold.classificationLegend
         val root = scaffold.view
-        val dialog = AlertDialog.Builder(this).apply {
+        val dialog = object : AlertDialog(this) {
+            // Both system Back (including gesture navigation) and outside touches call cancel.
+            // Explicit dismissals are reserved for confirmed exits and lifecycle cleanup.
+            override fun cancel() = cancelPreprocess()
+        }.apply {
             if (!modernStyle) setView(root)
-        }.create()
+        }
+        lateinit var captureEditorDraft: () -> PreprocessEditorDraft
         val session = PreprocessEditorSession(
             open = { page -> dialog.show(); pageHost.navigateTo(page) },
             close = { dialog.dismiss() },
+            captureDraft = { captureEditorDraft() },
         )
         showResultPage = {
             dialog.hide()
@@ -1095,8 +1210,14 @@ internal class PreprocessDialogController(
                     ),
                     edits = cellEditState.edits.toMap(),
                     prioritySearch = cellEditState.prioritySearch.toSet(),
+                    softEdits = cellEditState.softEdits.toSet(),
                 )
             }
+            captureEditorDraft = {
+                PreprocessEditorDraft(capturePreprocessSettings(), cellEditState.copyForEditing(),
+                    draftState.copyForEditing(), pageHost.currentPage())
+            }
+            host.editorOpened(session)
             fun leaveEditor() {
                 dialog.dismiss()
                 if (modernStyle) host.showHome()
@@ -1119,15 +1240,14 @@ internal class PreprocessDialogController(
                 draftState.note(key, label, detail, capturePreprocessSettings())
             }
             overlay.onGeometryEditFinished = {
-                // Sampling the full Version-sized matrix on every ACTION_MOVE made high-Version
-                // corner drags increasingly sluggish. Refresh once after the gesture instead.
+                overlay.removeCallbacks(refreshDraggedGrid)
                 refreshClassificationMatrix()
                 noteDraftChange("quad", ui("四隅を調整", "Adjusted corners"), ui("ドラッグまたは矢印で調整", "Adjusted by drag or arrow keys"))
             }
             fun persistPreprocessDraft(): Boolean {
                 if (!requestValidDataEccLimit()) return false
                 val captured = capturePreprocessSettings()
-                FormatEditPolicy.conflict(captured.version, captured.formatConstraint, captured.preRecoveryEdits)?.let { showFormatEditError(it); return false }
+                FormatEditPolicy.conflict(captured.version, captured.formatConstraint, captured.fixedPreRecoveryEdits)?.let { showFormatEditError(it); return false }
                 val events = mutableListOf<PreprocessDraftEvent>()
                 draftState.commit(captured, events::add)
                 host.save(PreprocessSave(captured, cellEditState.copyForEditing(), working, events))
@@ -1145,7 +1265,6 @@ internal class PreprocessDialogController(
                 dialog.dismiss(); host.startRecovery()
             }
         }
-        if (modernStyle) host.editorOpened(session)
         dialog.show()
         pageHost.navigateTo(initialPage)
     }

@@ -44,7 +44,7 @@ fun RecoveryCandidate.conditionText(): String = buildString {
         append(localizedText(" / マスク ", " / mask "))
         append(if (it.format?.dataMask != null) localizedText("指定", "specified") else localizedText("自動", "automatic"))
         it.lockManualBits?.let { locked ->
-            append(localizedText("\n手動0/1の固定: ", "\nManual 0/1 locking: ")).append(if (locked) "ON" else "OFF")
+            append(localizedText("\n固定セルの0/1と矛盾する復元候補を許容する（仮指定セルと同じ扱い）: ", "\nAllow recovery candidates that conflict with fixed 0/1 values (as for tentative cells): ")).append(if (locked) "OFF" else "ON")
             if (!locked && it.dataEccLimit == 0) append(localizedText(
                 "（データ・ECC領域の不一致上限が0bitのため、この領域の入力済み0/1は変更していません）",
                 " (the zero data/ECC mismatch limit prevents changes to observed 0/1 values in that region)",

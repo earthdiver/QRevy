@@ -43,9 +43,13 @@ class MatrixSampler(
     private val image: LumaImage,
     private val profile: SamplingProfile? = null,
 ) {
-    data class SamplingStats(val threshold: Double, val contrast: Double, val erasureBand: Double)
+    data class SamplingStats(
+        val threshold: Double, val contrast: Double, val erasureBand: Double,
+        val thresholds: ThresholdPair? = null,
+    )
 
     fun sample(geometry: GridGeometry, erasureBandOverride: Double? = null): Pair<QrMatrix, SamplingStats> {
+        if (profile != null) return sampleProfile(geometry, profile)
         val stats = estimateFinderThreshold(geometry, erasureBandOverride)
         val matrix = QrMatrix(geometry.dimension)
         for (y in 0 until geometry.dimension) for (x in 0 until geometry.dimension) {
@@ -56,13 +60,11 @@ class MatrixSampler(
                 matrix.set(x, y, ModuleValue.ERASED, 0f, ModuleSource.IMAGE)
                 continue
             }
-            val localThreshold = profile?.thresholdAt(image, p.x, p.y, radius) ?: stats.threshold
-            val normalized = profile?.normalize(lum) ?: lum
-            val distance = abs(normalized - localThreshold)
+            val distance = abs(lum - stats.threshold)
             val confidence = (distance / max(12.0, stats.contrast * 0.45)).coerceIn(0.0, 1.0).toFloat()
-            val value = profile?.classify(image, lum, p.x, p.y, radius) ?: if (distance <= stats.erasureBand) {
+            val value = if (distance <= stats.erasureBand) {
                 ModuleValue.ERASED
-            } else if (normalized < localThreshold) {
+            } else if (lum < stats.threshold) {
                 ModuleValue.ONE
             } else {
                 ModuleValue.ZERO
@@ -72,11 +74,44 @@ class MatrixSampler(
         return matrix to stats
     }
 
-    private fun estimateFinderThreshold(geometry: GridGeometry, override: Double?): SamplingStats {
-        profile?.let {
-            val threshold = (it.settings.blackMax + it.settings.whiteMin) / 2.0
-            return SamplingStats(threshold, (it.settings.whiteMin - it.settings.blackMax).toDouble(), (it.settings.whiteMin - it.settings.blackMax) / 2.0)
+    private fun sampleProfile(geometry: GridGeometry, requested: SamplingProfile): Pair<QrMatrix, SamplingStats> {
+        return sampleObserved(geometry, requested, GridThresholdEstimator.observe(image, geometry, requested.inverted))
+    }
+
+    internal fun sampleObserved(
+        geometry: GridGeometry, requested: SamplingProfile, observations: Array<ModuleObservation?>,
+    ): Pair<QrMatrix, SamplingStats> {
+        val settings = requested.settings
+        val pair = if (settings.automaticThresholds) {
+            GridThresholdEstimator.estimate(geometry.version, observations)
+                ?: ThresholdPair(settings.provisionalBlackMax, settings.provisionalWhiteMin)
+        } else ThresholdPair(settings.blackMax, settings.whiteMin)
+        val effective = requested.copy(settings = settings.copy(blackMax = pair.blackMax, whiteMin = pair.whiteMin))
+        val contrast = (pair.whiteMin - pair.blackMax).toDouble()
+        val stats = SamplingStats(effective.threshold, contrast, contrast / 2, pair)
+        val matrix = QrMatrix(geometry.dimension)
+        observations.forEachIndexed { index, observation ->
+            val x = index % geometry.dimension; val y = index / geometry.dimension
+            var value = ModuleValue.ERASED
+            var confidence = 0f
+            if (observation != null) {
+                val low = effective.classifyLuminance(observation.low)
+                val high = effective.classifyLuminance(observation.high)
+                if (low == high) value = low
+                if (value != ModuleValue.ERASED && settings.useUnknownColorClusters) {
+                    val p = geometry.moduleToImage(x.toDouble(), y.toDouble())
+                    val radius = geometry.localModulePitch(x.toDouble(), y.toDouble()) * .14
+                    value = effective.classify(image, if (requested.inverted) 255 - observation.mean else observation.mean, p.x, p.y, radius)
+                }
+                if (value != ModuleValue.ERASED) confidence =
+                    (abs(observation.mean - stats.threshold) / max(12.0, contrast * .45)).coerceIn(0.0, 1.0).toFloat()
+            }
+            matrix.set(x, y, value, confidence, ModuleSource.IMAGE)
         }
+        return matrix to stats
+    }
+
+    private fun estimateFinderThreshold(geometry: GridGeometry, override: Double?): SamplingStats {
         val blacks = mutableListOf<Double>()
         val whites = mutableListOf<Double>()
         val center = geometry.moduleToImage(

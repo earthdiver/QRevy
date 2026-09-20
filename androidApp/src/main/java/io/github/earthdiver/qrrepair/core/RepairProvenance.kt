@@ -226,7 +226,7 @@ object RepairTraceBuilder {
             // The inspector is primarily a value-diff view. StructuralRepair rewrites provenance even
             // when the observed bit was already correct, so do not mark those cells as "changed".
             // Preserve an explicit USER pin even if the user confirmed the same bit value.
-            if (original.value == final.value && final.source != ModuleSource.USER) continue
+            if (original.value == final.value && !final.source.isUserEdit) continue
             val coord = Coord(x, y)
             val cwBit = coordToCodeword[coord]
             val info = cwBit?.first?.let(repairInfo::get)
@@ -248,7 +248,7 @@ object RepairTraceBuilder {
             }
 
             val primary = when (final.source) {
-                ModuleSource.USER -> RepairReasonKind.USER_OVERRIDE
+                ModuleSource.USER, ModuleSource.USER_SOFT, ModuleSource.USER_UNLOCKED -> RepairReasonKind.USER_OVERRIDE
                 ModuleSource.STRUCTURAL -> structuralReason(current.dimension, x, y).let {
                     if (it == RepairReasonKind.OTHER && cwBit == null) RepairReasonKind.REMAINDER_BITS else it
                 }
@@ -319,7 +319,7 @@ object RepairTraceBuilder {
         PayloadConstraintSolver.ConstraintKind.STRUCTURE -> RepairReasonKind.PAYLOAD_STRUCTURE
     }
 
-    private fun structuralReason(dimension: Int, x: Int, y: Int): RepairReasonKind {
+    internal fun structuralReason(dimension: Int, x: Int, y: Int): RepairReasonKind {
         val version = (dimension - 17) / 4
         if (isFinder(x, y, dimension)) return RepairReasonKind.FINDER_PATTERN
         if (isSeparator(x, y, dimension)) return RepairReasonKind.SEPARATOR

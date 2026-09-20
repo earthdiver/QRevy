@@ -20,6 +20,66 @@ class ManualCellVisibilityTest {
     private val focus = Coord(10, 10)
     private val geometry = GridGeometry(1, FinderRole.TOP_LEFT, 66.0, 66.0, 12.0, 0.0)
 
+    @Test fun tentativeBorderHasReadableGapsAtNormalAndEnlargedSizes() {
+        for (halfSize in listOf(5, 16, 40, 80)) {
+            val bitmap = Bitmap.createBitmap(halfSize * 2 + 20, halfSize * 2 + 20, Bitmap.Config.ARGB_8888)
+            try {
+                ManualCellMarker().draw(Canvas(bitmap), halfSize + 10f, halfSize + 10f,
+                    halfSize.toFloat(), 1.5f, tentative = true)
+                var gap = 0
+                var widestGap = 0
+                var cyanPixels = 0
+                var strokes = 0
+                var wasCyan = false
+                for (x in 10 until 10 + halfSize * 2) {
+                    val color = bitmap.getPixel(x, 10)
+                    val cyan = Color.red(color) < 80 && Color.green(color) > 190 && Color.blue(color) > 190
+                    if (cyan) {
+                        cyanPixels++
+                        if (!wasCyan) strokes++
+                        gap = 0
+                    } else {
+                        gap++
+                        widestGap = maxOf(widestGap, gap)
+                    }
+                    wasCyan = cyan
+                }
+                assertTrue("Visible strokes at size $halfSize: $cyanPixels", cyanPixels >= halfSize * .8f)
+                assertTrue("Visible gaps at size $halfSize: $widestGap", widestGap >= halfSize * .25f)
+                assertTrue("Gaps must not dominate at size $halfSize: $widestGap", widestGap <= halfSize * .6f)
+                assertTrue("Enlarging must not add fine dashes: $strokes at $halfSize", strokes in 2..3)
+            } finally { bitmap.recycle() }
+        }
+    }
+
+    @Test fun tentativeMarkerIsDashedAndRemainsVisibleInFocusModeAndMagnifier() {
+        val source = image()
+        try {
+            val matrix = matrix(ModuleValue.ZERO)
+            val large = QrEditorView(RuntimeEnvironment.getApplication()).apply {
+                setDocument(source, geometry, matrix)
+                highlightManualOnly = true
+            }
+            val overlay = PreprocessOverlayView(RuntimeEnvironment.getApplication()).apply {
+                setBitmap(source)
+                setCellEditing(geometry, matrix, focus)
+                highlightManualOnly = true
+            }
+            for (view in listOf(large, overlay)) {
+                matrix[focus.x, focus.y].source = ModuleSource.USER
+                val fixed = render(view)
+                matrix[focus.x, focus.y].source = ModuleSource.USER_SOFT
+                val soft = render(view)
+                assertTrue("Tentative marker must remain visible", cyanCount(soft) > 10)
+                assertTrue("Tentative border must contain gaps", cyanCount(soft) < cyanCount(fixed))
+                matrix[focus.x, focus.y].source = ModuleSource.USER
+                val restored = render(view)
+                assertTrue("Dashed paint leaked into fixed markers", fixed.sameAs(restored))
+                fixed.recycle(); soft.recycle(); restored.recycle()
+            }
+        } finally { source.recycle() }
+    }
+
     @Test fun magnifierShowsManualValuesEvenWhenSelectedAndMatchingImageValues() {
         val source = image()
         try {

@@ -22,6 +22,10 @@ internal class PreprocessDraftState(
 
     val events: List<PreprocessDraftEvent> get() = pending.toList()
 
+    fun copyForEditing(): PreprocessDraftState = PreprocessDraftState(lastSavedSettings, maxEvents).also {
+        it.pending.addAll(pending)
+    }
+
     fun note(key: String, label: String, detail: String, settings: PreprocessSettings) {
         val event = PreprocessDraftEvent(key, label, detail, settings)
         if (pending.lastOrNull()?.key == key) pending[pending.lastIndex] = event else pending += event

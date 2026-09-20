@@ -25,6 +25,8 @@ import io.github.earthdiver.qrrepair.core.ModuleSource
 import io.github.earthdiver.qrrepair.core.ModuleValue
 import io.github.earthdiver.qrrepair.core.HistoryEventKind
 import io.github.earthdiver.qrrepair.core.FinderRole
+import io.github.earthdiver.qrrepair.core.GeometryModel
+import io.github.earthdiver.qrrepair.core.MatrixSampler
 import io.github.earthdiver.qrrepair.core.GridGeometry
 import io.github.earthdiver.qrrepair.core.ImageQuad
 import io.github.earthdiver.qrrepair.core.PointD
@@ -124,7 +126,6 @@ class PreprocessDialogLayoutTest {
                 PointD(12.0, 12.0), PointD(228.0, 12.0),
                 PointD(228.0, 228.0), PointD(12.0, 228.0),
             ))
-            setClassificationPreview(prepared.luma, SamplingProfile(PreprocessSettings(), inverted = false))
             measure(
                 View.MeasureSpec.makeMeasureSpec(240, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(240, View.MeasureSpec.EXACTLY),
@@ -132,6 +133,9 @@ class PreprocessDialogLayoutTest {
             layout(0, 0, 240, 240)
         }
 
+        val geometry = GridGeometry(1, FinderRole.TOP_LEFT, 12.0, 12.0, 10.8, 0.0,
+            overlay.imageQuad(), GeometryModel.MANUAL_PROJECTIVE).reanchored()
+        overlay.setCellEditPreview(geometry, MatrixSampler(prepared.luma, SamplingProfile(PreprocessSettings(), false)).sample(geometry).first)
         overlay.draw(Canvas(Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888)))
         val summary = PreprocessOverlayView::class.java.getDeclaredField("lastClassificationSummary").run {
             isAccessible = true
@@ -180,8 +184,9 @@ class PreprocessDialogLayoutTest {
         )
         decor.layout(0, 0, 360, 640)
 
-        listOf("Details", "Nudge:", "Rectify selection", "QR Version:", "Assign Finder", "Save & repair").forEach { label ->
+        listOf("Details", "Nudge:", "Rectify selection", "QR Version:", "Set thresholds automatically", "Assign Finder", "Save & repair").forEach { label ->
             val control = findText(decor, label)
+            if (label == "Set thresholds automatically") assertTrue(control is CheckBox)
             assertNotNull("English pre-repair control is missing: $label", control)
             assertTrue("English control has no measurable size: $label", control!!.measuredWidth > 0 && control.measuredHeight > 0)
             assertTrue("English control exceeds the dialog width: $label", control.measuredWidth <= 360)
@@ -552,20 +557,30 @@ class PreprocessDialogLayoutTest {
     }
 
     @Test
-    fun resultInspectorShowsAndSwitchesOnlyDecodedResultsAsTabs() {
+    fun resultInspectorShowsAndSwitchesOnlyValidatedResultsAsTabs() {
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
         shadowOf(Looper.getMainLooper()).idle()
-        val matrix = QrMatrix(21)
+        val fixtures = listOf("first", "second").map { text ->
+            val encoded = com.google.zxing.qrcode.encoder.Encoder.encode(text, ErrorCorrectionLevel.M)
+            val matrix = QrMatrix(encoded.matrix.width)
+            for (y in 0 until matrix.dimension) for (x in 0 until matrix.dimension) {
+                matrix.set(x, y, if (encoded.matrix.get(x, y).toInt() == 1) ModuleValue.ONE else ModuleValue.ZERO,
+                    1f, ModuleSource.IMAGE)
+            }
+            val candidate = io.github.earthdiver.qrrepair.core.RecoveryEngine().recover(matrix,
+                formatConstraint = io.github.earthdiver.qrrepair.core.QrFormatConstraint(encoded.ecLevel, encoded.maskPattern))
+                .first { it.text == text }
+            matrix to candidate
+        }
+        val matrix = fixtures.first().first
         recoveryState(activity).apply {
             sourceMatrix = matrix
             workingMatrix = matrix
             inspectorMatrix = matrix
+            geometry = GridGeometry(1, FinderRole.TOP_LEFT, 10.0, 10.0, 2.0, 0.0)
         }
-        fun candidate(mask: Int, text: String?) = RecoveryCandidate(
-            1, ErrorCorrectionLevel.M, mask, text, text?.toByteArray() ?: byteArrayOf(),
-            15, 0, 0, 0, 0, 0, 8, intArrayOf(), CodewordExtraction(emptyList()),
-        )
-        val candidates = listOf(candidate(0, null), candidate(1, "first"), candidate(2, "second"))
+        val invalid = fixtures.first().second.copy(text = null, dataBytes = byteArrayOf(0xf0.toByte()))
+        val candidates = listOf(invalid) + fixtures.map { it.second }
         recoveryState(activity).apply {
             recoveries = candidates
             selectRecovery(1)
@@ -577,7 +592,7 @@ class PreprocessDialogLayoutTest {
         assertNotNull("最良の復号候補タブがありません", findText(decor, "候補1"))
         val secondTab = findText(decor, "候補2")
         assertNotNull("次点の復号結果タブがありません", secondTab)
-        assertNull("未復号候補が結果として表示されています", findText(decor, "候補3"))
+        assertNull("Invalid QR payload must not appear as a selectable result", findText(decor, "候補3"))
 
         secondTab!!.performClick()
 
@@ -796,6 +811,7 @@ class PreprocessDialogLayoutTest {
                 originalErasedCodewords = 42,
                 erasedCodewords = 42,
                 rsShortfallBits = 81,
+                searchDiagnostic = io.github.earthdiver.qrrepair.core.RecoverySearchDiagnostic(unsearched = true),
             ),
             -1,
         )
@@ -813,13 +829,13 @@ class PreprocessDialogLayoutTest {
         val guide = text("guideText")
         val candidateDetails = text("contentPreviewText")
         val diagnostics = (MainActivity::class.java.getDeclaredField("diagnosticReport").apply { isAccessible = true }.get(activity) as io.github.earthdiver.qrrepair.core.RecoveryDiagnosticReport).fullText()
-        assertEquals("候補が見つかりませんでした", status)
+        assertEquals(io.github.earthdiver.qrrepair.core.searchResultText(0, true), status)
         assertTrue(guide.contains("81"))
         assertTrue(!guide.contains("推奨セル"))
         assertTrue(!guide.contains("絞り込めるセル"))
         assertTrue(!guide.contains("探索上限"))
         assertTrue(diagnostics.contains("形式情報領域: 比較対象の読み取り済み25bitとの不一致 0bit"))
-        assertTrue(candidateDetails.contains("探索上限"))
+        assertTrue(candidateDetails.contains("探索範囲の上限"))
         assertTrue(diagnostics.contains("追加確認の目安: 81bit"))
         assertTrue(diagnostics.contains("最初に失敗したRSブロック: 1 / 全1ブロック"))
         assertTrue(diagnostics.contains("最初に失敗したRSブロック: 1 / 全1ブロック\n失敗ブロックのECCシンボル数: 20\n失敗ブロックの未知bitを含むコード語数（探索前）: 42"))
@@ -922,16 +938,15 @@ class PreprocessDialogLayoutTest {
         val geometrySearchNote = findText(decor, "ONでは0.6モジュールの位置・大きさ・一隅のずれを試します")
         val payloadTrust = findText(decor, "種類・文字数／バイト数が正しく読み取れている場合")
         val payloadTrustNote = findText(decor, "数字・英数字・バイト・漢字のいずれか1種類")
-        val manualLock = findText(decor, "手動指定した0/1と矛盾する")
+        assertNull("Global locking is replaced by per-cell modes", findText(decor, "手動指定した0/1と矛盾する"))
         assertNotNull("四隅近傍探索の説明がありません", geometrySearchNote)
         assertNotNull("単一セグメント前提の設定がありません", payloadTrust)
         assertNotNull("単一セグメント前提の説明がありません", payloadTrustNote)
         val detailedSettingsColumn = geometrySearch!!.parent as ViewGroup
         assertTrue("四隅近傍探索の説明が該当設定の直後にありません",
             detailedSettingsColumn.indexOfChild(geometrySearchNote!!) == detailedSettingsColumn.indexOfChild(geometrySearch) + 1)
-        assertTrue("単一セグメント前提の説明が手動0/1固定の後にあります",
-            detailedSettingsColumn.indexOfChild(payloadTrustNote!!) == detailedSettingsColumn.indexOfChild(payloadTrust!!) + 1 &&
-                detailedSettingsColumn.indexOfChild(payloadTrustNote) < detailedSettingsColumn.indexOfChild(manualLock!!))
+        assertTrue("Payload trust note must remain immediately below its control",
+            detailedSettingsColumn.indexOfChild(payloadTrustNote!!) == detailedSettingsColumn.indexOfChild(payloadTrust!!) + 1)
         assertTrue("微調整幅の既定値が0.10 moduleではありません",
             findText(decor, "微調整幅:")!!.text.toString() == "微調整幅: 0.10 module")
 

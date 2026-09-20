@@ -1,6 +1,7 @@
 package io.github.earthdiver.qrrepair.core
 
 import android.graphics.Bitmap
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -64,7 +65,7 @@ object InitialThresholdEstimator {
         val smooth = smooth(luminanceHistogram)
         val darkCenter = two.means[0].roundToInt().coerceIn(0, 254)
         val lightCenter = two.means[1].roundToInt().coerceIn(darkCenter + 1, 255)
-        val valley = (darkCenter..lightCenter).minByOrNull { smooth[it] } ?: two.thresholds[0]
+        val valley = valleyCenter(smooth, darkCenter, lightCenter)
         val darkPeak = (0..valley).maxOfOrNull { smooth[it] } ?: 0
         val lightPeak = (valley..255).maxOfOrNull { smooth[it] } ?: 0
         if (smooth[valley] <= minOf(darkPeak, lightPeak) * 0.02) {
@@ -189,8 +190,21 @@ object InitialThresholdEstimator {
         val dark = model.means[0].roundToInt().coerceIn(0, 253)
         val middle = model.means[1].roundToInt().coerceIn(dark + 1, 254)
         val light = model.means[2].roundToInt().coerceIn(middle + 1, 255)
-        return (dark..middle).minByOrNull { smooth[it] }!! to
-            (middle..light).minByOrNull { smooth[it] }!!
+        return valleyCenter(smooth, dark, middle) to valleyCenter(smooth, middle, light)
+    }
+
+    /** Keep both tones away from the boundary when an empty valley has many equal minima. */
+    private fun valleyCenter(hist: IntArray, start: Int, end: Int): Int {
+        val midpoint = (start + end) / 2.0
+        val minimum = (start..end).minWithOrNull(
+            compareBy<Int> { hist[it] }.thenBy { abs(it - midpoint) },
+        )!!
+        // Center one contiguous plateau, never average across an intervening peak.
+        var left = minimum
+        var right = minimum
+        while (left > start && hist[left - 1] == hist[minimum]) left--
+        while (right < end && hist[right + 1] == hist[minimum]) right++
+        return (left + right) / 2
     }
 
     private fun histogram(samples: List<Int>): IntArray = IntArray(256).also { hist -> samples.forEach { hist[luma(it)]++ } }

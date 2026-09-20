@@ -18,8 +18,10 @@
     <string name="select_image_prompt">画像を選択してください。</string>
     <string name="initial_guide">案内: 画像を選択後、「修復する」から設定を確認してください。</string>
     <string name="no_content_preview">内容プレビュー: 修復結果はありません。</string>
+    <string name="saved_work_actions_hint">タップで再開できます。個別に削除するには、その作業を長押ししてください。</string>
+    <string name="saved_work_retention">読込み時に自動保存します。最大%1$d件を保持し、新しい読込みで上限を超えると最終保存日時が古い作業と元画像を自動削除します。</string>
     <string name="recent_work">最近の作業</string>
-    <string name="recent_work_select_format">最近の作業（%1$d/%2$d件）— タップで再開、長押しで削除</string>
+    <string name="recent_work_select_format">最近の作業（%1$d/%2$d件）</string>
     <string name="delete_recent_work">保存済み作業を削除</string>
     <string name="delete_recent_work_message">この保存済み作業と元画像を削除しますか？この操作は取り消せません。</string>
     <string name="delete">削除</string>
@@ -31,7 +33,7 @@
     </plurals>
     <string name="all_recent_work_deleted">保存済み作業をすべて削除しました。</string>
     <string name="version_info">バージョン情報</string>
-    <string name="licenses_privacy">ライセンス / Privacy</string>
+    <string name="licenses_privacy">ライセンス / プライバシー</string>
     <string name="language">言語 / Language</string>
     <string name="language_dialog_title">言語 / Language</string>
     <string name="language_english">English</string>
@@ -78,7 +80,6 @@
     <string name="reset_rotation">回転リセット</string>
     <string name="thresholding">白黒判定</string>
     <string name="geometry_search_note">ONでは0.6モジュールの位置・大きさ・一隅のずれを試します。Finder役割が1点だけ指定されている場合は、その隅を支点とする時計回り・反時計回りも試します。</string>
-    <string name="manual_bit_lock_note">ONでは手動0/1と矛盾する候補を棄却します（形式情報・機能モジュール・残余bitも含む）。ECC・mask指定との矛盾はON/OFFによらず編集・設定変更時に拒否します。</string>
     <string name="payload_header_trust_note">数字・英数字・バイト・漢字のいずれか1種類の単一セグメントにのみ使用できます。先頭の種類と文字数／バイト数がすべて読み取れている場合に選択できます。ECI、FNC1、構造的連接、Hanziには対応していません。複数セグメントのQRには使用しないでください。\n終端・バイト境界・埋め草の領域は、読み取った種類と文字数／バイト数に基づいて補正します。画像から読み取った0/1も変更されます。手動0/1の扱いは下の設定に従います。</string>
     <string name="format_mismatch_limit">形式情報の誤り上限</string>
     <string name="format_mismatch_limit_unlimited">制限なし</string>
@@ -127,13 +128,10 @@
     <string name="raw_data_view">HEX / Binary</string>
     <string name="partial_info_view">部分情報</string>
     <string name="data_extract_failed">データ領域を抽出できません。</string>
-    <string name="cell_make_manual">手動指定にする</string>
-    <string name="cell_restore_image">画像に戻す</string>
-    <string name="cell_source_manual">手動</string>
-    <string name="cell_source_image">画像</string>
-    <string name="cell_source_preview">由来: %1$s / 現在: %2$s / 画像に戻す値: %3$s</string>
-    <string name="cell_source_selection">選択: %1$dセル / 画像: %2$d / 手動: %3$d</string>
-    <string name="cell_source_legend">水色の四角: 手動指定 / 黄色の丸: 選択中</string>
+    <string name="cell_source_image">画像から判定</string>
+    <string name="cell_source_preview">現在: %1$s / 画像: %2$s</string>
+    <string name="cell_source_selection">選択%1$d / 画像%2$d・仮%3$d・固定%4$d</string>
+    <string name="cell_source_legend">水色枠: 固定 / 破線: 仮指定</string>
     <string name="appearance">画面スタイル（次回起動時）</string>
     <string name="style_classic">クラッシック</string>
     <string name="style_modern">モダン</string>
@@ -147,7 +145,7 @@
     <string name="saved_work">作業一覧</string>
     <string name="operation_history">操作履歴</string>
     <string name="show_evidence">修復根拠を表示／折りたたむ</string>
-    <string name="highlight_manual_only">手動指定セルだけ強調</string>
+    <string name="highlight_manual_only">指定セルを強調</string>
     <string name="cell_edit_tap">セル編集</string>
     <string name="import_before_work">作業する画像を読み込む</string>
     <string name="previous_result_notice">前回実行した修復結果です。編集中の変更はまだ反映されていません。</string>
@@ -156,4 +154,26 @@
     <string name="repair_settings_navigation">修復設定</string>
     <string name="repair_short">修復</string>
     <string name="show_detailed_result">詳細結果を表示</string>
+    <string name="cell_source_tentative">仮指定（訂正可）</string>
+    <string name="cell_source_fixed">固定（訂正不可）</string>
+    <string name="cell_source_mixed">複数の状態</string>
+    <string name="cell_source_menu">%1$s ▾</string>
+    <string name="allow_fixed_corrections">固定セルの0/1と矛盾する復元候補を許容する（仮指定セルと同じ扱い）</string>
+    <string name="cell_source_fixed_correctable">固定（修正可）</string>
+    <string name="priority_requires_geometry">*を指定するには、先に四隅の位置と役割を指定してください。</string>
+    <string name="priority_invalid_position">指定位置は%1$sです。*はデータ・ECCセルにのみ指定できます。</string>
+    <string name="cell_region_outside">格子の範囲外</string>
+    <string name="cell_region_codeword">データ・ECC</string>
+    <string name="cell_region_finder">位置検出パターン</string>
+    <string name="cell_region_separator">分離パターン</string>
+    <string name="cell_region_timing">タイミングパターン</string>
+    <string name="cell_region_alignment">位置合せパターン</string>
+    <string name="cell_region_format">形式情報</string>
+    <string name="cell_region_version">型番情報</string>
+    <string name="cell_region_dark">固定暗モジュール</string>
+    <string name="cell_region_remainder">余りビット</string>
+    <string name="cell_region_structure">固定構造</string>
+    <string name="priority_revalidated">向き・バージョンの変更によりデータ・ECC領域外になった*を解除しました。値の?は保持しています。\n%1$s</string>
+    <string name="priority_revalidation_title">優先探索セルを再確認</string>
+    <string name="analyze_post_terminator">終端後の追加セグメントを解析</string>
 </resources>

@@ -53,7 +53,7 @@ class FormatEditDialogTest {
         return error
     }
 
-    @Test fun cellEditsAndEccChangesRejectConflictsWithEitherLockSetting() {
+    @Test fun fixedEditsAndEccChangesRejectConflictsRegardlessOfCorrectionOption() {
         for (lock in listOf(true, false)) {
             val constraint = QrFormatConstraint(ErrorCorrectionLevel.L, 0)
             val (coord, expected) = FormatEditPolicy.fixedValues(1, constraint).entries.first { it.value == ModuleValue.ZERO }
@@ -67,7 +67,7 @@ class FormatEditDialogTest {
             assertEquals("ECC: L", text(root, "ECC:").text.toString())
             dialog.dismiss()
 
-            // All manual format bits match L/0; choosing M contradicts them even with locking OFF.
+            // Explicit ECC/mask consistency also applies when fixed-cell correction is allowed.
             val pins = FormatEditPolicy.fixedValues(1, constraint)
             val (_, second) = open(PreprocessSettings(version = 1, preRecoveryEdits = pins, lockManualBits = lock))
             val secondRoot = second.window!!.decorView
@@ -89,7 +89,7 @@ class FormatEditDialogTest {
         }
     }
 
-    @Test fun legacyConflictLoadsUnchangedWithoutStartingRepair() {
+    @Test fun savedConflictLoadsUnchangedWithoutStartingRepair() {
         val constraint = QrFormatConstraint(ErrorCorrectionLevel.L, 0)
         val (coord, expected) = FormatEditPolicy.fixedValues(1, constraint).entries.first()
         val wrong = if (expected == ModuleValue.ONE) ModuleValue.ZERO else ModuleValue.ONE
@@ -97,7 +97,7 @@ class FormatEditDialogTest {
         val (activity, dialog) = open(PreprocessSettings())
         dialog.dismiss()
         val matrix = QrMatrix(21).apply { set(coord.x, coord.y, wrong, 1f, ModuleSource.USER) }
-        val entry = RecoveryHistoryEntry(kind = HistoryEventKind.USER_EDIT, label = "synthetic legacy conflict",
+        val entry = RecoveryHistoryEntry(kind = HistoryEventKind.USER_EDIT, label = "synthetic saved conflict",
             snapshot = RecoverySnapshot(GridGeometry(1, FinderRole.TOP_LEFT, 50.0, 50.0, 10.0, 0.0), matrix.copy(), matrix, 0, settings))
         MainActivity::class.java.getDeclaredMethod("restoreSnapshot", RecoveryHistoryEntry::class.java,
             String::class.java, kotlin.jvm.functions.Function0::class.java).apply { isAccessible = true }.invoke(activity, entry, "test", null)

@@ -14,7 +14,7 @@ Maintain and extend QR Repair, an offline Android/iOS-oriented tool for recoveri
 - Never treat Reed-Solomon success alone as proof that recovery is correct.
 - Preserve provenance for inferred or repaired modules.
 - Preserve manual `0 / 1 / ?` edits and hard FIXED constraints.
-- Here FIXED describes constraints, not a `ModuleSource` enum value: locked manual 0/1 cells use `USER`; explicit ECC/mask selections and the selected version/logical orientation are enforced separately.
+- Fixed cells are protected constraints unless the user explicitly permits conflicting recovery candidates. Explicit ECC/mask selections and the selected version/logical orientation remain enforced separately.
 - Keep one-finder recovery attempts available even when additional finder-like candidates exist.
 - Do not silently reduce validation of QRR session files, backup restrictions, or source-image integrity.
 - Confidence scores are explanatory heuristics, not statistical probabilities.
@@ -92,10 +92,17 @@ On macOS, shared iOS compatibility must also pass:
 - Product localization resources, user-facing Japanese strings, and tests that verify Japanese localization are exempt from the English-only rule.
 - Keep paired English and Japanese documentation aligned when behavior or user guidance changes.
 
+## Documentation and test scope
+- Describe current behavior and UI, not the sequence of past implementation changes. Remove obsolete transition notes and redundant interaction details when updating guidance.
+- Use product terminology in documentation rather than internal enum names or implementation identifiers.
+- Name and structure tests around current observable behavior and supported guarantees. Keep compatibility and validation tests for formats and inputs the application still supports; remove obsolete UI assumptions rather than preserving change history in tests.
+- Keep release history in release notes instead of embedding it in current usage guidance.
+
 ## Publication blockers
 The permanent package/namespace is `io.github.earthdiver.qrrepair`. Do not invent signing credentials, store identifiers, or a public privacy-policy URL; those values must be supplied by a project maintainer before store release.
 
 ## Collaboration and maintainer signing
+- Questions, requests for explanations, and diagnostic inquiries authorize investigation and answers only. Do not modify code, tests, documentation, or settings unless the user explicitly instructs or requests a change; do not interpret a suspected bug or a question about behavior as permission to fix it.
 - If a user instruction is ambiguous, ask the user to clarify it before proceeding instead of silently choosing an assumption.
 - Commits and tags created on behalf of a project maintainer must use cryptographic signatures (`git commit -S` and `git tag -s`). This does not impose a signing requirement on external contributors unless the repository contribution policy says otherwise.
 - Before creating the first signed commit or tag in a working session, if the signing-key passphrase is not already cached, ask the maintainer to unlock the key and prime the passphrase cache in their own terminal. Never ask anyone to disclose a passphrase or store signing credentials, key identifiers, or private publication details in the repository or its instructions.

@@ -132,7 +132,7 @@ class PreprocessDialogStateTest {
         search: Boolean = false,
     ) = PreprocessControlSnapshot(
         polarity = PolarityMode.AUTO,
-        localThreshold = true,
+        automaticThresholds = true,
         blackProgress = blackProgress,
         whiteProgress = whiteProgress,
         useUnknownColors = false,

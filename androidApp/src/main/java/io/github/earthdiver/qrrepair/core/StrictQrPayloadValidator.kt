@@ -25,10 +25,27 @@ internal object StrictQrPayloadValidator {
                 modes = mutableListOf(), byteSegments = segments)) segments else null
     }
 
+    /** A diagnostic boundary scan. It never makes a noncanonical suffix a valid QR payload. */
+    internal data class Prefix(val terminatorBit: Int?, val endBit: Int, val modes: List<Int>, val byteSegments: List<Pair<Int, ByteArray>>)
+
+    internal fun inspectPrefix(data: ByteArray, version: Int, unknownMasks: IntArray = IntArray(data.size),
+        bitLength: Int = data.size * 8): Prefix? {
+        require(version in 1..40 && unknownMasks.size == data.size && bitLength in 0..data.size * 8)
+        val modes = mutableListOf<Int>()
+        val segments = mutableListOf<Pair<Int, ByteArray>>()
+        var terminator: Int? = null
+        var endBit = 0
+        val valid = validate(data, version, false, modes = modes, byteSegments = segments, unknownMasks = unknownMasks,
+            bitLength = bitLength, onTerminator = { terminator = it }, onPayloadEnd = { endBit = it })
+        return if (valid) Prefix(terminator, endBit, modes, segments) else null
+    }
+
     private fun validate(data: ByteArray, version: Int, allowIncomplete: Boolean,
         modes: MutableList<Int>? = null, byteSegments: MutableList<Pair<Int, ByteArray>>? = null,
+        unknownMasks: IntArray? = null, bitLength: Int = data.size * 8,
+        onTerminator: ((Int) -> Unit)? = null, onPayloadEnd: ((Int) -> Unit)? = null,
     ): Boolean = try {
-        val bits = Bits(data)
+        val bits = Bits(data, unknownMasks, bitLength)
         var structuredAppendSeen = false
         var fnc1Seen = false
         var modeSeenAfterStructuredAppend = false
@@ -36,7 +53,12 @@ internal object StrictQrPayloadValidator {
             val mode = bits.read(4)
             if (mode == 1 || mode == 2 || mode == 4 || mode == 8 || mode == 13) modes?.add(mode)
             when (mode) {
-                0 -> return validateFiller(bits)
+                0 -> {
+                    if (onTerminator == null) return validateFiller(bits)
+                    onPayloadEnd?.invoke(bits.position - 4)
+                    onTerminator(bits.position - 4)
+                    return true
+                }
                 1 -> { modeSeenAfterStructuredAppend = true; validateNumeric(bits, bits.read(countBits(mode, version))) }
                 2 -> { modeSeenAfterStructuredAppend = true; validateAlphanumeric(bits, bits.read(countBits(mode, version))) }
                 3 -> {
@@ -79,6 +101,7 @@ internal object StrictQrPayloadValidator {
                 else -> return false
             }
         }
+        onPayloadEnd?.invoke(bits.position)
         // A prefix may end inside the next mode indicator. Only a complete stream must
         // interpret these remaining bits as a shortened terminator.
         if (!allowIncomplete) {
@@ -179,10 +202,10 @@ internal object StrictQrPayloadValidator {
         }
     }
 
-    private class Bits(private val bytes: ByteArray) {
+    private class Bits(private val bytes: ByteArray, private val unknownMasks: IntArray?, private val bitLength: Int) {
         var position = 0
             private set
-        val available: Int get() = bytes.size * 8 - position
+        val available: Int get() = bitLength - position
         val bitOffset: Int get() = position and 7
 
         fun read(width: Int): Int {
@@ -190,6 +213,8 @@ internal object StrictQrPayloadValidator {
             if (width > available) throw IncompletePayload
             var value = 0
             repeat(width) {
+                if (unknownMasks != null && (unknownMasks[position / 8] and (1 shl (7 - position % 8))) != 0)
+                    error("Unknown input bit")
                 value = (value shl 1) or ((bytes[position / 8].toInt() ushr (7 - position % 8)) and 1)
                 position++
             }
@@ -199,7 +224,8 @@ internal object StrictQrPayloadValidator {
         fun skip(width: Int) {
             require(width >= 0)
             if (width > available) throw IncompletePayload
-            position += width
+            if (unknownMasks == null) position += width
+            else repeat(width) { read(1) }
         }
     }
 

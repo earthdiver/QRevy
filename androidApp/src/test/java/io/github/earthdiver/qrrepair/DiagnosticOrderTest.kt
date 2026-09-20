@@ -79,6 +79,8 @@ class DiagnosticOrderTest {
                 assertTrue(input.contains(if (language == AppLanguage.JAPANESE) "同じデータ・ECCコード語" else "same data/ECC codewords"))
                 assertTrue(processing.contains(if (language == AppLanguage.JAPANESE) "表示中の修復根拠" else "displayed repair evidence"))
                 assertTrue(processing.contains(if (language == AppLanguage.JAPANESE) "部分bit制約" else "Partial-bit constraints"))
+                assertTrue(processing.contains(if (language == AppLanguage.JAPANESE) "不一致上限が0bit" else "mismatch limit is zero"))
+                assertTrue(input.contains(if (language == AppLanguage.JAPANESE) "参考診断" else "Reference diagnostic"))
             } finally { controller.pause().stop().destroy() }
         }
     }
@@ -89,6 +91,7 @@ class DiagnosticOrderTest {
 
     private fun install(activity: MainActivity, fixture: Fixture) {
         field<RecoveryUiState>(activity, "recoveryState").apply {
+            autoResult = null
             sourceMatrix = fixture.matrix.copy()
             workingMatrix = fixture.matrix.copy()
             geometry = GridGeometry(1, FinderRole.TOP_LEFT, 10.0, 10.0, 2.0, 0.0)
@@ -98,6 +101,56 @@ class DiagnosticOrderTest {
         }
         MainActivity::class.java.getDeclaredMethod("refreshInspector").apply { isAccessible = true }.invoke(activity)
         MainActivity::class.java.getDeclaredMethod("updateSummary", String::class.java).apply { isAccessible = true }.invoke(activity, null)
+    }
+
+    @Test fun finalFailureUsesAllReadingResultsAndSavedSettingsInsteadOfOneRepresentativeFailure() {
+        val qr = Encoder.encode("HELLO", ErrorCorrectionLevel.M, mapOf(EncodeHintType.QR_VERSION to 1))
+        val input = QrMatrix(qr.matrix.width).apply {
+            for (y in 0 until dimension) for (x in 0 until dimension)
+                set(x, y, if (qr.matrix.get(x, y).toInt() == 1) ModuleValue.ONE else ModuleValue.ZERO, 1f, ModuleSource.IMAGE)
+        }
+        val extraction = CodewordExtractor.extract(input, 1, qr.maskPattern)
+        val bad = input.copy().apply {
+            val cell = extraction.codewords.last().coordinates.first()
+            set(cell.x, cell.y, if (input[cell.x, cell.y].value == ModuleValue.ONE) ModuleValue.ZERO else ModuleValue.ONE,
+                1f, ModuleSource.IMAGE)
+        }
+        val unknown = input.copy().apply { extraction.codewords.flatMap { it.coordinates }.forEach {
+            set(it.x, it.y, ModuleValue.ERASED, 0f, ModuleSource.IMAGE)
+        } }
+        val engine = RecoveryEngine()
+        val format = QrFormatConstraint(qr.ecLevel, qr.maskPattern)
+        engine.recover(bad, maxKnownDataEccMismatches = 0, formatConstraint = format)
+        val badFailure = engine.lastFailure!!
+        engine.recover(unknown, maxKnownDataEccMismatches = 0, formatConstraint = format)
+        val unknownFailure = engine.lastFailure!!
+        for (language in AppLanguage.entries) {
+            AppLanguageManager.save(RuntimeEnvironment.getApplication(), language)
+            val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+            try {
+                val activity = controller.get()
+                install(activity, Fixture("input-conflict", bad, emptyList(), badFailure))
+                val state = field<RecoveryUiState>(activity, "recoveryState")
+                val hypothesis = GeometryHypothesis(emptyList(), state.geometry!!, 0.0)
+                val stats = MatrixSampler.SamplingStats(128.0, 255.0, 32.0)
+                state.autoResult = AutoRecoveryResult(emptyList(), listOf(
+                    GeometryAttempt(hypothesis, bad, stats, emptyList(), badFailure),
+                    GeometryAttempt(hypothesis, unknown, stats, emptyList(), unknownFailure)))
+                MainActivity::class.java.getDeclaredField("preprocessSettings").apply { isAccessible = true }
+                    .set(activity, PreprocessSettings(dataEccMismatchLimit = 8))
+                MainActivity::class.java.getDeclaredMethod("updateSummary", String::class.java)
+                    .apply { isAccessible = true }.invoke(activity, null)
+                val ja = language == AppLanguage.JAPANESE
+                val report = field<RecoveryDiagnosticReport>(activity, "diagnosticReport")
+                assertTrue(report.sections[0].summary.contains(if (ja) "不一致上限: 0bit" else "mismatch limit: 0 bits"))
+                assertTrue(report.sections[2].summary.contains(if (ja) "不一致上限が0bit" else "mismatch limit is zero"))
+                assertFalse(report.sections[2].summary.contains(if (ja) "RS候補はありません" else "No RS candidate"))
+                assertTrue(report.sections[3].summary.contains(if (ja) "未探索" else "unchecked"))
+                val content = field<TextView>(activity, "contentPreviewText").text.toString()
+                assertFalse(content.contains(if (ja) "RS候補はありません" else "No RS candidate"))
+                assertFalse(report.fullText().contains(if (ja) "この試行" else "this attempt"))
+            } finally { controller.pause().stop().destroy() }
+        }
     }
 
     @Test fun allFourRealRecoveryCasesKeepStageBoundariesInBothLanguagesAndAppearances() {
@@ -137,7 +190,8 @@ class DiagnosticOrderTest {
                     }
                     if (fixture.name == "insufficient") {
                         assertTrue(input.summary.contains("208"))
-                        assertTrue(verification.summary.contains(if (language == AppLanguage.JAPANESE) "読み取れませんでした" else "did not produce readable content"))
+                        assertTrue(verification.summary.contains(if (language == AppLanguage.JAPANESE) "見つかりませんでした" else "was found"))
+                        assertFalse(report.fullText().contains(if (language == AppLanguage.JAPANESE) "この試行" else "this attempt"))
                         assertFalse(verification.summary.contains(if (language == AppLanguage.JAPANESE) "データ・ECC領域: 比較対象" else "Data/ECC region: 0 mismatching"))
                     }
                     val view = field<TextView>(activity, "diagnosticDetailsText")

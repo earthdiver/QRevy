@@ -84,6 +84,10 @@ class ResultScreenTrialTest {
             val diagnostics = field<TextView>(activity, "diagnosticDetailsText")
             val parent = preview.parent as ViewGroup
             assertTrue(preview.text.contains(payload))
+            val styled = preview.text as android.text.Spanned
+            val highlights = styled.getSpans(0, styled.length, android.text.style.BackgroundColorSpan::class.java)
+            assertEquals(1, highlights.size)
+            assertEquals(payload, styled.subSequence(styled.getSpanStart(highlights.single()), styled.getSpanEnd(highlights.single())).toString())
             assertFalse(preview.text.contains("HEX"))
             assertTrue(parent.indexOfChild(preview) < parent.indexOfChild(explanation))
             assertTrue(parent.indexOfChild(explanation) < parent.indexOfChild(actions))
@@ -134,15 +138,65 @@ class ResultScreenTrialTest {
         }
     }
 
+
+    @Test fun candidateSelectionAcrossAttemptsUpdatesInputCopyPngAndSavedIdentity() {
+        val (firstMatrix, first) = candidate("ABC-123")
+        val (secondMatrix, second) = candidate("ABC-128")
+        fun attempt(matrix: QrMatrix, candidate: RecoveryCandidate, origin: Double) = GeometryAttempt(
+            GeometryHypothesis(emptyList(), GridGeometry(candidate.version, FinderRole.TOP_LEFT, origin, 12.0, 2.0, 0.0), origin),
+            matrix, MatrixSampler.SamplingStats(128.0, 255.0, 0.0), listOf(candidate),
+        )
+        val normal = SamplingProfile(PreprocessSettings(), false)
+        val inverted = normal.copy(inverted = true)
+        val accumulator = RecoveryResultAccumulator()
+        accumulator.add(attempt(firstMatrix, first, 10.0), normal)
+        accumulator.add(attempt(secondMatrix, second, 50.0), inverted)
+        withActivity(AppStyle.MODERN, AppLanguage.JAPANESE) { activity ->
+            val state = field<RecoveryUiState>(activity, "recoveryState")
+            state.showResults(accumulator.result())
+            refresh(activity)
+            assertEquals(2, state.selectableEntries.size)
+            assertTrue(field<TextView>(activity, "statusText").text.contains("2件"))
+            val targetIndex = state.recoveries.indexOfFirst { it.text == "ABC-128" }
+            fun radios(view: View): List<android.widget.RadioButton> = when (view) {
+                is android.widget.RadioButton -> listOf(view)
+                is ViewGroup -> (0 until view.childCount).flatMap { radios(view.getChildAt(it)) }
+                else -> emptyList()
+            }
+            radios(field(activity, "upperResultSelector"))[targetIndex].performClick()
+            assertEquals("ABC-128", state.selectedRecovery!!.text)
+            assertEquals(50.0, state.geometry!!.finderCenterX, 0.0)
+            assertTrue(state.samplingProfile!!.inverted)
+            assertEquals(listOf(state.selectedRecovery), state.guidanceRecoveries)
+            for (y in 0 until secondMatrix.dimension) for (x in 0 until secondMatrix.dimension)
+                assertEquals(secondMatrix[x, y].value, state.sourceMatrix!![x, y].value)
+            assertTrue(field<TextView>(activity, "contentPreviewText").text.contains("ABC-128"))
+            field<Button>(activity, "resultCopyButton").performClick()
+            val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            assertEquals("ABC-128", clipboard.primaryClip!!.getItemAt(0).text.toString())
+            val png = MainActivity::class.java.getDeclaredMethod("matrixForPng").apply { isAccessible = true }.invoke(activity) as QrMatrix
+            for (y in 0 until png.dimension) for (x in 0 until png.dimension)
+                assertEquals(secondMatrix[x, y].value, png[x, y].value)
+            val snapshot = MainActivity::class.java.getDeclaredMethod("currentSnapshot").apply { isAccessible = true }
+                .invoke(activity) as RecoverySnapshot
+            assertTrue(snapshot.selectedQr!!.matches(second))
+            assertFalse(snapshot.selectedQr.matches(first))
+            assertEquals(true, snapshot.samplingInverted)
+            assertEquals(1, field<RecoverySessionHistory>(activity, "sessionHistory").entries.size)
+        }
+    }
+
     @Test fun binaryAndRsOnlyCandidatesHaveDifferentStatesAndNoTextCopy() {
         val (matrix, result) = candidate("ABC-123")
         withActivity(AppStyle.MODERN, AppLanguage.JAPANESE) { activity ->
             install(activity, matrix, listOf(result.copy(text = null)))
             assertTrue(field<TextView>(activity, "statusText").text.contains("QRのデータ形式を確認しました"))
+            assertTrue(field<TextView>(activity, "diagnosticDetailsText").text.contains("指定条件を満たす修復候補が1件見つかりました。"))
             assertEquals(View.GONE, field<View>(activity, "resultCopyButton").visibility)
             assertEquals(View.VISIBLE, field<View>(activity, "resultSavePngButton").visibility)
             install(activity, matrix, listOf(result.copy(text = null, dataBytes = byteArrayOf(0x01))))
             assertTrue(field<TextView>(activity, "contentPreviewText").text.contains("誤り訂正の条件は満たしましたが"))
+            assertTrue(field<TextView>(activity, "diagnosticDetailsText").text.contains("指定条件を満たす修復候補は見つかりませんでした。"))
             assertEquals(View.GONE, field<View>(activity, "resultCopyButton").visibility)
             assertEquals(View.GONE, field<View>(activity, "resultSavePngButton").visibility)
             MainActivity::class.java.getDeclaredMethod("startSavePng").apply { isAccessible = true }.invoke(activity)
@@ -159,7 +213,8 @@ class ResultScreenTrialTest {
             state.recoveries = emptyList()
             state.selectRecovery(-1)
             state.failure = RecoveryFailure(ErrorCorrectionLevel.M, 0, 0, 0, 0, RecoveryFailureStage.REED_SOLOMON,
-                reason = RecoveryFailureReason.QR_COMBINATION_SEARCH_LIMIT)
+                reason = RecoveryFailureReason.QR_COMBINATION_SEARCH_LIMIT,
+                searchDiagnostic = RecoverySearchDiagnostic(unsearched = true))
             refresh(activity)
             assertTrue(field<TextView>(activity, "contentPreviewText").text.contains("上限"))
             assertTrue(field<TextView>(activity, "guideText").text.startsWith("次に試すこと"))

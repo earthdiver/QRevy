@@ -5,7 +5,6 @@ import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import kotlin.math.roundToInt
 
 enum class PolarityMode { NORMAL, INVERTED, AUTO }
-enum class ThresholdMode { GLOBAL, LOCAL_ADAPTIVE }
 
 /** Version 40 has 3,706 total data/ECC codewords. */
 const val MAX_QR_DATA_ECC_BITS = 3_706 * 8
@@ -32,9 +31,13 @@ data class PreprocessSettings(
     /** Rotation applied reproducibly to the persisted source image before sampling. */
     val rotationDegrees: Float = 0f,
     val polarity: PolarityMode = PolarityMode.AUTO,
-    val thresholdMode: ThresholdMode = ThresholdMode.LOCAL_ADAPTIVE,
     val blackMax: Int = 96,
     val whiteMin: Int = 160,
+    /** Estimate one pair per grid; slider edits keep the whole pair manual. */
+    val automaticThresholds: Boolean = false,
+    /** Image-wide fallback, independent of candidate order and manual slider values. */
+    val provisionalBlackMax: Int = blackMax,
+    val provisionalWhiteMin: Int = whiteMin,
     /** Finder-independent Lab clusters sampled as unknown before luminance classification. */
     val unknownColorClusters: List<UnknownColorCluster> = emptyList(),
     val useUnknownColorClusters: Boolean = false,
@@ -54,7 +57,7 @@ data class PreprocessSettings(
     val formatMismatchLimit: Int? = null,
     /** Maximum mismatches against known data/ECC modules after RS correction; null means unlimited. */
     val dataEccMismatchLimit: Int? = null,
-    /** Treat preprocessing 0/1 edits as hard pins. '?' and '*' remain recoverable erasures. */
+    /** Protect fixed 0/1 edits unless the user enables correction of fixed cells. */
     val lockManualBits: Boolean = true,
     /** Source-image quadrilateral rectified before all sampling; null leaves the rotated image intact. */
     val perspectiveCorrectionQuad: ImageQuad? = null,
@@ -67,8 +70,10 @@ data class PreprocessSettings(
     val detectedFinders: List<FinderCandidate> = emptyList(),
     /** Polarity established by an image-verified candidate that the user confirmed. */
     val confirmedFinderPolarity: FinderPolarity = FinderPolarity.UNKNOWN,
-    /** Hard 0/1/? overrides made before recovery, keyed by stable QR module coordinate. */
+    /** User 0/1/? overrides made before recovery, keyed by stable QR module coordinate. */
     val preRecoveryEdits: Map<Coord, ModuleValue> = emptyMap(),
+    /** Editable observations, never hard pins; values and user provenance are retained. */
+    val preRecoverySoftEdits: Set<Coord> = emptySet(),
     /** Erased data/ECC modules explicitly selected for the bounded priority 0/1 search. */
     val preRecoveryPrioritySearch: Set<Coord> = emptySet(),
 ) {
@@ -80,14 +85,17 @@ data class PreprocessSettings(
         manualFinders = manualFinders.toMap(),
         detectedFinders = detectedFinders.toList(),
         preRecoveryEdits = preRecoveryEdits.toMap(),
+        preRecoverySoftEdits = preRecoverySoftEdits.toSet(),
         preRecoveryPrioritySearch = preRecoveryPrioritySearch.toSet(),
     )
 
     init {
         require(rotationDegrees.isFinite() && rotationDegrees in -360f..360f)
         require(blackMax in 0..254 && whiteMin in 1..255 && blackMax < whiteMin)
+        require(provisionalBlackMax in 0..254 && provisionalWhiteMin in 1..255 && provisionalBlackMax < provisionalWhiteMin)
         require(unknownColorClusters.size <= 4)
         require(version in 1..40)
+        require(preRecoverySoftEdits.all { it in preRecoveryEdits })
         require(preRecoveryPrioritySearch.size <= 4)
         require(preRecoveryPrioritySearch.all { preRecoveryEdits[it] == ModuleValue.ERASED })
         require(formatMismatchLimit == null || formatMismatchLimit in 0..30)
@@ -106,8 +114,19 @@ data class PreprocessSettings(
         }
     }
 
-    fun sourceForPreRecoveryEdit(value: ModuleValue): ModuleSource =
-        if (value == ModuleValue.ERASED || lockManualBits) ModuleSource.USER else ModuleSource.IMAGE
+    /** Unknown edits, including priority-search erasures, are always tentative. */
+    val effectiveSoftEdits: Set<Coord> get() = preRecoverySoftEdits +
+        preRecoveryEdits.filterValues { it == ModuleValue.ERASED }.keys
+
+    // Explicit ECC/mask consistency remains enforced even when fixed-cell correction is allowed.
+    val fixedPreRecoveryEdits: Map<Coord, ModuleValue> get() = preRecoveryEdits - effectiveSoftEdits
+
+    fun sourceForPreRecoveryEdit(value: ModuleValue, coord: Coord? = null): ModuleSource = when {
+        value == ModuleValue.ERASED || coord in preRecoverySoftEdits -> ModuleSource.USER_SOFT
+        lockManualBits -> ModuleSource.USER
+        else -> ModuleSource.USER_UNLOCKED
+    }
+
 }
 
 data class SamplingProfile(val settings: PreprocessSettings, val inverted: Boolean) {
@@ -115,11 +134,15 @@ data class SamplingProfile(val settings: PreprocessSettings, val inverted: Boole
 
     fun normalize(luma: Double): Double = if (inverted) 255.0 - luma else luma
 
-    fun thresholdAt(image: LumaImage, x: Double, y: Double, radius: Double): Double {
-        val midpoint = (settings.blackMax + settings.whiteMin) / 2.0
-        if (settings.thresholdMode == ThresholdMode.GLOBAL) return midpoint
-        val local = image.sampleMean(x, y, maxOf(4.0, radius * 3.5))?.let(::normalize) ?: midpoint
-        return (midpoint + (local - 127.5) * 0.65).coerceIn(20.0, 235.0)
+    val threshold: Double get() = (settings.blackMax + settings.whiteMin) / 2.0
+
+    fun classifyLuminance(normalized: Double): ModuleValue {
+        val value = normalized.roundToInt().coerceIn(0, 255)
+        return when {
+            value <= settings.blackMax -> ModuleValue.ONE
+            value >= settings.whiteMin -> ModuleValue.ZERO
+            else -> ModuleValue.ERASED
+        }
     }
 
     fun classify(image: LumaImage, luma: Double, x: Double, y: Double, radius: Double): ModuleValue {
@@ -128,16 +151,7 @@ data class SamplingProfile(val settings: PreprocessSettings, val inverted: Boole
         ) {
             return ModuleValue.ERASED
         }
-        val midpoint = (settings.blackMax + settings.whiteMin) / 2.0
-        val shift = thresholdAt(image, x, y, radius) - midpoint
-        // Module sampling produces a fractional mean even for an integer-luminance image.
-        // Quantize after undoing the local shift so adjacent integer thresholds truly have no gap.
-        val value = (normalize(luma) - shift).roundToInt().coerceIn(0, 255)
-        return when {
-            value <= settings.blackMax -> ModuleValue.ONE
-            value >= settings.whiteMin -> ModuleValue.ZERO
-            else -> ModuleValue.ERASED
-        }
+        return classifyLuminance(normalize(luma))
     }
 }
 
