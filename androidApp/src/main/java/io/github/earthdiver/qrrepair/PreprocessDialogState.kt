@@ -9,11 +9,10 @@ import io.github.earthdiver.qrrepair.core.PointD
 import io.github.earthdiver.qrrepair.core.PolarityMode
 import io.github.earthdiver.qrrepair.core.PreprocessSettings
 import io.github.earthdiver.qrrepair.core.QrFormatConstraint
-import io.github.earthdiver.qrrepair.core.ThresholdMode
 
 internal data class PreprocessControlSnapshot(
     val polarity: PolarityMode,
-    val localThreshold: Boolean,
+    val automaticThresholds: Boolean,
     val blackProgress: Int,
     val whiteProgress: Int,
     val useUnknownColors: Boolean,
@@ -37,6 +36,16 @@ internal data class PreprocessGeometrySnapshot(
 
 /** Owns non-View state for one pre-repair dialog and assembles reproducible settings. */
 internal class PreprocessDialogState(private val initial: PreprocessSettings) {
+    var provisionalBlackMax: Int = initial.provisionalBlackMax
+        private set
+    var provisionalWhiteMin: Int = initial.provisionalWhiteMin
+        private set
+
+    fun updateProvisionalThresholds(estimate: io.github.earthdiver.qrrepair.core.InitialThresholdEstimate?) {
+        provisionalBlackMax = estimate?.blackMax ?: 96
+        provisionalWhiteMin = estimate?.whiteMin ?: 160
+    }
+
     var rotationDegrees: Float = initial.rotationDegrees
         private set
     var perspectiveCorrectionQuad: ImageQuad? = initial.perspectiveCorrectionQuad
@@ -60,7 +69,9 @@ internal class PreprocessDialogState(private val initial: PreprocessSettings) {
         val (blackMax, whiteMin) = normalizedThresholds(controls)
         return PreprocessSettings(
             polarity = controls.polarity,
-            thresholdMode = thresholdMode(controls),
+            automaticThresholds = controls.automaticThresholds,
+            provisionalBlackMax = provisionalBlackMax,
+            provisionalWhiteMin = provisionalWhiteMin,
             blackMax = blackMax,
             whiteMin = whiteMin,
             unknownColorClusters = initial.unknownColorClusters,
@@ -101,13 +112,10 @@ internal class PreprocessDialogState(private val initial: PreprocessSettings) {
     }
 
     private fun normalizedThresholds(controls: PreprocessControlSnapshot): Pair<Int, Int> {
-        val blackMax = controls.blackProgress.coerceIn(0, 253)
+        val blackMax = controls.blackProgress.coerceIn(0, 254)
         val whiteMin = (controls.whiteProgress + 1).coerceIn(blackMax + 1, 255)
         return blackMax to whiteMin
     }
-
-    private fun thresholdMode(controls: PreprocessControlSnapshot): ThresholdMode =
-        if (controls.localThreshold) ThresholdMode.LOCAL_ADAPTIVE else ThresholdMode.GLOBAL
 
     private fun normalizeRotation(value: Float): Float =
         ((value + 180f) % 360f + 360f) % 360f - 180f

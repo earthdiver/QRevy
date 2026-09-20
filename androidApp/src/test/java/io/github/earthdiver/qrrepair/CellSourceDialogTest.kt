@@ -63,7 +63,7 @@ class CellSourceDialogTest {
         })
         val host = Host()
         PreprocessDialogController(controller.get(), settings.copy(version = 1, polarity = PolarityMode.NORMAL,
-            thresholdMode = ThresholdMode.GLOBAL, manualQuad = ImageQuad(
+            automaticThresholds = false, manualQuad = ImageQuad(
                 PointD(20.0, 20.0), PointD(220.0, 20.0), PointD(220.0, 220.0), PointD(20.0, 220.0))),
             prepared, prepared, null, Executor { it.run() }, AtomicInteger(), RecoveryEngine(), host).show()
         shadowOf(Looper.getMainLooper()).idle()

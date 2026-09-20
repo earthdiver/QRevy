@@ -96,7 +96,7 @@ class PreprocessSettingsTest {
     @Test fun globalThresholdCreatesBlackWhiteAndErasureRegions() {
         val profile = PreprocessSettings(
             polarity = PolarityMode.NORMAL,
-            thresholdMode = ThresholdMode.GLOBAL,
+            automaticThresholds = false,
             blackMax = 80,
             whiteMin = 180,
         ).variants().single()
@@ -107,7 +107,7 @@ class PreprocessSettingsTest {
 
     @Test fun adjacentGlobalThresholdsCannotCreateFractionalErasureBand() {
         val profile = SamplingProfile(
-            PreprocessSettings(thresholdMode = ThresholdMode.GLOBAL, blackMax = 123, whiteMin = 124),
+            PreprocessSettings(automaticThresholds = false, blackMax = 123, whiteMin = 124),
             inverted = false,
         )
         for (step in 0..20) {
@@ -116,22 +116,10 @@ class PreprocessSettingsTest {
         }
     }
 
-    @Test fun adjacentLocalThresholdsCannotCreateFractionalErasureBand() {
-        val localImage = LumaImage(9, 9, IntArray(81) { 140 })
-        val profile = SamplingProfile(
-            PreprocessSettings(thresholdMode = ThresholdMode.LOCAL_ADAPTIVE, blackMax = 123, whiteMin = 124),
-            inverted = false,
-        )
-        for (step in 0..20) {
-            val value = 130.0 + step * 0.1
-            assertTrue(profile.classify(localImage, value, 4.0, 4.0, 1.0) != ModuleValue.ERASED)
-        }
-    }
-
     @Test fun inversionSwapsBlackAndWhiteInterpretation() {
         val profile = PreprocessSettings(
             polarity = PolarityMode.INVERTED,
-            thresholdMode = ThresholdMode.GLOBAL,
+            automaticThresholds = false,
             blackMax = 80,
             whiteMin = 180,
         ).variants().single()

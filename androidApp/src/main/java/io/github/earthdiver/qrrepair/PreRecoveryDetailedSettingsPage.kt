@@ -21,7 +21,6 @@ internal class PreRecoveryDetailedSettingsPage(
     buttonFactory: (String, () -> Unit) -> Button,
     scrollRow: (Array<out View>) -> View,
     polarity: RadioGroup,
-    localThreshold: CheckBox,
     searchQuadNeighborhood: CheckBox,
     trustKnownPayloadCount: CheckBox,
     allowFixedCorrections: CheckBox,
@@ -45,7 +44,6 @@ internal class PreRecoveryDetailedSettingsPage(
             )))
             addView(TextView(context).apply { setText(R.string.thresholding) })
             addView(polarity)
-            addView(localThreshold)
             addView(searchQuadNeighborhood)
             addView(TextView(context).apply {
                 setText(R.string.geometry_search_note)

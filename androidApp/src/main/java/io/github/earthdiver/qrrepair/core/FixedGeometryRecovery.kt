@@ -199,7 +199,7 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
             val radius = geometry.localModulePitch(x.toDouble(), y.toDouble()) * .1
             val luma = image.sampleMean(point.x, point.y, radius) ?: continue
             known++
-            val black = profile.normalize(luma) <= profile.thresholdAt(image, point.x, point.y, radius)
+            val black = profile.normalize(luma) <= profile.threshold
             if (black != ((module and 1) == 0)) mismatches++
         }
         score += if (known >= 6) 24.0 * mismatches / known else 12.0

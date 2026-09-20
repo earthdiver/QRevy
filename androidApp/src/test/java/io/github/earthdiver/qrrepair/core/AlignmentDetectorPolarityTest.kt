@@ -44,7 +44,7 @@ class AlignmentDetectorPolarityTest {
         }
         val image = LumaImage(size, size, pixels)
         val profile = SamplingProfile(
-            PreprocessSettings(version = 2, thresholdMode = ThresholdMode.GLOBAL),
+            PreprocessSettings(version = 2, automaticThresholds = false),
             inverted = false,
         )
         val base = GridGeometry(

@@ -10,7 +10,7 @@ import java.util.zip.GZIPOutputStream
 
 /** Android-independent, bounded and checksummed persistence codec for repair sessions. */
 object RecoverySessionCodec {
-    const val CURRENT_VERSION = 17
+    const val CURRENT_VERSION = 18
     const val MAX_HISTORY_ENTRIES = 40
     const val MAX_SESSION_PAYLOAD_BYTES = 16 * 1024 * 1024
     const val MAX_SESSION_FILE_BYTES = 20 * 1024 * 1024
@@ -109,6 +109,7 @@ object RecoverySessionCodec {
             hasDataEccMismatchLimit = version >= 15,
             hasSoftEdits = version >= 16,
             hasFixedCorrections = version >= 17,
+            hasAutomaticThresholds = version >= 18,
         )
         requireCorrupt(input.available() == 0, "trailing bytes in session payload")
         payload
@@ -136,6 +137,7 @@ object RecoverySessionCodec {
         hasDataEccMismatchLimit: Boolean = false,
         hasSoftEdits: Boolean = false,
         hasFixedCorrections: Boolean = false,
+        hasAutomaticThresholds: Boolean = false,
     ): Payload {
         val id = input.readUTF()
         requireCorrupt(isSafeSessionId(id), "invalid session id")
@@ -148,7 +150,7 @@ object RecoverySessionCodec {
         if (count == 0) requireCorrupt(cursor == -1, "empty history must have cursor -1")
         else requireCorrupt(cursor in 0 until count, "invalid history cursor")
         val history = ArrayList<RecoveryHistoryEntry>(count)
-        repeat(count) { history += readHistoryEntry(input, hasPreprocessSettings, hasGeometryLock, hasPrioritySearch, hasPerspectiveCorrection, hasUnknownColorClusters, hasLogicalGridAssignment, hasFormatConstraint, hasFormatMismatchLimit, hasDataEccMismatchLimit, hasSoftEdits, hasFixedCorrections) }
+        repeat(count) { history += readHistoryEntry(input, hasPreprocessSettings, hasGeometryLock, hasPrioritySearch, hasPerspectiveCorrection, hasUnknownColorClusters, hasLogicalGridAssignment, hasFormatConstraint, hasFormatMismatchLimit, hasDataEccMismatchLimit, hasSoftEdits, hasFixedCorrections, hasAutomaticThresholds) }
         return Payload(id, updated, mode, history, cursor)
     }
 
@@ -187,6 +189,7 @@ object RecoverySessionCodec {
         hasDataEccMismatchLimit: Boolean,
         hasSoftEdits: Boolean,
         hasFixedCorrections: Boolean,
+        hasAutomaticThresholds: Boolean,
     ): RecoveryHistoryEntry {
         val id = input.readUTF()
         requireCorrupt(id.length <= MAX_TEXT, "history id too long")
@@ -196,7 +199,7 @@ object RecoverySessionCodec {
         val label = input.readUTF()
         val detail = input.readUTF()
         requireCorrupt(label.length <= 400 && detail.length <= 1600, "history text too long")
-        return RecoveryHistoryEntry(id, timestamp, kind, label, detail, readSnapshot(input, hasPreprocessSettings, hasGeometryLock, hasPrioritySearch, hasPerspectiveCorrection, hasUnknownColorClusters, hasLogicalGridAssignment, hasFormatConstraint, hasFormatMismatchLimit, hasDataEccMismatchLimit, hasSoftEdits, hasFixedCorrections))
+        return RecoveryHistoryEntry(id, timestamp, kind, label, detail, readSnapshot(input, hasPreprocessSettings, hasGeometryLock, hasPrioritySearch, hasPerspectiveCorrection, hasUnknownColorClusters, hasLogicalGridAssignment, hasFormatConstraint, hasFormatMismatchLimit, hasDataEccMismatchLimit, hasSoftEdits, hasFixedCorrections, hasAutomaticThresholds))
     }
 
     private fun writeSnapshot(out: DataOutputStream, snapshot: RecoverySnapshot) {
@@ -222,6 +225,7 @@ object RecoverySessionCodec {
         hasDataEccMismatchLimit: Boolean,
         hasSoftEdits: Boolean,
         hasFixedCorrections: Boolean,
+        hasAutomaticThresholds: Boolean,
     ): RecoverySnapshot {
         val geometry = readGeometry(input)
         val source = readMatrix(input, hasPrioritySearch, hasSoftEdits, hasFixedCorrections)
@@ -235,7 +239,7 @@ object RecoverySessionCodec {
         }
         val recoveryIndex = input.readInt()
         requireCorrupt(recoveryIndex >= -1 && recoveryIndex <= 100_000, "invalid recovery index")
-        val settings = if (hasPreprocessSettings && input.readBoolean()) readPreprocessSettings(input, hasGeometryLock, hasPrioritySearch, hasPerspectiveCorrection, hasUnknownColorClusters, hasLogicalGridAssignment, hasFormatConstraint, hasFormatMismatchLimit, hasDataEccMismatchLimit, hasSoftEdits, hasFixedCorrections) else null
+        val settings = if (hasPreprocessSettings && input.readBoolean()) readPreprocessSettings(input, hasGeometryLock, hasPrioritySearch, hasPerspectiveCorrection, hasUnknownColorClusters, hasLogicalGridAssignment, hasFormatConstraint, hasFormatMismatchLimit, hasDataEccMismatchLimit, hasSoftEdits, hasFixedCorrections, hasAutomaticThresholds) else null
         return RecoverySnapshot(geometry, source, working, recoveryIndex, settings)
     }
 
@@ -265,7 +269,7 @@ object RecoverySessionCodec {
         validatePreprocessSettings(settings)
         out.writeFloat(settings.rotationDegrees)
         out.writeInt(settings.polarity.ordinal)
-        out.writeInt(settings.thresholdMode.ordinal)
+        out.writeInt(0) // Reserved legacy global/local mode; all sampling now uses global thresholds.
         out.writeInt(settings.blackMax)
         out.writeInt(settings.whiteMin)
         out.writeBoolean(settings.useUnknownColorClusters)
@@ -320,13 +324,17 @@ object RecoverySessionCodec {
         settings.preRecoveryPrioritySearch.forEach { coord -> out.writeInt(coord.x); out.writeInt(coord.y) }
         out.writeInt(settings.preRecoverySoftEdits.size)
         settings.preRecoverySoftEdits.forEach { coord -> out.writeInt(coord.x); out.writeInt(coord.y) }
+        out.writeBoolean(settings.automaticThresholds)
+        out.writeInt(settings.provisionalBlackMax)
+        out.writeInt(settings.provisionalWhiteMin)
     }
 
-    private fun readPreprocessSettings(input: DataInputStream, hasGeometryLock: Boolean, hasPrioritySearch: Boolean, hasPerspectiveCorrection: Boolean, hasUnknownColorClusters: Boolean, hasLogicalGridAssignment: Boolean, hasFormatConstraint: Boolean, hasFormatMismatchLimit: Boolean, hasDataEccMismatchLimit: Boolean, hasSoftEdits: Boolean, hasFixedCorrections: Boolean): PreprocessSettings {
+    private fun readPreprocessSettings(input: DataInputStream, hasGeometryLock: Boolean, hasPrioritySearch: Boolean, hasPerspectiveCorrection: Boolean, hasUnknownColorClusters: Boolean, hasLogicalGridAssignment: Boolean, hasFormatConstraint: Boolean, hasFormatMismatchLimit: Boolean, hasDataEccMismatchLimit: Boolean, hasSoftEdits: Boolean, hasFixedCorrections: Boolean, hasAutomaticThresholds: Boolean): PreprocessSettings {
         val rotation = input.readFloat()
         requireCorrupt(rotation.isFinite() && rotation in -360f..360f, "invalid preprocessing rotation")
         val polarity = enumStrict<PolarityMode>(input.readInt(), "polarity")
-        val thresholdMode = enumStrict<ThresholdMode>(input.readInt(), "threshold mode")
+        val legacyThresholdMode = input.readInt()
+        requireCorrupt(legacyThresholdMode in 0..1, "invalid legacy threshold mode")
         val blackMax = input.readInt(); val whiteMin = input.readInt()
         requireCorrupt(blackMax in 0..254 && whiteMin in 1..255 && blackMax < whiteMin, "invalid thresholds")
         val useUnknownColorClusters = if (hasUnknownColorClusters) input.readBoolean() else false
@@ -430,11 +438,18 @@ object RecoverySessionCodec {
                 }
             }
         } else emptySet()
+        val automaticThresholds = if (hasAutomaticThresholds) input.readBoolean() else false
+        val provisionalBlackMax = if (hasAutomaticThresholds) input.readInt() else blackMax
+        val provisionalWhiteMin = if (hasAutomaticThresholds) input.readInt() else whiteMin
+        requireCorrupt(provisionalBlackMax in 0..254 && provisionalWhiteMin in 1..255 &&
+            provisionalBlackMax < provisionalWhiteMin, "invalid provisional thresholds")
         return try {
             PreprocessSettings(
                 rotationDegrees = rotation,
                 polarity = polarity,
-                thresholdMode = thresholdMode,
+                automaticThresholds = automaticThresholds,
+                provisionalBlackMax = provisionalBlackMax,
+                provisionalWhiteMin = provisionalWhiteMin,
                 blackMax = blackMax,
                 whiteMin = whiteMin,
                 unknownColorClusters = unknownColorClusters,

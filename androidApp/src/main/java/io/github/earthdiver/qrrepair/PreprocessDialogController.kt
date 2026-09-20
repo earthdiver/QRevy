@@ -35,7 +35,6 @@ import io.github.earthdiver.qrrepair.core.FormatEditConflict
 import io.github.earthdiver.qrrepair.core.QrFormatConstraint
 import io.github.earthdiver.qrrepair.core.QrFunctionMask
 import io.github.earthdiver.qrrepair.core.RecoveryEngine
-import io.github.earthdiver.qrrepair.core.ThresholdMode
 import io.github.earthdiver.qrrepair.ui.BitmapUtils
 import io.github.earthdiver.qrrepair.ui.EditorTool
 import io.github.earthdiver.qrrepair.ui.CodewordOverlayKind
@@ -154,9 +153,10 @@ internal class PreprocessDialogController(
         }
         fun selectedPolarity(): PolarityMode =
             polarity.findViewById<RadioButton>(polarity.checkedRadioButtonId)?.tag as? PolarityMode ?: PolarityMode.AUTO
-        val local = CheckBox(this).apply {
-            text = ui("場所ごとに閾値を補正（照明むら・反射がある画像向け）", "Local threshold (uneven lighting or glare)")
-            isChecked = preprocessSettings.thresholdMode == ThresholdMode.LOCAL_ADAPTIVE
+        var updatingThresholdControls = false
+        val automaticThresholds = CheckBox(this).apply {
+            text = ui("閾値を自動設定", "Set thresholds automatically")
+            isChecked = preprocessSettings.automaticThresholds
         }
         val useUnknownColors = CheckBox(this).apply {
             text = ui("自動検出された色クラスタを不明領域（?）として扱う", "Treat detected color clusters as unknown (?)")
@@ -225,7 +225,7 @@ internal class PreprocessDialogController(
         }
         fun controlSnapshot() = PreprocessControlSnapshot(
             polarity = selectedPolarity(),
-            localThreshold = local.isChecked,
+            automaticThresholds = automaticThresholds.isChecked,
             blackProgress = black.progress,
             whiteProgress = white.progress,
             useUnknownColors = useUnknownColors.isChecked,
@@ -239,11 +239,15 @@ internal class PreprocessDialogController(
             dataEccMismatchLimit = dataEccMismatchLimitDraft,
             lockManualBits = !allowFixedCorrections.isChecked,
         )
-        fun refreshLabels() {
+        fun updateThresholdLabels() {
             val mode = selectedPolarity()
             val (darkMeaning, lightMeaning) = polarityThresholdMeanings(mode, isJapaneseUi())
             blackLabel.text = ui("画像の暗部（$darkMeaning）: ${black.progress}", "Dark pixels ($darkMeaning): ${black.progress}")
             whiteLabel.text = ui("画像の明部（$lightMeaning）: ${white.progress + 1}", "Light pixels ($lightMeaning): ${white.progress + 1}")
+        }
+        fun refreshLabels() {
+            updateThresholdLabels()
+            val mode = selectedPolarity()
             val selectedVersion = version.progress + 1
             val selectedDimension = 17 + 4 * selectedVersion
             versionButton?.text = ui("QRバージョン: $selectedVersion / $selectedDimension×${selectedDimension}セル", "QR Version: $selectedVersion / $selectedDimension modules")
@@ -252,15 +256,18 @@ internal class PreprocessDialogController(
                 inverted = mode == PolarityMode.INVERTED,
             )
             activePreviewProfile = profile
-            overlay.setClassificationPreview(working.luma, profile)
             refreshClassificationMatrix()
         }
         val listener = object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (updatingThresholdControls) return
+                updatingThresholdControls = true
+                if (fromUser) automaticThresholds.isChecked = false
                 if (black.progress >= white.progress + 1) {
-                    if (seekBar === black) white.progress = (black.progress + 1).coerceAtMost(254)
-                    else black.progress = white.progress.coerceAtMost(253)
+                    if (seekBar === black) white.progress = black.progress
+                    else black.progress = white.progress
                 }
+                updatingThresholdControls = false
                 if (fromUser) invalidateSamplingPreview()
                 refreshLabels()
             }
@@ -324,9 +331,10 @@ internal class PreprocessDialogController(
             noteDraftChange("polarity", ui("白黒極性を変更", "Changed polarity"), label)
             refreshLabels()
         }
-        local.setOnCheckedChangeListener { _, checked ->
+        automaticThresholds.setOnCheckedChangeListener { _, checked ->
+            if (updatingThresholdControls) return@setOnCheckedChangeListener
             invalidateSamplingPreview(); refreshLabels()
-            noteDraftChange("local", ui("場所ごとの白黒判定を変更", "Changed local thresholding"), if (checked) "ON" else "OFF")
+            noteDraftChange("threshold-auto", ui("閾値を自動設定", "Set thresholds automatically"), if (checked) "ON" else "OFF")
         }
         useUnknownColors.setOnCheckedChangeListener { _, checked ->
             invalidateSamplingPreview(); refreshLabels()
@@ -384,6 +392,7 @@ internal class PreprocessDialogController(
                         Toast.makeText(this, ui("周辺でFinderを確定できませんでした。指定点をヒントとして解析します。", "The Finder could not be confirmed nearby. The selected point will be used as a hint."), Toast.LENGTH_LONG).show()
                     } else {
                         overlay.setVerifiedFinder(role, refined)
+                        refreshClassificationMatrix()
                         Toast.makeText(this, ui("Finder位置を自動補正しました（モジュール幅 ${"%.1f".format(refined.moduleSize)}px）", "Finder position refined (module width ${"%.1f".format(refined.moduleSize)} px)"), Toast.LENGTH_SHORT).show()
                     }
                 }
@@ -399,6 +408,7 @@ internal class PreprocessDialogController(
                 FinderRole.BOTTOM_LEFT -> getString(R.string.bottom_left)
             }
             userGeometryEdited = true
+            refreshClassificationMatrix()
             noteDraftChange("finder-$role", ui("$label Finderを解除", "Removed $label Finder"), role.name)
             Toast.makeText(this, ui("$label のFinder確定を解除しました。", "The $label Finder was unconfirmed."), Toast.LENGTH_SHORT).show()
         }
@@ -520,7 +530,6 @@ internal class PreprocessDialogController(
             buttonFactory = ::button,
             scrollRow = { views -> scrollRow(*views) },
             polarity = polarity,
-            localThreshold = local,
             searchQuadNeighborhood = searchQuadNeighborhood,
             trustKnownPayloadCount = trustKnownPayloadCount,
             allowFixedCorrections = allowFixedCorrections,
@@ -543,6 +552,12 @@ internal class PreprocessDialogController(
             ),
         ).view
         var singleCellEditMode = true
+        var sampledImage: io.github.earthdiver.qrrepair.core.LumaImage? = null
+        var sampledGeometry: GridGeometry? = null
+        var sampledProfile: SamplingProfile? = null
+        var sampledResult: Pair<QrMatrix, MatrixSampler.SamplingStats>? = null
+        var sampledObservations: Array<io.github.earthdiver.qrrepair.core.ModuleObservation?>? = null
+        var provisionalImage = initialWorking
         fun sampleImageMatrix(): Pair<GridGeometry, QrMatrix>? {
             val q = overlay.imageQuad()
             val dimension = 17 + 4 * (version.progress + 1)
@@ -551,7 +566,39 @@ internal class PreprocessDialogController(
                 version.progress + 1, FinderRole.TOP_LEFT, q.topLeft.x, q.topLeft.y,
                 pitch, 0.0, q, io.github.earthdiver.qrrepair.core.GeometryModel.MANUAL_PROJECTIVE,
             ).reanchored() }.getOrNull() ?: return null
-            return g to MatrixSampler(working.luma, activePreviewProfile).sample(g).first
+            if (working !== provisionalImage) {
+                dialogState.updateProvisionalThresholds(io.github.earthdiver.qrrepair.core.InitialThresholdEstimator.estimate(working.bitmap))
+                provisionalImage = working
+            }
+            val requested = SamplingProfile(dialogState.previewSettings(controlSnapshot()),
+                inverted = when (overlay.confirmedFinderPolarity()) {
+                    io.github.earthdiver.qrrepair.core.FinderPolarity.INVERTED -> true
+                    io.github.earthdiver.qrrepair.core.FinderPolarity.NORMAL -> false
+                    else -> selectedPolarity() == PolarityMode.INVERTED
+                })
+            // Effective slider values are outputs in automatic mode, not inputs to the next fit.
+            val profile = if (requested.settings.automaticThresholds) requested.copy(settings = requested.settings.copy(
+                blackMax = requested.settings.provisionalBlackMax, whiteMin = requested.settings.provisionalWhiteMin,
+                automaticThresholds = overlay.isLogicalGridAssigned(),
+            )) else requested
+            if (sampledImage !== working.luma || sampledGeometry != g || sampledProfile != profile) {
+                if (sampledImage !== working.luma || sampledGeometry != g || sampledProfile?.inverted != profile.inverted) {
+                    sampledObservations = io.github.earthdiver.qrrepair.core.GridThresholdEstimator.observe(working.luma, g, profile.inverted)
+                }
+                sampledResult = MatrixSampler(working.luma, profile).sampleObserved(g, profile, requireNotNull(sampledObservations))
+                sampledImage = working.luma; sampledGeometry = g; sampledProfile = profile
+            }
+            val (matrix, stats) = requireNotNull(sampledResult)
+            stats.thresholds?.let { pair ->
+                updatingThresholdControls = true
+                black.progress = pair.blackMax; white.progress = pair.whiteMin - 1
+                updatingThresholdControls = false
+                updateThresholdLabels()
+            }
+            activePreviewProfile = requested.copy(settings = requested.settings.copy(
+                blackMax = black.progress, whiteMin = white.progress + 1,
+            ))
+            return g to matrix.copy()
         }
         fun refreshPreRecoveryMatrix(): Pair<GridGeometry, QrMatrix>? {
             val (g, matrix) = sampleImageMatrix() ?: return null
@@ -595,8 +642,11 @@ internal class PreprocessDialogController(
                 dedicatedEditor?.setDocument(working.bitmap, geometry, matrix, keepViewport = true)
             }
         }
+        val refreshDraggedGrid = Runnable { if (overlay.isAttachedToWindow) refreshClassificationMatrix() }
         overlay.onGeometryEdited = {
             userGeometryEdited = true
+            overlay.removeCallbacks(refreshDraggedGrid)
+            overlay.postDelayed(refreshDraggedGrid, 120L)
         }
         fun selectPreEditCell(x: Int, y: Int) {
             overlay.selectEditCell(Coord(x, y))
@@ -998,6 +1048,7 @@ internal class PreprocessDialogController(
             buttonFactory = ::button,
             compactRow = { views -> compactRow(*views) },
             versionButton = requireNotNull(versionButton),
+            automaticThresholds = automaticThresholds,
             blackLabel = blackLabel,
             blackSeekBar = black,
             whiteLabel = whiteLabel,
@@ -1167,8 +1218,7 @@ internal class PreprocessDialogController(
                 draftState.note(key, label, detail, capturePreprocessSettings())
             }
             overlay.onGeometryEditFinished = {
-                // Sampling the full Version-sized matrix on every ACTION_MOVE made high-Version
-                // corner drags increasingly sluggish. Refresh once after the gesture instead.
+                overlay.removeCallbacks(refreshDraggedGrid)
                 refreshClassificationMatrix()
                 noteDraftChange("quad", ui("四隅を調整", "Adjusted corners"), ui("ドラッグまたは矢印で調整", "Adjusted by drag or arrow keys"))
             }

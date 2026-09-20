@@ -78,7 +78,6 @@ import io.github.earthdiver.qrrepair.core.QrContentPreview
 import io.github.earthdiver.qrrepair.core.UiMode
 import io.github.earthdiver.qrrepair.core.RepairGuidance
 import io.github.earthdiver.qrrepair.core.RepairTraceBuilder
-import io.github.earthdiver.qrrepair.core.ThresholdMode
 import io.github.earthdiver.qrrepair.ui.BitmapUtils
 import io.github.earthdiver.qrrepair.ui.RepairPreviewView
 import io.github.earthdiver.qrrepair.ui.CropOverlayView
@@ -2169,7 +2168,7 @@ class MainActivity : Activity() {
                     .mapTo(linkedSetOf()) { io.github.earthdiver.qrrepair.core.Coord(it.first, it.second) }
                 val settings = PreprocessSettings(
                     polarity = PolarityMode.NORMAL,
-                    thresholdMode = ThresholdMode.GLOBAL,
+                    automaticThresholds = false,
                     blackMax = 64,
                     whiteMin = 192,
                     quietZoneCorrection = false,
@@ -2341,6 +2340,7 @@ class MainActivity : Activity() {
                     analysisPrepared = p
                     savedCellEditState = null
                     preprocessSettings = PreprocessSettings(
+                        automaticThresholds = true,
                         blackMax = initialEstimate?.blackMax ?: 96,
                         whiteMin = initialEstimate?.whiteMin ?: 160,
                         unknownColorClusters = initialEstimate?.unknownColorClusters.orEmpty(),
@@ -2378,13 +2378,6 @@ class MainActivity : Activity() {
                         ),
                     )
                     persistSessionAsync()
-                    if (initialEstimate == null) {
-                        AlertDialog.Builder(this@MainActivity)
-                            .setTitle(ui("濃度閾値を推定できませんでした", "Could not estimate intensity thresholds"))
-                            .setMessage(ui("黒白ピークを信頼できる精度で分離できなかったため、既定値（暗部96／明部160）を使用します。修復前設定で画像を確認してください。", "The black and white peaks could not be separated reliably. The defaults (dark 96 / light 160) will be used. Review the image in pre-repair settings."))
-                            .setPositiveButton(R.string.close, null)
-                            .show()
-                    }
                     recoveryState.clear()
                     guideText.text = ui("案内: 修復前設定で閾値・反転・グリッドを確認してください。", "Guide: Review the threshold, polarity, and grid in the pre-repair settings.")
                     contentPreviewText.text = getString(R.string.no_content_preview)
@@ -2683,6 +2676,9 @@ class MainActivity : Activity() {
             attempt.failure,
             preferredRecoveryIndex(attempt.recoveries),
         )
+        attempt.samplingStats.thresholds?.let { pair ->
+            preprocessSettings = preprocessSettings.copy(blackMax = pair.blackMax, whiteMin = pair.whiteMin)
+        }
         refreshInspector()
         updateSummary()
         updateContentPreview()

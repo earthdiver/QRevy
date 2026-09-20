@@ -17,13 +17,11 @@ import io.github.earthdiver.qrrepair.core.FinderCandidate
 import io.github.earthdiver.qrrepair.core.GeometryModel
 import io.github.earthdiver.qrrepair.core.GridGeometry
 import io.github.earthdiver.qrrepair.core.ImageQuad
-import io.github.earthdiver.qrrepair.core.LumaImage
 import io.github.earthdiver.qrrepair.core.ModuleValue
 import io.github.earthdiver.qrrepair.core.ModuleSource
 import io.github.earthdiver.qrrepair.core.QrMatrix
 import io.github.earthdiver.qrrepair.core.Coord
 import io.github.earthdiver.qrrepair.core.PointD
-import io.github.earthdiver.qrrepair.core.SamplingProfile
 import io.github.earthdiver.qrrepair.core.alignQuadCornerToFinder
 import io.github.earthdiver.qrrepair.core.assignedFromFinder
 import io.github.earthdiver.qrrepair.core.provisionalFinderRole
@@ -53,8 +51,6 @@ class PreprocessOverlayView(context: Context) : View(context) {
     private var dragStartTouch: PointD? = null
     private var dragStartCorner: PointD? = null
     private var cornerDragStarted = false
-    private var previewImage: LumaImage? = null
-    private var previewProfile: SamplingProfile? = null
     var finderPlacementRole: FinderRole? = null
     var onFinderHintPlaced: ((FinderRole, PointD) -> Unit)? = null
     var onFinderPlacementRejected: ((FinderRole) -> Unit)? = null
@@ -193,11 +189,6 @@ class PreprocessOverlayView(context: Context) : View(context) {
     fun setVerifiedFinder(role: FinderRole, candidate: FinderCandidate) {
         confirmedFinderEvidence[role] = candidate
         setFinderPoint(role, PointD(candidate.centerX, candidate.centerY))
-    }
-    fun setClassificationPreview(image: LumaImage, profile: SamplingProfile) {
-        previewImage = image
-        previewProfile = profile
-        invalidate()
     }
     fun imageQuad(): ImageQuad = ImageQuad(corners[0], corners[1], corners[2], corners[3])
     internal fun expectedFinderCenter(role: FinderRole): PointD {
@@ -510,8 +501,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
     }
 
     private fun drawClassificationPreview(canvas: Canvas, fitScale: Double, ox: Double, oy: Double) {
-        val image = previewImage ?: return
-        val profile = previewProfile ?: return
+        val matrix = editMatrix ?: return
         val dimension = 17 + 4 * version
         val quad = imageQuad()
         val pitch = ((quad.topLeft.distanceTo(quad.topRight) + quad.topLeft.distanceTo(quad.bottomLeft)) /
@@ -526,21 +516,16 @@ class PreprocessOverlayView(context: Context) : View(context) {
         runCatching {
             for (my in 0 until dimension step step) for (mx in 0 until dimension step step) {
                 val p = geometry.moduleToImage(mx.toDouble(), my.toDouble())
-                val sampleRadius = geometry.localModulePitch(mx.toDouble(), my.toDouble()) * .14
-                val editedCell = editMatrix?.takeIf { it.dimension == dimension }?.get(mx, my)
-                val editedValue = editedCell?.value
-                val value = if (editedValue != null) editedValue else {
-                    val lum = image.sampleMean(p.x, p.y, sampleRadius) ?: continue
-                    profile.classify(image, lum, p.x, p.y, sampleRadius)
-                }
+                val editedCell = matrix.takeIf { it.dimension == dimension }?.get(mx, my) ?: continue
+                val value = editedCell.value
                 val vx = (ox + p.x * fitScale).toFloat()
                 val vy = (oy + p.y * fitScale).toFloat()
-                if (editedCell?.prioritySearch == true) priority++ else when (value) {
+                if (editedCell.prioritySearch) priority++ else when (value) {
                     ModuleValue.ONE -> ones++
                     ModuleValue.ZERO -> zeros++
                     ModuleValue.ERASED -> unknown++
                 }
-                if (highlightManualOnly && editedCell?.source?.isUserEdit != true &&
+                if (highlightManualOnly && editedCell.source.isUserEdit != true &&
                     Coord(mx, my) != editCell && Coord(mx, my) !in editSelection) continue
                 drawClassificationValue(
                     canvas = canvas,
@@ -549,7 +534,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
                     y = vy,
                     textSize = (moduleOnScreen * .72).coerceIn(dp(6f).toDouble(), dp(13f).toDouble()).toFloat(),
                     unknownRadius = radius,
-                    prioritySearch = editedCell?.prioritySearch == true,
+                    prioritySearch = editedCell.prioritySearch,
                 )
             }
         }

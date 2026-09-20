@@ -56,7 +56,6 @@ class PreRecoveryDetailedSettingsPageTest {
             } },
             scrollRow = { views -> LinearLayout(activity).apply { views.forEach(::addView) } },
             polarity = RadioGroup(activity),
-            localThreshold = CheckBox(activity),
             searchQuadNeighborhood = CheckBox(activity),
             trustKnownPayloadCount = CheckBox(activity),
             allowFixedCorrections = CheckBox(activity),

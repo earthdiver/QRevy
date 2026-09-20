@@ -21,7 +21,7 @@ Prefer an image containing the complete QR and, when possible, its surrounding q
 1. Rotate in 90°, 1°, or 0.1° increments when needed.
 2. Crop to the QR region.
 3. Review the estimated corners and version.
-4. Review the black/unknown/white thresholds so gray damage remains `?` where appropriate.
+4. Review the black/unknown/white thresholds so gray damage remains `?` where appropriate. **Set thresholds automatically** starts checked for a new image and updates one global pair when the grid changes. Moving either threshold slider unchecks it; unchecking it directly keeps the current values. With it unchecked, both values remain manual during corner adjustment and repair fine-tuning. Checking it again recalculates the thresholds. Reopening a session restores its saved checkbox state. Unstable sampling also produces `?`; fixed and tentative cell edits are retained.
 5. Enable **Treat detected color clusters as unknown (?)** only when colored damage should be treated as unknown. It starts disabled.
 
 Automatic estimates are starting values, not proof of the correct symbol. Align corners with the centers of the outer modules and confirm that the selected version agrees with the number of cells along one side.

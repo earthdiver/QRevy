@@ -25,6 +25,8 @@ import io.github.earthdiver.qrrepair.core.ModuleSource
 import io.github.earthdiver.qrrepair.core.ModuleValue
 import io.github.earthdiver.qrrepair.core.HistoryEventKind
 import io.github.earthdiver.qrrepair.core.FinderRole
+import io.github.earthdiver.qrrepair.core.GeometryModel
+import io.github.earthdiver.qrrepair.core.MatrixSampler
 import io.github.earthdiver.qrrepair.core.GridGeometry
 import io.github.earthdiver.qrrepair.core.ImageQuad
 import io.github.earthdiver.qrrepair.core.PointD
@@ -124,7 +126,6 @@ class PreprocessDialogLayoutTest {
                 PointD(12.0, 12.0), PointD(228.0, 12.0),
                 PointD(228.0, 228.0), PointD(12.0, 228.0),
             ))
-            setClassificationPreview(prepared.luma, SamplingProfile(PreprocessSettings(), inverted = false))
             measure(
                 View.MeasureSpec.makeMeasureSpec(240, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(240, View.MeasureSpec.EXACTLY),
@@ -132,6 +133,9 @@ class PreprocessDialogLayoutTest {
             layout(0, 0, 240, 240)
         }
 
+        val geometry = GridGeometry(1, FinderRole.TOP_LEFT, 12.0, 12.0, 10.8, 0.0,
+            overlay.imageQuad(), GeometryModel.MANUAL_PROJECTIVE).reanchored()
+        overlay.setCellEditPreview(geometry, MatrixSampler(prepared.luma, SamplingProfile(PreprocessSettings(), false)).sample(geometry).first)
         overlay.draw(Canvas(Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888)))
         val summary = PreprocessOverlayView::class.java.getDeclaredField("lastClassificationSummary").run {
             isAccessible = true
@@ -180,8 +184,9 @@ class PreprocessDialogLayoutTest {
         )
         decor.layout(0, 0, 360, 640)
 
-        listOf("Details", "Nudge:", "Rectify selection", "QR Version:", "Assign Finder", "Save & repair").forEach { label ->
+        listOf("Details", "Nudge:", "Rectify selection", "QR Version:", "Set thresholds automatically", "Assign Finder", "Save & repair").forEach { label ->
             val control = findText(decor, label)
+            if (label == "Set thresholds automatically") assertTrue(control is CheckBox)
             assertNotNull("English pre-repair control is missing: $label", control)
             assertTrue("English control has no measurable size: $label", control!!.measuredWidth > 0 && control.measuredHeight > 0)
             assertTrue("English control exceeds the dialog width: $label", control.measuredWidth <= 360)

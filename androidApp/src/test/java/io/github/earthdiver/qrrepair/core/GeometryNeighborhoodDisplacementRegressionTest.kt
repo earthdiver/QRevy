@@ -32,7 +32,7 @@ class GeometryNeighborhoodDisplacementRegressionTest {
                 manualQuad = truth,
                 blackMax = 80,
                 whiteMin = 175,
-                thresholdMode = ThresholdMode.GLOBAL,
+                automaticThresholds = false,
             ),
             inverted = false,
         )

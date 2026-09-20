@@ -32,7 +32,7 @@ class TentativeSessionCodecTest {
         for (locked in listOf(false, true)) {
             val settings = PreprocessSettings(lockManualBits = locked, preRecoveryEdits = mapOf(a to ModuleValue.ZERO))
             val encoded = RecoverySessionCodec.encode(payload(settings))
-            val decoded = RecoverySessionCodec.decode(rewrite(encoded, 15) { it.copyOf(it.size - 4) })
+            val decoded = RecoverySessionCodec.decode(rewrite(encoded, 15) { it.copyOf(it.size - 13) })
                 .historyEntries.single().snapshot.preprocessSettings!!
             assertEquals(settings, decoded)
             assertEquals(emptySet<Coord>(), decoded.effectiveSoftEdits)
@@ -43,10 +43,10 @@ class TentativeSessionCodecTest {
         val settings = PreprocessSettings(preRecoveryEdits = mapOf(a to ModuleValue.ZERO, b to ModuleValue.ONE), preRecoverySoftEdits = setOf(a, b))
         val bytes = RecoverySessionCodec.encode(payload(settings))
         val mutations = listOf<(ByteArray) -> ByteArray>(
-            { raw -> raw.apply { putInt(this, size - 20, -1) } },
-            { raw -> raw.apply { putInt(this, size - 20, 3) } },
-            { raw -> raw.apply { putInt(this, size - 8, a.x); putInt(this, size - 4, a.y) } },
-            { raw -> raw.apply { putInt(this, size - 8, 999) } },
+            { raw -> raw.apply { putInt(this, size - 29, -1) } },
+            { raw -> raw.apply { putInt(this, size - 29, 3) } },
+            { raw -> raw.apply { putInt(this, size - 17, a.x); putInt(this, size - 13, a.y) } },
+            { raw -> raw.apply { putInt(this, size - 17, 999) } },
             { raw -> raw.copyOf(raw.size - 1) },
         )
         for (mutate in mutations) assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) {
@@ -84,7 +84,7 @@ class TentativeSessionCodecTest {
             preRecoverySoftEdits = setOf(b), preRecoveryPrioritySearch = setOf(b))
         val bytes = RecoverySessionCodec.encode(payload(settings))
         assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) {
-            RecoverySessionCodec.decode(rewrite(bytes, 16) { it })
+            RecoverySessionCodec.decode(rewrite(bytes, 16) { it.copyOf(it.size - 9) })
         }
     }
 
