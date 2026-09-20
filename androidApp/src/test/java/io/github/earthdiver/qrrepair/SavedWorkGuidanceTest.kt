@@ -1,6 +1,7 @@
 package io.github.earthdiver.qrrepair
 
 import android.app.AlertDialog
+import android.app.Dialog
 import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
@@ -38,10 +39,11 @@ class SavedWorkGuidanceTest {
                 store.save("keep-other-work", UiMode.SIMPLE, listOf(RecoveryHistoryEntry(
                     kind = HistoryEventKind.IMPORT, label = "Other synthetic work",
                     snapshot = RecoverySnapshot(null, null, null, -1))), 0)
+                val dialogsBeforeList = ShadowDialog.getShownDialogs().toSet()
                 MainActivity::class.java.getDeclaredMethod("showRecentSessions").apply { isAccessible = true }.invoke(activity)
                 val io = MainActivity::class.java.getDeclaredField("ioExecutor").apply { isAccessible = true }
                     .get(activity) as ExecutorService
-                val dialog = awaitSessionList(io, expectedCount = 2)
+                val dialog = awaitSessionList(io, expectedCount = 2, excluding = dialogsBeforeList)
                 assertTrue(dialog.listView.isShown)
                 assertEquals(2, dialog.listView.adapter.count)
                 val labels = descendants(dialog.window!!.decorView).filterIsInstance<TextView>().map { it.text.toString() }
@@ -56,8 +58,9 @@ class SavedWorkGuidanceTest {
                 val confirmation = ShadowDialog.getLatestDialog() as AlertDialog
                 assertNotSame(dialog, confirmation)
                 assertNotNull(store.load("guidance"))
+                val dialogsBeforeDeletion = ShadowDialog.getShownDialogs().toSet()
                 confirmation.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
-                val remaining = awaitSessionList(io, expectedCount = 1)
+                val remaining = awaitSessionList(io, expectedCount = 1, excluding = dialogsBeforeDeletion)
                 assertNull(store.load("guidance"))
                 assertNotNull(store.load("keep-other-work"))
                 assertEquals(1, remaining.listView.adapter.count)
@@ -69,13 +72,17 @@ class SavedWorkGuidanceTest {
         }
     }
 
-    private fun awaitSessionList(io: ExecutorService, expectedCount: Int): AlertDialog {
+    private fun awaitSessionList(
+        io: ExecutorService,
+        expectedCount: Int,
+        excluding: Set<Dialog>,
+    ): AlertDialog {
         repeat(10) {
             io.submit {}.get(30, TimeUnit.SECONDS)
             shadowOf(Looper.getMainLooper()).idle()
             ShadowDialog.getShownDialogs()
                 .filterIsInstance<AlertDialog>()
-                .lastOrNull { it.listView?.adapter?.count == expectedCount }
+                .lastOrNull { it !in excluding && it.listView?.adapter?.count == expectedCount }
                 ?.let { return it }
         }
         fail("Saved-work dialog with $expectedCount entries was not shown")
