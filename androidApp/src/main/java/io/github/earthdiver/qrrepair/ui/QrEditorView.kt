@@ -75,6 +75,7 @@ class QrEditorView(context: Context) : View(context) {
             rangeStart = null
             rangeEnd = null
             editGestureCancelledByMultiTouch = false
+            navigatingViewport = false
             invalidate()
         }
 
@@ -102,6 +103,7 @@ class QrEditorView(context: Context) : View(context) {
     private var rangeEnd: Coord? = null
     private var editGestureCancelledByMultiTouch = false
     private var pendingClickCell: Coord? = null
+    private var navigatingViewport = false
 
     private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val manualCellMarker = ManualCellMarker()
@@ -147,6 +149,13 @@ class QrEditorView(context: Context) : View(context) {
     }
 
     private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
+            if (draggingCorner != null) return false
+            navigatingViewport = true
+            invalidate()
+            return true
+        }
+
         override fun onScale(detector: ScaleGestureDetector): Boolean {
             if (draggingCorner != null) return false
             val old = viewScale
@@ -165,6 +174,7 @@ class QrEditorView(context: Context) : View(context) {
         override fun onDown(e: MotionEvent): Boolean = true
         override fun onScroll(e1: MotionEvent?, e2: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
             if (scaleDetector.isInProgress || draggingCorner != null || editorTool != EditorTool.NAVIGATE) return false
+            navigatingViewport = true
             offsetX -= distanceX; offsetY -= distanceY; invalidate(); return true
         }
         override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
@@ -332,6 +342,13 @@ class QrEditorView(context: Context) : View(context) {
             for (i in 1 until 4) boundaryPath.lineTo(corners[i].x.toFloat(), corners[i].y.toFloat())
             boundaryPath.close()
             canvas.drawPath(boundaryPath, boundaryPaint)
+
+            // Navigation changes only the viewport. Skip the cell-sized overlay loops until
+            // all fingers are released, including the one-finger tail after a pinch.
+            if (navigatingViewport) {
+                canvas.restore()
+                return
+            }
 
             if (heatmapEnabled) drawHeatmap(canvas, g, invScale)
 
@@ -532,6 +549,7 @@ class QrEditorView(context: Context) : View(context) {
 
     @android.annotation.SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) navigatingViewport = false
         if (cornerEditEnabled && geometry != null) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
@@ -678,6 +696,10 @@ class QrEditorView(context: Context) : View(context) {
 
         val scaleHandled = scaleDetector.onTouchEvent(event)
         val gestureHandled = gestureDetector.onTouchEvent(event)
+        if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            navigatingViewport = false
+            invalidate()
+        }
         return scaleHandled || gestureHandled || super.onTouchEvent(event)
     }
 
