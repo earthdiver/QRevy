@@ -179,8 +179,10 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
                     matrix,
                     trustKnownPayloadCount = settings.trustKnownPayloadCount,
                     formatConstraint = settings.formatConstraint,
-                    maxFormatMismatches = settings.formatMismatchLimit,
-                    maxKnownDataEccMismatches = settings.dataEccMismatchLimit,
+                    maxFormatMismatches = settings.effectiveFormatMismatchLimit,
+                    maxKnownDataEccMismatches = ErrorLimitPolicy.data(
+                        hypothesis.geometry.version, settings.dataEccMismatchLimitMode, settings.dataEccMismatchLimit,
+                    ),
                     manualEdits = settings.fixedPreRecoveryEdits,
                     displayLockManualBits = settings.lockManualBits,
                     retentionBudget = retentionBudget.fresh(),

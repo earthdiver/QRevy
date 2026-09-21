@@ -53,10 +53,13 @@ data class PreprocessSettings(
     val trustKnownPayloadCount: Boolean = false,
     /** Restrict recovery by ECC level, data mask, or both; null leaves both automatic. */
     val formatConstraint: QrFormatConstraint? = null,
-    /** Maximum known-bit mismatches across both format-information copies; null means unlimited. */
+    /** Remembered manual cap across both format copies; null is legacy manual Unlimited. */
     val formatMismatchLimit: Int? = null,
-    /** Maximum mismatches against known data/ECC modules after RS correction; null means unlimited. */
+    /** Remembered manual cap against known data/ECC bits after correction; presets resolve separately. */
     val dataEccMismatchLimit: Int? = null,
+    /** MANUAL with a null stored value preserves legacy Unlimited settings. */
+    val formatMismatchLimitMode: ErrorLimitMode = ErrorLimitMode.MANUAL,
+    val dataEccMismatchLimitMode: ErrorLimitMode = ErrorLimitMode.MANUAL,
     /** Protect fixed 0/1 edits unless the user enables correction of fixed cells. */
     val lockManualBits: Boolean = true,
     /** Source-image quadrilateral rectified before all sampling; null leaves the rotated image intact. */
@@ -77,6 +80,17 @@ data class PreprocessSettings(
     /** Erased data/ECC modules explicitly selected for the bounded priority 0/1 search. */
     val preRecoveryPrioritySearch: Set<Coord> = emptySet(),
 ) {
+    val effectiveFormatMismatchLimit: Int?
+        get() = ErrorLimitPolicy.format(formatMismatchLimitMode, formatMismatchLimit)
+    val effectiveDataEccMismatchLimit: Int?
+        get() = ErrorLimitPolicy.data(version, dataEccMismatchLimitMode, dataEccMismatchLimit)
+
+    /** New imports opt in; legacy sessions retain their stored manual/unlimited values. */
+    fun withInitialErrorLimits() = copy(
+        formatMismatchLimitMode = ErrorLimitMode.AUTOMATIC,
+        dataEccMismatchLimitMode = ErrorLimitMode.AUTOMATIC,
+    )
+
     val logicalQuad: ImageQuad? get() = manualQuad.takeIf { logicalGridAssigned }
 
     /** Detach collection inputs before submitting work to a background executor. */
@@ -172,10 +186,10 @@ internal fun PreprocessSettings.searchSummary(): String {
             val mask = it.dataMask?.toString() ?: localizedText("自動", "auto")
             localizedText(" / 形式指定 ECC=$ec, mask=$mask", " / format constraint ECC=$ec, mask=$mask")
         }.orEmpty() +
-        formatMismatchLimit?.takeIf { formatConstraint?.candidateCount != 1 }?.let {
+        effectiveFormatMismatchLimit?.takeIf { formatConstraint?.candidateCount != 1 }?.let {
             localizedText(" / 形式情報の誤り上限=$it", " / format-information error limit=$it")
         }.orEmpty() +
-        dataEccMismatchLimit?.let {
+        effectiveDataEccMismatchLimit?.let {
             localizedText(" / データ・ECCの誤り上限=${it}bit", " / data/ECC error limit=$it bits")
         }.orEmpty() +
         if (searchQuadNeighborhood) localizedText(" / サンプリング微調整あり", " / sampling fine-tuning") else ""

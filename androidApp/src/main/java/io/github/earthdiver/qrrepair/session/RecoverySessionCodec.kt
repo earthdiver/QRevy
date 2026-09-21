@@ -12,7 +12,7 @@ import java.util.zip.GZIPOutputStream
 
 /** Android-independent, bounded and checksummed persistence codec for repair sessions. */
 object RecoverySessionCodec {
-    const val CURRENT_VERSION = 19
+    const val CURRENT_VERSION = 20
     const val MAX_HISTORY_ENTRIES = 40
     const val MAX_SESSION_PAYLOAD_BYTES = 16 * 1024 * 1024
     const val MAX_SESSION_FILE_BYTES = 20 * 1024 * 1024
@@ -174,6 +174,7 @@ object RecoverySessionCodec {
             hasFixedCorrections = version >= 17,
             hasAutomaticThresholds = version >= 18,
             hasSelectionIdentity = version >= 19,
+            hasErrorLimitModes = version >= 20,
         )
         requireCorrupt(input.available() == 0, "trailing bytes in session payload")
         payload
@@ -203,6 +204,7 @@ object RecoverySessionCodec {
         hasFixedCorrections: Boolean = false,
         hasAutomaticThresholds: Boolean = false,
         hasSelectionIdentity: Boolean = false,
+        hasErrorLimitModes: Boolean = false,
     ): Payload {
         val id = input.readUTF()
         requireCorrupt(isSafeSessionId(id), "invalid session id")
@@ -215,7 +217,7 @@ object RecoverySessionCodec {
         if (count == 0) requireCorrupt(cursor == -1, "empty history must have cursor -1")
         else requireCorrupt(cursor in 0 until count, "invalid history cursor")
         val history = ArrayList<RecoveryHistoryEntry>(count)
-        repeat(count) { history += readHistoryEntry(input, hasPreprocessSettings, hasGeometryLock, hasPrioritySearch, hasPerspectiveCorrection, hasUnknownColorClusters, hasLogicalGridAssignment, hasFormatConstraint, hasFormatMismatchLimit, hasDataEccMismatchLimit, hasSoftEdits, hasFixedCorrections, hasAutomaticThresholds, hasSelectionIdentity) }
+        repeat(count) { history += readHistoryEntry(input, hasPreprocessSettings, hasGeometryLock, hasPrioritySearch, hasPerspectiveCorrection, hasUnknownColorClusters, hasLogicalGridAssignment, hasFormatConstraint, hasFormatMismatchLimit, hasDataEccMismatchLimit, hasSoftEdits, hasFixedCorrections, hasAutomaticThresholds, hasSelectionIdentity, hasErrorLimitModes) }
         return Payload(id, updated, mode, history, cursor)
     }
 
@@ -256,6 +258,7 @@ object RecoverySessionCodec {
         hasFixedCorrections: Boolean,
         hasAutomaticThresholds: Boolean,
         hasSelectionIdentity: Boolean,
+        hasErrorLimitModes: Boolean,
     ): RecoveryHistoryEntry {
         val id = input.readUTF()
         requireCorrupt(id.length <= MAX_TEXT, "history id too long")
@@ -265,7 +268,7 @@ object RecoverySessionCodec {
         val label = input.readUTF()
         val detail = input.readUTF()
         requireCorrupt(label.length <= 400 && detail.length <= 1600, "history text too long")
-        return RecoveryHistoryEntry(id, timestamp, kind, label, detail, readSnapshot(input, hasPreprocessSettings, hasGeometryLock, hasPrioritySearch, hasPerspectiveCorrection, hasUnknownColorClusters, hasLogicalGridAssignment, hasFormatConstraint, hasFormatMismatchLimit, hasDataEccMismatchLimit, hasSoftEdits, hasFixedCorrections, hasAutomaticThresholds, hasSelectionIdentity))
+        return RecoveryHistoryEntry(id, timestamp, kind, label, detail, readSnapshot(input, hasPreprocessSettings, hasGeometryLock, hasPrioritySearch, hasPerspectiveCorrection, hasUnknownColorClusters, hasLogicalGridAssignment, hasFormatConstraint, hasFormatMismatchLimit, hasDataEccMismatchLimit, hasSoftEdits, hasFixedCorrections, hasAutomaticThresholds, hasSelectionIdentity, hasErrorLimitModes))
     }
 
     private fun writeSnapshot(out: DataOutputStream, snapshot: RecoverySnapshot) {
@@ -304,6 +307,7 @@ object RecoverySessionCodec {
         hasFixedCorrections: Boolean,
         hasAutomaticThresholds: Boolean,
         hasSelectionIdentity: Boolean,
+        hasErrorLimitModes: Boolean,
     ): RecoverySnapshot {
         val geometry = readGeometry(input)
         val source = readMatrix(input, hasPrioritySearch, hasSoftEdits, hasFixedCorrections)
@@ -317,7 +321,7 @@ object RecoverySessionCodec {
         }
         val recoveryIndex = input.readInt()
         requireCorrupt(recoveryIndex >= -1 && recoveryIndex <= 100_000, "invalid recovery index")
-        val settings = if (hasPreprocessSettings && input.readBoolean()) readPreprocessSettings(input, hasGeometryLock, hasPrioritySearch, hasPerspectiveCorrection, hasUnknownColorClusters, hasLogicalGridAssignment, hasFormatConstraint, hasFormatMismatchLimit, hasDataEccMismatchLimit, hasSoftEdits, hasFixedCorrections, hasAutomaticThresholds) else null
+        val settings = if (hasPreprocessSettings && input.readBoolean()) readPreprocessSettings(input, hasGeometryLock, hasPrioritySearch, hasPerspectiveCorrection, hasUnknownColorClusters, hasLogicalGridAssignment, hasFormatConstraint, hasFormatMismatchLimit, hasDataEccMismatchLimit, hasSoftEdits, hasFixedCorrections, hasAutomaticThresholds, hasErrorLimitModes) else null
         val selectedQr = if (hasSelectionIdentity && input.readBoolean()) {
             val version = input.readInt()
             val ecLevel = input.readInt()
@@ -431,9 +435,11 @@ object RecoverySessionCodec {
         out.writeBoolean(settings.automaticThresholds)
         out.writeInt(settings.provisionalBlackMax)
         out.writeInt(settings.provisionalWhiteMin)
+        out.writeInt(settings.formatMismatchLimitMode.ordinal)
+        out.writeInt(settings.dataEccMismatchLimitMode.ordinal)
     }
 
-    private fun readPreprocessSettings(input: DataInputStream, hasGeometryLock: Boolean, hasPrioritySearch: Boolean, hasPerspectiveCorrection: Boolean, hasUnknownColorClusters: Boolean, hasLogicalGridAssignment: Boolean, hasFormatConstraint: Boolean, hasFormatMismatchLimit: Boolean, hasDataEccMismatchLimit: Boolean, hasSoftEdits: Boolean, hasFixedCorrections: Boolean, hasAutomaticThresholds: Boolean): PreprocessSettings {
+    private fun readPreprocessSettings(input: DataInputStream, hasGeometryLock: Boolean, hasPrioritySearch: Boolean, hasPerspectiveCorrection: Boolean, hasUnknownColorClusters: Boolean, hasLogicalGridAssignment: Boolean, hasFormatConstraint: Boolean, hasFormatMismatchLimit: Boolean, hasDataEccMismatchLimit: Boolean, hasSoftEdits: Boolean, hasFixedCorrections: Boolean, hasAutomaticThresholds: Boolean, hasErrorLimitModes: Boolean): PreprocessSettings {
         val rotation = input.readFloat()
         requireCorrupt(rotation.isFinite() && rotation in -360f..360f, "invalid preprocessing rotation")
         val polarity = enumStrict<PolarityMode>(input.readInt(), "polarity")
@@ -547,6 +553,12 @@ object RecoverySessionCodec {
         val provisionalWhiteMin = if (hasAutomaticThresholds) input.readInt() else whiteMin
         requireCorrupt(provisionalBlackMax in 0..254 && provisionalWhiteMin in 1..255 &&
             provisionalBlackMax < provisionalWhiteMin, "invalid provisional thresholds")
+        val formatMismatchLimitMode = if (hasErrorLimitModes) {
+            enumStrict<ErrorLimitMode>(input.readInt(), "format-information error limit mode")
+        } else ErrorLimitMode.MANUAL
+        val dataEccMismatchLimitMode = if (hasErrorLimitModes) {
+            enumStrict<ErrorLimitMode>(input.readInt(), "data/ECC error limit mode")
+        } else ErrorLimitMode.MANUAL
         return try {
             PreprocessSettings(
                 rotationDegrees = rotation,
@@ -567,6 +579,8 @@ object RecoverySessionCodec {
                 formatConstraint = formatConstraint,
                 formatMismatchLimit = formatMismatchLimit,
                 dataEccMismatchLimit = dataEccMismatchLimit,
+                formatMismatchLimitMode = formatMismatchLimitMode,
+                dataEccMismatchLimitMode = dataEccMismatchLimitMode,
                 lockManualBits = lockManualBits,
                 perspectiveCorrectionQuad = perspectiveQuad,
                 manualQuad = quad,

@@ -226,7 +226,7 @@ class MainActivity : Activity() {
     /** Source transformed according to the active reproducible preprocessing settings. */
     private var analysisPrepared: BitmapUtils.Prepared? = null
     private var pendingDiagnosticBitmap: PendingDiagnosticBitmap? = null
-    private var preprocessSettings = PreprocessSettings()
+    private var preprocessSettings = PreprocessSettings().withInitialErrorLimits()
     // In-memory checkpoint for the active work only. Dialogs edit independent copies.
     private var savedCellEditState: PreRecoveryCellEditState? = null
     private data class RetainedCellHistory(
@@ -1678,8 +1678,8 @@ class MainActivity : Activity() {
                 matrix.copy(),
                 trustKnownPayloadCount = requestSettings.trustKnownPayloadCount,
                 formatConstraint = requestSettings.formatConstraint,
-                maxFormatMismatches = requestSettings.formatMismatchLimit,
-                maxKnownDataEccMismatches = requestSettings.dataEccMismatchLimit,
+                maxFormatMismatches = requestSettings.effectiveFormatMismatchLimit,
+                maxKnownDataEccMismatches = requestSettings.effectiveDataEccMismatchLimit,
                 manualEdits = requestSettings.fixedPreRecoveryEdits,
                 displayLockManualBits = requestSettings.lockManualBits,
                 retentionBudget = RecoveryMemoryPolicy.current().let {
@@ -2283,7 +2283,7 @@ class MainActivity : Activity() {
                     preRecoveryEdits = priority.associateWith { ModuleValue.ERASED },
                     preRecoverySoftEdits = emptySet(),
                     preRecoveryPrioritySearch = priority,
-                )
+                ).withInitialErrorLimits()
                 if (token != workGeneration.get()) {
                     p.bitmap.recycle()
                     return@execute
@@ -2452,7 +2452,7 @@ class MainActivity : Activity() {
                         logicalGridAssigned = initialGrid == null || initialGrid.autoAssignedFinders.isNotEmpty(),
                         manualFinders = initialGrid?.autoAssignedFinders.orEmpty(),
                         manualQuad = initialGrid?.moduleCenterQuad,
-                    )
+                    ).withInitialErrorLimits()
                     sessionId = sessionStore.newId()
                     sessionHistory.clear()
                     val newSessionId = sessionId!!

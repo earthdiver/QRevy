@@ -87,7 +87,7 @@
     <plurals name="format_mismatch_limit_bits">
         <item quantity="other">%1$dbit</item>
     </plurals>
-    <string name="format_mismatch_limit_note">両コピーの既知0/1と比較します。? と、ECC・mask指定だけで値が決まる位置の手動0/1は比較対象外です。0では比較対象の完全一致が必要です。</string>
+    <string name="format_mismatch_limit_note">初期設定・厳しめは6bit、緩めは9bitです。両コピーの既知0/1と比較します。? と、ECC・mask指定だけで値が決まる位置の手動0/1は比較対象外です。0では比較対象の完全一致が必要です。</string>
     <string name="format_mismatch_limit_fixed_note">ECCとマスクを指定中のため、この設定は適用されません。</string>
     <string name="data_ecc_mismatch_limit">データ・ECCの誤り上限</string>
     <string name="data_ecc_mismatch_limit_unlimited">制限なし</string>
@@ -95,9 +95,15 @@
     <plurals name="data_ecc_mismatch_limit_bits">
         <item quantity="other">%1$dbit</item>
     </plurals>
-    <string name="data_ecc_mismatch_limit_note">入力の既知データ・ECC bitとRS修復後の候補の不一致上限です。?・形式情報・型番情報・機能モジュール・残余bitは対象外です。手動固定ONの値は上限によらず変更できません。</string>
-    <string name="data_ecc_mismatch_limit_select">許可する誤り数の上限を指定します。制限を外す場合は「制限なし」を選択してください。</string>
+    <string name="data_ecc_mismatch_limit_note" formatted="false">厳しめはデータ・ECC総bit数の0.875%、緩めは10%（いずれも切り上げ）。初期設定はV1〜4が厳しめ、V5以降が緩めです。入力の既知データ・ECC bitとRS修復後の候補の不一致上限です。?・形式情報・型番情報・機能モジュール・残余bitは対象外です。手動固定ONの値は上限によらず変更できません。</string>
     <string name="apply_limit">適用</string>
+    <string name="error_limit_automatic_value">初期設定（%1$s）</string>
+    <string name="error_limit_strict_value">厳しめ（%1$s）</string>
+    <string name="error_limit_relaxed_value">緩め（%1$s）</string>
+    <string name="error_limit_exact">完全一致（0bit）</string>
+    <string name="error_limit_manual">手動</string>
+    <string name="error_limit_manual_value">手動（%1$s）</string>
+    <string name="error_limit_preset_help">プリセットを選ぶか、bit数を入力してください。数値を編集すると「手動」に切り替わります。「適用」で確定します。</string>
     <string name="save_debug_input">デバッグ用入力画像をPNG保存</string>
     <string name="tap_cell">画像上のセルをタップしてください。</string>
     <string name="cell_edit_help">タップでセル選択。矢印で移動、0/1/\?/*で編集。</string>

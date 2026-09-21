@@ -85,3 +85,41 @@ corpus runner, it never writes image data into the repository: grayscale convers
 held in a temporary directory under `/tmp` and deleted before returning. Do not save
 user images or their derivatives as regression fixtures; use independently generated
 synthetic structures instead.
+
+
+## Synthetic data/ECC error-limit study
+
+`ErrorLimitStudyKt` compares positive bit-mismatch limits by calling the unchanged
+production `RecoveryEngine` separately for each fixture and policy. It accepts no
+images. `error_limit_summary.py` reports exact raw-codeword recovery, other decoded
+payloads, censoring, and runtime, with breakdowns by family, version, ECC, and seed.
+The percentage is of all data/ECC bits, not of observed bits or RS error-correction
+capacity. `one-bit` is an explicitly labelled constant-budget control.
+
+```sh
+./gradlew -p tools/detector-study installDist --offline
+java -Xmx2g -cp 'tools/detector-study/build/install/qr-detector-study/lib/*' \
+  study.ErrorLimitStudyKt --output build/error-limit-study/example.jsonl \
+  --versions 1,2,3,5,7,10,15,20,30,40 --seeds 307,419 \
+  --sparse-max-version 40 --limits unlimited,one-bit,0.05,0.075,0.1,0.5,0.875,1
+python3 tools/detector-study/error_limit_summary.py \
+  build/error-limit-study/example.jsonl build/error-limit-study/example-report
+python3 -m unittest discover -s tools/detector-study -p 'test_error_limit_summary.py'
+```
+
+Add `--randomized true` to use continuous randomized damage severities instead of
+fixed severities. Default `--sparse-max-version 5` restricts the expensive sparse,
+unknown-format and noise profiles; final confirmation used 40. Defaults are 200,000
+cooperative cancellation checks and a 3,000 ms wall budget per recovery invocation.
+`--ids FILE` replays selected newline-delimited fixture IDs. The summary tool also
+reads compressed `runs.jsonl.gz` files directly. It excludes a censored fixture
+from every policy in a paired comparison; a cancelled invocation is never counted
+as a successful rejection of wrong payloads.
+
+See the maintained [preset rationale](../../docs/RECOVERY_STRATEGY.en.md#45-error-limit-preset-rationale) and its [Japanese counterpart](../../docs/RECOVERY_STRATEGY.ja.md#45-誤り上限プリセットの採用理由). Detailed reports and measured datasets are local research artifacts and are not required to run the tools. The tool does not set the application's initial error limit.
+
+To compare the Relaxed preset, include Version 4 and use `--limits 3,5,10,unlimited` with the same fixtures and seeds for each policy. The independent format-information enumeration is available with:
+
+```sh
+python3 tools/detector-study/format_limit_study.py
+```
