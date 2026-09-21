@@ -69,6 +69,8 @@ The debug APK is written to `build/androidApp/outputs/apk/debug/androidApp-debug
 
 The permanent application ID is `io.github.earthdiver.qrrepair`. Release signing, store identifiers, and a public privacy-policy URL are not included. See the [release checklist](docs/RELEASE_CHECKLIST.md) before publication.
 
+See [limited Firebase distribution](docs/FIREBASE_DISTRIBUTION.md) for manual testing and the manually dispatched APK distribution workflow.
+
 ## Documentation
 
 - [Recovery strategy](docs/RECOVERY_STRATEGY.en.md)
