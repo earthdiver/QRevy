@@ -148,6 +148,11 @@ data class SamplingProfile(val settings: PreprocessSettings, val inverted: Boole
 
     fun normalize(luma: Double): Double = if (inverted) 255.0 - luma else luma
 
+    /** Import estimates use source-image luminance, unlike fitted/manual logical thresholds. */
+    val provisionalThresholds: ThresholdPair get() = if (inverted)
+        ThresholdPair(255 - settings.provisionalWhiteMin, 255 - settings.provisionalBlackMax)
+    else ThresholdPair(settings.provisionalBlackMax, settings.provisionalWhiteMin)
+
     val threshold: Double get() = (settings.blackMax + settings.whiteMin) / 2.0
 
     fun classifyLuminance(normalized: Double): ModuleValue {

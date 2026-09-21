@@ -20,7 +20,6 @@ import io.github.earthdiver.qrrepair.core.Coord
 import io.github.earthdiver.qrrepair.core.ErrorLimitMode
 import io.github.earthdiver.qrrepair.core.ErrorLimitPolicy
 import io.github.earthdiver.qrrepair.core.FinderRole
-import io.github.earthdiver.qrrepair.core.FinderDetector
 import io.github.earthdiver.qrrepair.core.GridGeometry
 import io.github.earthdiver.qrrepair.core.GeometryModel
 import io.github.earthdiver.qrrepair.core.MatrixSampler
@@ -30,7 +29,6 @@ import com.google.zxing.qrcode.decoder.Version
 import io.github.earthdiver.qrrepair.core.PolarityMode
 import io.github.earthdiver.qrrepair.core.PreprocessSettings
 import io.github.earthdiver.qrrepair.core.SamplingProfile
-import io.github.earthdiver.qrrepair.core.prepareFinderDetection
 import io.github.earthdiver.qrrepair.core.QrMatrix
 import io.github.earthdiver.qrrepair.core.FormatEditPolicy
 import io.github.earthdiver.qrrepair.core.FormatEditConflict
@@ -227,6 +225,7 @@ internal class PreprocessDialogController(
         var refreshClassificationMatrix: () -> Unit = {}
         var refreshPreRecoveryDataPage: () -> Unit = {}
         fun invalidateSamplingPreview() {
+            finderSearchGeneration.incrementAndGet()
             overlay.clearCornerSelection()
         }
         fun revalidatePrioritySearch() {
@@ -256,21 +255,24 @@ internal class PreprocessDialogController(
             dataEccMismatchLimitMode = dataEccMismatchLimitModeDraft,
             lockManualBits = !allowFixedCorrections.isChecked,
         )
+        fun previewInverted(): Boolean = when (overlay.confirmedFinderPolarity()) {
+            io.github.earthdiver.qrrepair.core.FinderPolarity.INVERTED -> true
+            io.github.earthdiver.qrrepair.core.FinderPolarity.NORMAL -> false
+            else -> selectedPolarity() == PolarityMode.INVERTED
+        }
         fun updateThresholdLabels() {
-            val mode = selectedPolarity()
-            val (darkMeaning, lightMeaning) = polarityThresholdMeanings(mode, isJapaneseUi())
-            blackLabel.text = ui("画像の暗部（$darkMeaning）: ${black.progress}", "Dark pixels ($darkMeaning): ${black.progress}")
-            whiteLabel.text = ui("画像の明部（$lightMeaning）: ${white.progress + 1}", "Light pixels ($lightMeaning): ${white.progress + 1}")
+            val (blackText, whiteText) = polarityThresholdLabels(previewInverted(), black.progress, white.progress + 1, isJapaneseUi())
+            blackLabel.text = blackText
+            whiteLabel.text = whiteText
         }
         fun refreshLabels() {
             updateThresholdLabels()
-            val mode = selectedPolarity()
             val selectedVersion = version.progress + 1
             val selectedDimension = 17 + 4 * selectedVersion
             versionButton?.text = ui("QRバージョン: $selectedVersion / $selectedDimension×${selectedDimension}セル", "QR Version: $selectedVersion / $selectedDimension modules")
             val profile = SamplingProfile(
                 dialogState.previewSettings(controlSnapshot()),
-                inverted = mode == PolarityMode.INVERTED,
+                inverted = previewInverted(),
             )
             activePreviewProfile = profile
             refreshClassificationMatrix()
@@ -293,8 +295,8 @@ internal class PreprocessDialogController(
             }
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
                 when (seekBar) {
-                    black -> noteDraftChange("black", ui("暗部閾値を変更", "Changed dark threshold"), black.progress.toString())
-                    white -> noteDraftChange("white", ui("明部閾値を変更", "Changed light threshold"), (white.progress + 1).toString())
+                    black -> noteDraftChange("black", ui("QRの黒の閾値を変更", "Changed QR black threshold"), black.progress.toString())
+                    white -> noteDraftChange("white", ui("QRの白の閾値を変更", "Changed QR white threshold"), (white.progress + 1).toString())
                 }
             }
         }
@@ -391,18 +393,11 @@ internal class PreprocessDialogController(
             val finderWorking = working
             val finderProfile = profile.copy(settings = profile.settings.copy(
                 manualQuad = overlay.imageQuad().takeIf { overlay.isLogicalGridAssigned() },
+                confirmedFinderPolarity = overlay.confirmedFinderPolarity(),
             ))
             Toast.makeText(this, ui("指定位置の周辺からFinderを精密探索中…", "Refining the Finder near the selected position…"), Toast.LENGTH_SHORT).show()
             executor.execute {
-                val detection = prepareFinderDetection(finderWorking.luma, finderProfile)
-                val refined = FinderDetector(
-                    detection.image,
-                    finderProfile.settings.blackMax,
-                    finderProfile.settings.whiteMin,
-                ).detectNear(detection.toDetection(hint))?.let(detection::toSource)?.copy(
-                    polarity = if (finderProfile.inverted) io.github.earthdiver.qrrepair.core.FinderPolarity.INVERTED else io.github.earthdiver.qrrepair.core.FinderPolarity.NORMAL,
-                    detectionSource = io.github.earthdiver.qrrepair.core.FinderDetectionSource.RAW,
-                )
+                val refined = io.github.earthdiver.qrrepair.core.refineFinder(finderWorking.luma, finderProfile.settings, hint)
                 runOnUiThread {
                     if (finderToken != finderSearchGeneration.get() || working !== finderWorking) return@runOnUiThread
                     if (refined == null) {
@@ -630,7 +625,7 @@ internal class PreprocessDialogController(
                 })
             // Effective slider values are outputs in automatic mode, not inputs to the next fit.
             val profile = if (requested.settings.automaticThresholds) requested.copy(settings = requested.settings.copy(
-                blackMax = requested.settings.provisionalBlackMax, whiteMin = requested.settings.provisionalWhiteMin,
+                blackMax = requested.provisionalThresholds.blackMax, whiteMin = requested.provisionalThresholds.whiteMin,
                 automaticThresholds = overlay.isLogicalGridAssigned(),
             )) else requested
             if (sampledImage !== working.luma || sampledGeometry != g || sampledProfile != profile) {

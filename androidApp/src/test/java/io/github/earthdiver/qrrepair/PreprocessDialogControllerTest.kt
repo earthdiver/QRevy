@@ -194,6 +194,37 @@ class PreprocessDialogControllerTest {
         }
     }
 
+    @Test fun confirmedInvertedFinderControlsThresholdLabelsAndSavedManualValues() {
+        val settings = PreprocessSettings(polarity = PolarityMode.AUTO, blackMax = 80, whiteMin = 180,
+            manualFinders = mapOf(FinderRole.TOP_LEFT to PointD(50.0, 50.0)),
+            confirmedFinderPolarity = FinderPolarity.INVERTED,
+            manualQuad = ImageQuad(PointD(20.0, 20.0), PointD(220.0, 20.0), PointD(220.0, 220.0), PointD(20.0, 220.0)))
+        withDialog(settings) { dialog, host, _, _ ->
+            val labels = views(dialog.window!!.decorView).filterIsInstance<TextView>().map { it.text.toString() }
+            assertTrue(labels.contains("画像の明部（QRの黒(1)）: 175以上"))
+            assertTrue(labels.contains("画像の暗部（QRの白(0)）: 75以下"))
+            click(dialog, "保存")
+            val saved = host.saves.last().settings
+            assertEquals(80, saved.blackMax)
+            assertEquals(180, saved.whiteMin)
+            assertEquals(FinderPolarity.INVERTED, saved.confirmedFinderPolarity)
+        }
+    }
+
+    @Test fun unassignedInvertedGridUsesSourceThresholdsInLogicalPolarity() {
+        val settings = PreprocessSettings(polarity = PolarityMode.INVERTED, automaticThresholds = true,
+            provisionalBlackMax = 40, provisionalWhiteMin = 80, logicalGridAssigned = false,
+            manualQuad = ImageQuad(PointD(20.0, 20.0), PointD(220.0, 20.0), PointD(220.0, 220.0), PointD(20.0, 220.0)))
+        withDialog(settings) { dialog, host, _, _ ->
+            click(dialog, "保存")
+            val saved = host.saves.last().settings
+            assertEquals(175, saved.blackMax)
+            assertEquals(215, saved.whiteMin)
+            assertEquals(40, saved.provisionalBlackMax)
+            assertEquals(80, saved.provisionalWhiteMin)
+        }
+    }
+
     @Test fun manualInvertedPreviewAgreesWithRecoverySamplingWithoutConfirmedFinders() {
         val settings = PreprocessSettings(polarity = PolarityMode.INVERTED,
             manualQuad = ImageQuad(PointD(20.0, 20.0), PointD(220.0, 20.0), PointD(220.0, 220.0), PointD(20.0, 220.0)))

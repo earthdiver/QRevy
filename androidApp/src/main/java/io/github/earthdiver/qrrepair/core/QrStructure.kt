@@ -84,7 +84,7 @@ class MatrixSampler(
         val settings = requested.settings
         val pair = if (settings.automaticThresholds) {
             GridThresholdEstimator.estimate(geometry.version, observations)
-                ?: ThresholdPair(settings.provisionalBlackMax, settings.provisionalWhiteMin)
+                ?: requested.provisionalThresholds
         } else ThresholdPair(settings.blackMax, settings.whiteMin)
         val effective = requested.copy(settings = settings.copy(blackMax = pair.blackMax, whiteMin = pair.whiteMin))
         val contrast = (pair.whiteMin - pair.blackMax).toDouble()

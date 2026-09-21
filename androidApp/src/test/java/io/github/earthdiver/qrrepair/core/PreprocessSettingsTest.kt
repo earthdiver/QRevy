@@ -5,6 +5,30 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PreprocessSettingsTest {
+    @Test fun automaticFinderRefinementDetectsBothPolaritiesWithoutOtherFinders() {
+        val size = 120
+        val normal = LumaImage(size, size, IntArray(size * size) { i ->
+            val x = (i % size - 32); val y = (i / size - 32)
+            val mx = x / 8; val my = y / 8
+            val black = x in 0 until 56 && y in 0 until 56 &&
+                (mx == 0 || mx == 6 || my == 0 || my == 6 || (mx in 2..4 && my in 2..4))
+            if (black) 20 else 100
+        })
+        val inverse = LumaImage(size, size, normal.pixels.map { 255 - it }.toIntArray())
+        val settings = PreprocessSettings(polarity = PolarityMode.AUTO, automaticThresholds = true,
+            provisionalBlackMax = 50, provisionalWhiteMin = 70, quietZoneCorrection = false)
+        val hint = PointD(60.0, 60.0)
+        val a = requireNotNull(refineFinder(normal, settings, hint))
+        val b = requireNotNull(refineFinder(inverse, settings.copy(provisionalBlackMax = 185, provisionalWhiteMin = 205), hint))
+        assertEquals(FinderPolarity.NORMAL, a.polarity)
+        assertEquals(FinderPolarity.INVERTED, b.polarity)
+        assertEquals(a.centerX, b.centerX, .001)
+        assertEquals(a.centerY, b.centerY, .001)
+        assertEquals(a.moduleSize, b.moduleSize, .001)
+        assertEquals(null, refineFinder(inverse, settings.copy(polarity = PolarityMode.NORMAL,
+            provisionalBlackMax = 185, provisionalWhiteMin = 205), hint))
+    }
+
     @Test fun recoverySnapshotDetachesManualEditsAndPriorityMarkers() {
         val coord = Coord(10, 10)
         val edits = mutableMapOf(coord to ModuleValue.ERASED)

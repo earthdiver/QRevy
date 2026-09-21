@@ -26,6 +26,39 @@ class GridThresholdEstimatorTest {
         for (y in 0 until n) for (x in 0 until n) assertEquals("$x,$y", code[x, y].toInt(), matrix[x, y].value.bitOrNull())
     }
 
+    @Test fun finderRefinementUsesGridThresholdsWhenTheImageWidePairDoesNotSeparateTheFinder() {
+        val source = image { _, _, black -> if (black) 111 else 123 }
+        val inverse = LumaImage(source.width, source.height, source.pixels.map { 255 - it }.toIntArray())
+        val settings = automatic.settings.copy(manualQuad = geometry.moduleCenterQuad(),
+            provisionalBlackMax = 40, provisionalWhiteMin = 80, quietZoneCorrection = false)
+        val hint = geometry.moduleToImage(3.0, 3.0)
+        val normal = requireNotNull(refineFinder(source, settings, hint))
+        val inverted = requireNotNull(refineFinder(inverse,
+            settings.copy(provisionalBlackMax = 175, provisionalWhiteMin = 215), hint))
+        assertEquals(FinderPolarity.NORMAL, normal.polarity)
+        assertEquals(FinderPolarity.INVERTED, inverted.polarity)
+        assertEquals(normal.centerX, inverted.centerX, .001)
+        assertEquals(normal.centerY, inverted.centerY, .001)
+    }
+
+    @Test fun invertedFallbackPreservesGrayErasuresAndDataBitsWithSourceThresholds() {
+        val source = image { x, y, black ->
+            if (QrFunctionMask.isFunction(2, x, y)) 60 else if (black) 20 else 100
+        }
+        val inverse = LumaImage(source.width, source.height, source.pixels.map { 255 - it }.toIntArray())
+        val normal = automatic.copy(settings = automatic.settings.copy(provisionalBlackMax = 40, provisionalWhiteMin = 80))
+        val inverted = SamplingProfile(normal.settings.copy(provisionalBlackMax = 175, provisionalWhiteMin = 215), true)
+        val a = MatrixSampler(source, normal).sample(geometry)
+        val b = MatrixSampler(inverse, inverted).sample(geometry)
+        assertEquals(ThresholdPair(40, 80), a.second.thresholds)
+        assertEquals(a.second, b.second)
+        for (y in 0 until n) for (x in 0 until n) {
+            assertEquals(a.first[x, y], b.first[x, y])
+            if (QrFunctionMask.isFunction(2, x, y)) assertEquals(ModuleValue.ERASED, b.first[x, y].value)
+            else assertEquals(code[x, y].toInt(), b.first[x, y].value.bitOrNull())
+        }
+    }
+
     @Test fun narrowButStableBlackWhiteSeparationRemainsReadable() {
         val source = image { _, _, black -> if (black) 111 else 123 }
         val (matrix, stats) = MatrixSampler(source, automatic).sample(geometry)

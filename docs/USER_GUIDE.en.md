@@ -26,6 +26,10 @@ Prefer an image containing the complete QR and, when possible, its surrounding q
 
 **Set thresholds automatically** is enabled by default for a new image. While enabled, the app recalculates one global threshold pair when the grid changes. Moving either slider switches to manual thresholds; turning the option off directly keeps the current pair. Manual thresholds remain unchanged during corner adjustment and repair fine-tuning. Turn the option on again to recalculate them. A reopened session restores its saved mode and values. Unstable sampling can also produce `?`; fixed and tentative edits are not overwritten.
 
+The text beside each threshold slider shows which brightness values in the source image are read as `0` or `1`. In a QR code with reversed black and white, bright areas are read as `1` (black in a normal QR code), and dark areas as `0` (normally white).
+
+When the app can determine whether black and white are reversed from the square patterns at the QR code’s corners (Finder patterns), it uses that result for the preview’s cell values and the threshold descriptions. If **Auto** is selected and this has not yet been determined, assigning a Finder position makes the app check the surrounding area using both normal and inverted interpretations.
+
 Automatic estimates are starting values, not proof of the correct symbol. Align corners with the centers of the outer modules and confirm that the selected version agrees with the number of cells along one side.
 
 For a newly imported image, initial corners and version are tried in this order: ZXing-C++, grid periodicity, then a two-Finder fallback. The last route covers version 2 and later symbols. Two diagonal Finders can be assigned as top-right and bottom-left when both timing axes provide sufficient evidence, even without an alignment pattern. Otherwise, a verified lower-right alignment pattern may still support provisional corners without role assignment. Strong perspective distortion is not supported. If every route fails, adjust the default geometry manually.
@@ -36,7 +40,7 @@ On new image import, a grid derived from ZXing-C++ can automatically set Finder 
 
 To remove an incorrect assignment, press **Clear** in the Finder section and tap the green Finder. Clear all assigned Finders to make logical orientation unassigned again. Corners and existing cell edits are retained. Saving and reopening the work does not reapply a cleared assignment.
 
-When roles were not assigned automatically, or orientation needs changing, manually assign logical roles to visible Finders. The app refines center and polarity near the selected point. A hidden Finder need not be assigned as though it were observed.
+When roles were not assigned automatically, or orientation needs changing, manually assign logical roles to visible Finders. The app looks for the square pattern near the selected point to refine its center and determine whether black and white are reversed. A hidden Finder need not be assigned as though it were observed.
 
 With exactly one assigned role and **Automatically fine-tune sampling position** enabled, small rotations around that logical corner are also evaluated. An incorrect role can prevent the correct recovery, so compare results without an assignment when its evidence is weak.
 

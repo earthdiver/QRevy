@@ -2451,6 +2451,7 @@ class MainActivity : Activity() {
                         lockCorners = true,
                         logicalGridAssigned = initialGrid == null || initialGrid.autoAssignedFinders.isNotEmpty(),
                         manualFinders = initialGrid?.autoAssignedFinders.orEmpty(),
+                        confirmedFinderPolarity = initialGrid?.confirmedPolarity ?: io.github.earthdiver.qrrepair.core.FinderPolarity.UNKNOWN,
                         manualQuad = initialGrid?.moduleCenterQuad,
                     ).withInitialErrorLimits()
                     sessionId = sessionStore.newId()
@@ -3137,8 +3138,12 @@ class MainActivity : Activity() {
         if (isJapaneseUi()) japanese else english
 }
 
-internal fun polarityThresholdMeanings(mode: PolarityMode, japanese: Boolean = true): Pair<String, String> = when (mode) {
-    PolarityMode.NORMAL -> if (japanese) "QRの黒(1)" to "QRの白(0)" else "QR black (1)" to "QR white (0)"
-    PolarityMode.INVERTED -> if (japanese) "QRの白(0)" to "QRの黒(1)" else "QR white (0)" to "QR black (1)"
-    PolarityMode.AUTO -> if (japanese) "通常=1 / 反転=0" to "通常=0 / 反転=1" else "normal=1 / inverted=0" to "normal=0 / inverted=1"
-}
+/** Labels describe source-image luminance; slider values remain in logical polarity. */
+internal fun polarityThresholdLabels(inverted: Boolean, blackMax: Int, whiteMin: Int, japanese: Boolean = true): Pair<String, String> =
+    if (inverted) {
+        if (japanese) "画像の明部（QRの黒(1)）: ${255 - blackMax}以上" to "画像の暗部（QRの白(0)）: ${255 - whiteMin}以下"
+        else "Light pixels (QR black (1)): ≥ ${255 - blackMax}" to "Dark pixels (QR white (0)): ≤ ${255 - whiteMin}"
+    } else {
+        if (japanese) "画像の暗部（QRの黒(1)）: ${blackMax}以下" to "画像の明部（QRの白(0)）: ${whiteMin}以上"
+        else "Dark pixels (QR black (1)): ≤ $blackMax" to "Light pixels (QR white (0)): ≥ $whiteMin"
+    }
