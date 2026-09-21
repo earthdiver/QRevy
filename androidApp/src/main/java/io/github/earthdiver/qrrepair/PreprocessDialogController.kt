@@ -36,6 +36,7 @@ import io.github.earthdiver.qrrepair.core.QrFormatConstraint
 import io.github.earthdiver.qrrepair.core.QrFunctionMask
 import io.github.earthdiver.qrrepair.core.RecoveryEngine
 import io.github.earthdiver.qrrepair.ui.BitmapUtils
+import io.github.earthdiver.qrrepair.core.ImageAdjustment
 import io.github.earthdiver.qrrepair.ui.EditorTool
 import io.github.earthdiver.qrrepair.ui.CodewordOverlayKind
 import io.github.earthdiver.qrrepair.ui.QrEditorView
@@ -424,12 +425,18 @@ internal class PreprocessDialogController(
             noteDraftChange("finder-$role", ui("$label Finderを解除", "Removed $label Finder"), role.name)
             Toast.makeText(this, ui("$label のFinder確定を解除しました。", "The $label Finder was unconfirmed."), Toast.LENGTH_SHORT).show()
         }
+        fun imageSettings() = preprocessSettings.copy(
+            rotationDegrees = dialogState.rotationDegrees,
+            perspectiveCorrectionQuad = dialogState.perspectiveCorrectionQuad,
+            version = version.progress + 1,
+            imageAdjustment = dialogState.imageAdjustment,
+        )
         fun rotateBy(delta: Float) {
             finderSearchGeneration.incrementAndGet()
             overlay.clearCornerSelection()
             dialogState.rotateBy(delta)
             val previous = working
-            working = BitmapUtils.rotate(source.bitmap, dialogState.rotationDegrees)
+            working = BitmapUtils.forSettings(source, imageSettings())
             releaseWorkingIfTemporary(previous, working)
             overlay.setBitmap(working.bitmap)
             overlay.setVersion(version.progress + 1)
@@ -443,7 +450,7 @@ internal class PreprocessDialogController(
             finderSearchGeneration.incrementAndGet()
             dialogState.resetRotation()
             val previous = working
-            working = source
+            working = BitmapUtils.forSettings(source, imageSettings())
             releaseWorkingIfTemporary(previous, working)
             overlay.setBitmap(working.bitmap)
             overlay.setVersion(version.progress + 1)
@@ -586,14 +593,7 @@ internal class PreprocessDialogController(
                 rotateBy = ::rotateBy,
                 resetRotation = ::resetRotation,
                 saveDiagnosticInput = {
-                    val unadorned = if (dialogState.rotationDegrees % 360f == 0f) source else BitmapUtils.rotate(source.bitmap, dialogState.rotationDegrees)
-                    val diagnostic = dialogState.perspectiveCorrectionQuad?.let { quad ->
-                        val rectified = runCatching {
-                            BitmapUtils.rectify(unadorned.bitmap, quad, version.progress + 1, quietModules = 4.0).prepared.bitmap
-                        }.getOrNull()
-                        if (rectified != null && unadorned !== source) unadorned.bitmap.recycle()
-                        rectified
-                    } ?: unadorned.bitmap
+                    val diagnostic = BitmapUtils.forSettings(source, imageSettings(), quietModules = 4.0).bitmap
                     host.saveDiagnosticInput(diagnostic, owned = diagnostic !== source.bitmap)
                 },
             ),
@@ -1116,14 +1116,26 @@ internal class PreprocessDialogController(
                     }
                     val sourceQuad = overlay.imageQuad()
                     val rectified = runCatching {
-                        BitmapUtils.rectify(working.bitmap, sourceQuad, version.progress + 1, quietModules = 1.0)
+                        val unadjusted = BitmapUtils.forSettings(source, imageSettings().copy(imageAdjustment = ImageAdjustment()))
+                        try {
+                            BitmapUtils.rectify(unadjusted.bitmap, sourceQuad, version.progress + 1, quietModules = 1.0)
+                        } finally {
+                            if (unadjusted.bitmap !== source.bitmap) unadjusted.bitmap.recycle()
+                        }
                     }.getOrElse {
                         Toast.makeText(this, ui("台形補正を適用できませんでした。四隅を確認してください。", "Could not rectify the image. Check the four corners."), Toast.LENGTH_LONG).show()
                         return@applyPerspective
                     }
+                    val adjusted = try {
+                        BitmapUtils.adjust(rectified.prepared, dialogState.imageAdjustment)
+                    } catch (error: Throwable) {
+                        rectified.prepared.bitmap.recycle()
+                        throw error
+                    }
+                    if (adjusted !== rectified.prepared) rectified.prepared.bitmap.recycle()
                     dialogState.applyPerspectiveCorrection(sourceQuad)
                     val previous = working
-                    working = rectified.prepared
+                    working = adjusted
                     releaseWorkingIfTemporary(previous, working)
                     overlay.setBitmap(working.bitmap)
                     overlay.setImageQuad(rectified.qrQuad)

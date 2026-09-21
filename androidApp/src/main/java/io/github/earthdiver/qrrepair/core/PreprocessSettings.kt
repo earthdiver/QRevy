@@ -28,6 +28,7 @@ data class QrFormatConstraint(
 }
 
 data class PreprocessSettings(
+    val imageAdjustment: ImageAdjustment = ImageAdjustment(),
     /** Rotation applied reproducibly to the persisted source image before sampling. */
     val rotationDegrees: Float = 0f,
     val polarity: PolarityMode = PolarityMode.AUTO,

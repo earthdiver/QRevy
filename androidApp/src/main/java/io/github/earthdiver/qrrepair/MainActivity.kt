@@ -91,7 +91,8 @@ import io.github.earthdiver.qrrepair.core.RepairGuidance
 import io.github.earthdiver.qrrepair.core.RepairTraceBuilder
 import io.github.earthdiver.qrrepair.ui.BitmapUtils
 import io.github.earthdiver.qrrepair.ui.RepairPreviewView
-import io.github.earthdiver.qrrepair.ui.CropOverlayView
+import io.github.earthdiver.qrrepair.ui.ImageAdjustmentEditor
+import io.github.earthdiver.qrrepair.core.ImageAdjustment
 import io.github.earthdiver.qrrepair.ui.QrResultInspectorView
 import io.github.earthdiver.qrrepair.session.RecoverySessionStore
 import io.github.earthdiver.qrrepair.session.RecoverySessionCodec
@@ -113,11 +114,13 @@ internal fun purgeStaleCameraCaptures(
     staleAfterMs: Long = CAMERA_CAPTURE_STALE_AFTER_MS,
 ) {
     require(staleAfterMs >= 0L)
+    val incompleteCrop = Regex("qr-capture-.+\\.(?:jpg|png)\\.crop-.+\\.tmp", RegexOption.IGNORE_CASE)
     cacheDir.listFiles()
         ?.filter {
             it.isFile &&
                 it.name.startsWith("qr-capture-") &&
-                it.name.endsWith(".jpg", ignoreCase = true) &&
+                (it.name.endsWith(".jpg", ignoreCase = true) || it.name.endsWith(".png", ignoreCase = true) ||
+                    incompleteCrop.matches(it.name)) &&
                 nowMs - it.lastModified() >= staleAfterMs
         }
         ?.forEach { it.delete() }
@@ -147,7 +150,14 @@ class MainActivity : Activity() {
         val style: AppStyle,
         val history: RetainedCellHistory?,
         val editorWork: RetainedEditorWork?,
+        val imageImport: RetainedImageImport? = null,
     )
+    private data class RetainedImageImport(val source: Bitmap, val state: Bundle)
+    private var importEditorDialog: AlertDialog? = null
+    private var importEditor: ImageAdjustmentEditor? = null
+    private var importSource: Bitmap? = null
+    private var retainImportSource = false
+
     private data class RetainedEditorWork(
         val sessionId: String?,
         val source: BitmapUtils.Prepared,
@@ -251,6 +261,11 @@ class MainActivity : Activity() {
         sessionStore = RecoverySessionStore(this)
         purgeStaleCameraCaptures()
         setContentView(buildUi())
+        retained?.imageImport?.let { image ->
+            showImportedImageAdjustment(image.source)
+            importEditor?.restoreState(image.state)
+            return
+        }
         retained?.editorWork?.let { work ->
             sessionId = work.sessionId
             prepared = work.source
@@ -287,7 +302,11 @@ class MainActivity : Activity() {
                     sessionHistory.entries.toList(), sessionHistory.cursor, editor.captureDraft())
             }
         }
-        return RetainedActivityState(activeStyle, history, editorWork)
+        val imageImport = importSource?.let { image ->
+            importEditor?.let { RetainedImageImport(image, it.saveState()) }
+        }
+        retainImportSource = imageImport != null
+        return RetainedActivityState(activeStyle, history, editorWork, imageImport)
     }
 
     private fun purgeStaleCameraCaptures() {
@@ -295,6 +314,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        importEditorDialog?.dismiss()
         closePreprocessEditor()
         workGeneration.incrementAndGet()
         finderSearchGeneration.incrementAndGet()
@@ -519,8 +539,8 @@ class MainActivity : Activity() {
             textSize = 15f
             PrecisionStyle.button(this, primary)
             layoutParams = LinearLayout.LayoutParams(-1, -2).apply {
-                topMargin = dp(8)
-                bottomMargin = dp(4)
+                topMargin = dp(PrecisionStyle.ACTION_TOP_MARGIN_DP)
+                bottomMargin = dp(PrecisionStyle.ACTION_BOTTOM_MARGIN_DP)
             }
         }
         val root = LinearLayout(this).apply {
@@ -1461,14 +1481,7 @@ class MainActivity : Activity() {
 
     private fun preparedFor(settings: PreprocessSettings): BitmapUtils.Prepared? {
         val source = prepared ?: return null
-        val rotated = if (settings.rotationDegrees % 360f == 0f) source
-        else BitmapUtils.rotate(source.bitmap, settings.rotationDegrees)
-        val quad = settings.perspectiveCorrectionQuad ?: return rotated
-        val rectified = runCatching {
-            BitmapUtils.rectify(rotated.bitmap, quad, settings.version, quietModules = 1.0).prepared
-        }.getOrNull() ?: return rotated
-        if (rotated !== source && rotated.bitmap !== rectified.bitmap) rotated.bitmap.recycle()
-        return rectified
+        return BitmapUtils.forSettings(source, settings)
     }
 
     private fun recordHistory(kind: HistoryEventKind, label: String, detail: String = "") {
@@ -2192,12 +2205,17 @@ class MainActivity : Activity() {
                 ?: releasePendingDiagnosticBitmap()
             REQ_CAMERA -> data?.getStringExtra(CameraActivity.EXTRA_CAPTURE_PATH)?.let {
                 val captured = File(it)
-                loadImage(Uri.fromFile(captured), cleanupFile = captured)
+                loadImage(Uri.fromFile(captured), cleanupFile = captured,
+                    imageAdjustment = ImageAdjustment(
+                        data.getIntExtra(CameraActivity.EXTRA_CONTRAST, 0),
+                        data.getIntExtra(CameraActivity.EXTRA_BRIGHTNESS, 0),
+                        data.getBooleanExtra(CameraActivity.EXTRA_INVERTED, false),
+                    ))
             }
         }
     }
 
-    private fun loadImage(uri: Uri, cleanupFile: File? = null) {
+    private fun loadImage(uri: Uri, cleanupFile: File? = null, imageAdjustment: ImageAdjustment = ImageAdjustment()) {
         val token = workGeneration.incrementAndGet()
         statusText.text = ui("画像を読み込み中…", "Loading image…")
         executor.execute {
@@ -2214,7 +2232,7 @@ class MainActivity : Activity() {
                         bitmap.recycle()
                         cleanupFile?.let { runCatching { it.delete() } }
                     } else if (cleanupFile == null) showImportedImageAdjustment(bitmap)
-                    else acceptDecodedImage(bitmap, cleanupFile)
+                    else acceptDecodedImage(bitmap, cleanupFile, imageAdjustment)
                 }
             } catch (t: Throwable) {
                 if (token == workGeneration.get()) runOnUiThread {
@@ -2346,107 +2364,82 @@ class MainActivity : Activity() {
     }
 
     private fun showImportedImageAdjustment(initialBitmap: Bitmap) {
-        var bitmap = initialBitmap
-        var handedOff = false
-        val cropView = CropOverlayView(this).apply { setBitmap(bitmap) }
-        val adjustmentStatus = TextView(this).apply {
-            text = ui("解析する範囲を指定してください。角・辺をドラッグ、枠内をドラッグで移動できます。", "Select the area to analyze. Drag corners or edges to resize, or drag inside to move.")
-            textSize = 12f
-            setPadding(dp(10), dp(6), dp(10), dp(6))
-        }
-        fun showTransformFailure(error: Throwable) {
-            adjustmentStatus.text = ui(
-                "画像変換に失敗: ${error.message ?: error.javaClass.simpleName}",
-                "Image transform failed: ${error.message ?: error.javaClass.simpleName}",
-            )
-        }
-        fun rotateBy(degrees: Float) {
-            replaceOwnedBitmap(bitmap) { BitmapUtils.rotate(it, degrees).bitmap }
-                .onSuccess { rotated ->
-                    bitmap = rotated
-                    cropView.setBitmap(rotated)
-                }
-                .onFailure(::showTransformFailure)
-        }
+        importEditorDialog?.dismiss()
+        retainImportSource = false
+        importSource = initialBitmap
         lateinit var dialog: AlertDialog
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(adjustmentStatus)
-            addView(cropView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
-            addView(scrollRow(
-                button(getString(R.string.rotate_left_90)) { rotateBy(-90f) },
-                button("-1°") { rotateBy(-1f) },
-                button("-0.1°") { rotateBy(-.1f) },
-                button("+0.1°") { rotateBy(.1f) },
-                button("+1°") { rotateBy(1f) },
-                button(getString(R.string.rotate_right_90)) { rotateBy(90f) },
-            ))
-            addView(compactRow(
-                button(getString(R.string.cancel)) { dialog.dismiss() },
-                button(getString(R.string.crop_and_analyze)) {
-                    val source = bitmap
-                    replaceOwnedBitmap(source) {
-                        createIndependentCrop(it, cropView.cropRect()).getOrThrow()
-                    }.onSuccess { cropped ->
-                        bitmap = cropped
-                        handedOff = true
-                        dialog.dismiss()
-                        acceptDecodedImage(cropped)
-                    }.onFailure(::showTransformFailure)
-                },
-            ))
-        }
-        dialog = AlertDialog.Builder(this)
-            .setTitle(ui("画像の回転・クロップ", "Rotate and crop image"))
-            .setView(content)
-            .create()
+        lateinit var editor: ImageAdjustmentEditor
+        editor = ImageAdjustmentEditor(this, initialBitmap, onCancel = { dialog.dismiss() }, onApply = { adjustment ->
+            runCatching { editor.createCrop() }.onSuccess { cropped ->
+                dialog.dismiss()
+                acceptDecodedImage(cropped, imageAdjustment = adjustment)
+            }.onFailure(editor::showError)
+        })
+        importEditor = editor
+        val editorTheme = if (AppStylePreferences.isModern(this)) R.style.ModernAppTheme else R.style.AppTheme
+        dialog = AlertDialog.Builder(this, editorTheme).create()
+        importEditorDialog = dialog
         dialog.setOnShowListener {
-            dialog.window?.setLayout(
-                (resources.displayMetrics.widthPixels * .98f).toInt(),
-                (resources.displayMetrics.heightPixels * .92f).toInt(),
-            )
+            // Use the same full-width content as the camera editor, without alert-panel insets.
+            dialog.setContentView(editor)
+            dialog.window?.let { window ->
+                androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+                window.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+            }
+            androidx.core.view.ViewCompat.requestApplyInsets(editor)
         }
         dialog.setOnDismissListener {
-            if (!handedOff && !bitmap.isRecycled) bitmap.recycle()
-            if (!handedOff) statusText.text = ui("画像の読み込みをキャンセルしました。", "Image import was canceled.")
+            editor.dispose()
+            if (!retainImportSource && !initialBitmap.isRecycled) initialBitmap.recycle()
+            importEditor = null
+            importSource = null
+            importEditorDialog = null
         }
         dialog.show()
     }
 
-    private fun acceptDecodedImage(bitmap: Bitmap, cleanupFile: File? = null) {
+    private fun acceptDecodedImage(bitmap: Bitmap, cleanupFile: File? = null, imageAdjustment: ImageAdjustment = ImageAdjustment()) {
         showWorkspace()
         val token = workGeneration.incrementAndGet()
         statusText.text = ui("画像を解析用に準備中…", "Preparing image for analysis…")
         executor.execute {
             var candidate: BitmapUtils.Prepared? = null
+            var adjustedCandidate: BitmapUtils.Prepared? = null
             var handedToUi = false
             try {
                 val p = BitmapUtils.prepare(bitmap)
                 candidate = p
                 if (p.bitmap !== bitmap) bitmap.recycle()
-                val standardResult = decodeStandardQr(p.bitmap)
-                val initialEstimate = InitialThresholdEstimator.estimate(p.bitmap)
+                val adjusted = BitmapUtils.adjust(p, imageAdjustment)
+                adjustedCandidate = adjusted
+                val standardResult = decodeStandardQr(adjusted.bitmap)
+                val initialEstimate = InitialThresholdEstimator.estimate(adjusted.bitmap)
+                val originalEstimate = if (adjusted === p) initialEstimate else InitialThresholdEstimator.estimate(p.bitmap)
                 val initialGrid = io.github.earthdiver.qrrepair.core.InitialGridEstimator.estimate(
-                    p.luma, io.github.earthdiver.qrrepair.core.ZxingCppGridDetector.detect(p.bitmap),
+                    adjusted.luma, io.github.earthdiver.qrrepair.core.ZxingCppGridDetector.detect(adjusted.bitmap),
                 )
                 if (token != workGeneration.get()) {
                     p.bitmap.recycle()
+                    if (adjusted !== p) adjusted.bitmap.recycle()
                     return@execute
                 }
                 runOnUiThread {
                     if (token != workGeneration.get()) {
                         p.bitmap.recycle()
+                        if (adjusted !== p) adjusted.bitmap.recycle()
                         return@runOnUiThread
                     }
                     immediateResultShown = false
                     prepared = p
-                    analysisPrepared = p
+                    analysisPrepared = adjusted
                     savedCellEditState = null
                     preprocessSettings = PreprocessSettings(
+                        imageAdjustment = imageAdjustment,
                         automaticThresholds = true,
                         blackMax = initialEstimate?.blackMax ?: 96,
                         whiteMin = initialEstimate?.whiteMin ?: 160,
-                        unknownColorClusters = initialEstimate?.unknownColorClusters.orEmpty(),
+                        unknownColorClusters = originalEstimate?.unknownColorClusters.orEmpty(),
                         version = initialGrid?.version ?: 1,
                         lockCorners = true,
                         logicalGridAssigned = initialGrid == null || initialGrid.autoAssignedFinders.isNotEmpty(),
@@ -2501,10 +2494,11 @@ class MainActivity : Activity() {
                 }
             } finally {
                 if (!handedToUi) {
+                    adjustedCandidate?.bitmap?.takeIf { it !== candidate?.bitmap && !it.isRecycled }?.recycle()
                     candidate?.bitmap?.takeIf { !it.isRecycled }?.recycle()
                     bitmap.takeIf { it !== candidate?.bitmap && !it.isRecycled }?.recycle()
                 }
-                // CameraActivity hands us a private cache JPEG. It is only a hand-off artifact;
+                // CameraActivity hands us a private lossless cache image. It is only a hand-off artifact;
                 // the durable session copy is lossless PNG under noBackupFilesDir.
                 cleanupFile?.let { runCatching { it.delete() } }
             }

@@ -17,6 +17,22 @@ import org.junit.Test
 class PreprocessDialogStateTest {
     private val quad = ImageQuad(PointD(1.0, 2.0), PointD(22.0, 2.0), PointD(22.0, 23.0), PointD(1.0, 23.0))
 
+    @Test fun toneChangesSurviveGeometryChangesAndPreserveManualEdits() {
+        val tones = io.github.earthdiver.qrrepair.core.ImageAdjustment(25, -10, true)
+        val state = PreprocessDialogState(PreprocessSettings(imageAdjustment = tones))
+        state.rotateBy(90f)
+        state.applyPerspectiveCorrection(quad)
+        val edits = mapOf(Coord(12, 12) to ModuleValue.ONE)
+        val captured = state.captureSettings(controls().copy(lockManualBits = true), geometry(), edits, emptySet())
+        assertEquals(tones, captured.imageAdjustment)
+        assertEquals(edits, captured.fixedPreRecoveryEdits)
+        state.imageAdjustment = io.github.earthdiver.qrrepair.core.ImageAdjustment()
+        val reset = state.captureSettings(controls().copy(lockManualBits = true), geometry(), edits, emptySet())
+        assertEquals(quad, reset.perspectiveCorrectionQuad)
+        assertEquals(90f, reset.rotationDegrees)
+        assertEquals(edits, reset.fixedPreRecoveryEdits)
+    }
+
     @Test
     fun previewAndSavedSettingsUseTheSameNormalizedThresholds() {
         val state = PreprocessDialogState(PreprocessSettings())

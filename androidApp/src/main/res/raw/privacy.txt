@@ -9,6 +9,6 @@ QR Repair is designed for local, on-device processing.
 • Android cloud backup and device-transfer backup are disabled/excluded because QR data can contain sensitive information.
 • Recovered URLs are never opened automatically.
 • Recovered text is displayed and compared without masking or redaction. Copying preserves the complete recovered text.
-• Temporary camera JPEGs are deleted after decoding; stale capture files are purged on the next app start.
+• Temporary camera JPEGs and import PNGs are deleted after use; stale capture files are purged on the next app start.
 • Data leaves app-private storage only when you explicitly export/save a result.
 • Session compression and integrity checks do not encrypt QR content.

@@ -14,6 +14,41 @@ import kotlin.math.roundToInt
 import kotlin.math.hypot
 
 object BitmapUtils {
+    /** Applies tones once to a geometrically prepared source; marker colors remain original. */
+    fun adjust(source: Prepared, adjustment: io.github.earthdiver.qrrepair.core.ImageAdjustment): Prepared {
+        if (adjustment.isIdentity) return source
+        val pixels = IntArray(source.bitmap.width * source.bitmap.height)
+        source.bitmap.getPixels(pixels, 0, source.bitmap.width, 0, 0, source.bitmap.width, source.bitmap.height)
+        val luma = IntArray(pixels.size)
+        for (i in pixels.indices) {
+            val c = adjustment.argb(pixels[i])
+            pixels[i] = c
+            luma[i] = (299 * ((c ushr 16) and 255) + 587 * ((c ushr 8) and 255) + 114 * (c and 255) + 500) / 1000
+        }
+        val bitmap = Bitmap.createBitmap(pixels, source.bitmap.width, source.bitmap.height, Bitmap.Config.ARGB_8888)
+        return Prepared(bitmap, LumaImage(bitmap.width, bitmap.height, luma, source.luma.rgbPixels))
+    }
+
+    /** Geometry first, tones last: restoring and editing use exactly the same pipeline. */
+    fun forSettings(source: Prepared, settings: io.github.earthdiver.qrrepair.core.PreprocessSettings,
+                    quietModules: Double = 1.0): Prepared {
+        var working = source
+        try {
+            if (settings.rotationDegrees % 360f != 0f) working = rotate(source.bitmap, settings.rotationDegrees)
+            settings.perspectiveCorrectionQuad?.let { quad ->
+                val next = rectify(working.bitmap, quad, settings.version, quietModules).prepared
+                if (working.bitmap !== source.bitmap && working.bitmap !== next.bitmap) working.bitmap.recycle()
+                working = next
+            }
+            val adjusted = adjust(working, settings.imageAdjustment)
+            if (working.bitmap !== source.bitmap && working.bitmap !== adjusted.bitmap) working.bitmap.recycle()
+            return adjusted
+        } catch (error: Throwable) {
+            if (working.bitmap !== source.bitmap && !working.bitmap.isRecycled) working.bitmap.recycle()
+            throw error
+        }
+    }
+
     private const val MAX_TRANSFORM_DIMENSION = 2_600
     data class Prepared(val bitmap: Bitmap, val luma: LumaImage)
     data class Rectified(val prepared: Prepared, val qrQuad: io.github.earthdiver.qrrepair.core.ImageQuad)

@@ -74,6 +74,8 @@ Image files have their EXIF orientation applied, while camera captures pass thro
 
 The working image is converted to luminance values that represent each pixel’s brightness. If it is not known whether black and white are reversed, both normal and inverted interpretations can be tried. Once a confirmed Finder pattern establishes which interpretation to use, reading follows that result. When quiet-zone correction is enabled, the image used to find these patterns receives a margin representing QR white (0).
 
+Contrast and brightness are bounded integer settings from −100 to 100. Each RGB channel uses gain `2^(contrast/50)` about 127.5 and an offset of `2.55 * brightness`, followed by optional inversion and clamping to 0–255. Geometry is applied to the unadjusted source before tones; display pixels and sampled luminance share this transform. Color-marker classification retains the corresponding original RGB values. Decoder polarity describes the adjusted image, so importing an inverted image does not also force inverted decoding. QRR stores the original image and adjustment parameters separately; older sessions default to neutral adjustments.
+
 ### 2.2 Initial version and corner estimation
 
 On new image import, the Android adapter obtains Model 2 boundaries from ZXing-C++ 3.1.1. Shared code tests versions 1–40 and four rotations against a single boundary. Finder and timing mismatch must each be at most 20%, with a runner-up gap of at least 0.03 in the score weighted 0.55/0.45. Accepted boundaries are converted to outer module centers. Decoded native text is not used as a recovery result.
@@ -331,7 +333,7 @@ Both controls offer Default, Exact match (0 bits), Strict, Relaxed, Manual, and 
 
 The conditions share generated source symbols and are not independent real photographs. Results depend on damage distribution, seed, scoring weights, and finite search/retention budgets. There was no fresh holdout after selecting 10%, and limits cannot reject alternatives that require zero changes to known bits. Reusable evaluation and enumeration commands are in the [study tools](../tools/detector-study/README.md#synthetic-dataecc-error-limit-study); detailed run archives are local research artifacts, not required product documentation.
 
-QRR schema 20 persists each limit mode separately from its remembered manual value. Earlier schemas retain their numeric or unlimited settings. Exact match stays at zero across versions. Explicit ECC/mask selections and fixed-cell protection retain their separate rules.
+QRR schema 21 persists each limit mode separately from its remembered manual value. Earlier schemas retain their numeric or unlimited settings. Exact match stays at zero across versions. Explicit ECC/mask selections and fixed-cell protection retain their separate rules.
 
 ## 5. Candidate validation and ranking
 
@@ -381,7 +383,7 @@ The Android app derives separate result, current-trial, and solver allowances fr
 
 Candidate agreement and candidate-based check guidance compare distinct candidates decoded as text from the same input matrix as the selected candidate. A full QR matrix is generated for each compared candidate, so the comparison uses at most the top 16 to bound memory and computation. If the selected decoded candidate is outside that range, it replaces the last entry. The compared count and the retained decoded-candidate count for that input are explicit; sample agreement is not treated as agreement among all candidates. Candidates that pass QR structure validation without decoding as text can be selected and exported but are excluded from this comparison.
 
-History in QRR schema 20 stores the selected QR’s version, ECC level, mask, corrected codewords, and actual sampling polarity. Recalculation restores selection by QR identity rather than list position; if no candidate matches, selection remains empty. Actual polarity is recorded separately from the user’s automatic/normal/inverted search preference. Older histories without QR identity retain the saved-index restoration path. User-facing history count and size limits are described in the [User Guide](USER_GUIDE.en.md#7-save-resume-and-export).
+History in QRR schema 21 stores the selected QR’s version, ECC level, mask, corrected codewords, and actual sampling polarity. Recalculation restores selection by QR identity rather than list position; if no candidate matches, selection remains empty. Actual polarity is recorded separately from the user’s automatic/normal/inverted search preference. Older histories without QR identity retain the saved-index restoration path. User-facing history count and size limits are described in the [User Guide](USER_GUIDE.en.md#7-save-resume-and-export).
 
 When conflicts with fixed values are not allowed, data/ECC pin conflicts reject the candidate and retain conflicting coordinates, input values, and required candidate values. Otherwise equivalent generic payload failures do not overwrite actionable diagnostics. Temporary priority assignments are not manual input pins.
 

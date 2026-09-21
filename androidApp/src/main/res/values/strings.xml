@@ -185,4 +185,23 @@
     <string name="priority_revalidated">Removed * marks that are outside data/ECC after the orientation or version change. Their ? values are retained.\n%1$s</string>
     <string name="priority_revalidation_title">Rechecked priority-search cells</string>
     <string name="analyze_post_terminator">Analyze additional segments after terminator</string>
+    <string name="crop_editor_title">Rotate and crop</string>
+    <string name="image_adjustment">Image adjustment</string>
+    <string name="image_contrast">Contrast</string>
+    <string name="image_brightness">Brightness</string>
+    <string name="image_invert">Invert</string>
+    <string name="image_rotate">Rotate</string>
+    <string name="image_before">Before</string>
+    <string name="image_before_showing">Showing before</string>
+    <string name="image_analyze_after">Analyze adjusted image</string>
+    <string name="image_apply_after">Apply adjusted image</string>
+    <string name="image_done">Done</string>
+    <string name="image_apply">Apply</string>
+    <string name="image_reset_current">Reset this adjustment</string>
+    <string name="image_reset_all">Reset all image adjustments</string>
+    <string name="image_enter_value">Enter a value (−100 to 100)</string>
+    <string name="image_value_error">Enter an integer from −100 to 100.</string>
+    <string name="image_adjustment_help">Contrast, brightness and inversion affect both the preview and analysis. Before compares tones without changing the crop or rotation. The original image and adjustment settings are saved separately.</string>
+    <string name="image_help">Help</string>
+    <string name="image_adjustment_failed">Image processing failed: %1$s</string>
 </resources>

@@ -10,11 +10,8 @@ import android.graphics.Matrix
 import android.graphics.RectF
 import android.os.Bundle
 import android.view.Gravity
-import android.view.View
 import android.widget.Button
 import android.widget.FrameLayout
-import android.widget.LinearLayout
-import android.widget.HorizontalScrollView
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
@@ -26,8 +23,8 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.exifinterface.media.ExifInterface
-import io.github.earthdiver.qrrepair.ui.CropOverlayView
-import io.github.earthdiver.qrrepair.ui.BitmapUtils
+import io.github.earthdiver.qrrepair.ui.ImageAdjustmentEditor
+import io.github.earthdiver.qrrepair.core.ImageAdjustment
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -42,11 +39,11 @@ internal fun replaceWithCompressedCapture(target: File, compress: (OutputStream)
     val tmp = File(target.parentFile, "${target.name}.crop-${UUID.randomUUID()}.tmp")
     try {
         FileOutputStream(tmp).use { output ->
-            if (!compress(output)) throw IOException("JPEG compression failed")
+            if (!compress(output)) throw IOException("Image compression failed")
             output.flush()
             output.fd.sync()
         }
-        if (tmp.length() <= 0L) throw IOException("JPEG compression produced an empty file")
+        if (tmp.length() <= 0L) throw IOException("Image compression produced an empty file")
         try {
             Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
         } catch (_: AtomicMoveNotSupportedException) {
@@ -113,10 +110,17 @@ internal fun createIndependentCrop(
 class CameraActivity : ComponentActivity() {
     companion object {
         const val EXTRA_CAPTURE_PATH = "capture_path"
+        const val EXTRA_CONTRAST = "capture_contrast"
+        const val EXTRA_BRIGHTNESS = "capture_brightness"
+        const val EXTRA_INVERTED = "capture_inverted"
+        private const val STATE_EDITOR = "camera.editor"
         private const val STATE_CAPTURE_PATH = "camera.capture_path"
         private const val STATE_CAPTURE_HANDED_OFF = "camera.capture_handed_off"
     }
 
+    private var cropEditor: ImageAdjustmentEditor? = null
+    private var cropOriginal: Bitmap? = null
+    private var restoredEditor: Bundle? = null
     private lateinit var previewView: PreviewView
     private lateinit var status: TextView
     private var captureButton: Button? = null
@@ -137,6 +141,7 @@ class CameraActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(AppStylePreferences.parse(intent.getStringExtra(AppStylePreferences.EXTRA_ACTIVE_STYLE)).theme)
         super.onCreate(savedInstanceState)
+        restoredEditor = savedInstanceState?.getBundle(STATE_EDITOR)
         currentCaptureFile = savedInstanceState?.getString(STATE_CAPTURE_PATH)?.let(::File)
         captureHandedOff = savedInstanceState?.getBoolean(STATE_CAPTURE_HANDED_OFF, false) == true
         currentCaptureFile?.takeIf { it.isFile && !captureHandedOff }?.let {
@@ -153,10 +158,12 @@ class CameraActivity : ComponentActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         currentCaptureFile?.let { outState.putString(STATE_CAPTURE_PATH, it.absolutePath) }
         outState.putBoolean(STATE_CAPTURE_HANDED_OFF, captureHandedOff)
+        cropEditor?.let { outState.putBundle(STATE_EDITOR, it.saveState()) }
         super.onSaveInstanceState(outState)
     }
 
     private fun showCameraScreen() {
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
         // Camera controls overlay the preview. The vertically split layout is only for the
         // post-capture crop screen; using it here lets MATCH_PARENT preview consume the button.
         val root = FrameLayout(this)
@@ -178,12 +185,13 @@ class CameraActivity : ComponentActivity() {
 
     override fun onDestroy() {
         // Let an accepted crop finish. shutdownNow() can strand its owned Bitmap before the task
-        // starts, and an atomic replacement is safe to complete across configuration recreation.
+        // starts. Completion disposes of the independent handoff if this Activity was destroyed.
         imageIoExecutor.shutdown()
         if (isFinishing && !captureHandedOff) {
             currentCaptureFile?.delete()
             currentCaptureFile = null
         }
+        releaseCropEditor()
         super.onDestroy()
     }
 
@@ -241,116 +249,71 @@ class CameraActivity : ComponentActivity() {
             startCamera()
             return
         }
-        var bitmap: Bitmap = decoded
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val cropView = CropOverlayView(this).apply { setBitmap(bitmap) }
-        val cropStatus = TextView(this).apply {
-            setText(R.string.crop_help)
-            setTextColor(0xFFFFFFFF.toInt()); setBackgroundColor(0xAA000000.toInt())
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-        }
-        root.addView(cropStatus, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-        root.addView(cropView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
-        val rotationButtons = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
-            setPadding(dp(4), dp(2), dp(4), dp(2))
-            addView(Button(this@CameraActivity).apply {
-                setText(R.string.rotate_left_90)
-                setOnClickListener {
-                    val old = bitmap
-                    bitmap = BitmapUtils.rotate(old, -90f).bitmap
-                    if (bitmap !== old) old.recycle()
-                    cropView.setBitmap(bitmap)
-                }
-            })
-            fun rotateBy(degrees: Float) {
-                val old = bitmap
-                val rotated = BitmapUtils.rotate(old, degrees).bitmap
-                if (rotated !== old) old.recycle()
-                bitmap = rotated
-                cropView.setBitmap(rotated)
-            }
-            addView(Button(this@CameraActivity).apply { text = "-1°"; setOnClickListener { rotateBy(-1f) } })
-            addView(Button(this@CameraActivity).apply { text = "-0.1°"; setOnClickListener { rotateBy(-.1f) } })
-            addView(Button(this@CameraActivity).apply { text = "+0.1°"; setOnClickListener { rotateBy(.1f) } })
-            addView(Button(this@CameraActivity).apply { text = "+1°"; setOnClickListener { rotateBy(1f) } })
-            addView(Button(this@CameraActivity).apply {
-                setText(R.string.rotate_right_90)
-                setOnClickListener {
-                    val old = bitmap
-                    bitmap = BitmapUtils.rotate(old, 90f).bitmap
-                    if (bitmap !== old) old.recycle()
-                    cropView.setBitmap(bitmap)
-                }
-            })
-        }
-        root.addView(HorizontalScrollView(this).apply { addView(rotationButtons) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-        lateinit var actions: LinearLayout
-        actions = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
-            setPadding(dp(8), dp(2), dp(8), dp(8))
-            addView(Button(this@CameraActivity).apply {
-                setText(R.string.retake); isAllCaps = false
-                setOnClickListener {
-                    bitmap.recycle()
-                    captureFile.delete()
-                    if (currentCaptureFile == captureFile) currentCaptureFile = null
-                    showCameraScreen()
-                    startCamera()
-                }
-            })
-            addView(Button(this@CameraActivity).apply {
-                setText(R.string.crop_and_analyze); isAllCaps = false
-                setOnClickListener {
-                    val source = bitmap
-                    val controls = buildList<View> {
-                        for (index in 0 until rotationButtons.childCount) add(rotationButtons.getChildAt(index))
-                        for (index in 0 until actions.childCount) add(actions.getChildAt(index))
-                    }
-                    controls.forEach { it.isEnabled = false }
-                    finishWithCrop(source, cropView, captureFile, controls, cropStatus)
-                }
-            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        }
-        root.addView(actions, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-        setContentView(root)
+        releaseCropEditor()
+        cropOriginal = decoded
+        lateinit var editor: ImageAdjustmentEditor
+        editor = ImageAdjustmentEditor(this, decoded, cancelLabel = R.string.retake,
+            onCancel = {
+                releaseCropEditor()
+                captureFile.delete()
+                if (currentCaptureFile == captureFile) currentCaptureFile = null
+                showCameraScreen()
+                startCamera()
+            },
+            onApply = { adjustment -> finishWithCrop(editor, captureFile, adjustment) })
+        cropEditor = editor
+        restoredEditor?.let { editor.restoreState(it) }
+        restoredEditor = null
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+        setContentView(editor)
     }
 
-    private fun finishWithCrop(
-        source: Bitmap,
-        cropView: CropOverlayView,
-        captureFile: File,
-        controls: List<View>,
-        cropStatus: TextView,
-    ) {
-        val cropped = createIndependentCrop(source, cropView.cropRect()).getOrElse { error ->
-            controls.forEach { it.isEnabled = true }
-            cropStatus.text = getString(R.string.capture_failed, error.message ?: error.javaClass.simpleName)
+    private fun releaseCropEditor() {
+        cropEditor?.dispose()
+        cropEditor = null
+        cropOriginal?.takeIf { !it.isRecycled }?.recycle()
+        cropOriginal = null
+    }
+
+    private fun finishWithCrop(editor: ImageAdjustmentEditor, captureFile: File, adjustment: ImageAdjustment) {
+        val cropped = runCatching { editor.createCrop() }.getOrElse { error ->
+            editor.showError(error)
             return
         }
+        editor.setBusy(true)
+        val handoff = File(cacheDir, "qr-capture-${UUID.randomUUID()}.png")
         imageIoExecutor.execute {
             try {
-                replaceWithCompressedCapture(captureFile) { output ->
-                    cropped.compress(Bitmap.CompressFormat.JPEG, 95, output)
+                replaceWithCompressedCapture(handoff) { output ->
+                    // Preserve the unadjusted pixels exactly through the private camera handoff.
+                    cropped.compress(Bitmap.CompressFormat.PNG, 100, output)
                 }
                 runOnUiThread {
                     if (isDestroyed) {
+                        handoff.delete()
                         cleanupCompletedCaptureForDestroyedActivity(captureFile, isFinishing)
                         return@runOnUiThread
                     }
                     if (isFinishing) {
+                        handoff.delete()
                         captureFile.delete()
                         return@runOnUiThread
                     }
+                    captureFile.delete()
+                    currentCaptureFile = null
                     captureHandedOff = true
-                    setResult(RESULT_OK, Intent().putExtra(EXTRA_CAPTURE_PATH, captureFile.absolutePath))
+                    setResult(RESULT_OK, Intent().putExtra(EXTRA_CAPTURE_PATH, handoff.absolutePath)
+                        .putExtra(EXTRA_CONTRAST, adjustment.contrast)
+                        .putExtra(EXTRA_BRIGHTNESS, adjustment.brightness)
+                        .putExtra(EXTRA_INVERTED, adjustment.inverted))
                     finish()
                 }
             } catch (error: Throwable) {
+                handoff.delete()
                 runOnUiThread {
                     if (!isFinishing && !isDestroyed) {
-                        controls.forEach { it.isEnabled = true }
-                        cropStatus.text = getString(R.string.capture_failed, error.message ?: error.javaClass.simpleName)
+                        editor.setBusy(false)
+                        editor.showError(error)
                     }
                 }
             } finally {

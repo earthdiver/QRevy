@@ -42,7 +42,7 @@ The supported symbol family is QR Code Model 2, versions 1 through 40. Model 1, 
 ## Basic workflow
 
 1. Load an image, capture one with the camera, or import a QR matrix text file containing `0 / 1 / ? / *`.
-2. Rotate the image and crop the QR region when necessary.
+2. Rotate, invert, or adjust the image as needed, and crop the QR region.
 3. Review the estimated corners, version, and black/unknown/white thresholds; adjust them if needed. Unstable observations remain `?`. Colored-unknown detection can be enabled in basic settings when needed and starts off.
 4. Review Finder positions and roles, which are assigned automatically when image agreement is sufficient. To correct an assignment, press **Clear**, tap the green Finder, and assign the intended role.
 5. Adjust cells and search options in advanced settings when needed.

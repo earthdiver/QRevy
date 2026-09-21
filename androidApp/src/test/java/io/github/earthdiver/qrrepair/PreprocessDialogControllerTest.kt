@@ -56,7 +56,7 @@ class PreprocessDialogControllerTest {
         val source = BitmapUtils.prepare(Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888).apply {
             eraseColor(Color.WHITE)
         })
-        val working = BitmapUtils.rotate(source.bitmap, 15f)
+        val working = BitmapUtils.forSettings(source, settings ?: PreprocessSettings(rotationDegrees = 15f))
         val host = Host()
         PreprocessDialogController(activity.get(), settings ?: PreprocessSettings(version = 1, rotationDegrees = 15f,
             manualQuad = ImageQuad(PointD(20.0, 20.0), PointD(220.0, 20.0),
@@ -70,6 +70,32 @@ class PreprocessDialogControllerTest {
             activity.pause().stop().destroy()
             if (!working.bitmap.isRecycled) working.bitmap.recycle()
             if (!source.bitmap.isRecycled) source.bitmap.recycle()
+        }
+    }
+
+    @Test fun importedAdjustmentsArePreservedWithoutOfferingAnotherImageEditor() {
+        val edits = mapOf(Coord(12, 12) to ModuleValue.ONE)
+        val quad = ImageQuad(PointD(20.0, 20.0), PointD(220.0, 20.0), PointD(220.0, 220.0), PointD(20.0, 220.0))
+        val tones = ImageAdjustment(25, -10, true)
+        val settings = PreprocessSettings(rotationDegrees = 15f, polarity = PolarityMode.NORMAL, imageAdjustment = tones,
+            manualFinders = mapOf(FinderRole.TOP_LEFT to PointD(50.0, 50.0)),
+            confirmedFinderPolarity = FinderPolarity.NORMAL, manualQuad = quad,
+            preRecoveryEdits = edits, lockManualBits = true)
+        for (style in AppStyle.entries) withDialog(settings, style) { dialog, host, source, _ ->
+            assertFalse(views(dialog.window!!.decorView).filterIsInstance<android.widget.Button>()
+                .any { it.text.toString() == "画像調整" })
+            click(dialog, "保存")
+            val saved = host.saves.last()
+            assertEquals(tones, saved.settings.imageAdjustment)
+            assertEquals(quad, saved.settings.manualQuad)
+            assertEquals(settings.manualFinders, saved.settings.manualFinders)
+            assertEquals(edits, saved.settings.fixedPreRecoveryEdits)
+            assertEquals(settings.polarity, saved.settings.polarity)
+            assertEquals(settings.confirmedFinderPolarity, saved.settings.confirmedFinderPolarity)
+            val restored = BitmapUtils.forSettings(source, saved.settings)
+            assertTrue(restored.bitmap.sameAs(saved.image.bitmap))
+            assertArrayEquals(restored.luma.pixels, saved.image.luma.pixels)
+            assertArrayEquals(restored.luma.rgbPixels, saved.image.luma.rgbPixels)
         }
     }
 
