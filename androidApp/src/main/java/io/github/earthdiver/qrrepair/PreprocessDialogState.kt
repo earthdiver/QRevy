@@ -1,5 +1,6 @@
 package io.github.earthdiver.qrrepair
 
+import io.github.earthdiver.qrrepair.core.ErrorLimitMode
 import io.github.earthdiver.qrrepair.core.Coord
 import io.github.earthdiver.qrrepair.core.FinderPolarity
 import io.github.earthdiver.qrrepair.core.FinderRole
@@ -24,6 +25,8 @@ internal data class PreprocessControlSnapshot(
     val formatConstraint: QrFormatConstraint? = null,
     val formatMismatchLimit: Int? = null,
     val dataEccMismatchLimit: Int? = null,
+    val formatMismatchLimitMode: ErrorLimitMode = ErrorLimitMode.MANUAL,
+    val dataEccMismatchLimitMode: ErrorLimitMode = ErrorLimitMode.MANUAL,
     val lockManualBits: Boolean = false,
 )
 
@@ -98,6 +101,8 @@ internal class PreprocessDialogState(private val initial: PreprocessSettings) {
             formatConstraint = controls.formatConstraint,
             formatMismatchLimit = controls.formatMismatchLimit,
             dataEccMismatchLimit = controls.dataEccMismatchLimit,
+            formatMismatchLimitMode = controls.formatMismatchLimitMode,
+            dataEccMismatchLimitMode = controls.dataEccMismatchLimitMode,
             lockManualBits = controls.lockManualBits,
             perspectiveCorrectionQuad = perspectiveCorrectionQuad,
             manualQuad = geometry.quad,

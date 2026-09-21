@@ -79,6 +79,12 @@ Changing orientation rechecks existing `*` positions, removes only ineligible ma
 | Data/ECC error limit | Candidates that overturn too much known evidence should be restricted | `0 bits` requires exact agreement with every comparable known bit |
 | Force following structure when mode and character/byte count are read correctly | One segment and its mode and character/byte count are known to be correct | Do not use with ECI, FNC1, Structured Append, or multiple segments |
 
+Both error-limit controls offer **Default**, **Exact match (0 bits)**, **Strict**, **Relaxed**, **Manual**, and **Unlimited**, with the effective bit count shown. Apply confirms the selection; Cancel leaves it unchanged. Editing the number or using ± selects Manual.
+
+For new imports, the format-information limit starts at **6 bits** across both copies (Strict); Relaxed allows **9 bits**, independent of version. The data/ECC limit starts at **0.875%** of the version's total data/ECC bits for **V1–4**, and **10%** for **V5–40**, rounded up to whole bits. For example, V4 starts at 7 bits and V5 at 108 bits. These presets are operational compromises, not guarantees of correct recovery.
+
+Default follows that version rule. An explicitly selected Strict or Relaxed preset keeps its selected policy and recalculates its bit count when version changes; Manual and Unlimited remain explicit. Stored manual numbers are retained while using a preset. Existing QRR sessions keep their saved numeric limits or Unlimited. Both an ECC level and a mask selected explicitly disable the format limit, as before. If the limits remove a correct candidate, select a higher manual limit or Unlimited and retry.
+
 See [Recovery Strategy](RECOVERY_STRATEGY.en.md) for exact interactions and bounds.
 
 ## 6. Recover and inspect results

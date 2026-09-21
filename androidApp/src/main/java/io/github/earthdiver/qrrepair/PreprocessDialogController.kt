@@ -17,6 +17,8 @@ import android.widget.Toast
 import io.github.earthdiver.qrrepair.core.QrCellRegions
 import io.github.earthdiver.qrrepair.core.RepairReasonKind
 import io.github.earthdiver.qrrepair.core.Coord
+import io.github.earthdiver.qrrepair.core.ErrorLimitMode
+import io.github.earthdiver.qrrepair.core.ErrorLimitPolicy
 import io.github.earthdiver.qrrepair.core.FinderRole
 import io.github.earthdiver.qrrepair.core.FinderDetector
 import io.github.earthdiver.qrrepair.core.GridGeometry
@@ -189,6 +191,8 @@ internal class PreprocessDialogController(
         var formatConstraintDraft = preprocessSettings.formatConstraint
         var formatMismatchLimitDraft = preprocessSettings.formatMismatchLimit
         var dataEccMismatchLimitDraft = preprocessSettings.dataEccMismatchLimit
+        var formatMismatchLimitModeDraft = preprocessSettings.formatMismatchLimitMode
+        var dataEccMismatchLimitModeDraft = preprocessSettings.dataEccMismatchLimitMode
         val blackLabel = TextView(this)
         val black = SeekBar(this).apply { max = 254; progress = preprocessSettings.blackMax }
         val whiteLabel = TextView(this)
@@ -248,6 +252,8 @@ internal class PreprocessDialogController(
             formatConstraint = formatConstraintDraft,
             formatMismatchLimit = formatMismatchLimitDraft,
             dataEccMismatchLimit = dataEccMismatchLimitDraft,
+            formatMismatchLimitMode = formatMismatchLimitModeDraft,
+            dataEccMismatchLimitMode = dataEccMismatchLimitModeDraft,
             lockManualBits = !allowFixedCorrections.isChecked,
         )
         fun updateThresholdLabels() {
@@ -453,6 +459,15 @@ internal class PreprocessDialogController(
         }
         val formatMismatchLimitNote = TextView(this).apply { textSize = 12f }
         lateinit var formatMismatchLimitButton: Button
+        fun errorLimitModeLabel(mode: ErrorLimitMode, value: Int?, valueLabel: String): String = when (mode) {
+            ErrorLimitMode.AUTOMATIC -> getString(R.string.error_limit_automatic_value, valueLabel)
+            ErrorLimitMode.STRICT -> getString(R.string.error_limit_strict_value, valueLabel)
+            ErrorLimitMode.RELAXED -> getString(R.string.error_limit_relaxed_value, valueLabel)
+            ErrorLimitMode.MANUAL -> if (value == null) valueLabel else getString(R.string.error_limit_manual_value, valueLabel)
+            ErrorLimitMode.EXACT -> getString(R.string.error_limit_exact)
+            ErrorLimitMode.UNLIMITED -> valueLabel
+        }
+        fun effectiveFormatMismatchLimit() = ErrorLimitPolicy.format(formatMismatchLimitModeDraft, formatMismatchLimitDraft)
         fun formatMismatchLimitValueLabel(value: Int?): String = when (value) {
             null -> getString(R.string.format_mismatch_limit_unlimited)
             0 -> getString(R.string.format_mismatch_limit_exact)
@@ -460,7 +475,9 @@ internal class PreprocessDialogController(
         }
         fun refreshFormatMismatchLimitControl() {
             val fullySpecified = formatConstraintDraft?.candidateCount == 1
-            formatMismatchLimitButton.text = formatMismatchLimitValueLabel(formatMismatchLimitDraft)
+            val effective = effectiveFormatMismatchLimit()
+            formatMismatchLimitButton.text = errorLimitModeLabel(formatMismatchLimitModeDraft, effective,
+                formatMismatchLimitValueLabel(effective))
             formatMismatchLimitButton.isEnabled = !fullySpecified
             formatMismatchLimitNote.setText(
                 if (fullySpecified) R.string.format_mismatch_limit_fixed_note
@@ -469,13 +486,22 @@ internal class PreprocessDialogController(
         }
         formatMismatchLimitButton = button("", {})
         formatMismatchLimitButton.setOnClickListener {
-            showBitErrorLimitDialog(this, getString(R.string.format_mismatch_limit), formatMismatchLimitDraft, 30) { value ->
+            showBitErrorLimitDialog(this, getString(R.string.format_mismatch_limit),
+                currentMode = formatMismatchLimitModeDraft,
+                currentManualValue = formatMismatchLimitDraft,
+                maximum = 30,
+                automaticLimit = ErrorLimitPolicy.format(ErrorLimitMode.AUTOMATIC, null),
+                strictLimit = ErrorLimitPolicy.STRICT_FORMAT,
+                relaxedLimit = ErrorLimitPolicy.RELAXED_FORMAT,
+            ) { mode, value ->
+                formatMismatchLimitModeDraft = mode
                 formatMismatchLimitDraft = value
                 refreshFormatMismatchLimitControl()
+                refreshLabels()
                 noteDraftChange(
                     "formatMismatchLimit",
                     ui("形式情報の誤り上限を変更", "Changed format-information error limit"),
-                    formatMismatchLimitValueLabel(value),
+                    formatMismatchLimitButton.text.toString(),
                 )
             }
         }
@@ -490,26 +516,38 @@ internal class PreprocessDialogController(
         }
         refreshFormatMismatchLimitControl()
         lateinit var dataEccMismatchLimitButton: Button
+        fun effectiveDataEccMismatchLimit() = ErrorLimitPolicy.data(version.progress + 1,
+            dataEccMismatchLimitModeDraft, dataEccMismatchLimitDraft)
         fun dataEccMismatchLimitValueLabel(value: Int?): String = when (value) {
             null -> getString(R.string.data_ecc_mismatch_limit_unlimited)
             0 -> getString(R.string.data_ecc_mismatch_limit_exact)
             else -> resources.getQuantityString(R.plurals.data_ecc_mismatch_limit_bits, value, value)
         }
         fun refreshDataEccMismatchLimitControl() {
-            dataEccMismatchLimitButton.text = dataEccMismatchLimitValueLabel(dataEccMismatchLimitDraft)
+            val effective = effectiveDataEccMismatchLimit()
+            dataEccMismatchLimitButton.text = errorLimitModeLabel(dataEccMismatchLimitModeDraft, effective,
+                dataEccMismatchLimitValueLabel(effective))
         }
         dataEccMismatchLimitButton = button("", {})
         fun dataEccMaximum() = Version.getVersionForNumber(version.progress + 1).totalCodewords * 8
-        fun dataEccLimitIsValid() = dataEccMismatchLimitDraft?.let { it <= dataEccMaximum() } != false
+        fun dataEccLimitIsValid() = effectiveDataEccMismatchLimit()?.let { it <= dataEccMaximum() } != false
         fun editDataEccLimit(notice: String? = null) {
             showBitErrorLimitDialog(this, getString(R.string.data_ecc_mismatch_limit),
-                dataEccMismatchLimitDraft, dataEccMaximum(), notice) { value ->
+                currentMode = dataEccMismatchLimitModeDraft,
+                currentManualValue = dataEccMismatchLimitDraft,
+                maximum = dataEccMaximum(),
+                automaticLimit = ErrorLimitPolicy.data(version.progress + 1, ErrorLimitMode.AUTOMATIC, null),
+                strictLimit = ErrorLimitPolicy.strictData(version.progress + 1),
+                relaxedLimit = ErrorLimitPolicy.relaxedData(version.progress + 1),
+                notice = notice,
+            ) { mode, value ->
+                dataEccMismatchLimitModeDraft = mode
                 dataEccMismatchLimitDraft = value
                 refreshDataEccMismatchLimitControl()
                 noteDraftChange(
                     "dataEccMismatchLimit",
                     ui("データ・ECCの誤り上限を変更", "Changed data/ECC error limit"),
-                    dataEccMismatchLimitValueLabel(value),
+                    dataEccMismatchLimitButton.text.toString(),
                 )
             }
         }
@@ -521,7 +559,10 @@ internal class PreprocessDialogController(
             ))
             return false
         }
-        checkVersionErrorLimit = { requestValidDataEccLimit() }
+        checkVersionErrorLimit = {
+            refreshDataEccMismatchLimitControl()
+            requestValidDataEccLimit()
+        }
         dataEccMismatchLimitButton.setOnClickListener { editDataEccLimit() }
         val dataEccMismatchLimitControl = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -644,7 +685,7 @@ internal class PreprocessDialogController(
                 val headerComplete = recoveryEngine.hasTrustablePayloadHeader(
                     matrix,
                     formatConstraintDraft,
-                    formatMismatchLimitDraft,
+                    effectiveFormatMismatchLimit(),
                     manualEdits = cellEditState.fixedEdits,
                 )
                 trustKnownPayloadCount.isEnabled = headerComplete

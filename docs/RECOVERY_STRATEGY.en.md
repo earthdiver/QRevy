@@ -315,6 +315,18 @@ For each format interpretation and RS block, expand the GF(256) zero-syndrome eq
 
 For example, twenty one-bit erasures scattered across twenty V1-L codewords can be uniquely solved when the binary rank is twenty, even though the conventional seven-symbol erasure budget and twelve-bit enumeration cannot resolve them. Conversely, erasing all seven ECC bytes plus four data bits leaves four free bits: sixteen RS assignments, not a unique payload. Erasing every ECC bit cannot by itself constrain unknown data.
 
+### 4.5 Error-limit preset rationale
+
+Both controls offer Default, Exact match (0 bits), Strict, Relaxed, Manual, and Unlimited. The [user guide](USER_GUIDE.en.md#5-choose-advanced-settings) describes selection and version changes. The presets are operational compromises, not correctness guarantees.
+
+- **Format information:** Strict and Default use 6 bits across both copies; Relaxed uses 9 bits, independent of version. The repeated 15-bit format code has minimum distance 14 when all 30 bits are known, so a radius of 6 admits at most one format. Enumeration of all 207,025 placements of three errors in each copy retained only the true format at 6 bits. Nine bits also retains a clean copy paired with an eight-error copy, but can admit alternatives. Unknown cells do not count; fully unknown format information cannot be narrowed by these caps.
+- **Data/ECC:** Strict uses 0.875% of all data/ECC bits, rounded up, following the conservative-policy evaluation. Relaxed uses 10%, rounded up. Default selects Strict for V1–4 and Relaxed for V5–40, reflecting the intended use of manual visual inspection for smaller symbols; the version boundary is a workflow choice, not a measured accuracy threshold.
+- **Relaxed-policy comparison:** Across 8,012 synthetic conditions and 32,048 recovery calls, 5% retained the exact original QR in 2,627 conditions and admitted another decoded payload in 32; 10% retained 3,231 and admitted another payload in 37. Unlimited retained 3,874 and admitted another payload in 45. Thus 10% was chosen as a balance between correct recovery and suppressing alternatives. Correct and alternative payloads can coexist in one condition.
+
+The conditions share generated source symbols and are not independent real photographs. Results depend on damage distribution, seed, scoring weights, and finite search/retention budgets. There was no fresh holdout after selecting 10%, and limits cannot reject alternatives that require zero changes to known bits. Reusable evaluation and enumeration commands are in the [study tools](../tools/detector-study/README.md#synthetic-dataecc-error-limit-study); detailed run archives are local research artifacts, not required product documentation.
+
+QRR schema 20 persists each limit mode separately from its remembered manual value. Earlier schemas retain their numeric or unlimited settings. Exact match stays at zero across versions. Explicit ECC/mask selections and fixed-cell protection retain their separate rules.
+
 ## 5. Candidate validation and ranking
 
 Candidates are rejected for violating fixed values when conflicts are not allowed, contradicting fixed structures outside codewords, exceeding configured error limits, or failing QR structure validation. RS consistency alone is not success; final decoding is also checked.
@@ -363,7 +375,7 @@ The Android app derives separate result, current-trial, and solver allowances fr
 
 Candidate agreement and candidate-based check guidance compare distinct candidates decoded as text from the same input matrix as the selected candidate. A full QR matrix is generated for each compared candidate, so the comparison uses at most the top 16 to bound memory and computation. If the selected decoded candidate is outside that range, it replaces the last entry. The compared count and the retained decoded-candidate count for that input are explicit; sample agreement is not treated as agreement among all candidates. Candidates that pass QR structure validation without decoding as text can be selected and exported but are excluded from this comparison.
 
-History in QRR schema 19 stores the selected QR’s version, ECC level, mask, corrected codewords, and actual sampling polarity. Recalculation restores selection by QR identity rather than list position; if no candidate matches, selection remains empty. Actual polarity is recorded separately from the user’s automatic/normal/inverted search preference. Older histories without QR identity retain the saved-index restoration path. User-facing history count and size limits are described in the [User Guide](USER_GUIDE.en.md#7-save-resume-and-export).
+History in QRR schema 20 stores the selected QR’s version, ECC level, mask, corrected codewords, and actual sampling polarity. Recalculation restores selection by QR identity rather than list position; if no candidate matches, selection remains empty. Actual polarity is recorded separately from the user’s automatic/normal/inverted search preference. Older histories without QR identity retain the saved-index restoration path. User-facing history count and size limits are described in the [User Guide](USER_GUIDE.en.md#7-save-resume-and-export).
 
 When conflicts with fixed values are not allowed, data/ECC pin conflicts reject the candidate and retain conflicting coordinates, input values, and required candidate values. Otherwise equivalent generic payload failures do not overwrite actionable diagnostics. Temporary priority assignments are not manual input pins.
 

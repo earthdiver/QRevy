@@ -89,7 +89,7 @@
         <item quantity="one">%1$d bit</item>
         <item quantity="other">%1$d bits</item>
     </plurals>
-    <string name="format_mismatch_limit_note">Compares known bits in both copies. Excludes ? and manual bits determined by explicit ECC/mask selections alone. Zero requires exact agreement at compared positions.</string>
+    <string name="format_mismatch_limit_note">Default and Strict allow 6 bits; Relaxed allows 9 bits. Compares known bits in both copies. Excludes ? and manual bits determined by explicit ECC/mask selections alone. Zero requires exact agreement at compared positions.</string>
     <string name="format_mismatch_limit_fixed_note">This setting is not applied while both ECC and mask are specified.</string>
     <string name="data_ecc_mismatch_limit">Known data/ECC bit error limit</string>
     <string name="data_ecc_mismatch_limit_unlimited">Unlimited</string>
@@ -98,9 +98,15 @@
         <item quantity="one">%1$d bit</item>
         <item quantity="other">%1$d bits</item>
     </plurals>
-    <string name="data_ecc_mismatch_limit_note">Limits differences between known input data/ECC bits and RS-corrected candidates. Excludes ?, format, version, function, and remainder cells. Locked manual values cannot change at any limit.</string>
-    <string name="data_ecc_mismatch_limit_select">Set the maximum allowed errors. Select Unlimited to remove the limit.</string>
+    <string name="data_ecc_mismatch_limit_note" formatted="false">Strict uses 0.875% of total data/ECC bits; Relaxed uses 10%, both rounded up. Default uses Strict for Versions 1–4 and Relaxed for Version 5 onward. Limits differences between known input data/ECC bits and RS-corrected candidates. Excludes ?, format, version, function, and remainder cells. Locked manual values cannot change at any limit.</string>
     <string name="apply_limit">Apply</string>
+    <string name="error_limit_automatic_value">Default (%1$s)</string>
+    <string name="error_limit_strict_value">Strict (%1$s)</string>
+    <string name="error_limit_relaxed_value">Relaxed (%1$s)</string>
+    <string name="error_limit_exact">Exact match (0 bits)</string>
+    <string name="error_limit_manual">Manual</string>
+    <string name="error_limit_manual_value">Manual (%1$s)</string>
+    <string name="error_limit_preset_help">Select a preset or enter a bit limit. Editing the number switches to Manual. Apply confirms your choice.</string>
     <string name="save_debug_input">Save debug input PNG</string>
     <string name="tap_cell">Tap a cell in the image.</string>
     <string name="cell_edit_help">Tap to select a cell. Use arrows to move and 0/1/\?/* to edit.</string>
