@@ -71,6 +71,8 @@ debug APKは`build/androidApp/outputs/apk/debug/androidApp-debug.apk`に生成�
 
 公開用application IDは`io.github.earthdiver.qrrepair`です。リリース署名、ストア識別子、公開Privacy Policy URLはリポジトリに含まれていません。公開前の確認については[リリースチェックリスト](docs/RELEASE_CHECKLIST.md)を参照してください。
 
+手動配布と手動実行ワークフローについては、[Firebaseでの限定配布](docs/FIREBASE_DISTRIBUTION.ja.md)を参照してください。
+
 ## ドキュメント
 
 - [修復戦略](docs/RECOVERY_STRATEGY.ja.md)
