@@ -22,8 +22,6 @@ import io.github.earthdiver.qrrepair.core.ErrorLimitPolicy
 import io.github.earthdiver.qrrepair.core.FinderRole
 import io.github.earthdiver.qrrepair.core.GridGeometry
 import io.github.earthdiver.qrrepair.core.GeometryModel
-import io.github.earthdiver.qrrepair.core.MatrixSampler
-import io.github.earthdiver.qrrepair.core.ModuleSource
 import io.github.earthdiver.qrrepair.core.ModuleValue
 import com.google.zxing.qrcode.decoder.Version
 import io.github.earthdiver.qrrepair.core.PolarityMode
@@ -599,11 +597,7 @@ internal class PreprocessDialogController(
             ),
         ).view
         var singleCellEditMode = true
-        var sampledImage: io.github.earthdiver.qrrepair.core.LumaImage? = null
-        var sampledGeometry: GridGeometry? = null
-        var sampledProfile: SamplingProfile? = null
-        var sampledResult: Pair<QrMatrix, MatrixSampler.SamplingStats>? = null
-        var sampledObservations: Array<io.github.earthdiver.qrrepair.core.ModuleObservation?>? = null
+        val previewSampler = PreRecoveryPreviewSampler()
         var provisionalImage = initialWorking
         fun sampleImageMatrix(): Pair<GridGeometry, QrMatrix>? {
             val q = overlay.imageQuad()
@@ -623,19 +617,7 @@ internal class PreprocessDialogController(
                     io.github.earthdiver.qrrepair.core.FinderPolarity.NORMAL -> false
                     else -> selectedPolarity() == PolarityMode.INVERTED
                 })
-            // Effective slider values are outputs in automatic mode, not inputs to the next fit.
-            val profile = if (requested.settings.automaticThresholds) requested.copy(settings = requested.settings.copy(
-                blackMax = requested.provisionalThresholds.blackMax, whiteMin = requested.provisionalThresholds.whiteMin,
-                automaticThresholds = overlay.isLogicalGridAssigned(),
-            )) else requested
-            if (sampledImage !== working.luma || sampledGeometry != g || sampledProfile != profile) {
-                if (sampledImage !== working.luma || sampledGeometry != g || sampledProfile?.inverted != profile.inverted) {
-                    sampledObservations = io.github.earthdiver.qrrepair.core.GridThresholdEstimator.observe(working.luma, g, profile.inverted)
-                }
-                sampledResult = MatrixSampler(working.luma, profile).sampleObserved(g, profile, requireNotNull(sampledObservations))
-                sampledImage = working.luma; sampledGeometry = g; sampledProfile = profile
-            }
-            val (matrix, stats) = requireNotNull(sampledResult)
+            val (matrix, stats) = previewSampler.sample(working.luma, g, requested, overlay.isLogicalGridAssigned())
             stats.thresholds?.let { pair ->
                 updatingThresholdControls = true
                 black.progress = pair.blackMax; white.progress = pair.whiteMin - 1
@@ -645,21 +627,11 @@ internal class PreprocessDialogController(
             activePreviewProfile = requested.copy(settings = requested.settings.copy(
                 blackMax = black.progress, whiteMin = white.progress + 1,
             ))
-            return g to matrix.copy()
+            return g to matrix
         }
         fun refreshPreRecoveryMatrix(): Pair<GridGeometry, QrMatrix>? {
             val (g, matrix) = sampleImageMatrix() ?: return null
-            cellEditState.edits.forEach { (c, v) ->
-                if (c.x in 0 until matrix.dimension && c.y in 0 until matrix.dimension) {
-                    // Explicit source overrides are independent of whether the image agrees.
-                    matrix.set(c.x, c.y, v, 1f, when {
-                        c in cellEditState.softEdits -> ModuleSource.USER_SOFT
-                        allowFixedCorrections.isChecked -> ModuleSource.USER_UNLOCKED
-                        else -> ModuleSource.USER
-                    })
-                }
-                if (c in cellEditState.prioritySearch) matrix.setPrioritySearch(c.x, c.y, true)
-            }
+            cellEditState.applyTo(matrix, allowFixedCorrections.isChecked)
             return g to matrix
         }
         fun setManualFocus(enabled: Boolean) {

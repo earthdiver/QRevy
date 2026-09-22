@@ -39,11 +39,12 @@ class QrRecoveryIntegrationTest {
         val engine = RecoveryEngine()
         val selected = QrFormatConstraint(ErrorCorrectionLevel.Q, encoded.maskPattern)
 
-        val recovered = engine.recover(matrix, formatConstraint = selected)
+        val outcome = engine.recoverWithDiagnostics(matrix, formatConstraint = selected)
+        val recovered = outcome.candidates
 
         assertTrue(recovered.any { it.text == text })
         assertTrue(recovered.all { it.ecLevel == selected.ecLevel && it.dataMask == selected.dataMask })
-        assertEquals(1, engine.lastFormatAttempts)
+        assertEquals(1, outcome.formatAttempts)
     }
 
     @Test
@@ -83,12 +84,13 @@ class QrRecoveryIntegrationTest {
         )
 
         val exactEngine = RecoveryEngine()
-        val exactOnly = exactEngine.recover(matrix, maxKnownDataEccMismatches = 0)
+        val outcome = exactEngine.recoverWithDiagnostics(matrix, maxKnownDataEccMismatches = 0)
+        val exactOnly = outcome.candidates
         val allowsOneError = RecoveryEngine().recover(matrix, maxKnownDataEccMismatches = 1)
 
         assertTrue(exactOnly.none { it.text == text })
-        assertEquals(RecoveryFailureReason.KNOWN_BIT_CONSTRAINT_CONFLICT, exactEngine.lastFailure?.reason)
-        assertEquals(null, exactEngine.lastFailure?.rsBitDiagnostic?.dimension)
+        assertEquals(RecoveryFailureReason.KNOWN_BIT_CONSTRAINT_CONFLICT, outcome.failure?.reason)
+        assertEquals(null, outcome.failure?.rsBitDiagnostic?.dimension)
         assertTrue(allowsOneError.any { it.text == text && it.knownBitMismatchesAfterCorrection == 1 })
     }
 
@@ -171,12 +173,13 @@ class QrRecoveryIntegrationTest {
         }
         val engine = RecoveryEngine()
 
-        val recovered = engine.recover(matrix)
+        val outcome = engine.recoverWithDiagnostics(matrix)
+        val recovered = outcome.candidates
 
         assertTrue(recovered.isEmpty())
-        assertEquals(1, engine.lastFormatAttempts)
-        assertEquals(ErrorCorrectionLevel.L, engine.lastFailure?.ecLevel)
-        assertEquals(encoded.maskPattern, engine.lastFailure?.dataMask)
+        assertEquals(1, outcome.formatAttempts)
+        assertEquals(ErrorCorrectionLevel.L, outcome.failure?.ecLevel)
+        assertEquals(encoded.maskPattern, outcome.failure?.dataMask)
     }
 
     @Test

@@ -182,14 +182,6 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         }
     }
 
-    /** Diagnostics published when a recovery finishes; never used as working search state. */
-    var lastFailure: RecoveryFailure? = null
-        private set
-    var lastSearchDiagnostic: RecoverySearchDiagnostic? = null
-        private set
-    var lastFormatAttempts: Int = 0
-        private set
-
     /** General diagnostic recognition includes control prefixes and Hanzi. */
     fun hasCompletePayloadHeader(
         matrix: QrMatrix,
@@ -246,6 +238,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         return false
     }
 
+    /** Candidate-only convenience for callers that do not display search diagnostics. */
     fun recover(
         matrix: QrMatrix,
         maxFormatCandidates: Int = 32,
@@ -258,7 +251,25 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
         displayLockManualBits: Boolean? = null,
         onPriorityProgress: ((done: Int, total: Int) -> Unit)? = null,
-    ): List<RecoveryCandidate> {
+    ): List<RecoveryCandidate> = recoverWithDiagnostics(
+        matrix, maxFormatCandidates, trustKnownPayloadCount, formatConstraint, maxFormatMismatches,
+        maxKnownDataEccMismatches, manualEdits, retentionBudget, cancellation, displayLockManualBits, onPriorityProgress,
+    ).candidates
+
+    /** Returns the candidates and diagnostic evidence from this invocation as one value. */
+    fun recoverWithDiagnostics(
+        matrix: QrMatrix,
+        maxFormatCandidates: Int = 32,
+        trustKnownPayloadCount: Boolean = false,
+        formatConstraint: QrFormatConstraint? = null,
+        maxFormatMismatches: Int? = null,
+        maxKnownDataEccMismatches: Int? = null,
+        manualEdits: Map<Coord, ModuleValue> = emptyMap(),
+        retentionBudget: RecoveryRetentionBudget = RecoveryRetentionBudget(),
+        cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
+        displayLockManualBits: Boolean? = null,
+        onPriorityProgress: ((done: Int, total: Int) -> Unit)? = null,
+    ): RecoveryOutcome {
         require(maxFormatMismatches == null || maxFormatMismatches in 0..30)
         require(maxKnownDataEccMismatches == null || maxKnownDataEccMismatches in 0..MAX_QR_DATA_ECC_BITS)
         val run = RecoveryRunState(matrix, retentionBudget, cancellation)
@@ -287,17 +298,17 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 manualDataEccMismatches = manualMismatches, manualDataEccCompared = manualCompared,
                 alternativeDerivations = candidate.alternativeDerivations.map(::annotate))
         }
-        return try {
-            cancellation.check()
-            recoverRun(run, matrix, maxFormatCandidates, trustKnownPayloadCount, formatConstraint,
-                maxFormatMismatches, maxKnownDataEccMismatches, manualEdits, onPriorityProgress)
-                .map(::annotate)
-        } finally {
-            lastSearchDiagnostic = publishedDiagnostic
-            lastFailure = run.failure?.copy(combinationSearch = run.combinationSearch, displayConditions = conditions,
-                searchDiagnostic = lastSearchDiagnostic)
-            lastFormatAttempts = run.formatAttempts
-        }
+        cancellation.check()
+        val candidates = recoverRun(run, matrix, maxFormatCandidates, trustKnownPayloadCount, formatConstraint,
+            maxKnownDataEccMismatches = maxKnownDataEccMismatches, maxFormatMismatches = maxFormatMismatches,
+            manualEdits = manualEdits, onPriorityProgress = onPriorityProgress).map(::annotate)
+        return RecoveryOutcome(
+            candidates = candidates,
+            failure = run.failure?.copy(combinationSearch = run.combinationSearch, displayConditions = conditions,
+                searchDiagnostic = publishedDiagnostic),
+            searchDiagnostic = publishedDiagnostic,
+            formatAttempts = run.formatAttempts,
+        )
     }
 
     private fun recoverRun(
@@ -491,9 +502,9 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 val diagnosis = ConventionalRsDiagnostic.analyze(inputBlocks, rs, run.cancellation)
                 val raw = diagnosis.correctedInterleaved
                 diagnosis.copy(
-                    knownBitMismatches = raw?.let { countKnownBitMismatches(run.diagnosticInput, evidenceExtraction, it, format.dataMask).second },
+                    knownBitMismatches = raw?.let { RecoveryCandidateEvidence.countKnownBitMismatches(run.diagnosticInput, evidenceExtraction, it, format.dataMask).second },
                     knownBitMismatchLimit = maxKnownDataEccMismatches,
-                    manualConflicts = raw?.let { userPinConflicts(run.diagnosticInput, evidenceExtraction, it, format.dataMask) }.orEmpty(),
+                    manualConflicts = raw?.let { RecoveryCandidateEvidence.userPinConflicts(run.diagnosticInput, evidenceExtraction, it, format.dataMask) }.orEmpty(),
                     qrStructureValid = raw?.let {
                         val restored = inputBlocks.blocks.map { IntArray(it.codewords.size) }
                         inputBlocks.rawLocations.forEachIndexed { position, location ->
@@ -718,30 +729,13 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 // Retain only the selected route's explanation, not the solver's corrected block
                 // arrays and every equivalent block derivation through a closure.
                 val selectedRoutes = combination.map { it.derivation() }
-                val rawLocations = de.rawLocations
-                val repairInfo = DeferredRepairInfo(rawLocations.size) { raw ->
-                    val loc = requireNotNull(rawLocations[raw])
-                    val perBit = buildMap {
-                        for (bit in 0 until 8) constraintKinds[raw to bit]?.let { put(bit, it) }
-                    }
-                    CodewordRepairInfo(
-                        rawIndex = raw,
-                        blockIndex = loc.blockIndex,
-                        localIndex = loc.localIndex,
-                        originalUnknownMask = originalUnknownByRaw[raw],
-                        postConstraintUnknownMask = postConstraintUnknownByRaw[raw],
-                        rsErrata = loc.localIndex in selectedRoutes[loc.blockIndex].errataPositions,
-                        partialEnumerated = loc.localIndex in selectedRoutes[loc.blockIndex].guessedPositions,
-                        constraintKindsByBit = perBit,
-                        bitConstraintSolved = selectedRoutes[loc.blockIndex].bitConstraintSolved,
-                        constraintValuesByBit = buildMap {
-                            for (bit in 0 until 8) constraintValues[raw to bit]?.let { put(bit, it) }
-                        },
-                    )
-                }
+                val repairInfo = RecoveryCandidateEvidence.repairInfo(
+                    de.rawLocations, selectedRoutes, originalUnknownByRaw,
+                    postConstraintUnknownByRaw, constraintKinds, constraintValues,
+                )
 
                 val correctedRaw = QrBlockInterleaver.reinterleave(de, correctedBlocks)
-                val dataPinConflicts = userPinConflicts(matrix, extraction, correctedRaw, format.dataMask)
+                val dataPinConflicts = RecoveryCandidateEvidence.userPinConflicts(matrix, extraction, correctedRaw, format.dataMask)
                 if (dataPinConflicts.isNotEmpty()) {
                     // Temporary priority assignments reject this trial but are not manual input.
                     val inputPinConflicts = dataPinConflicts.filter {
@@ -765,7 +759,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                         manualConflicts = inputPinConflicts)
                     continue
                 }
-                val (knownBitsCompared, knownMismatches) = countKnownBitMismatches(run.diagnosticInput, evidenceExtraction, correctedRaw, format.dataMask)
+                val (knownBitsCompared, knownMismatches) = RecoveryCandidateEvidence.countKnownBitMismatches(run.diagnosticInput, evidenceExtraction, correctedRaw, format.dataMask)
                 if (maxKnownDataEccMismatches != null && knownMismatches > maxKnownDataEccMismatches) {
                     run.candidateRejections += RecoveryCandidateRejection.MISMATCH_LIMIT
                     considerFailure(
@@ -977,41 +971,6 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 if (cell.value != target || cell.value == ModuleValue.ERASED) matrix.set(x, y, target, 1f, ModuleSource.STRUCTURAL)
             }
         }
-    }
-
-    private fun userPinConflicts(matrix: QrMatrix, extraction: CodewordExtraction, correctedRaw: IntArray, mask: Int): List<ManualCellConflict> {
-        val conflicts = mutableListOf<ManualCellConflict>()
-        for (i in correctedRaw.indices) {
-            val corrected = correctedRaw[i]
-            for (b in 0 until 8) {
-                val c = extraction.codewords[i].coordinates[b]
-                val cell = matrix[c.x, c.y]
-                if (cell.source != ModuleSource.USER) continue
-                val observed = cell.value.bitOrNull() ?: continue
-                val unmasked = (corrected shr (7 - b)) and 1
-                val expectedObserved = unmasked xor if (CodewordExtractor.maskApplies(mask, c.x, c.y)) 1 else 0
-                if (observed != expectedObserved) conflicts += ManualCellConflict(c, cell.value,
-                    if (expectedObserved == 1) ModuleValue.ONE else ModuleValue.ZERO)
-            }
-        }
-        return conflicts
-    }
-
-    private fun countKnownBitMismatches(matrix: QrMatrix, extraction: CodewordExtraction, correctedRaw: IntArray, mask: Int): Pair<Int, Int> {
-        var known = 0
-        var mismatches = 0
-        for (i in correctedRaw.indices) {
-            val corrected = correctedRaw[i]
-            for (b in 0 until 8) {
-                val c = extraction.codewords[i].coordinates[b]
-                val observed = matrix[c.x, c.y].value.bitOrNull() ?: continue
-                known++
-                val unmasked = (corrected shr (7 - b)) and 1
-                val expectedObserved = unmasked xor if (CodewordExtractor.maskApplies(mask, c.x, c.y)) 1 else 0
-                if (observed != expectedObserved) mismatches++
-            }
-        }
-        return known to mismatches
     }
 }
 

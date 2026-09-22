@@ -114,7 +114,9 @@ cooperative cancellation checks and a 3,000 ms wall budget per recovery invocati
 `--ids FILE` replays selected newline-delimited fixture IDs. The summary tool also
 reads compressed `runs.jsonl.gz` files directly. It excludes a censored fixture
 from every policy in a paired comparison; a cancelled invocation is never counted
-as a successful rejection of wrong payloads.
+as a successful rejection of wrong payloads. Search diagnostics and format-attempt
+counts are available only for completed invocations; cancelled rows retain their
+stop reason, elapsed time, and cancellation-check count.
 
 See the maintained [preset rationale](../../docs/RECOVERY_STRATEGY.en.md#45-error-limit-preset-rationale) and its [Japanese counterpart](../../docs/RECOVERY_STRATEGY.ja.md#45-誤り上限プリセットの採用理由). Detailed reports and measured datasets are local research artifacts and are not required to run the tools. The tool does not set the application's initial error limit.
 

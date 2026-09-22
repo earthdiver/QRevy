@@ -28,8 +28,9 @@ class RecoverySearchDiagnosticTest {
 
     @Test fun zeroLimitProvesInputConflictEvenWhenReferenceRsSucceedsAndResetsOnNextRun() {
         val engine = RecoveryEngine()
-        assertTrue(engine.recover(eccError(), maxKnownDataEccMismatches = 0, formatConstraint = format).isEmpty())
-        val failure = engine.lastFailure!!
+        val outcome = engine.recoverWithDiagnostics(eccError(), maxKnownDataEccMismatches = 0, formatConstraint = format)
+        assertTrue(outcome.candidates.isEmpty())
+        val failure = outcome.failure!!
         assertTrue(failure.conventionalRsDiagnostic!!.succeeded)
         assertEquals(RecoveryInputBlocker.ZERO_MISMATCH, failure.searchDiagnostic!!.inputBlocker)
         assertTrue(failure.searchDiagnostic.candidateCalculations > 0)
@@ -42,16 +43,18 @@ class RecoverySearchDiagnosticTest {
     @Test fun structuralPinStopsBeforeCandidateCalculationWhileDataPinRejectsComputedCandidates() {
         val engine = RecoveryEngine()
         val structure = matrix().apply { flip(this, Coord(0, 0), ModuleSource.USER) }
-        assertTrue(engine.recover(structure, formatConstraint = format).isEmpty())
-        assertEquals(RecoveryInputBlocker.STRUCTURAL_FIXED_CELLS, engine.lastSearchDiagnostic!!.inputBlocker)
-        assertEquals(0, engine.lastSearchDiagnostic!!.candidateCalculations)
-        assertNull(engine.lastFailure!!.conventionalRsDiagnostic)
+        val firstOutcome = engine.recoverWithDiagnostics(structure, formatConstraint = format)
+        assertTrue(firstOutcome.candidates.isEmpty())
+        assertEquals(RecoveryInputBlocker.STRUCTURAL_FIXED_CELLS, firstOutcome.searchDiagnostic.inputBlocker)
+        assertEquals(0, firstOutcome.searchDiagnostic.candidateCalculations)
+        assertNull(firstOutcome.failure!!.conventionalRsDiagnostic)
 
         val data = matrix().apply {
             flip(this, CodewordExtractor.extract(this, 1, qr.maskPattern).codewords.last().coordinates.first(), ModuleSource.USER)
         }
-        assertTrue(engine.recover(data, formatConstraint = format).isEmpty())
-        val summary = engine.lastSearchDiagnostic!!
+        val secondOutcome = engine.recoverWithDiagnostics(data, formatConstraint = format)
+        assertTrue(secondOutcome.candidates.isEmpty())
+        val summary = secondOutcome.searchDiagnostic
         assertNull(summary.inputBlocker)
         assertTrue(summary.candidateCalculations > 0)
         assertEquals(setOf(RecoveryCandidateRejection.FIXED_CELLS), summary.candidateRejections)
@@ -60,35 +63,38 @@ class RecoverySearchDiagnosticTest {
     @Test fun conflictingFormatSelectionAndFormatLimitAreRecordedBeforeAnyRsCalculation() {
         val engine = RecoveryEngine()
         val input = matrix().apply { flip(this, Coord(0, 8), ModuleSource.USER) }
-        assertTrue(engine.recover(input, formatConstraint = format).isEmpty())
-        assertEquals(RecoveryInputBlocker.FORMAT_SELECTION, engine.lastSearchDiagnostic!!.inputBlocker)
-        assertEquals(0, engine.lastSearchDiagnostic!!.candidateCalculations)
+        val firstOutcome = engine.recoverWithDiagnostics(input, formatConstraint = format)
+        assertTrue(firstOutcome.candidates.isEmpty())
+        assertEquals(RecoveryInputBlocker.FORMAT_SELECTION, firstOutcome.searchDiagnostic.inputBlocker)
+        assertEquals(0, firstOutcome.searchDiagnostic.candidateCalculations)
         input[0, 8].source = ModuleSource.IMAGE
-        assertTrue(engine.recover(input, maxFormatMismatches = 0).isEmpty())
-        assertEquals(RecoveryInputBlocker.FORMAT_LIMIT, engine.lastSearchDiagnostic!!.inputBlocker)
-        assertEquals(0, engine.lastSearchDiagnostic!!.candidateCalculations)
+        val secondOutcome = engine.recoverWithDiagnostics(input, maxFormatMismatches = 0)
+        assertTrue(secondOutcome.candidates.isEmpty())
+        assertEquals(RecoveryInputBlocker.FORMAT_LIMIT, secondOutcome.searchDiagnostic.inputBlocker)
+        assertEquals(0, secondOutcome.searchDiagnostic.candidateCalculations)
     }
 
     @Test fun unexaminedFormatsAndLargeBitSpacesDoNotProveThatNoRsCandidateExists() {
         val engine = RecoveryEngine()
         val input = eccError()
         FormatEditPolicy.coordinates(1).forEach { input.set(it.x, it.y, ModuleValue.ERASED, 0f, ModuleSource.IMAGE) }
-        engine.recover(input, maxFormatCandidates = 1, maxKnownDataEccMismatches = 0)
-        assertNull(engine.lastSearchDiagnostic!!.inputBlocker)
-        assertTrue(engine.lastSearchDiagnostic!!.unsearched)
-        assertTrue(engine.recover(unknownData(), maxKnownDataEccMismatches = 0, formatConstraint = format).isEmpty())
-        assertNull(engine.lastSearchDiagnostic!!.inputBlocker)
-        assertTrue(engine.lastSearchDiagnostic!!.unsearched)
-        assertEquals("", engine.lastSearchDiagnostic!!.failureExplanation(engine.lastFailure!!.displayConditions))
+        val firstOutcome = engine.recoverWithDiagnostics(input, maxFormatCandidates = 1, maxKnownDataEccMismatches = 0)
+        assertNull(firstOutcome.searchDiagnostic.inputBlocker)
+        assertTrue(firstOutcome.searchDiagnostic.unsearched)
+        val secondOutcome = engine.recoverWithDiagnostics(unknownData(), maxKnownDataEccMismatches = 0, formatConstraint = format)
+        assertTrue(secondOutcome.candidates.isEmpty())
+        assertNull(secondOutcome.searchDiagnostic.inputBlocker)
+        assertTrue(secondOutcome.searchDiagnostic.unsearched)
+        assertEquals("", secondOutcome.searchDiagnostic.failureExplanation(secondOutcome.failure!!.displayConditions))
     }
 
     @Test fun mixedOrMissingGeometryEvidenceCannotBecomeAUniversalFailureReason() {
         val engine = RecoveryEngine()
-        engine.recover(eccError(), maxKnownDataEccMismatches = 0, formatConstraint = format)
-        val noExactCandidate = engine.lastSearchDiagnostic!!
-        val settings = engine.lastFailure!!.displayConditions
-        engine.recover(unknownData(), maxKnownDataEccMismatches = 0, formatConstraint = format)
-        val bounded = engine.lastSearchDiagnostic!!
+        val firstOutcome = engine.recoverWithDiagnostics(eccError(), maxKnownDataEccMismatches = 0, formatConstraint = format)
+        val noExactCandidate = firstOutcome.searchDiagnostic
+        val settings = firstOutcome.failure!!.displayConditions
+        val secondOutcome = engine.recoverWithDiagnostics(unknownData(), maxKnownDataEccMismatches = 0, formatConstraint = format)
+        val bounded = secondOutcome.searchDiagnostic
         val mixed = RecoverySearchDiagnostic.combine(listOf(noExactCandidate, bounded))!!
         assertNull(mixed.inputBlocker)
         assertTrue(mixed.unsearched)
@@ -96,8 +102,8 @@ class RecoverySearchDiagnosticTest {
         val missing = RecoverySearchDiagnostic.combine(listOf(noExactCandidate, null))!!
         assertFalse(missing.coverageComplete)
         assertEquals("", missing.failureExplanation(settings))
-        engine.recover(matrix(), maxKnownDataEccMismatches = 0, formatConstraint = format)
-        val recovered = RecoverySearchDiagnostic.combine(listOf(noExactCandidate, engine.lastSearchDiagnostic))!!
+        val thirdOutcome = engine.recoverWithDiagnostics(matrix(), maxKnownDataEccMismatches = 0, formatConstraint = format)
+        val recovered = RecoverySearchDiagnostic.combine(listOf(noExactCandidate, thirdOutcome.searchDiagnostic))!!
         assertTrue(recovered.acceptedCandidate)
         assertEquals("", recovered.failureExplanation(settings))
     }

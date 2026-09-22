@@ -175,7 +175,7 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
                         matrix.setPrioritySearch(coord.x, coord.y, coord in settings.preRecoveryPrioritySearch)
                     }
                 }
-                val recoveries = recoveryEngine.recover(
+                val outcome = recoveryEngine.recoverWithDiagnostics(
                     matrix,
                     trustKnownPayloadCount = settings.trustKnownPayloadCount,
                     formatConstraint = settings.formatConstraint,
@@ -193,7 +193,7 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
                         "Trying priority * cells… $done/$total",
                     ))
                 }
-                GeometryAttempt(hypothesis, matrix, stats, recoveries, recoveryEngine.lastFailure, recoveryEngine.lastSearchDiagnostic)
+                GeometryAttempt(hypothesis, matrix, stats, outcome.candidates, outcome.failure, outcome.searchDiagnostic)
             }.onFailure {
                 if (it is RecoveryCancelledException || it is Error) throw it
                 resultAccumulator.markIncomplete(hasUnsearched = true)

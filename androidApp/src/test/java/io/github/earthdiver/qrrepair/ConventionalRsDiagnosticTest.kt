@@ -97,10 +97,11 @@ class ConventionalRsDiagnosticTest {
         f.input.set(coord.x, coord.y, if (f.input[coord.x, coord.y].value == ModuleValue.ONE)
             ModuleValue.ZERO else ModuleValue.ONE, 1f, ModuleSource.IMAGE)
         val engine = RecoveryEngine()
-        val candidates = engine.recover(f.input, maxKnownDataEccMismatches = 0,
+        val outcome = engine.recoverWithDiagnostics(f.input, maxKnownDataEccMismatches = 0,
             formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.M, f.mask))
+        val candidates = outcome.candidates
         assertTrue(candidates.isEmpty())
-        val diagnostic = engine.lastFailure!!.conventionalRsDiagnostic!!
+        val diagnostic = outcome.failure!!.conventionalRsDiagnostic!!
         assertTrue(diagnostic.succeeded)
         assertEquals(1, diagnostic.knownBitMismatches)
         assertEquals(false, diagnostic.settingsAccepted)

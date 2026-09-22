@@ -47,8 +47,8 @@ class RecoveryCancellationIntegrationTest {
             assertTrue(old.get(10, TimeUnit.SECONDS))
             assertEquals(42, worker.submit<Int> { 42 }.get(10, TimeUnit.SECONDS))
             // Cancellation belongs to one invocation, not the reused engine.
-            engine.recover(QrMatrix(21), maxFormatCandidates = 1, maxKnownDataEccMismatches = 0)
-            assertNotNull(engine.lastFailure)
+            val outcome = engine.recoverWithDiagnostics(QrMatrix(21), maxFormatCandidates = 1, maxKnownDataEccMismatches = 0)
+            assertNotNull(outcome.failure)
         } finally {
             release.countDown()
             worker.shutdownNow()

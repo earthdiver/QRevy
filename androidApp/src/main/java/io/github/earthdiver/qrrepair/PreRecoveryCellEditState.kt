@@ -1,6 +1,8 @@
 package io.github.earthdiver.qrrepair
 
 import io.github.earthdiver.qrrepair.core.Coord
+import io.github.earthdiver.qrrepair.core.QrMatrix
+import io.github.earthdiver.qrrepair.core.ModuleSource
 import io.github.earthdiver.qrrepair.core.ModuleValue
 import io.github.earthdiver.qrrepair.localizedText
 
@@ -308,4 +310,19 @@ internal class PreRecoveryCellEditState(
 
     private fun currentValue(coord: Coord): PreRecoveryCellValue? =
         mutableEdits[coord]?.let { PreRecoveryCellValue(it, coord in mutablePrioritySearch, coord in mutableSoftEdits) }
+
+    /** Project edits onto a fresh sampled grid without changing the image evidence cache. */
+    fun applyTo(matrix: QrMatrix, allowFixedCorrections: Boolean) {
+        edits.forEach { (c, v) ->
+            if (c.x in 0 until matrix.dimension && c.y in 0 until matrix.dimension) {
+                // Explicit source overrides are independent of whether the image agrees.
+                matrix.set(c.x, c.y, v, 1f, when {
+                    c in softEdits -> ModuleSource.USER_SOFT
+                    allowFixedCorrections -> ModuleSource.USER_UNLOCKED
+                    else -> ModuleSource.USER
+                })
+            }
+            if (c in prioritySearch) matrix.setPrioritySearch(c.x, c.y, true)
+        }
+    }
 }
