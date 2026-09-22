@@ -94,14 +94,21 @@ internal object PostTerminatorAnalysis {
         var removed = 0
         repeat(16) {
             val terminator = prefix.terminatorBit ?: return report(Status.ADDITIONAL_SEGMENTS)
-            val originalStart = terminator + removed + 4
+            var originalStart = terminator + removed + 4
             if (canonicalFiller(original, originalStart))
                 return report(if (groups.isEmpty()) Status.STANDARD_PADDING else Status.ADDITIONAL_SEGMENTS)
             val beforeText = decode(working.take(terminator), version, ecLevel)
-            // Remove only the structurally located terminator in a private decoding view.
-            // ECI and FNC1 state from earlier segments consequently remains in effect.
-            working = working.take(terminator) + working.drop(terminator + 4)
-            removed += 4
+            // Skip only complete, known zero mode indicators at the segment boundary.
+            // These do not consume the additional-group budget or alter the original data.
+            var resume = terminator + 4
+            while (resume + 4 <= working.size && (resume until resume + 4).all { working[it] == 0 }) {
+                resume += 4
+                originalStart += 4
+            }
+            // Keep earlier segments so ECI and FNC1 context remains in effect.
+            val removedBits = resume - terminator
+            working = working.take(terminator) + working.drop(resume)
+            removed += removedBits
             val next = scan(working) ?: return report(Status.UNPARSED_TAIL, originalStart)
             val newModes = next.modes.drop(prefix.modes.size)
             if (newModes.isEmpty()) return report(Status.UNPARSED_TAIL, originalStart)
