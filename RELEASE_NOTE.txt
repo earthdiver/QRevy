@@ -10,6 +10,7 @@ GETTING STARTED
 5. Tap Repair, then inspect the decoded content, alternative candidates, and explanations for repaired cells.
 
 WHAT'S NEW
+• Fixed additional-segment diagnostics to skip consecutive zero terminators while preserving ECI and FNC1 context. This diagnostic analysis does not validate a rejected recovery candidate.
 • Adjust brightness and contrast in the crop editor, enter numeric values, reset adjustments, and compare before/after views. Image adjustments are preserved when saving and reopening work.
 • Improved detection and fallback corner estimation for inverted QR codes, with consistent cell previews and threshold descriptions.
 • Improved settings spacing and return navigation.

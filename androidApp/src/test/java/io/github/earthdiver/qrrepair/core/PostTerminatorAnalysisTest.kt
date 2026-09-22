@@ -218,12 +218,65 @@ class PostTerminatorAnalysisTest {
         assertEquals(128, analyze(invalid).tail.length)
     }
 
-    @Test fun noFullTerminatorAndRepeatedZerosAreNotInventedMessages() {
+    @Test fun noFullTerminatorCannotBeAnalyzed() {
         val shortened = PayloadBits().apply { put(1, 4); put(2, 10); put(12, 7) }.finish(3)
         assertEquals(Status.NO_TERMINATOR, analyze(shortened).status)
-        val empty = PayloadBits().apply { byteSegment("A"); put(0, 4); put(0, 4); byteSegment("tail") }.finish()
-        assertEquals(Status.UNPARSED_TAIL, analyze(empty).status)
-        assertTrue(analyze(empty).groups.isEmpty())
+    }
+
+    @Test fun skipsRepeatedZeroModesAndPreservesOriginalOffsetsAndData() {
+        for (zeros in listOf(1, 2, 20)) {
+            val data = PayloadBits().apply {
+                byteSegment("A"); put(0, 4)
+                repeat(zeros) { put(0, 4) }
+                byteSegment("B"); put(0, 4); put(0, 4)
+                byteSegment("C")
+            }.finish(40)
+            val original = data.copyOf()
+            val report = analyze(data)
+            val start = 24 + zeros * 4
+            assertEquals(Status.ADDITIONAL_SEGMENTS, report.status)
+            assertEquals(listOf(start, start + 28), report.groups.map { it.startBit })
+            assertEquals(listOf(start + 20, start + 48), report.groups.map { it.endBit })
+            assertEquals("ABC", report.combinedContent?.text)
+            assertEquals(listOf("B", "C"), report.groups.map { it.text })
+            assertTrue(report.tail.startsWith("0000".repeat(zeros) + "0100"))
+            assertArrayEquals(original, data)
+        }
+    }
+
+    @Test fun skippingZeroModesPreservesLeadingZerosInNumericAndAlphanumericModes() {
+        for (mode in listOf(1, 2)) {
+            val data = PayloadBits().apply {
+                byteSegment("A"); put(0, 4); put(0, 4)
+                put(mode, 4)
+                if (mode == 1) { put(3, 10); put(123, 10) }
+                else { put(1, 9); put(10, 6) }
+            }.finish()
+            val report = analyze(data)
+            assertEquals(Status.ADDITIONAL_SEGMENTS, report.status)
+            assertEquals(28, report.groups.single().startBit)
+            assertEquals(if (mode == 1) "123" else "A", report.groups.single().text)
+        }
+    }
+
+    @Test fun unknownZeroModeIsNotSkipped() {
+        val data = PayloadBits().apply {
+            byteSegment("A"); put(0, 4); put(0, 4); put(0, 4); byteSegment("B")
+        }.finish()
+        val unknown = IntArray(data.size).apply { this[3] = 0x08 }
+        val report = analyze(data, unknown = unknown)
+        assertEquals(Status.UNPARSED_TAIL, report.status)
+        assertEquals(28, report.remainingStartBit)
+        assertTrue(report.groups.isEmpty())
+    }
+
+    @Test fun zerosWithoutAnAdditionalSegmentDoNotProduceContent() {
+        val data = PayloadBits().apply { byteSegment("A"); put(0, 4) }.finish().copyOf()
+        data.fill(0, 3)
+        val report = analyze(data)
+        assertEquals(Status.UNPARSED_TAIL, report.status)
+        assertTrue(report.groups.isEmpty())
+        assertNull(report.combinedContent)
     }
 
     @Test fun anAdditionalSegmentMayFillCapacityWithoutAFullFinalTerminator() {
