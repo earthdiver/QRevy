@@ -1,16 +1,19 @@
-QR Repair v0.16.1
+QR Repair v0.16.2
 
 QR Repair helps recover damaged QR codes that ordinary readers cannot decode. Processing runs entirely offline on your Android device.
 
 GETTING STARTED
 1. Import an image, take a photo, or load a QR matrix text file.
-2. Rotate and crop as needed. Check the estimated corners, QR version, and black/unknown/white thresholds.
+2. Rotate, invert, adjust brightness or contrast, and crop as needed. Check the estimated corners, QR version, and black/unknown/white thresholds.
 3. Review the positions and roles of the Finder patterns.
 4. If needed, edit individual cells: 0 = white, 1 = black, ? = unknown. Use Tentative for uncertain edits and Fixed for values that recovery should preserve.
 5. Tap Repair, then inspect the decoded content, alternative candidates, and explanations for repaired cells.
 
 WHAT'S NEW
-Version-aware default error limits and common presets make recovery settings easier to adjust. Manual limits and selected presets are preserved when saving and reopening work.
+• Adjust brightness and contrast in the crop editor, enter numeric values, reset adjustments, and compare before/after views. Image adjustments are preserved when saving and reopening work.
+• Improved detection and fallback corner estimation for inverted QR codes, with consistent cell previews and threshold descriptions.
+• Improved settings spacing and return navigation.
+• Refined recovery workflow, diagnostics, and session handling. Saved sessions now use format version 21; versions 9–20 remain readable.
 
 USEFUL FEATURES
 • Undo/Redo, detailed cell diagnostics, and recovered-image export.
