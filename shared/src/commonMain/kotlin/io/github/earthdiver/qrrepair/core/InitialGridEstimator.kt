@@ -21,9 +21,28 @@ object InitialGridEstimator {
         val estimates = detectedBoundaries.map { fromBoundary(image, inverse, it) }
         val native = if (estimates.all { it != null }) mergeNativeEstimates(estimates.filterNotNull()) else null
         if (native != null) return native
-        return GridPeriodicityEstimator.estimate(image)?.let {
+        fun periodicity(input: LumaImage) = GridPeriodicityEstimator.estimate(input)?.let {
             InitialGridEstimate(it.version, it.moduleCenterQuad, InitialGridSource.PERIODICITY)
-        } ?: if (detectedBoundaries.size <= 1) TwoFinderGridEstimator.estimate(image) else null
+        }
+        val normalPeriodicity = periodicity(image)
+        val invertedPeriodicity = periodicity(inverse)
+        // A conflict is not a detection failure: do not hide it with a later fallback.
+        if (normalPeriodicity != null || invertedPeriodicity != null) {
+            return mergePolarityEstimates(normalPeriodicity, invertedPeriodicity)
+        }
+        if (detectedBoundaries.size > 1) return null
+        return mergePolarityEstimates(TwoFinderGridEstimator.estimate(image), TwoFinderGridEstimator.estimate(inverse))
+    }
+
+    /** Both inputs use source-image coordinates; only image-verified roles establish polarity. */
+    internal fun mergePolarityEstimates(normal: InitialGridEstimate?, inverted: InitialGridEstimate?): InitialGridEstimate? {
+        fun confirmed(estimate: InitialGridEstimate?, polarity: FinderPolarity) = estimate?.copy(
+            confirmedPolarity = if (estimate.autoAssignedFinders.isEmpty()) FinderPolarity.UNKNOWN else polarity,
+        )
+        // Reuse the native gate: same version/orientation, corners within 0.25 module,
+        // no conflicting confirmed polarities, and no averaging of verified candidates.
+        return mergeNativeEstimates(listOfNotNull(confirmed(normal, FinderPolarity.NORMAL),
+            confirmed(inverted, FinderPolarity.INVERTED)))
     }
 
     /** One group only; distinct or unverified symbols retain the existing manual fallback. */
