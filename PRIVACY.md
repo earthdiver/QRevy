@@ -7,7 +7,7 @@ QR Repair is designed for local, on-device processing.
 | Data | When it exists | Storage or destination | Removal or retention |
 | --- | --- | --- | --- |
 | Imported image or image rendered from matrix text | Automatically persisted when import is accepted, before Save or Repair is pressed | App-private `noBackupFilesDir` as a lossless content-addressed PNG | Removed with its session by user deletion or automatic removal beyond the 20-session limit |
-| Camera hand-off JPEG | Between camera capture and import | App-private cache | Deleted after import or failure; stale matching files are purged on next startup |
+| Camera capture JPEG and hand-off PNG | Between camera capture and import | App-private cache | Deleted after import or failure; stale matching files are purged on next startup |
 | QRR repair session | Automatically created on import; updated when work is saved or repair runs | App-private `noBackupFilesDir` | Up to 20 sessions, ordered by most recent save; older sessions and their source images are automatically deleted when the limit is exceeded, or removed by user deletion |
 | Recovered image or other export | Only after an explicit export action | Destination selected or authorized by the user | Controlled by the destination rather than QR Repair's private storage |
 
@@ -18,7 +18,7 @@ QR Repair is designed for local, on-device processing.
 - Automatic Android cloud backup and device-transfer backup are disabled/excluded because QR content may contain sensitive data such as Wi-Fi credentials, contact information, authentication URLs, or other private text. Manifest backup settings and XML exclusion rules remain defense-in-depth in addition to the no-backup storage location.
 - Recovered URLs are never opened automatically.
 - Recovered text is displayed and compared without masking or redaction. Copying content preserves the complete recovered text.
-- Camera capture uses a private cache JPEG only as a hand-off between activities; the app deletes that temporary file after decoding (including failure paths) and purges stale `qr-capture-*.jpg` files on the next app start after an interrupted/crashed hand-off.
+- Camera capture uses an app-private cache JPEG. Confirming the crop creates a lossless, unadjusted PNG for import and deletes the capture JPEG. The hand-off PNG is deleted after import, including failure paths. Stale `qr-capture-*.jpg` and `qr-capture-*.png` files, including their interrupted crop-write temporary files, are purged on the next app start after an interrupted or crashed hand-off.
 - Results leave app-private storage only when the user explicitly exports/saves them.
 
 If telemetry, crash reporting, advertising, cloud sync, sharing SDKs, or any network feature is added in the future, this document and the store privacy disclosures must be updated before release.

@@ -53,8 +53,9 @@ class RsBitRecoveryIntegrationTest {
         val extraction = CodewordExtractor.extract(matrix, 1, encoded.maskPattern)
         erase(matrix, extraction.codewords.flatMap { it.coordinates })
         val engine = RecoveryEngine()
-        assertTrue(engine.recover(matrix, maxKnownDataEccMismatches = 0).isEmpty())
-        val diagnostic = engine.lastFailure!!.rsBitDiagnostic!!
+        val outcome = engine.recoverWithDiagnostics(matrix, maxKnownDataEccMismatches = 0)
+        assertTrue(outcome.candidates.isEmpty())
+        val diagnostic = outcome.failure!!.rsBitDiagnostic!!
         assertEquals(152, diagnostic.dimension)
         assertEquals(152, diagnostic.independentCells.size)
         val rec = RepairGuidance.recommendFromBitSpace(matrix, diagnostic)!!
@@ -70,19 +71,24 @@ class RsBitRecoveryIntegrationTest {
         val extraction = CodewordExtractor.extract(damaged, 1, encoded.maskPattern)
         erase(damaged, extraction.codewords.flatMap { it.coordinates })
         val engine = RecoveryEngine()
-        assertTrue(engine.recover(damaged, maxKnownDataEccMismatches = 0).isEmpty())
-        val expectedFailure = requireNotNull(engine.lastFailure)
-        val expectedAttempts = engine.lastFormatAttempts
+        val firstOutcome = engine.recoverWithDiagnostics(damaged, maxKnownDataEccMismatches = 0)
+        assertTrue(firstOutcome.candidates.isEmpty())
+        val expectedFailure = requireNotNull(firstOutcome.failure)
+        val expectedAttempts = firstOutcome.formatAttempts
         assertEquals(208, expectedFailure.rsBitDiagnostic?.unknownBits)
 
-        val recovered = engine.recover(matrix(), maxKnownDataEccMismatches = 0).first { it.text == text }
-        assertNull(engine.lastFailure)
+        val secondOutcome = engine.recoverWithDiagnostics(matrix(), maxKnownDataEccMismatches = 0)
+        val recovered = secondOutcome.candidates.first { it.text == text }
+        assertNull(secondOutcome.failure)
+        assertSame(expectedFailure, firstOutcome.failure)
+        assertSame(firstOutcome.searchDiagnostic, expectedFailure.searchDiagnostic)
         assertEquals(0, recovered.rsBitDiagnostic?.unknownBits)
         assertEquals(0, recovered.rsBitDiagnostic?.dimension)
 
-        assertTrue(engine.recover(damaged, maxKnownDataEccMismatches = 0).isEmpty())
-        assertEquals(expectedFailure, engine.lastFailure)
-        assertEquals(expectedAttempts, engine.lastFormatAttempts)
+        val thirdOutcome = engine.recoverWithDiagnostics(damaged, maxKnownDataEccMismatches = 0)
+        assertTrue(thirdOutcome.candidates.isEmpty())
+        assertEquals(expectedFailure, thirdOutcome.failure)
+        assertEquals(expectedAttempts, thirdOutcome.formatAttempts)
     }
 
     @Test fun erroneousKnownEccRemainsCorrectableButManualPinIsAbsolute() {
@@ -92,8 +98,9 @@ class RsBitRecoveryIntegrationTest {
         matrix.set(coord.x, coord.y, wrong, 1f, ModuleSource.IMAGE)
         assertTrue(RecoveryEngine().recover(matrix, maxKnownDataEccMismatches = 1).any { it.text == text })
         val exactEngine = RecoveryEngine()
-        assertTrue(exactEngine.recover(matrix, maxKnownDataEccMismatches = 0).isEmpty())
-        assertNull(RepairGuidance.recommendFromBitSpace(matrix, exactEngine.lastFailure?.rsBitDiagnostic))
+        val outcome = exactEngine.recoverWithDiagnostics(matrix, maxKnownDataEccMismatches = 0)
+        assertTrue(outcome.candidates.isEmpty())
+        assertNull(RepairGuidance.recommendFromBitSpace(matrix, outcome.failure?.rsBitDiagnostic))
         matrix.set(coord.x, coord.y, wrong, 1f, ModuleSource.USER)
         assertTrue(RecoveryEngine().recover(matrix).none { it.text == text })
     }
@@ -114,9 +121,10 @@ class RsBitRecoveryIntegrationTest {
             }
         }
         val engine = RecoveryEngine()
-        assertTrue(engine.recover(matrix, maxKnownDataEccMismatches = 0).isEmpty())
-        assertEquals(0, engine.lastFailure?.rsBitDiagnostic?.dimension)
-        assertEquals(RecoveryFailureStage.PAYLOAD_VALIDATION, engine.lastFailure?.stage)
+        val outcome = engine.recoverWithDiagnostics(matrix, maxKnownDataEccMismatches = 0)
+        assertTrue(outcome.candidates.isEmpty())
+        assertEquals(0, outcome.failure?.rsBitDiagnostic?.dimension)
+        assertEquals(RecoveryFailureStage.PAYLOAD_VALIDATION, outcome.failure?.stage)
     }
     @Test fun blockAlternativesReachCellExplanationsWithoutChangingTheRepresentative() {
         val matrix = matrix()

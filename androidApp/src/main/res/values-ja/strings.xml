@@ -182,4 +182,23 @@
     <string name="priority_revalidated">向き・バージョンの変更によりデータ・ECC領域外になった*を解除しました。値の?は保持しています。\n%1$s</string>
     <string name="priority_revalidation_title">優先探索セルを再確認</string>
     <string name="analyze_post_terminator">終端後の追加セグメントを解析</string>
+    <string name="crop_editor_title">回転・クロップ</string>
+    <string name="image_adjustment">画像調整</string>
+    <string name="image_contrast">コントラスト</string>
+    <string name="image_brightness">明るさ</string>
+    <string name="image_invert">白黒反転</string>
+    <string name="image_rotate">回転</string>
+    <string name="image_before">調整前</string>
+    <string name="image_before_showing">調整前を表示中</string>
+    <string name="image_analyze_after">調整後で解析</string>
+    <string name="image_apply_after">調整後を適用</string>
+    <string name="image_done">完了</string>
+    <string name="image_apply">適用</string>
+    <string name="image_reset_current">この項目をリセット</string>
+    <string name="image_reset_all">画像調整をすべてリセット</string>
+    <string name="image_enter_value">数値を入力（−100〜100）</string>
+    <string name="image_value_error">−100〜100の整数を入力してください。</string>
+    <string name="image_adjustment_help">コントラスト・明るさ・白黒反転は表示と解析に反映されます。「調整前」でクロップや回転を変えずに比較できます。元画像と調整値は別々に保存されます。</string>
+    <string name="image_help">ヘルプ</string>
+    <string name="image_adjustment_failed">画像処理に失敗: %1$s</string>
 </resources>

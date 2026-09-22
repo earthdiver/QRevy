@@ -10,6 +10,8 @@ import android.widget.TextView
 
 /** Shared visual tokens; image and module colours remain independent of the app theme. */
 internal object PrecisionStyle {
+    const val ACTION_TOP_MARGIN_DP = 8
+    const val ACTION_BOTTOM_MARGIN_DP = 4
     const val BACKGROUND = 0xFF101312.toInt()
     const val SURFACE = 0xFF1C211E.toInt()
     const val OUTLINE = 0xFF39423B.toInt()

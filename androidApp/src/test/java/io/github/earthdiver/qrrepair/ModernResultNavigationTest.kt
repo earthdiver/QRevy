@@ -70,6 +70,22 @@ class ModernResultNavigationTest {
             org.robolectric.shadows.ShadowPopupMenu.getLatestPopupMenu().menu.performIdentifierAction(CellEditSource.FIXED.ordinal, 0)
             val count = "変更操作: 1回・変更セル: 1セル　やり直し: 0回"
             assertNotNull(text(count))
+            text(activity.getString(R.string.step_adjust)).performClick()
+            text(activity.getString(R.string.details)).performClick()
+            val fixedCorrections = text(activity.getString(R.string.allow_fixed_corrections)) as android.widget.CheckBox
+            fixedCorrections.performClick()
+            val fixedCorrectionsDraft = fixedCorrections.isChecked
+            val returnToSettings = text(activity.getString(R.string.repair_settings_navigation))
+            assertTrue("Detailed settings must offer a visible return to repair settings", returnToSettings.isShown)
+            returnToSettings.performClick()
+            assertTrue("The footer must return to repair settings", text(activity.getString(R.string.details)).isShown)
+            assertEquals(0, saves)
+            assertEquals(0, repairs)
+            text(activity.getString(R.string.details)).performClick()
+            assertEquals("Returning must preserve the detailed settings draft", fixedCorrectionsDraft, fixedCorrections.isChecked)
+            text(activity.getString(R.string.repair_settings_navigation)).performClick()
+            text(activity.getString(R.string.cell_edit_tap)).performClick()
+            assertNotNull(text(count))
             result.performClick()
             assertEquals(1, views)
             assertFalse("Result navigation must hide the editor window", root.isShown)

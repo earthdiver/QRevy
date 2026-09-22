@@ -42,9 +42,10 @@ class DiagnosticOrderTest {
             } }
             errors.forEach { input.set(it.x, it.y, if (input[it.x, it.y].value == ModuleValue.ONE) ModuleValue.ZERO else ModuleValue.ONE, 1f, ModuleSource.IMAGE) }
             val engine = RecoveryEngine()
-            val results = engine.recover(input, trustKnownPayloadCount = trust,
+            val outcome = engine.recoverWithDiagnostics(input, trustKnownPayloadCount = trust,
                 formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.M, qr.maskPattern))
-            return Fixture(name, input, results, engine.lastFailure)
+            val results = outcome.candidates
+            return Fixture(name, input, results, outcome.failure)
         }
         return listOf(
             run("complete", emptyList()),
@@ -120,10 +121,10 @@ class DiagnosticOrderTest {
         } }
         val engine = RecoveryEngine()
         val format = QrFormatConstraint(qr.ecLevel, qr.maskPattern)
-        engine.recover(bad, maxKnownDataEccMismatches = 0, formatConstraint = format)
-        val badFailure = engine.lastFailure!!
-        engine.recover(unknown, maxKnownDataEccMismatches = 0, formatConstraint = format)
-        val unknownFailure = engine.lastFailure!!
+        val firstOutcome = engine.recoverWithDiagnostics(bad, maxKnownDataEccMismatches = 0, formatConstraint = format)
+        val badFailure = firstOutcome.failure!!
+        val secondOutcome = engine.recoverWithDiagnostics(unknown, maxKnownDataEccMismatches = 0, formatConstraint = format)
+        val unknownFailure = secondOutcome.failure!!
         for (language in AppLanguage.entries) {
             AppLanguageManager.save(RuntimeEnvironment.getApplication(), language)
             val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
@@ -213,6 +214,26 @@ class DiagnosticOrderTest {
                     if (style == AppStyle.MODERN) render(view, "diagnostic-${fixture.name}-${language.tag}")
                 }
             } finally { controller.pause().stop().destroy() }
+        }
+    }
+
+    @Test fun diagnosticContentCanBeBuiltWithoutAnActivityAndUsesSearchWideRetentionEvidence() {
+        val fixture = fixtures().first()
+        val candidate = fixture.result.first { it.text == "HELLO" }
+        for (language in AppLanguage.entries) {
+            AppLanguageManager.applyTo(RuntimeEnvironment.getApplication(), language)
+            val japanese = language == AppLanguage.JAPANESE
+            val presenter = RecoveryDiagnosticPresenter(japanese)
+            val report = presenter.candidateReport(candidate, null, RecoveryDiagnosticContext(
+                candidateCount = 3, unsearched = true, candidatesOmitted = true,
+                searchDiagnostic = candidate.searchDiagnostic, selectedEntry = null,
+            ))
+            assertEquals(DiagnosticStage.entries, report.sections.map { it.stage })
+            val verification = report.sections.last()
+            assertTrue(verification.summary.contains(if (japanese) "3件保持" else "Retained 3"))
+            assertTrue(verification.summary.contains(if (japanese) "未探索" else "remain unchecked"))
+            assertTrue(verification.details.contains("HELLO"))
+            assertEquals(candidate.displayConditions.runSettingsText(), report.sections.first().summary)
         }
     }
 

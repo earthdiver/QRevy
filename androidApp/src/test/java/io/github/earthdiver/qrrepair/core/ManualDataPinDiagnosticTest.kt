@@ -24,9 +24,10 @@ class ManualDataPinDiagnosticTest {
         val wrong = if (expected == ModuleValue.ONE) ModuleValue.ZERO else ModuleValue.ONE
         matrix.set(coord.x, coord.y, wrong, 1f, ModuleSource.USER)
         val engine = RecoveryEngine()
-        assertTrue(engine.recover(matrix, formatConstraint = format).isEmpty())
-        assertEquals(RecoveryFailureReason.MANUAL_PIN_CONFLICT, engine.lastFailure?.reason)
-        assertEquals(listOf(ManualCellConflict(coord, wrong, expected)), engine.lastFailure?.manualConflicts)
+        val outcome = engine.recoverWithDiagnostics(matrix, formatConstraint = format)
+        assertTrue(outcome.candidates.isEmpty())
+        assertEquals(RecoveryFailureReason.MANUAL_PIN_CONFLICT, outcome.failure?.reason)
+        assertEquals(listOf(ManualCellConflict(coord, wrong, expected)), outcome.failure?.manualConflicts)
         assertEquals(wrong, matrix[coord.x, coord.y].value)
     }
 

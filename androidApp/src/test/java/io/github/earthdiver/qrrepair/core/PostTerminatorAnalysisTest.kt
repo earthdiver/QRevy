@@ -278,9 +278,10 @@ class PostTerminatorAnalysisTest {
         val data = PayloadBits().apply { byteSegment("A"); put(0, 4); byteSegment("tail") }.finish()
         val matrix = postTerminatorMatrix(data)
         val engine = RecoveryEngine()
-        assertTrue(engine.recover(matrix, formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.L, 0),
-            maxKnownDataEccMismatches = 0).isEmpty())
-        val failure = requireNotNull(engine.lastFailure)
+        val outcome = engine.recoverWithDiagnostics(matrix, formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.L, 0),
+            maxKnownDataEccMismatches = 0)
+        assertTrue(outcome.candidates.isEmpty())
+        val failure = requireNotNull(outcome.failure)
         val attempt = PostTerminatorAnalysis.forAttempt(CodewordExtractor.extract(matrix, 1, 0), 1,
             ErrorCorrectionLevel.L, failure.conventionalRsDiagnostic)
         assertFalse(attempt.rsCorrectionRejected)

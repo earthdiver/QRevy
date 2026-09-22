@@ -137,8 +137,8 @@ fun main(args: Array<String>) {
                 var checks = 0
                 var stopped: String? = null
                 val start = System.nanoTime()
-                val results = try {
-                    engine.recover(f.matrix.copy(), maxKnownDataEccMismatches = limit,
+                val outcome = try {
+                    engine.recoverWithDiagnostics(f.matrix.copy(), maxKnownDataEccMismatches = limit,
                         trustKnownPayloadCount = f.trustCount,
                         cancellation = RecoveryCancellation {
                             checks++
@@ -147,8 +147,9 @@ fun main(args: Array<String>) {
                                 (checks == 1 || checks % 128 == 0) && (System.nanoTime() - start) / 1_000_000 > timeBudgetMs -> { stopped = "wall_budget"; true }
                                 else -> false
                             }
-                        }).sortedWith(recoveryCandidateComparator)
-                } catch (_: RecoveryCancelledException) { emptyList() }
+                        })
+                } catch (_: RecoveryCancelledException) { null }
+                val results = outcome?.candidates.orEmpty().sortedWith(recoveryCandidateComparator)
                 val ms = (System.nanoTime() - start) / 1e6
                 val correct = results.filter { f.truth != null && it.dataMask == f.mask && it.ecLevel.name == f.ecc && it.correctedInterleaved.contentEquals(f.truth) }
                 check(correct.all { it.text == f.text }) { "Ground-truth raw codewords and payload disagree: ${f.id}" }
@@ -168,7 +169,7 @@ fun main(args: Array<String>) {
                     "other_raw_candidates" to results.count { it.text != null && it !in correct },
                     "other_payload_mismatches" to results.filter { it.text != null && it.text != f.text }.map { it.knownBitMismatchesAfterCorrection },
                     "elapsed_ms" to ms, "checks" to checks, "stopped" to stopped,
-                    "diagnostic" to engine.lastSearchDiagnostic, "format_attempts" to engine.lastFormatAttempts)
+                    "diagnostic" to outcome?.searchDiagnostic, "format_attempts" to outcome?.formatAttempts)
                 writer.appendLine(gson.toJson(row)); writer.flush()
                 runCount++
                 if (runCount % 500 == 0) println("runs=$runCount last=${f.id} policy=$policy ms=${ms.toInt()} stopped=$stopped")

@@ -175,7 +175,7 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
                         matrix.setPrioritySearch(coord.x, coord.y, coord in settings.preRecoveryPrioritySearch)
                     }
                 }
-                val recoveries = recoveryEngine.recover(
+                val outcome = recoveryEngine.recoverWithDiagnostics(
                     matrix,
                     trustKnownPayloadCount = settings.trustKnownPayloadCount,
                     formatConstraint = settings.formatConstraint,
@@ -193,7 +193,7 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
                         "Trying priority * cells… $done/$total",
                     ))
                 }
-                GeometryAttempt(hypothesis, matrix, stats, recoveries, recoveryEngine.lastFailure, recoveryEngine.lastSearchDiagnostic)
+                GeometryAttempt(hypothesis, matrix, stats, outcome.candidates, outcome.failure, outcome.searchDiagnostic)
             }.onFailure {
                 if (it is RecoveryCancelledException || it is Error) throw it
                 resultAccumulator.markIncomplete(hasUnsearched = true)
@@ -321,6 +321,29 @@ internal fun prepareFinderDetection(image: LumaImage, profile: SamplingProfile?)
         pixels, (y + padding) * width + padding, y * normalized.width, (y + 1) * normalized.width,
     )
     return FinderDetectionInput(LumaImage(width, normalized.height + padding * 2, pixels), padding)
+}
+
+/** Search every permitted polarity; return evidence in original image coordinates. */
+internal fun refineFinder(image: LumaImage, settings: PreprocessSettings, hint: PointD): FinderCandidate? {
+    val geometry = if (settings.automaticThresholds) settings.logicalQuad?.let { quad ->
+        val pitch = (quad.topLeft.distanceTo(quad.topRight) + quad.topLeft.distanceTo(quad.bottomLeft)) /
+            (2.0 * (16 + 4 * settings.version))
+        runCatching { GridGeometry(settings.version, FinderRole.TOP_LEFT, quad.topLeft.x, quad.topLeft.y,
+            pitch.coerceAtLeast(.25), 0.0, quad, GeometryModel.MANUAL_PROJECTIVE).reanchored() }.getOrNull()
+    } else null
+    return settings.variants().mapNotNull { profile ->
+        // Match the preview's fitted pair where a logical grid is available, independently
+        // for each polarity. An unsupported grid falls back to source-image thresholds.
+        val thresholds = if (settings.automaticThresholds)
+            geometry?.let { MatrixSampler(image, profile).sample(it).second.thresholds } ?: profile.provisionalThresholds
+        else ThresholdPair(settings.blackMax, settings.whiteMin)
+        val input = prepareFinderDetection(image, profile)
+        FinderDetector(input.image, thresholds.blackMax, thresholds.whiteMin)
+            .detectNear(input.toDetection(hint))?.let(input::toSource)?.copy(
+                polarity = if (profile.inverted) FinderPolarity.INVERTED else FinderPolarity.NORMAL,
+                detectionSource = FinderDetectionSource.RAW,
+            )
+    }.maxByOrNull { it.score }
 }
 
 internal fun manualGeometrySeeds(settings: PreprocessSettings): List<Pair<Int, ImageQuad>> {

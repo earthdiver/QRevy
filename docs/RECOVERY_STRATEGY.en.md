@@ -72,15 +72,21 @@ Even if the last line in the example is RS-consistent, it is not accepted on tha
 
 Image files have their EXIF orientation applied, while camera captures pass through an explicit crop step. The user can rotate by 90°, 1°, or 0.1°.
 
-The working image is converted to luminance. When polarity is unknown, normal and inverted interpretations may be considered. Once a confirmed finder establishes polarity, redundant inverted trials are skipped. Optional quiet-zone correction adds logical-white margin to the finder-detection image.
+The working image is converted to luminance values that represent each pixel’s brightness. If it is not known whether black and white are reversed, both normal and inverted interpretations can be tried. Once a confirmed Finder pattern establishes which interpretation to use, reading follows that result. When quiet-zone correction is enabled, the image used to find these patterns receives a margin representing QR white (0).
+
+Contrast and brightness are bounded integer settings from −100 to 100. Each RGB channel uses gain `2^(contrast/50)` about 127.5 and an offset of `2.55 * brightness`, followed by optional inversion and clamping to 0–255. Geometry is applied to the unadjusted source before tones; display pixels and sampled luminance share this transform. Color-marker classification retains the corresponding original RGB values. Decoder polarity describes the adjusted image, so importing an inverted image does not also force inverted decoding. QRR stores the original image and adjustment parameters separately; older sessions default to neutral adjustments.
 
 ### 2.2 Initial version and corner estimation
 
 On new image import, the Android adapter obtains Model 2 boundaries from ZXing-C++ 3.1.1. Shared code tests versions 1–40 and four rotations against a single boundary. Finder and timing mismatch must each be at most 20%, with a runner-up gap of at least 0.03 in the score weighted 0.55/0.45. Accepted boundaries are converted to outer module centers. Decoded native text is not used as a recovery result.
 
+Each detected set of corners is checked with both normal and reversed black and white. If both interpretations meet the requirements, the app cannot choose between them and does not establish a grid from that candidate. When it can also automatically assign the Finder centers and their top-left, top-right, and bottom-left roles, it saves whether the code is normal or inverted.
+
 Multiple boundaries are validated individually. They are treated as duplicates only when every pair agrees in version and logical orientation, with each corresponding corner within 0.25 module. A representative that passes the automatic-role gate is preferred; coordinates are not averaged and repetition does not increase confidence. An unverified boundary or a distinct QR candidate prevents merging.
 
 If the boundary is rejected, multiple boundaries cannot be merged, or JNI loading or execution fails, the existing grid-period estimator is tried. Luminance gradients identify two orthogonal edge families, and their projected coordinates are searched for a phase and module pitch that align with an evenly spaced boundary grid. When a half-period or another harmonic has similar agreement, the fundamental period is preferred so that the harmonic is not mistaken for a different version.
+
+The periodicity estimator checks both the adjusted image and its black-and-white inverse. If neither yields a grid, the two-Finder fallback also checks both. A result from only one interpretation can be used. When both yield a grid, their versions and corner ordering must agree, with corresponding corners within 0.25 module; otherwise automatic estimation stops. Conflicting results are not bypassed by trying a later estimator. Periodicity alone does not establish whether black and white are reversed. A two-Finder result records that distinction only when its Finder roles are verified; opposite confirmed interpretations are rejected even if their corners agree.
 
 An initial version is set from `dimension = 17 + 4 × version` only when the pitches on both axes agree, the extent supported by definite-black pixels is approximately square, and it sufficiently matches one of the permitted dimensions `21, 25, 29, …, 177`. A phase-aligned window spanning that dimension also supplies initial corners at the centers of the outer modules. Large gray damaged regions and isolated dark background pixels are excluded from definite-black boundary evidence so that they do not enlarge the symbol by several modules.
 
@@ -96,7 +102,9 @@ Automatic assignment runs only on new image import and is recorded in history. S
 
 ### 2.3 Manual Finder-role assignment
 
-Roles can also be assigned manually, whether or not automatic assignment was available. The user chooses a top-left, top-right, or bottom-left role and taps its approximate center. Only that neighborhood is checked for Finder image features; when evidence is sufficient, the center and polarity are refined. If no Finder is detected, the tapped point remains in use. Once a Finder role has established the logical grid, however, a subsequent Finder assignment is rejected when it is far from the expected position. This local refinement does not decide Finder roles automatically.
+Roles can also be assigned manually, whether or not automatic assignment was available. The user chooses a top-left, top-right, or bottom-left role and taps its approximate center. The app looks for a square pattern near the selected point. If it can verify a Finder pattern, it adjusts the center and determines whether black and white are reversed. If no Finder is detected, the tapped point remains in use. Once a Finder role has established the logical grid, however, a subsequent Finder assignment is rejected when it is far from the expected position. This local refinement does not decide Finder roles automatically.
+
+The search around the selected position tries both normal and inverted interpretations when **Auto** is selected and neither has been established. If a Finder pattern has already established which interpretation to use, the search follows that result. Otherwise, selecting **Normal** or **Inverted** limits the search to that choice. A detected center is expressed as a position in the original image.
 
 Automatic Model 1 classification is not implemented yet. Input must therefore be limited to Model 2 symbols.
 
@@ -124,6 +132,8 @@ Every geometry hypothesis uses fixed and tentative edits as input at the same ce
 ### 2.5 Module sampling
 
 On image import, the whole-image two-/three-class luminance estimate supplies provisional thresholds, with 96/160 as the fallback. This analysis is reused until the analysis image changes. Automatic mode estimates one global pair for each grid, including corner adjustments and recovery sampling fine-tuning. Known finder, separator, timing and alignment cells provide black/white evidence; user edits and repaired bits are not training labels. Support is checked in a 3×3 partition, without applying regional luminance correction. Separated observation envelopes produce adjacent thresholds; overlapping envelopes leave an unknown band. A stable middle histogram group is associated with black or white only when function-pattern evidence supports it across regions; otherwise its interval is included in the unknown band. Sparse or unreliable function evidence uses the image-wide provisional pair, independently of earlier geometry trials.
+
+Before using the provisional thresholds from the whole source image for an inverted QR code, the app converts them to preserve the same brightness ranges after inversion. The new dark threshold is `255 − original light threshold`, and the new light threshold is `255 − original dark threshold`. For example, thresholds of 40/80 become 175/215. Thresholds estimated from the grid or set manually already refer to brightness after accounting for inversion, so they are used without this conversion.
 
 The **Set thresholds automatically** checkbox starts checked for a new image. Changing either threshold slider unchecks it and makes the whole pair manual. Unchecking it directly preserves the current pair. That pair is kept through corner movement and repair fine-tuning; checking the box again recalculates the thresholds and resumes automatic mode. The automatic/manual choice, effective thresholds and provisional fallback are saved with the session. Sessions without an automatic/manual choice retain their saved thresholds as manual values.
 
@@ -325,7 +335,7 @@ Both controls offer Default, Exact match (0 bits), Strict, Relaxed, Manual, and 
 
 The conditions share generated source symbols and are not independent real photographs. Results depend on damage distribution, seed, scoring weights, and finite search/retention budgets. There was no fresh holdout after selecting 10%, and limits cannot reject alternatives that require zero changes to known bits. Reusable evaluation and enumeration commands are in the [study tools](../tools/detector-study/README.md#synthetic-dataecc-error-limit-study); detailed run archives are local research artifacts, not required product documentation.
 
-QRR schema 20 persists each limit mode separately from its remembered manual value. Earlier schemas retain their numeric or unlimited settings. Exact match stays at zero across versions. Explicit ECC/mask selections and fixed-cell protection retain their separate rules.
+QRR schema 21 persists each limit mode separately from its remembered manual value. Earlier schemas retain their numeric or unlimited settings. Exact match stays at zero across versions. Explicit ECC/mask selections and fixed-cell protection retain their separate rules.
 
 ## 5. Candidate validation and ranking
 
@@ -375,7 +385,7 @@ The Android app derives separate result, current-trial, and solver allowances fr
 
 Candidate agreement and candidate-based check guidance compare distinct candidates decoded as text from the same input matrix as the selected candidate. A full QR matrix is generated for each compared candidate, so the comparison uses at most the top 16 to bound memory and computation. If the selected decoded candidate is outside that range, it replaces the last entry. The compared count and the retained decoded-candidate count for that input are explicit; sample agreement is not treated as agreement among all candidates. Candidates that pass QR structure validation without decoding as text can be selected and exported but are excluded from this comparison.
 
-History in QRR schema 20 stores the selected QR’s version, ECC level, mask, corrected codewords, and actual sampling polarity. Recalculation restores selection by QR identity rather than list position; if no candidate matches, selection remains empty. Actual polarity is recorded separately from the user’s automatic/normal/inverted search preference. Older histories without QR identity retain the saved-index restoration path. User-facing history count and size limits are described in the [User Guide](USER_GUIDE.en.md#7-save-resume-and-export).
+History in QRR schema 21 stores the selected QR’s version, ECC level, mask, corrected codewords, and actual sampling polarity. Recalculation restores selection by QR identity rather than list position; if no candidate matches, selection remains empty. Actual polarity is recorded separately from the user’s automatic/normal/inverted search preference. Older histories without QR identity retain the saved-index restoration path. User-facing history count and size limits are described in the [User Guide](USER_GUIDE.en.md#7-save-resume-and-export).
 
 When conflicts with fixed values are not allowed, data/ECC pin conflicts reject the candidate and retain conflicting coordinates, input values, and required candidate values. Otherwise equivalent generic payload failures do not overwrite actionable diagnostics. Temporary priority assignments are not manual input pins.
 

@@ -60,25 +60,25 @@ internal class PreRecoveryBasicSettingsPage(
                     .setNegativeButton(R.string.close, null)
                     .show()
             }
-            addView(compactRow(arrayOf(
+            addSettingsItem(compactRow(arrayOf(
                 nudgeStepButton,
                 buttonFactory(context.getString(R.string.apply_perspective), actions.applyPerspectiveCorrection),
-            )))
+            )), 4)
             fun nudgeButton(label: String, dx: Int, dy: Int) = buttonFactory(label) {
                 if (!actions.nudgeCorner(dx, dy, nudgeSteps[nudgeStepIndex])) {
                     toast(context.getString(R.string.tap_orange_corner))
                 }
             }
-            addView(compactRow(arrayOf(
+            addSettingsItem(compactRow(arrayOf(
                 nudgeButton("←", -1, 0), nudgeButton("↑", 0, -1),
                 nudgeButton("↓", 0, 1), nudgeButton("→", 1, 0),
-            )))
-            addView(versionButton)
-            addView(useUnknownColors)
-            automaticThresholds?.let { addView(it) }
-            addView(blackLabel)
+            )), 4)
+            addSettingsItem(versionButton, 6)
+            addSettingsItem(useUnknownColors, 4)
+            automaticThresholds?.let { addSettingsItem(it, 4) }
+            addSettingsItem(blackLabel, 6)
             addView(blackSeekBar)
-            addView(whiteLabel)
+            addSettingsItem(whiteLabel, 4)
             addView(whiteSeekBar)
             if (!AppStylePreferences.isModern(context)) {
                 addView(View(context), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(12)))
@@ -90,7 +90,7 @@ internal class PreRecoveryBasicSettingsPage(
                     }
                 })
             }
-            addView(TextView(context).apply { setText(R.string.finder_manual) })
+            addSettingsItem(TextView(context).apply { setText(R.string.finder_manual) }, 6)
             addView(compactRow(arrayOf(
                 finderPlacementButton(buttonFactory, context.getString(R.string.top_left), FinderRole.TOP_LEFT),
                 finderPlacementButton(buttonFactory, context.getString(R.string.top_right), FinderRole.TOP_RIGHT),

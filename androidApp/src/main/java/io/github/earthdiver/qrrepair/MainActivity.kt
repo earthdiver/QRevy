@@ -1,28 +1,17 @@
 package io.github.earthdiver.qrrepair
 
 import io.github.earthdiver.qrrepair.core.ModuleSource
-import io.github.earthdiver.qrrepair.core.inputAgreementText
 import io.github.earthdiver.qrrepair.core.resultContentText
 import io.github.earthdiver.qrrepair.core.resultExplanationText
 import io.github.earthdiver.qrrepair.core.candidatePairComparisonText
 import io.github.earthdiver.qrrepair.ui.ResultActionRow
 import io.github.earthdiver.qrrepair.core.RecoveryDiagnosticReport
-import io.github.earthdiver.qrrepair.core.DiagnosticSection
 import io.github.earthdiver.qrrepair.core.DiagnosticStage
-import io.github.earthdiver.qrrepair.core.runSettingsText
-import io.github.earthdiver.qrrepair.core.initialDiagnosticSection
-import io.github.earthdiver.qrrepair.core.usedMethodsText
-import io.github.earthdiver.qrrepair.core.searchDescription
 import io.github.earthdiver.qrrepair.core.codewordCellText
-import io.github.earthdiver.qrrepair.core.inputComparisonText
-import io.github.earthdiver.qrrepair.core.RecoverySearchDiagnostic
 import io.github.earthdiver.qrrepair.core.RecoveryInputBlocker
-import io.github.earthdiver.qrrepair.core.candidateCalculationPolicyText
-import io.github.earthdiver.qrrepair.core.searchResultText
 import io.github.earthdiver.qrrepair.core.identity
 import io.github.earthdiver.qrrepair.core.isSelectableRecovery
 import io.github.earthdiver.qrrepair.core.RecoveryMemoryPolicy
-import io.github.earthdiver.qrrepair.core.RecoveryResultAccumulator
 import io.github.earthdiver.qrrepair.core.RecoveryRetentionBudget
 import io.github.earthdiver.qrrepair.core.RecoverySelectionIdentity
 import io.github.earthdiver.qrrepair.core.SamplingProfile
@@ -49,8 +38,6 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.exifinterface.media.ExifInterface
-import io.github.earthdiver.qrrepair.core.AutoRecoveryEngine
-import io.github.earthdiver.qrrepair.core.AutoRecoveryResult
 import io.github.earthdiver.qrrepair.core.CodewordHex
 import io.github.earthdiver.qrrepair.core.CodewordExtractor
 import io.github.earthdiver.qrrepair.core.Coord
@@ -73,11 +60,10 @@ import io.github.earthdiver.qrrepair.core.QrTextMatrixParser
 import io.github.earthdiver.qrrepair.core.RecoveryCandidate
 import io.github.earthdiver.qrrepair.core.description
 import io.github.earthdiver.qrrepair.core.RecoveryFailure
-import io.github.earthdiver.qrrepair.core.RecoveryFailureReason
 import io.github.earthdiver.qrrepair.core.RecoveryEngine
+import io.github.earthdiver.qrrepair.core.RecoveryWorkflow
 import io.github.earthdiver.qrrepair.core.RecoveryCancellation
 import io.github.earthdiver.qrrepair.core.RecoveryCancelledException
-import io.github.earthdiver.qrrepair.core.geometryAttemptComparator
 import io.github.earthdiver.qrrepair.core.RecoveryHistoryEntry
 import io.github.earthdiver.qrrepair.core.RecoverySessionHistory
 import io.github.earthdiver.qrrepair.core.RecoverySnapshot
@@ -91,10 +77,12 @@ import io.github.earthdiver.qrrepair.core.RepairGuidance
 import io.github.earthdiver.qrrepair.core.RepairTraceBuilder
 import io.github.earthdiver.qrrepair.ui.BitmapUtils
 import io.github.earthdiver.qrrepair.ui.RepairPreviewView
-import io.github.earthdiver.qrrepair.ui.CropOverlayView
+import io.github.earthdiver.qrrepair.ui.ImageAdjustmentEditor
+import io.github.earthdiver.qrrepair.core.ImageAdjustment
 import io.github.earthdiver.qrrepair.ui.QrResultInspectorView
 import io.github.earthdiver.qrrepair.session.RecoverySessionStore
 import io.github.earthdiver.qrrepair.session.RecoverySessionCodec
+import io.github.earthdiver.qrrepair.session.SessionSaveQueue
 import io.github.earthdiver.qrrepair.session.StoredSession
 import com.google.zxing.Result
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
@@ -113,11 +101,13 @@ internal fun purgeStaleCameraCaptures(
     staleAfterMs: Long = CAMERA_CAPTURE_STALE_AFTER_MS,
 ) {
     require(staleAfterMs >= 0L)
+    val incompleteCrop = Regex("qr-capture-.+\\.(?:jpg|png)\\.crop-.+\\.tmp", RegexOption.IGNORE_CASE)
     cacheDir.listFiles()
         ?.filter {
             it.isFile &&
                 it.name.startsWith("qr-capture-") &&
-                it.name.endsWith(".jpg", ignoreCase = true) &&
+                (it.name.endsWith(".jpg", ignoreCase = true) || it.name.endsWith(".png", ignoreCase = true) ||
+                    incompleteCrop.matches(it.name)) &&
                 nowMs - it.lastModified() >= staleAfterMs
         }
         ?.forEach { it.delete() }
@@ -147,7 +137,14 @@ class MainActivity : Activity() {
         val style: AppStyle,
         val history: RetainedCellHistory?,
         val editorWork: RetainedEditorWork?,
+        val imageImport: RetainedImageImport? = null,
     )
+    private data class RetainedImageImport(val source: Bitmap, val state: Bundle)
+    private var importEditorDialog: AlertDialog? = null
+    private var importEditor: ImageAdjustmentEditor? = null
+    private var importSource: Bitmap? = null
+    private var retainImportSource = false
+
     private data class RetainedEditorWork(
         val sessionId: String?,
         val source: BitmapUtils.Prepared,
@@ -198,11 +195,11 @@ class MainActivity : Activity() {
     private val executor = Executors.newSingleThreadExecutor()
     private val ioExecutor = Executors.newSingleThreadExecutor()
     private val workGeneration = AtomicInteger(0)
-    private val saveGeneration = AtomicInteger(0)
-    private data class PendingSessionSave(
-        val id: String, val entries: List<RecoveryHistoryEntry>, val cursor: Int, val generation: Int,
+    private val sessionSaves = SessionSaveQueue(
+        ioExecutor,
+        save = { id, entries, cursor -> sessionStore.save(id, UiMode.SIMPLE, entries, cursor) },
+        onError = { reportPersistenceFailure(ui("セッションの自動保存に失敗", "Automatic session save failed"), it) },
     )
-    private val pendingSessionSave = java.util.concurrent.atomic.AtomicReference<PendingSessionSave?>(null)
     private val finderSearchGeneration = AtomicInteger(0)
     @Volatile private var lastPersistenceWarningAtMs = 0L
     private val recoveryEngine = RecoveryEngine()
@@ -251,6 +248,11 @@ class MainActivity : Activity() {
         sessionStore = RecoverySessionStore(this)
         purgeStaleCameraCaptures()
         setContentView(buildUi())
+        retained?.imageImport?.let { image ->
+            showImportedImageAdjustment(image.source)
+            importEditor?.restoreState(image.state)
+            return
+        }
         retained?.editorWork?.let { work ->
             sessionId = work.sessionId
             prepared = work.source
@@ -287,7 +289,11 @@ class MainActivity : Activity() {
                     sessionHistory.entries.toList(), sessionHistory.cursor, editor.captureDraft())
             }
         }
-        return RetainedActivityState(activeStyle, history, editorWork)
+        val imageImport = importSource?.let { image ->
+            importEditor?.let { RetainedImageImport(image, it.saveState()) }
+        }
+        retainImportSource = imageImport != null
+        return RetainedActivityState(activeStyle, history, editorWork, imageImport)
     }
 
     private fun purgeStaleCameraCaptures() {
@@ -295,6 +301,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        importEditorDialog?.dismiss()
         closePreprocessEditor()
         workGeneration.incrementAndGet()
         finderSearchGeneration.incrementAndGet()
@@ -519,8 +526,8 @@ class MainActivity : Activity() {
             textSize = 15f
             PrecisionStyle.button(this, primary)
             layoutParams = LinearLayout.LayoutParams(-1, -2).apply {
-                topMargin = dp(8)
-                bottomMargin = dp(4)
+                topMargin = dp(PrecisionStyle.ACTION_TOP_MARGIN_DP)
+                bottomMargin = dp(PrecisionStyle.ACTION_BOTTOM_MARGIN_DP)
             }
         }
         val root = LinearLayout(this).apply {
@@ -1461,14 +1468,7 @@ class MainActivity : Activity() {
 
     private fun preparedFor(settings: PreprocessSettings): BitmapUtils.Prepared? {
         val source = prepared ?: return null
-        val rotated = if (settings.rotationDegrees % 360f == 0f) source
-        else BitmapUtils.rotate(source.bitmap, settings.rotationDegrees)
-        val quad = settings.perspectiveCorrectionQuad ?: return rotated
-        val rectified = runCatching {
-            BitmapUtils.rectify(rotated.bitmap, quad, settings.version, quietModules = 1.0).prepared
-        }.getOrNull() ?: return rotated
-        if (rotated !== source && rotated.bitmap !== rectified.bitmap) rotated.bitmap.recycle()
-        return rectified
+        return BitmapUtils.forSettings(source, settings)
     }
 
     private fun recordHistory(kind: HistoryEventKind, label: String, detail: String = "") {
@@ -1516,20 +1516,7 @@ class MainActivity : Activity() {
         if (removed > 0) Toast.makeText(this, ui(
             "履歴の容量上限により古い履歴を${removed}件整理しました。現在の作業は保持しています。",
             "Removed $removed older history entries at the size limit. Current work is preserved."), Toast.LENGTH_SHORT).show()
-        val token = saveGeneration.incrementAndGet()
-        // Queued jobs capture only a generation, never old matrix snapshots. Keeping their FIFO
-        // positions also preserves ordering with source-image writes and session deletion.
-        pendingSessionSave.set(PendingSessionSave(id, sessionHistory.entries.toList(), sessionHistory.cursor, token))
-        ioExecutor.execute {
-            val request = pendingSessionSave.get() ?: return@execute
-            if (token != saveGeneration.get() || request.generation != token ||
-                !pendingSessionSave.compareAndSet(request, null)) return@execute
-            try {
-                sessionStore.save(request.id, UiMode.SIMPLE, request.entries, request.cursor)
-            } catch (t: Throwable) {
-                reportPersistenceFailure(ui("セッションの自動保存に失敗", "Automatic session save failed"), t)
-            }
-        }
+        sessionSaves.enqueue(id, sessionHistory.entries.toList(), sessionHistory.cursor)
     }
 
     private fun reportPersistenceFailure(prefix: String, error: Throwable) {
@@ -1674,7 +1661,7 @@ class MainActivity : Activity() {
         statusText.text = ui("$prefix。復号候補を再計算中…", "$prefix. Recalculating decode candidates…")
         executor.execute {
             if (token != workGeneration.get()) return@execute
-            val ranked = try { recoveryEngine.recover(
+            val outcome = try { recoveryEngine.recoverWithDiagnostics(
                 matrix.copy(),
                 trustKnownPayloadCount = requestSettings.trustKnownPayloadCount,
                 formatConstraint = requestSettings.formatConstraint,
@@ -1687,7 +1674,8 @@ class MainActivity : Activity() {
                 },
                 cancellation = RecoveryCancellation { token != workGeneration.get() || Thread.currentThread().isInterrupted },
             ) } catch (_: RecoveryCancelledException) { return@execute }
-            val failure = recoveryEngine.lastFailure
+            val ranked = outcome.candidates
+            val failure = outcome.failure
             runOnUiThread {
                 if (token != workGeneration.get()) {
                     if (historyRestoreToken == token) historyRestoreToken = null
@@ -1877,13 +1865,7 @@ class MainActivity : Activity() {
             (recoveryState.selectedRecovery?.combinationSearch ?: recoveryState.failure?.combinationSearch)
                 ?.stops?.isNotEmpty() == true)
 
-    private fun searchResultDescription(): String {
-        val count = searchCandidateCount()
-        if (!recoveryState.candidatesOmitted) return searchResultText(count, searchHasUncheckedCombinations())
-        return ui("優先度の高い修復候補を${count}件保持しています。ほかの候補の詳細は保持上限により省略しています。",
-            "Retained $count highest-ranked recovery candidates. Other candidate details were omitted at the retention limit.") +
-            if (searchHasUncheckedCombinations()) ui("\n未探索の組合せが残っています。", "\nSome combinations remain unchecked.") else ""
-    }
+    private fun searchResultDescription(): String = diagnosticPresenter().searchResultDescription(diagnosticContext())
 
     private fun updateContentPreview() {
         immediateResultShown = false
@@ -1978,65 +1960,21 @@ class MainActivity : Activity() {
         resultNextAction.visibility = View.VISIBLE
     }
 
-    private fun candidateDiagnosticReport(candidate: RecoveryCandidate, geometry: GridGeometry?): RecoveryDiagnosticReport {
-        val preview = QrContentPreviewParser.parse(candidate)
-        val input = initialDiagnosticSection(candidate.version, candidate.ecLevel, candidate.dataMask,
-            geometry?.let(::geometryDiagnosticText).orEmpty(), candidate.rsBitDiagnostic,
-            candidate.extraction.codewords.takeIf { it.isNotEmpty() }?.sumOf { (it.unknownBits and 255).countOneBits() },
-            candidate.originalErasedCodewords, candidate.conventionalRsDiagnostic, candidate.correctedInterleaved,
-            candidate.actualBlockMethods.any { it.bitConstraintSolved } || candidate.repairInfo.any { it.bitConstraintSolved },
-            conditions = candidate.displayConditions)
-        val verification = buildString {
-            append(if (preview?.qrStructureValid == true) ui("QRのデータ構造を確認できました。", "The QR data structure was verified.")
-                else ui("QRのデータ構造を確認できませんでした。", "The QR data structure could not be verified."))
-            append('\n').append(candidate.inputComparisonText())
-            append(ui("\n\n今回の探索全体\n", "\n\nSearch-wide results\n"))
-            append(searchResultDescription())
-        }
-        val processing = listOf(candidate.displayConditions.candidateCalculationPolicyText(), candidate.usedMethodsText(), candidate.combinationSearch.stopReasonsText()
-            .takeIf { it.isNotBlank() }?.let { ui("今回の探索全体の終了理由\n", "Search-wide stop reasons\n") + it })
-            .filterNotNull().filter(String::isNotBlank).joinToString("\n\n")
-        return RecoveryDiagnosticReport(ui("選択中の候補の診断", "Diagnostics for the selected candidate"), listOf(
-            DiagnosticSection(DiagnosticStage.SETTINGS, candidate.displayConditions.runSettingsText()),
-            input,
-            DiagnosticSection(DiagnosticStage.PROCESSING, processing, candidateProcessingText(candidate)),
-            DiagnosticSection(DiagnosticStage.VERIFICATION, verification, preview?.toDisplayText().orEmpty()),
-        ))
-    }
+    private fun diagnosticPresenter() = RecoveryDiagnosticPresenter(isJapaneseUi())
 
-    private fun failureDiagnosticReport(failure: RecoveryFailure, geometry: GridGeometry?): RecoveryDiagnosticReport {
-        val input = initialDiagnosticSection(geometry?.version, failure.ecLevel, failure.dataMask,
-            geometry?.let(::geometryDiagnosticText).orEmpty(), failure.rsBitDiagnostic, null,
-            failure.originalErasedCodewords.takeIf { failure.rsBitDiagnostic != null || failure.failedBlockIndex != null || it > 0 },
-            failure.conventionalRsDiagnostic, conditions = failure.displayConditions)
-        val processing = buildString {
-            append(failure.displayConditions.candidateCalculationPolicyText())
-            recoveryState.searchDiagnostic?.failureExplanation(failure.displayConditions)?.takeIf(String::isNotBlank)?.let {
-                if (isNotEmpty()) append("\n\n")
-                append(it)
-            }
-            if (isEmpty()) append(ui("指定条件のもとで修復候補を探索しました。", "Recovery candidates were searched under the specified conditions."))
-        }
-        val verification = buildString {
-            append(searchResultDescription())
-            append(ui("\n\n参考診断の形式と入力との比較\n", "\n\nComparison of the reference format with the input\n"))
-            append(inputAgreementText(failure.formatKnownBits, failure.formatMismatches, true))
-            if (failure.knownBitMismatches != null && failure.knownBitsCompared != null) {
-                append(ui("\n採用できなかった候補と入力との比較\n", "\nComparison of the rejected candidate with the input\n"))
-                append(inputAgreementText(failure.knownBitsCompared, failure.knownBitMismatches, false))
-            }
-        }
-        return RecoveryDiagnosticReport(ui("修復結果の診断", "Recovery result diagnostics"), listOf(
-            DiagnosticSection(DiagnosticStage.SETTINGS, failure.displayConditions.runSettingsText()),
-            input,
-            DiagnosticSection(DiagnosticStage.PROCESSING, processing, failureProcessingText(failure).takeIf(String::isNotBlank)?.let {
-                ui("参考：補完・探索後の計算記録（", "Reference: calculation after filling/search (") +
-                    (geometry?.version?.let { version -> "V$version / " }.orEmpty()) +
-                    "ECC ${failure.ecLevel} / " + ui("マスク${failure.dataMask}）\n", "mask ${failure.dataMask})\n") + it
-            }.orEmpty()),
-            DiagnosticSection(DiagnosticStage.VERIFICATION, verification),
-        ))
-    }
+    private fun diagnosticContext() = RecoveryDiagnosticContext(
+        candidateCount = searchCandidateCount(),
+        unsearched = searchHasUncheckedCombinations(),
+        candidatesOmitted = recoveryState.candidatesOmitted,
+        searchDiagnostic = recoveryState.searchDiagnostic,
+        selectedEntry = recoveryState.autoResult?.entries?.getOrNull(recoveryState.recoveryIndex),
+    )
+
+    private fun candidateDiagnosticReport(candidate: RecoveryCandidate, geometry: GridGeometry?): RecoveryDiagnosticReport =
+        diagnosticPresenter().candidateReport(candidate, geometry, diagnosticContext())
+
+    private fun failureDiagnosticReport(failure: RecoveryFailure, geometry: GridGeometry?): RecoveryDiagnosticReport =
+        diagnosticPresenter().failureReport(failure, geometry, diagnosticContext())
 
     private fun candidateDiagnosticText(candidate: RecoveryCandidate, geometry: GridGeometry?): String =
         candidateDiagnosticReport(candidate, geometry).fullText()
@@ -2044,123 +1982,7 @@ class MainActivity : Activity() {
     private fun failureDiagnosticText(failure: RecoveryFailure, geometry: GridGeometry?): String =
         failureDiagnosticReport(failure, geometry).fullText()
 
-    private fun candidateProcessingText(candidate: RecoveryCandidate): String {
-        val processing = buildString {
-            if (candidate.constraintFilledBits > 0) {
-                append(if (candidate.constraintForcedByUserSetting) ui("\n指定した仮定に基づく補完・変更: ", "\nFilling/changes under the specified assumption: ")
-                    else ui("\nQRの構造に基づく補完・変更: ", "\nFilling/changes using QR structure: "))
-                    .append(candidate.constraintFilledBits).append(ui("bit（終端・埋め草など）", " bits (terminator, padding, etc.)"))
-                append(ui("\n仮定した末尾構造と一致する読み取り済みbit: ", "\nObserved bits matching the assumed suffix structure: "))
-                    .append(candidate.constraintEvidenceBits).append("bit")
-            }
-            if (candidate.priorityGuessedBits > 0) {
-                append(ui("\n優先指定した不明セルの白黒を仮置きして探索: ", "\nSearch with tentative values for prioritized unknown cells: "))
-                    .append(candidate.priorityGuessedBits).append(ui("bit（入力時は不明）", " bits (unknown in the input)"))
-            }
-            append(ui("\n構造補完・優先セルの仮置きを反映した不明コード語数（全ブロック合計）: ", "\nUnknown codewords after structure filling and priority assignments (all blocks): "))
-                .append(candidate.erasedCodewords)
-
-            append(ui("\n補完・訂正の対象コード語数: ", "\nCodewords targeted for filling/correction: ")).append(candidate.correctedErrataSymbols)
-            if (candidate.repairInfo.any { it.bitConstraintSolved }) {
-                append(ui("\n補完方法: 既知bitと誤り訂正の条件から不明部分を計算", "\nMethod: solve unknown bits using known bits and error-correction constraints"))
-            } else {
-                append(ui("\n通常RSの計算値 ECC−消失数−2×誤りコード語数（ブロック最小）: ",
-                    "\nConventional RS calculation, ECC−erasures−2×errors (minimum across blocks): ")).append(candidate.minRsMargin)
-                append(ui("（この補完方法での値。元入力の残り訂正能力や正しさを示しません）",
-                    " (for this derivation; not remaining input correction capacity or proof of correctness)"))
-            }
-            if (candidate.actualBlockMethods.isNotEmpty()) {
-                append(ui("\nこの候補のブロック別処理", "\nBlock methods for this candidate"))
-                candidate.actualBlockMethods.forEach { method ->
-                    append('\n').append(method.searchDescription())
-                    if (!method.bitConstraintSolved) append(ui("／この計算の余裕: ${method.rsMargin ?: "—"}",
-                        " / margin for this calculation: ${method.rsMargin ?: "—"}"))
-                }
-            }
-            val qrRoutes = listOf(candidate) + candidate.alternativeDerivations
-            qrRoutes.forEachIndexed { qrIndex, route ->
-                route.blockDerivations.forEach { (block, derivations) ->
-                    append(ui("\n補完方法${qrIndex + 1}・RSブロック${block + 1}: 同じ補完結果を得た方法: ${derivations.size}通り（代表は1）",
-                        "\nRoute ${qrIndex + 1}, RS block ${block + 1}: ${derivations.size} derivations of the same values (representative: 1)"))
-                    derivations.forEachIndexed { index, derivation ->
-                        append("\n  ${index + 1}: ").append(derivation.description())
-                    }
-                }
-            }
-            if (candidate.alternativeDerivations.isNotEmpty()) {
-                val routes = listOf(candidate) + candidate.alternativeDerivations
-                append(ui("\n異なる補完方法で同じ復元結果が得られました: ${routes.size}通り（セルの説明は方法1）", "\nDerivations of the same QR: ${routes.size} (cell reasons use route 1)"))
-                routes.forEachIndexed { index, route ->
-                    append(ui("\n補完方法${index + 1}: 構造による補完 ${route.constraintFilledBits}bit / 優先探索 ${route.priorityGuessedBits}bit",
-                        "\nRoute ${index + 1}: structure ${route.constraintFilledBits} bits / priority ${route.priorityGuessedBits} bits"))
-                    route.actualBlockMethods.forEach { append("\n  ").append(it.searchDescription()) }
-                }
-            }
-            val selectedEntry = recoveryState.autoResult?.entries?.getOrNull(recoveryState.recoveryIndex)
-                ?.takeIf { it.candidate === candidate }
-            selectedEntry?.alternativeDerivations?.forEachIndexed { index, route ->
-                append(ui("\n同じQRを得た別の試行${index + 1}: ", "\nAnother attempt yielding the same QR ${index + 1}: "))
-                append(route.profile?.label.orEmpty()).append(" / ").append(geometryDiagnosticText(route.hypothesis.geometry))
-                append("\n").append(route.candidate.usedMethodsText())
-                route.samplingStats.thresholds?.let { append(ui("\n閾値: ${it.blackMax} / ${it.whiteMin}",
-                    "\nThresholds: ${it.blackMax} / ${it.whiteMin}")) }
-            }
-            if (candidate.derivationsOmitted || selectedEntry?.derivationsOmitted == true) append(ui(
-                "\n保持上限により、同じQRを得た一部の別経路の詳細を省略しています。",
-                "\nSome alternative derivation details for this QR were omitted at the retention limit."))
-        }.trim()
-        return processing
-    }
-
-
-    private fun failureProcessingText(failure: RecoveryFailure): String {
-        val processing = buildString {
-            if (failure.failedBlockIndex != null) {
-                if (isNotEmpty()) append('\n')
-                append(ui("最初に失敗したRSブロック: ", "First failing RS block: ")).append(failure.failedBlockIndex + 1)
-                failure.rsBlockCount?.let { append(ui(" / 全${it}ブロック", " / $it total")) }
-                failure.ecSymbolsPerBlock?.let {
-                    append(ui("\n失敗ブロックのECCシンボル数: ", "\nECC symbols in the failing block: ")).append(it)
-                }
-                failure.failedBlockErasures?.let {
-                    append(ui("\n失敗ブロックの未知bitを含むコード語数（探索前）: ", "\nErased codewords in the failing block (before search): ")).append(it)
-                }
-            }
-            if (failure.originalErasedCodewords > 0 || failure.erasedCodewords > 0) {
-                if (isNotEmpty()) append('\n')
-                append(ui("構造補完・優先セルの仮置きを反映した不明コード語数（全ブロック合計）: ", "Unknown codewords after structure filling and priority assignments (all blocks): "))
-                    .append(failure.erasedCodewords)
-
-            }
-            if (failure.ecSymbolsPerBlock != null || failure.originalErasedCodewords > 0 || failure.erasedCodewords > 0) {
-                if (isNotEmpty()) append('\n')
-                append(ui(
-                    "ECC数と消失数の差は、残りの訂正能力を示しません。通常のRS訂正では、各ブロックで「消失数 + 2 × 誤りコード語数 ≤ ECC数」が必要です。読み取り済みコード語の誤り数は、この失敗診断では確定していません。",
-                    "ECC count minus erasure count does not indicate remaining correction capacity. Conventional RS correction requires erasures + 2 × erroneous codewords ≤ ECC symbols in each block. This failure diagnostic has not established the number of erroneous observed codewords.",
-                ))
-            }
-        }.trim()
-        val shortfall = failure.rsShortfallBits?.let { bits -> ui(
-            "構造補完後の欠損量から見た追加確認の目安: ${bits}bit\n入力済みの白黒と形式設定が正しいという前提です。読み取り済みセルの誤りは含めていません。",
-            "Additional checks estimated from missing data after structure filling: $bits bits\nAssumes the entered values and format are correct; errors in observed cells are not included.") }.orEmpty()
-        return listOf(processing, shortfall).filter { it.isNotBlank() }.joinToString("\n")
-    }
-
-    private fun geometryDiagnosticText(geometry: GridGeometry): String {
-        val model = when (geometry.model) {
-            GeometryModel.SIMILARITY -> ui("相似変換", "Similarity")
-            GeometryModel.TWO_FINDER -> ui("2 Finder", "Two Finder patterns")
-            GeometryModel.AFFINE -> ui("アフィン変換", "Affine")
-            GeometryModel.PROJECTIVE -> ui("射影変換", "Projective")
-            GeometryModel.MANUAL_PROJECTIVE -> ui("手動射影", "Manual projective")
-        }
-        val role = when (geometry.role) {
-            FinderRole.TOP_LEFT -> ui("左上基準", "top-left reference")
-            FinderRole.TOP_RIGHT -> ui("右上基準", "top-right reference")
-            FinderRole.BOTTOM_LEFT -> ui("左下基準", "bottom-left reference")
-        }
-        return ui("QRの位置・向き: $model / V${geometry.version} / $role", "QR position/orientation: $model / V${geometry.version} / $role")
-    }
+    private fun geometryDiagnosticText(geometry: GridGeometry): String = diagnosticPresenter().geometryDiagnosticText(geometry)
 
     private fun openCamera() {
         startActivityForResult(
@@ -2192,12 +2014,17 @@ class MainActivity : Activity() {
                 ?: releasePendingDiagnosticBitmap()
             REQ_CAMERA -> data?.getStringExtra(CameraActivity.EXTRA_CAPTURE_PATH)?.let {
                 val captured = File(it)
-                loadImage(Uri.fromFile(captured), cleanupFile = captured)
+                loadImage(Uri.fromFile(captured), cleanupFile = captured,
+                    imageAdjustment = ImageAdjustment(
+                        data.getIntExtra(CameraActivity.EXTRA_CONTRAST, 0),
+                        data.getIntExtra(CameraActivity.EXTRA_BRIGHTNESS, 0),
+                        data.getBooleanExtra(CameraActivity.EXTRA_INVERTED, false),
+                    ))
             }
         }
     }
 
-    private fun loadImage(uri: Uri, cleanupFile: File? = null) {
+    private fun loadImage(uri: Uri, cleanupFile: File? = null, imageAdjustment: ImageAdjustment = ImageAdjustment()) {
         val token = workGeneration.incrementAndGet()
         statusText.text = ui("画像を読み込み中…", "Loading image…")
         executor.execute {
@@ -2214,7 +2041,7 @@ class MainActivity : Activity() {
                         bitmap.recycle()
                         cleanupFile?.let { runCatching { it.delete() } }
                     } else if (cleanupFile == null) showImportedImageAdjustment(bitmap)
-                    else acceptDecodedImage(bitmap, cleanupFile)
+                    else acceptDecodedImage(bitmap, cleanupFile, imageAdjustment)
                 }
             } catch (t: Throwable) {
                 if (token == workGeneration.get()) runOnUiThread {
@@ -2346,111 +2173,87 @@ class MainActivity : Activity() {
     }
 
     private fun showImportedImageAdjustment(initialBitmap: Bitmap) {
-        var bitmap = initialBitmap
-        var handedOff = false
-        val cropView = CropOverlayView(this).apply { setBitmap(bitmap) }
-        val adjustmentStatus = TextView(this).apply {
-            text = ui("解析する範囲を指定してください。角・辺をドラッグ、枠内をドラッグで移動できます。", "Select the area to analyze. Drag corners or edges to resize, or drag inside to move.")
-            textSize = 12f
-            setPadding(dp(10), dp(6), dp(10), dp(6))
-        }
-        fun showTransformFailure(error: Throwable) {
-            adjustmentStatus.text = ui(
-                "画像変換に失敗: ${error.message ?: error.javaClass.simpleName}",
-                "Image transform failed: ${error.message ?: error.javaClass.simpleName}",
-            )
-        }
-        fun rotateBy(degrees: Float) {
-            replaceOwnedBitmap(bitmap) { BitmapUtils.rotate(it, degrees).bitmap }
-                .onSuccess { rotated ->
-                    bitmap = rotated
-                    cropView.setBitmap(rotated)
-                }
-                .onFailure(::showTransformFailure)
-        }
+        importEditorDialog?.dismiss()
+        retainImportSource = false
+        importSource = initialBitmap
         lateinit var dialog: AlertDialog
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(adjustmentStatus)
-            addView(cropView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
-            addView(scrollRow(
-                button(getString(R.string.rotate_left_90)) { rotateBy(-90f) },
-                button("-1°") { rotateBy(-1f) },
-                button("-0.1°") { rotateBy(-.1f) },
-                button("+0.1°") { rotateBy(.1f) },
-                button("+1°") { rotateBy(1f) },
-                button(getString(R.string.rotate_right_90)) { rotateBy(90f) },
-            ))
-            addView(compactRow(
-                button(getString(R.string.cancel)) { dialog.dismiss() },
-                button(getString(R.string.crop_and_analyze)) {
-                    val source = bitmap
-                    replaceOwnedBitmap(source) {
-                        createIndependentCrop(it, cropView.cropRect()).getOrThrow()
-                    }.onSuccess { cropped ->
-                        bitmap = cropped
-                        handedOff = true
-                        dialog.dismiss()
-                        acceptDecodedImage(cropped)
-                    }.onFailure(::showTransformFailure)
-                },
-            ))
-        }
-        dialog = AlertDialog.Builder(this)
-            .setTitle(ui("画像の回転・クロップ", "Rotate and crop image"))
-            .setView(content)
-            .create()
+        lateinit var editor: ImageAdjustmentEditor
+        editor = ImageAdjustmentEditor(this, initialBitmap, onCancel = { dialog.dismiss() }, onApply = { adjustment ->
+            runCatching { editor.createCrop() }.onSuccess { cropped ->
+                dialog.dismiss()
+                acceptDecodedImage(cropped, imageAdjustment = adjustment)
+            }.onFailure(editor::showError)
+        })
+        importEditor = editor
+        val editorTheme = if (AppStylePreferences.isModern(this)) R.style.ModernAppTheme else R.style.AppTheme
+        dialog = AlertDialog.Builder(this, editorTheme).create()
+        importEditorDialog = dialog
         dialog.setOnShowListener {
-            dialog.window?.setLayout(
-                (resources.displayMetrics.widthPixels * .98f).toInt(),
-                (resources.displayMetrics.heightPixels * .92f).toInt(),
-            )
+            // Use the same full-width content as the camera editor, without alert-panel insets.
+            dialog.setContentView(editor)
+            dialog.window?.let { window ->
+                androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+                window.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+            }
+            androidx.core.view.ViewCompat.requestApplyInsets(editor)
         }
         dialog.setOnDismissListener {
-            if (!handedOff && !bitmap.isRecycled) bitmap.recycle()
-            if (!handedOff) statusText.text = ui("画像の読み込みをキャンセルしました。", "Image import was canceled.")
+            editor.dispose()
+            if (!retainImportSource && !initialBitmap.isRecycled) initialBitmap.recycle()
+            importEditor = null
+            importSource = null
+            importEditorDialog = null
         }
         dialog.show()
     }
 
-    private fun acceptDecodedImage(bitmap: Bitmap, cleanupFile: File? = null) {
+    private fun acceptDecodedImage(bitmap: Bitmap, cleanupFile: File? = null, imageAdjustment: ImageAdjustment = ImageAdjustment()) {
         showWorkspace()
         val token = workGeneration.incrementAndGet()
         statusText.text = ui("画像を解析用に準備中…", "Preparing image for analysis…")
         executor.execute {
             var candidate: BitmapUtils.Prepared? = null
+            var adjustedCandidate: BitmapUtils.Prepared? = null
             var handedToUi = false
             try {
                 val p = BitmapUtils.prepare(bitmap)
                 candidate = p
                 if (p.bitmap !== bitmap) bitmap.recycle()
-                val standardResult = decodeStandardQr(p.bitmap)
-                val initialEstimate = InitialThresholdEstimator.estimate(p.bitmap)
+                val adjusted = BitmapUtils.adjust(p, imageAdjustment)
+                adjustedCandidate = adjusted
+                val standardResult = decodeStandardQr(adjusted.bitmap)
+                val initialEstimate = InitialThresholdEstimator.estimate(adjusted.bitmap)
+                val originalEstimate = if (adjusted === p) initialEstimate else InitialThresholdEstimator.estimate(p.bitmap)
                 val initialGrid = io.github.earthdiver.qrrepair.core.InitialGridEstimator.estimate(
-                    p.luma, io.github.earthdiver.qrrepair.core.ZxingCppGridDetector.detect(p.bitmap),
+                    adjusted.luma, io.github.earthdiver.qrrepair.core.ZxingCppGridDetector.detect(adjusted.bitmap),
                 )
                 if (token != workGeneration.get()) {
                     p.bitmap.recycle()
+                    if (adjusted !== p) adjusted.bitmap.recycle()
                     return@execute
                 }
                 runOnUiThread {
                     if (token != workGeneration.get()) {
                         p.bitmap.recycle()
+                        if (adjusted !== p) adjusted.bitmap.recycle()
                         return@runOnUiThread
                     }
                     immediateResultShown = false
                     prepared = p
-                    analysisPrepared = p
+                    analysisPrepared = adjusted
                     savedCellEditState = null
                     preprocessSettings = PreprocessSettings(
+                        imageAdjustment = imageAdjustment,
                         automaticThresholds = true,
                         blackMax = initialEstimate?.blackMax ?: 96,
                         whiteMin = initialEstimate?.whiteMin ?: 160,
-                        unknownColorClusters = initialEstimate?.unknownColorClusters.orEmpty(),
+                        unknownColorClusters = originalEstimate?.unknownColorClusters.orEmpty(),
                         version = initialGrid?.version ?: 1,
                         lockCorners = true,
                         logicalGridAssigned = initialGrid == null || initialGrid.autoAssignedFinders.isNotEmpty(),
                         manualFinders = initialGrid?.autoAssignedFinders.orEmpty(),
+                        confirmedFinderPolarity = initialGrid?.confirmedPolarity ?: io.github.earthdiver.qrrepair.core.FinderPolarity.UNKNOWN,
                         manualQuad = initialGrid?.moduleCenterQuad,
                     ).withInitialErrorLimits()
                     sessionId = sessionStore.newId()
@@ -2500,10 +2303,11 @@ class MainActivity : Activity() {
                 }
             } finally {
                 if (!handedToUi) {
+                    adjustedCandidate?.bitmap?.takeIf { it !== candidate?.bitmap && !it.isRecycled }?.recycle()
                     candidate?.bitmap?.takeIf { !it.isRecycled }?.recycle()
                     bitmap.takeIf { it !== candidate?.bitmap && !it.isRecycled }?.recycle()
                 }
-                // CameraActivity hands us a private cache JPEG. It is only a hand-off artifact;
+                // CameraActivity hands us a private lossless cache image. It is only a hand-off artifact;
                 // the durable session copy is lossless PNG under noBackupFilesDir.
                 cleanupFile?.let { runCatching { it.delete() } }
             }
@@ -2623,31 +2427,22 @@ class MainActivity : Activity() {
         executor.execute {
             if (token != workGeneration.get()) return@execute
             try {
-                val variants = requestSettings.variants()
                 val memoryPolicy = RecoveryMemoryPolicy.current()
-                val retentionBudget = RecoveryRetentionBudget(memoryPolicy.retainedBytes,
-                    workingLimitBytes = memoryPolicy.workingBytes)
-                val resultAccumulator = RecoveryResultAccumulator(retentionBudget)
-                var finders = emptyList<io.github.earthdiver.qrrepair.core.FinderCandidate>()
-                for ((variantIndex, profile) in variants.withIndex()) {
-                    finders = AutoRecoveryEngine(recoveryEngine).run(
-                        p.luma,
-                        profile = profile,
-                        retentionBudget = retentionBudget,
-                        resultAccumulator = resultAccumulator,
-                        cancellation = RecoveryCancellation { token != workGeneration.get() || Thread.currentThread().isInterrupted },
-                        onProgress = { done, total, message ->
-                            if (token == workGeneration.get() && (done % 3 == 0 || done == total)) {
-                                runOnUiThread {
-                                    if (token == workGeneration.get()) {
-                                        statusText.text = "${profile.label}: $message  (${variantIndex + 1}/${variants.size}, $done/$total)"
-                                    }
+                val result = RecoveryWorkflow(recoveryEngine).run(
+                    p.luma, requestSettings,
+                    retentionBudget = RecoveryRetentionBudget(memoryPolicy.retainedBytes,
+                        workingLimitBytes = memoryPolicy.workingBytes),
+                    cancellation = RecoveryCancellation { token != workGeneration.get() || Thread.currentThread().isInterrupted },
+                    onProgress = { progress ->
+                        if (token == workGeneration.get() && (progress.done % 3 == 0 || progress.done == progress.total)) {
+                            runOnUiThread {
+                                if (token == workGeneration.get()) {
+                                    statusText.text = "${progress.profile.label}: ${progress.message}  (${progress.variantIndex + 1}/${progress.variantCount}, ${progress.done}/${progress.total})"
                                 }
                             }
-                        },
-                    ).finders
-                }
-                val result = resultAccumulator.result(finders)
+                        }
+                    },
+                )
                 if (token != workGeneration.get()) return@execute
                 runOnUiThread {
                     if (token != workGeneration.get()) return@runOnUiThread
@@ -3137,8 +2932,12 @@ class MainActivity : Activity() {
         if (isJapaneseUi()) japanese else english
 }
 
-internal fun polarityThresholdMeanings(mode: PolarityMode, japanese: Boolean = true): Pair<String, String> = when (mode) {
-    PolarityMode.NORMAL -> if (japanese) "QRの黒(1)" to "QRの白(0)" else "QR black (1)" to "QR white (0)"
-    PolarityMode.INVERTED -> if (japanese) "QRの白(0)" to "QRの黒(1)" else "QR white (0)" to "QR black (1)"
-    PolarityMode.AUTO -> if (japanese) "通常=1 / 反転=0" to "通常=0 / 反転=1" else "normal=1 / inverted=0" to "normal=0 / inverted=1"
-}
+/** Labels describe source-image luminance; slider values remain in logical polarity. */
+internal fun polarityThresholdLabels(inverted: Boolean, blackMax: Int, whiteMin: Int, japanese: Boolean = true): Pair<String, String> =
+    if (inverted) {
+        if (japanese) "画像の明部（QRの黒(1)）: ${255 - blackMax}以上" to "画像の暗部（QRの白(0)）: ${255 - whiteMin}以下"
+        else "Light pixels (QR black (1)): ≥ ${255 - blackMax}" to "Dark pixels (QR white (0)): ≤ ${255 - whiteMin}"
+    } else {
+        if (japanese) "画像の暗部（QRの黒(1)）: ${blackMax}以下" to "画像の明部（QRの白(0)）: ${whiteMin}以上"
+        else "Dark pixels (QR black (1)): ≤ $blackMax" to "Light pixels (QR white (0)): ≥ $whiteMin"
+    }

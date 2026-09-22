@@ -81,6 +81,28 @@ class TwoFinderGridEstimatorTest {
         }
     }
 
+    @Test fun invertedTwoFinderFallbackPreservesCornersAndOnlyConfirmsVerifiedRoles() {
+        for (rotation in 0..3) for (timing in listOf("normal", "unknown")) {
+            val f = fixture(4, rotate = rotation, largeOcclusion = false, timing = timing)
+            val inverse = LumaImage(f.image.width, f.image.height,
+                IntArray(f.image.pixels.size) { 255 - f.image.pixels[it] })
+            val normal = assertNotNull(InitialGridEstimator.estimate(f.image, emptyList()))
+            val inverted = assertNotNull(InitialGridEstimator.estimate(inverse, emptyList()), "rotation=$rotation timing=$timing")
+            assertEquals(InitialGridSource.TWO_FINDER, inverted.source)
+            assertEquals(normal.version, inverted.version)
+            assertEquals(normal.moduleCenterQuad, inverted.moduleCenterQuad)
+            assertEquals(normal.autoAssignedFinders, inverted.autoAssignedFinders)
+            if (timing == "normal") {
+                assertEquals(setOf(FinderRole.TOP_RIGHT, FinderRole.BOTTOM_LEFT), inverted.autoAssignedFinders.keys)
+                assertEquals(FinderPolarity.NORMAL, normal.confirmedPolarity)
+                assertEquals(FinderPolarity.INVERTED, inverted.confirmedPolarity)
+            } else {
+                assertTrue(inverted.autoAssignedFinders.isEmpty())
+                assertEquals(FinderPolarity.UNKNOWN, inverted.confirmedPolarity)
+            }
+        }
+    }
+
     @Test fun twoFindersWithoutAlignmentEvidenceAreNotEnough() {
         assertNull(TwoFinderGridEstimator.estimate(fixture(4, alignment = false).image))
     }

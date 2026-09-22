@@ -28,6 +28,7 @@ data class QrFormatConstraint(
 }
 
 data class PreprocessSettings(
+    val imageAdjustment: ImageAdjustment = ImageAdjustment(),
     /** Rotation applied reproducibly to the persisted source image before sampling. */
     val rotationDegrees: Float = 0f,
     val polarity: PolarityMode = PolarityMode.AUTO,
@@ -147,6 +148,11 @@ data class SamplingProfile(val settings: PreprocessSettings, val inverted: Boole
     val label: String get() = if (inverted) localizedText("反転", "inverted") else localizedText("通常", "normal")
 
     fun normalize(luma: Double): Double = if (inverted) 255.0 - luma else luma
+
+    /** Import estimates use source-image luminance, unlike fitted/manual logical thresholds. */
+    val provisionalThresholds: ThresholdPair get() = if (inverted)
+        ThresholdPair(255 - settings.provisionalWhiteMin, 255 - settings.provisionalBlackMax)
+    else ThresholdPair(settings.provisionalBlackMax, settings.provisionalWhiteMin)
 
     val threshold: Double get() = (settings.blackMax + settings.whiteMin) / 2.0
 

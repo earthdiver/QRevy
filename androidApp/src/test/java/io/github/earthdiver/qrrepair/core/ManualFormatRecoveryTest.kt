@@ -44,9 +44,10 @@ class ManualFormatRecoveryTest {
             val before = matrix.copy()
             assertEquals(0, FormatSolver.trustedCandidate(matrix)?.dataMask)
             val engine = RecoveryEngine()
-            val results = engine.recover(matrix, manualEdits = settings.preRecoveryEdits,
+            val outcome = engine.recoverWithDiagnostics(matrix, manualEdits = settings.preRecoveryEdits,
                 formatConstraint = if (explicitMask) QrFormatConstraint(dataMask = 0) else null,
                 maxKnownDataEccMismatches = 0)
+            val results = outcome.candidates
             if (locked && !explicitMask) {
                 assertTrue(results.any { it.dataMask == 2 && it.text == "BCH-MANUAL-PRIORITY" })
                 assertTrue(results.all { candidate ->
@@ -54,8 +55,8 @@ class ManualFormatRecoveryTest {
                 })
             } else {
                 assertTrue(results.isEmpty())
-                if (explicitMask) assertEquals(RecoveryFailureReason.MANUAL_PIN_CONFLICT, engine.lastFailure?.reason)
-                else assertEquals(1, engine.lastFormatAttempts)
+                if (explicitMask) assertEquals(RecoveryFailureReason.MANUAL_PIN_CONFLICT, outcome.failure?.reason)
+                else assertEquals(1, outcome.formatAttempts)
             }
             assertEquals(edits, settings.preRecoveryEdits)
             for (y in 0 until matrix.dimension) for (x in 0 until matrix.dimension) {
@@ -115,11 +116,12 @@ class ManualFormatRecoveryTest {
             val wrong = opposite(matrix[coord.x, coord.y].value)
             matrix.set(coord.x, coord.y, wrong, 1f, if (locked) ModuleSource.USER else ModuleSource.IMAGE)
             val engine = RecoveryEngine()
-            assertTrue(engine.recover(matrix, formatConstraint = selected,
-                manualEdits = mapOf(coord to wrong)).isEmpty())
-            assertEquals(RecoveryFailureReason.FORMAT_EDIT_CONFLICT, engine.lastFailure?.reason)
-            assertEquals(coord, engine.lastFailure?.manualConflicts?.single()?.coord)
-            assertEquals(0, engine.lastFormatAttempts)
+            val outcome = engine.recoverWithDiagnostics(matrix, formatConstraint = selected,
+                manualEdits = mapOf(coord to wrong))
+            assertTrue(outcome.candidates.isEmpty())
+            assertEquals(RecoveryFailureReason.FORMAT_EDIT_CONFLICT, outcome.failure?.reason)
+            assertEquals(coord, outcome.failure?.manualConflicts?.single()?.coord)
+            assertEquals(0, outcome.formatAttempts)
             assertEquals(wrong, matrix[coord.x, coord.y].value)
         }
     }
@@ -141,8 +143,9 @@ class ManualFormatRecoveryTest {
         val (matrix, _) = fixture()
         matrix.set(0, 8, opposite(matrix[0, 8].value), 1f, ModuleSource.USER)
         val engine = RecoveryEngine()
-        assertTrue(engine.recover(matrix).none { it.text == "FORMAT-LOCK" })
-        assertEquals(RecoveryFailureReason.MANUAL_PIN_CONFLICT, engine.lastFailure?.reason)
+        val outcome = engine.recoverWithDiagnostics(matrix)
+        assertTrue(outcome.candidates.none { it.text == "FORMAT-LOCK" })
+        assertEquals(RecoveryFailureReason.MANUAL_PIN_CONFLICT, outcome.failure?.reason)
     }
 
     @Test fun nonRsPinsAreCheckedWithoutCountingImageStructureErrorsAsDataErrors() {
@@ -163,9 +166,10 @@ class ManualFormatRecoveryTest {
                 assertEquals(extraction.codewords.size * 8, candidate.knownBitsCompared)
                 matrix[coord.x, coord.y].source = ModuleSource.USER
                 val engine = RecoveryEngine()
-                assertTrue(engine.recover(matrix, formatConstraint = selected).isEmpty())
-                assertEquals(RecoveryFailureReason.MANUAL_PIN_CONFLICT, engine.lastFailure?.reason)
-                assertEquals(coord, engine.lastFailure?.manualConflicts?.single()?.coord)
+                val outcome = engine.recoverWithDiagnostics(matrix, formatConstraint = selected)
+                assertTrue(outcome.candidates.isEmpty())
+                assertEquals(RecoveryFailureReason.MANUAL_PIN_CONFLICT, outcome.failure?.reason)
+                assertEquals(coord, outcome.failure?.manualConflicts?.single()?.coord)
                 matrix.set(coord.x, coord.y, ModuleValue.ERASED, 0f, ModuleSource.USER)
                 assertTrue(engine.recover(matrix, formatConstraint = selected).any { it.text == "FORMAT-LOCK" })
             }
@@ -189,13 +193,14 @@ class ManualFormatRecoveryTest {
             val matrix = original.copy()
             matrix.set(coord.x, coord.y, opposite(matrix[coord.x, coord.y].value), 1f, ModuleSource.IMAGE)
             val engine = RecoveryEngine()
-            assertTrue(engine.recover(matrix, formatConstraint = constraint, maxFormatMismatches = 0).isEmpty())
-            val failure = requireNotNull(engine.lastFailure)
+            val outcome = engine.recoverWithDiagnostics(matrix, formatConstraint = constraint, maxFormatMismatches = 0)
+            assertTrue(outcome.candidates.isEmpty())
+            val failure = requireNotNull(outcome.failure)
             assertEquals(RecoveryFailureReason.FORMAT_MISMATCH_LIMIT, failure.reason)
             assertEquals(1, failure.formatMismatches)
             assertEquals(30, failure.formatKnownBits)
             assertEquals(0, failure.formatMismatchLimit)
-            assertEquals(0, engine.lastFormatAttempts)
+            assertEquals(0, outcome.formatAttempts)
             assertTrue(engine.recover(matrix, formatConstraint = constraint, maxFormatMismatches = 1)
                 .any { it.text == "FORMAT-LOCK" })
             assertTrue(engine.recover(matrix, formatConstraint = selected, maxFormatMismatches = 0)

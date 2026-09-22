@@ -20,17 +20,13 @@ import io.github.earthdiver.qrrepair.core.Coord
 import io.github.earthdiver.qrrepair.core.ErrorLimitMode
 import io.github.earthdiver.qrrepair.core.ErrorLimitPolicy
 import io.github.earthdiver.qrrepair.core.FinderRole
-import io.github.earthdiver.qrrepair.core.FinderDetector
 import io.github.earthdiver.qrrepair.core.GridGeometry
 import io.github.earthdiver.qrrepair.core.GeometryModel
-import io.github.earthdiver.qrrepair.core.MatrixSampler
-import io.github.earthdiver.qrrepair.core.ModuleSource
 import io.github.earthdiver.qrrepair.core.ModuleValue
 import com.google.zxing.qrcode.decoder.Version
 import io.github.earthdiver.qrrepair.core.PolarityMode
 import io.github.earthdiver.qrrepair.core.PreprocessSettings
 import io.github.earthdiver.qrrepair.core.SamplingProfile
-import io.github.earthdiver.qrrepair.core.prepareFinderDetection
 import io.github.earthdiver.qrrepair.core.QrMatrix
 import io.github.earthdiver.qrrepair.core.FormatEditPolicy
 import io.github.earthdiver.qrrepair.core.FormatEditConflict
@@ -38,6 +34,7 @@ import io.github.earthdiver.qrrepair.core.QrFormatConstraint
 import io.github.earthdiver.qrrepair.core.QrFunctionMask
 import io.github.earthdiver.qrrepair.core.RecoveryEngine
 import io.github.earthdiver.qrrepair.ui.BitmapUtils
+import io.github.earthdiver.qrrepair.core.ImageAdjustment
 import io.github.earthdiver.qrrepair.ui.EditorTool
 import io.github.earthdiver.qrrepair.ui.CodewordOverlayKind
 import io.github.earthdiver.qrrepair.ui.QrEditorView
@@ -227,6 +224,7 @@ internal class PreprocessDialogController(
         var refreshClassificationMatrix: () -> Unit = {}
         var refreshPreRecoveryDataPage: () -> Unit = {}
         fun invalidateSamplingPreview() {
+            finderSearchGeneration.incrementAndGet()
             overlay.clearCornerSelection()
         }
         fun revalidatePrioritySearch() {
@@ -256,21 +254,24 @@ internal class PreprocessDialogController(
             dataEccMismatchLimitMode = dataEccMismatchLimitModeDraft,
             lockManualBits = !allowFixedCorrections.isChecked,
         )
+        fun previewInverted(): Boolean = when (overlay.confirmedFinderPolarity()) {
+            io.github.earthdiver.qrrepair.core.FinderPolarity.INVERTED -> true
+            io.github.earthdiver.qrrepair.core.FinderPolarity.NORMAL -> false
+            else -> selectedPolarity() == PolarityMode.INVERTED
+        }
         fun updateThresholdLabels() {
-            val mode = selectedPolarity()
-            val (darkMeaning, lightMeaning) = polarityThresholdMeanings(mode, isJapaneseUi())
-            blackLabel.text = ui("画像の暗部（$darkMeaning）: ${black.progress}", "Dark pixels ($darkMeaning): ${black.progress}")
-            whiteLabel.text = ui("画像の明部（$lightMeaning）: ${white.progress + 1}", "Light pixels ($lightMeaning): ${white.progress + 1}")
+            val (blackText, whiteText) = polarityThresholdLabels(previewInverted(), black.progress, white.progress + 1, isJapaneseUi())
+            blackLabel.text = blackText
+            whiteLabel.text = whiteText
         }
         fun refreshLabels() {
             updateThresholdLabels()
-            val mode = selectedPolarity()
             val selectedVersion = version.progress + 1
             val selectedDimension = 17 + 4 * selectedVersion
             versionButton?.text = ui("QRバージョン: $selectedVersion / $selectedDimension×${selectedDimension}セル", "QR Version: $selectedVersion / $selectedDimension modules")
             val profile = SamplingProfile(
                 dialogState.previewSettings(controlSnapshot()),
-                inverted = mode == PolarityMode.INVERTED,
+                inverted = previewInverted(),
             )
             activePreviewProfile = profile
             refreshClassificationMatrix()
@@ -293,8 +294,8 @@ internal class PreprocessDialogController(
             }
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
                 when (seekBar) {
-                    black -> noteDraftChange("black", ui("暗部閾値を変更", "Changed dark threshold"), black.progress.toString())
-                    white -> noteDraftChange("white", ui("明部閾値を変更", "Changed light threshold"), (white.progress + 1).toString())
+                    black -> noteDraftChange("black", ui("QRの黒の閾値を変更", "Changed QR black threshold"), black.progress.toString())
+                    white -> noteDraftChange("white", ui("QRの白の閾値を変更", "Changed QR white threshold"), (white.progress + 1).toString())
                 }
             }
         }
@@ -391,18 +392,11 @@ internal class PreprocessDialogController(
             val finderWorking = working
             val finderProfile = profile.copy(settings = profile.settings.copy(
                 manualQuad = overlay.imageQuad().takeIf { overlay.isLogicalGridAssigned() },
+                confirmedFinderPolarity = overlay.confirmedFinderPolarity(),
             ))
             Toast.makeText(this, ui("指定位置の周辺からFinderを精密探索中…", "Refining the Finder near the selected position…"), Toast.LENGTH_SHORT).show()
             executor.execute {
-                val detection = prepareFinderDetection(finderWorking.luma, finderProfile)
-                val refined = FinderDetector(
-                    detection.image,
-                    finderProfile.settings.blackMax,
-                    finderProfile.settings.whiteMin,
-                ).detectNear(detection.toDetection(hint))?.let(detection::toSource)?.copy(
-                    polarity = if (finderProfile.inverted) io.github.earthdiver.qrrepair.core.FinderPolarity.INVERTED else io.github.earthdiver.qrrepair.core.FinderPolarity.NORMAL,
-                    detectionSource = io.github.earthdiver.qrrepair.core.FinderDetectionSource.RAW,
-                )
+                val refined = io.github.earthdiver.qrrepair.core.refineFinder(finderWorking.luma, finderProfile.settings, hint)
                 runOnUiThread {
                     if (finderToken != finderSearchGeneration.get() || working !== finderWorking) return@runOnUiThread
                     if (refined == null) {
@@ -429,12 +423,18 @@ internal class PreprocessDialogController(
             noteDraftChange("finder-$role", ui("$label Finderを解除", "Removed $label Finder"), role.name)
             Toast.makeText(this, ui("$label のFinder確定を解除しました。", "The $label Finder was unconfirmed."), Toast.LENGTH_SHORT).show()
         }
+        fun imageSettings() = preprocessSettings.copy(
+            rotationDegrees = dialogState.rotationDegrees,
+            perspectiveCorrectionQuad = dialogState.perspectiveCorrectionQuad,
+            version = version.progress + 1,
+            imageAdjustment = dialogState.imageAdjustment,
+        )
         fun rotateBy(delta: Float) {
             finderSearchGeneration.incrementAndGet()
             overlay.clearCornerSelection()
             dialogState.rotateBy(delta)
             val previous = working
-            working = BitmapUtils.rotate(source.bitmap, dialogState.rotationDegrees)
+            working = BitmapUtils.forSettings(source, imageSettings())
             releaseWorkingIfTemporary(previous, working)
             overlay.setBitmap(working.bitmap)
             overlay.setVersion(version.progress + 1)
@@ -448,7 +448,7 @@ internal class PreprocessDialogController(
             finderSearchGeneration.incrementAndGet()
             dialogState.resetRotation()
             val previous = working
-            working = source
+            working = BitmapUtils.forSettings(source, imageSettings())
             releaseWorkingIfTemporary(previous, working)
             overlay.setBitmap(working.bitmap)
             overlay.setVersion(version.progress + 1)
@@ -591,24 +591,13 @@ internal class PreprocessDialogController(
                 rotateBy = ::rotateBy,
                 resetRotation = ::resetRotation,
                 saveDiagnosticInput = {
-                    val unadorned = if (dialogState.rotationDegrees % 360f == 0f) source else BitmapUtils.rotate(source.bitmap, dialogState.rotationDegrees)
-                    val diagnostic = dialogState.perspectiveCorrectionQuad?.let { quad ->
-                        val rectified = runCatching {
-                            BitmapUtils.rectify(unadorned.bitmap, quad, version.progress + 1, quietModules = 4.0).prepared.bitmap
-                        }.getOrNull()
-                        if (rectified != null && unadorned !== source) unadorned.bitmap.recycle()
-                        rectified
-                    } ?: unadorned.bitmap
+                    val diagnostic = BitmapUtils.forSettings(source, imageSettings(), quietModules = 4.0).bitmap
                     host.saveDiagnosticInput(diagnostic, owned = diagnostic !== source.bitmap)
                 },
             ),
         ).view
         var singleCellEditMode = true
-        var sampledImage: io.github.earthdiver.qrrepair.core.LumaImage? = null
-        var sampledGeometry: GridGeometry? = null
-        var sampledProfile: SamplingProfile? = null
-        var sampledResult: Pair<QrMatrix, MatrixSampler.SamplingStats>? = null
-        var sampledObservations: Array<io.github.earthdiver.qrrepair.core.ModuleObservation?>? = null
+        val previewSampler = PreRecoveryPreviewSampler()
         var provisionalImage = initialWorking
         fun sampleImageMatrix(): Pair<GridGeometry, QrMatrix>? {
             val q = overlay.imageQuad()
@@ -628,19 +617,7 @@ internal class PreprocessDialogController(
                     io.github.earthdiver.qrrepair.core.FinderPolarity.NORMAL -> false
                     else -> selectedPolarity() == PolarityMode.INVERTED
                 })
-            // Effective slider values are outputs in automatic mode, not inputs to the next fit.
-            val profile = if (requested.settings.automaticThresholds) requested.copy(settings = requested.settings.copy(
-                blackMax = requested.settings.provisionalBlackMax, whiteMin = requested.settings.provisionalWhiteMin,
-                automaticThresholds = overlay.isLogicalGridAssigned(),
-            )) else requested
-            if (sampledImage !== working.luma || sampledGeometry != g || sampledProfile != profile) {
-                if (sampledImage !== working.luma || sampledGeometry != g || sampledProfile?.inverted != profile.inverted) {
-                    sampledObservations = io.github.earthdiver.qrrepair.core.GridThresholdEstimator.observe(working.luma, g, profile.inverted)
-                }
-                sampledResult = MatrixSampler(working.luma, profile).sampleObserved(g, profile, requireNotNull(sampledObservations))
-                sampledImage = working.luma; sampledGeometry = g; sampledProfile = profile
-            }
-            val (matrix, stats) = requireNotNull(sampledResult)
+            val (matrix, stats) = previewSampler.sample(working.luma, g, requested, overlay.isLogicalGridAssigned())
             stats.thresholds?.let { pair ->
                 updatingThresholdControls = true
                 black.progress = pair.blackMax; white.progress = pair.whiteMin - 1
@@ -650,21 +627,11 @@ internal class PreprocessDialogController(
             activePreviewProfile = requested.copy(settings = requested.settings.copy(
                 blackMax = black.progress, whiteMin = white.progress + 1,
             ))
-            return g to matrix.copy()
+            return g to matrix
         }
         fun refreshPreRecoveryMatrix(): Pair<GridGeometry, QrMatrix>? {
             val (g, matrix) = sampleImageMatrix() ?: return null
-            cellEditState.edits.forEach { (c, v) ->
-                if (c.x in 0 until matrix.dimension && c.y in 0 until matrix.dimension) {
-                    // Explicit source overrides are independent of whether the image agrees.
-                    matrix.set(c.x, c.y, v, 1f, when {
-                        c in cellEditState.softEdits -> ModuleSource.USER_SOFT
-                        allowFixedCorrections.isChecked -> ModuleSource.USER_UNLOCKED
-                        else -> ModuleSource.USER
-                    })
-                }
-                if (c in cellEditState.prioritySearch) matrix.setPrioritySearch(c.x, c.y, true)
-            }
+            cellEditState.applyTo(matrix, allowFixedCorrections.isChecked)
             return g to matrix
         }
         fun setManualFocus(enabled: Boolean) {
@@ -1121,14 +1088,26 @@ internal class PreprocessDialogController(
                     }
                     val sourceQuad = overlay.imageQuad()
                     val rectified = runCatching {
-                        BitmapUtils.rectify(working.bitmap, sourceQuad, version.progress + 1, quietModules = 1.0)
+                        val unadjusted = BitmapUtils.forSettings(source, imageSettings().copy(imageAdjustment = ImageAdjustment()))
+                        try {
+                            BitmapUtils.rectify(unadjusted.bitmap, sourceQuad, version.progress + 1, quietModules = 1.0)
+                        } finally {
+                            if (unadjusted.bitmap !== source.bitmap) unadjusted.bitmap.recycle()
+                        }
                     }.getOrElse {
                         Toast.makeText(this, ui("台形補正を適用できませんでした。四隅を確認してください。", "Could not rectify the image. Check the four corners."), Toast.LENGTH_LONG).show()
                         return@applyPerspective
                     }
+                    val adjusted = try {
+                        BitmapUtils.adjust(rectified.prepared, dialogState.imageAdjustment)
+                    } catch (error: Throwable) {
+                        rectified.prepared.bitmap.recycle()
+                        throw error
+                    }
+                    if (adjusted !== rectified.prepared) rectified.prepared.bitmap.recycle()
                     dialogState.applyPerspectiveCorrection(sourceQuad)
                     val previous = working
-                    working = rectified.prepared
+                    working = adjusted
                     releaseWorkingIfTemporary(previous, working)
                     overlay.setBitmap(working.bitmap)
                     overlay.setImageQuad(rectified.qrQuad)

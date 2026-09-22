@@ -54,10 +54,11 @@ class RecoveryRetentionTest {
                 if (qr.matrix.get(x, y).toInt() == 1) ModuleValue.ONE else ModuleValue.ZERO, 1f, ModuleSource.IMAGE)
         }
         val engine = RecoveryEngine()
-        assertTrue(engine.recover(matrix, retentionBudget = RecoveryRetentionBudget(0)).isEmpty())
-        assertTrue(engine.lastSearchDiagnostic!!.acceptedCandidate)
-        assertTrue(engine.lastSearchDiagnostic!!.candidatesOmitted)
-        assertFalse(engine.lastSearchDiagnostic!!.unsearched)
+        val outcome = engine.recoverWithDiagnostics(matrix, retentionBudget = RecoveryRetentionBudget(0))
+        assertTrue(outcome.candidates.isEmpty())
+        assertTrue(outcome.searchDiagnostic.acceptedCandidate)
+        assertTrue(outcome.searchDiagnostic.candidatesOmitted)
+        assertFalse(outcome.searchDiagnostic.unsearched)
     }
 
     @Test fun deferredExplanationsDoNotAllocateUntilRead() {
@@ -174,10 +175,11 @@ class RecoveryRetentionTest {
                 if (qr.matrix.get(x, y).toInt() == 1) ModuleValue.ONE else ModuleValue.ZERO, 1f, ModuleSource.IMAGE)
         }
         val engine = RecoveryEngine()
-        assertTrue(engine.recover(matrix, retentionBudget = RecoveryRetentionBudget(workingLimitBytes = 0)).isEmpty())
-        assertTrue(engine.lastSearchDiagnostic!!.unsearched)
-        assertTrue(CombinationSearchStop.WORKING_MEMORY_LIMIT in engine.lastFailure!!.combinationSearch.stops)
-        assertFalse(engine.lastSearchDiagnostic!!.candidatesOmitted)
+        val outcome = engine.recoverWithDiagnostics(matrix, retentionBudget = RecoveryRetentionBudget(workingLimitBytes = 0))
+        assertTrue(outcome.candidates.isEmpty())
+        assertTrue(outcome.searchDiagnostic.unsearched)
+        assertTrue(CombinationSearchStop.WORKING_MEMORY_LIMIT in outcome.failure!!.combinationSearch.stops)
+        assertFalse(outcome.searchDiagnostic.candidatesOmitted)
     }
 
     @Test fun version40AmbiguityInEveryBlockCanProduceResultsWithinA128MiBWorkingAllowance() {
@@ -192,20 +194,22 @@ class RecoveryRetentionTest {
 
     @Test fun version40AmbiguityInEveryBlockReportsInsufficientWorkingAllowance() {
         val engine = RecoveryEngine()
-        assertTrue(engine.recover(allBlocksAmbiguousVersion40(), maxKnownDataEccMismatches = 0,
-            retentionBudget = RecoveryRetentionBudget(workingLimitBytes = 1024 * 1024)).isEmpty())
-        assertTrue(engine.lastSearchDiagnostic!!.unsearched)
-        assertTrue(CombinationSearchStop.WORKING_MEMORY_LIMIT in engine.lastFailure!!.combinationSearch.stops)
+        val outcome = engine.recoverWithDiagnostics(allBlocksAmbiguousVersion40(), maxKnownDataEccMismatches = 0,
+            retentionBudget = RecoveryRetentionBudget(workingLimitBytes = 1024 * 1024))
+        assertTrue(outcome.candidates.isEmpty())
+        assertTrue(outcome.searchDiagnostic.unsearched)
+        assertTrue(CombinationSearchStop.WORKING_MEMORY_LIMIT in outcome.failure!!.combinationSearch.stops)
     }
 
     @Test fun version40ComfortableCorrectionsInEveryBlockDoNotReserveUnusedPartialSearchLists() {
         for (includeObservedErrors in listOf(false, true)) {
             val engine = RecoveryEngine()
-            val candidates = engine.recover(allBlocksAmbiguousVersion40(
+            val outcome = engine.recoverWithDiagnostics(allBlocksAmbiguousVersion40(
                 eraseEcc = false, includeObservedErrors = includeObservedErrors))
+            val candidates = outcome.candidates
             assertEquals("a".repeat(2953), candidates.first().text)
             assertTrue(candidates.all { CombinationSearchStop.WORKING_MEMORY_LIMIT !in it.combinationSearch.stops })
-            assertFalse(engine.lastSearchDiagnostic!!.unsearched)
+            assertFalse(outcome.searchDiagnostic.unsearched)
         }
     }
 

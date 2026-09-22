@@ -8,7 +8,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class InitialGridEstimatorTest {
-    private fun render(version: Int, quad: ImageQuad, finders: Boolean = true): LumaImage {
+    private fun render(version: Int, quad: ImageQuad, finders: Boolean = true, size: Int = 400): LumaImage {
         val n = 17 + 4 * version
         val h = Homography.fromCorrespondences(listOf(PointD(0.0, 0.0), PointD(n.toDouble(), 0.0),
             PointD(n.toDouble(), n.toDouble()), PointD(0.0, n.toDouble())), quad.asList()).inverse()
@@ -24,8 +24,8 @@ class InitialGridEstimatorTest {
             if (y == 6 && x in 8..n - 9) return x % 2 == 0
             return (x * 17 + y * 11 + x * y) % 7 < 3
         }
-        return LumaImage(400, 400, IntArray(400 * 400) { i ->
-            val p = h.map((i % 400).toDouble(), (i / 400).toDouble())
+        return LumaImage(size, size, IntArray(size * size) { i ->
+            val p = h.map((i % size).toDouble(), (i / size).toDouble())
             val x = floor(p.x).toInt(); val y = floor(p.y).toInt()
             if (x in 0 until n && y in 0 until n && black(x, y)) 12 else 245
         })
@@ -33,6 +33,29 @@ class InitialGridEstimatorTest {
 
     private val perspective = ImageQuad(PointD(55.0, 45.0), PointD(330.0, 65.0),
         PointD(305.0, 350.0), PointD(85.0, 305.0))
+
+    @Test fun duplicateBoundaryWithUnknownPolarityKeepsVerifiedRolesButConflictingPolaritiesDoNotMerge() {
+        val verified = assertNotNull(InitialGridEstimator.fromBoundary(render(3, perspective), perspective))
+        val unassigned = verified.copy(autoAssignedFinders = emptyMap(), confirmedPolarity = FinderPolarity.UNKNOWN)
+        assertEquals(verified, InitialGridEstimator.mergeNativeEstimates(listOf(unassigned, verified)))
+        assertEquals(null, InitialGridEstimator.mergeNativeEstimates(listOf(verified,
+            verified.copy(confirmedPolarity = FinderPolarity.INVERTED))))
+    }
+
+    @Test fun invertedBoundariesPreserveVersionCornersAndFinderRoles() {
+        for (version in listOf(1, 3, 7)) {
+            val image = render(version, perspective)
+            val inverse = LumaImage(image.width, image.height, IntArray(image.pixels.size) { 255 - image.pixels[it] })
+            val normal = assertNotNull(InitialGridEstimator.estimate(image, listOf(perspective)))
+            val inverted = assertNotNull(InitialGridEstimator.estimate(inverse, listOf(perspective)))
+            assertEquals(normal.version, inverted.version)
+            assertEquals(normal.moduleCenterQuad, inverted.moduleCenterQuad)
+            assertEquals(normal.autoAssignedFinders, inverted.autoAssignedFinders)
+            assertEquals(InitialGridSource.ZXING_CPP, inverted.source)
+            assertEquals(FinderPolarity.NORMAL, normal.confirmedPolarity)
+            assertEquals(FinderPolarity.INVERTED, inverted.confirmedPolarity)
+        }
+    }
 
     @Test fun estimatesUnknownDimensionAndConvertsPerspectiveBoundaryToCenters() {
         for (version in listOf(1, 3, 7)) {
@@ -62,7 +85,7 @@ class InitialGridEstimatorTest {
 
     @Test fun missingFindersRetainExistingPeriodicityRecovery() {
         val q = ImageQuad(PointD(28.0, 28.0), PointD(259.0, 28.0), PointD(259.0, 259.0), PointD(28.0, 259.0))
-        val image = render(4, q, finders = false)
+        val image = render(4, q, finders = false, size = 300)
         val old = assertNotNull(GridPeriodicityEstimator.estimate(image))
         for (candidates in listOf(emptyList(), listOf(q))) {
             val result = assertNotNull(InitialGridEstimator.estimate(image, candidates))
@@ -71,6 +94,63 @@ class InitialGridEstimatorTest {
             assertEquals(old.version, result.version)
             assertEquals(old.moduleCenterQuad, result.moduleCenterQuad)
         }
+    }
+
+    @Test fun missingFindersPreservePeriodicityCornersAfterInversion() {
+        val q = ImageQuad(PointD(28.0, 28.0), PointD(259.0, 28.0), PointD(259.0, 259.0), PointD(28.0, 259.0))
+        val image = render(4, q, finders = false, size = 300)
+        val inverse = LumaImage(image.width, image.height, IntArray(image.pixels.size) { 255 - image.pixels[it] })
+        for (boundaries in listOf(emptyList(), listOf(q))) {
+            val normal = assertNotNull(InitialGridEstimator.estimate(image, boundaries))
+            val inverted = assertNotNull(InitialGridEstimator.estimate(inverse, boundaries))
+            assertEquals(InitialGridSource.PERIODICITY, inverted.source)
+            assertEquals(normal.version, inverted.version)
+            for ((a, b) in normal.moduleCenterQuad.asList().zip(inverted.moduleCenterQuad.asList())) {
+                assertTrue(a.distanceTo(b) < .001)
+            }
+            assertTrue(inverted.autoAssignedFinders.isEmpty())
+            assertEquals(FinderPolarity.UNKNOWN, inverted.confirmedPolarity)
+        }
+    }
+
+    @Test fun oppositePolarityBackgroundGridPreventsAutomaticSelectionInEitherPolarity() {
+        val q = ImageQuad(PointD(28.0, 28.0), PointD(259.0, 28.0), PointD(259.0, 259.0), PointD(28.0, 259.0))
+        val image = render(4, q, finders = false)
+        val inverse = LumaImage(image.width, image.height, IntArray(image.pixels.size) { 255 - image.pixels[it] })
+        val normal = assertNotNull(GridPeriodicityEstimator.estimate(image))
+        val inverted = assertNotNull(GridPeriodicityEstimator.estimate(inverse))
+        assertEquals(4, normal.version)
+        assertEquals(10, inverted.version)
+        for (boundaries in listOf(emptyList(), listOf(q))) {
+            assertNull(InitialGridEstimator.estimate(image, boundaries))
+            assertNull(InitialGridEstimator.estimate(inverse, boundaries))
+        }
+    }
+
+    @Test fun fallbackPolarityAgreementAllowsSmallCornerDifferencesWithoutConfirmingPolarity() {
+        val q = ImageQuad(PointD(30.0, 30.0), PointD(310.0, 30.0), PointD(310.0, 310.0), PointD(30.0, 310.0))
+        val a = InitialGridEstimate(3, q, InitialGridSource.PERIODICITY)
+        val b = a.copy(moduleCenterQuad = shift(q, 1.0))
+        val result = assertNotNull(InitialGridEstimator.mergePolarityEstimates(a, b))
+        assertEquals(result, InitialGridEstimator.mergePolarityEstimates(b, a))
+        assertEquals(a, result)
+        assertEquals(FinderPolarity.UNKNOWN, result.confirmedPolarity)
+        assertNull(InitialGridEstimator.mergePolarityEstimates(null, null))
+    }
+
+    @Test fun conflictingFallbackVersionsCornersOrientationsAndVerifiedPolaritiesAreRejected() {
+        val q = ImageQuad(PointD(30.0, 30.0), PointD(310.0, 30.0), PointD(310.0, 310.0), PointD(30.0, 310.0))
+        val a = InitialGridEstimate(3, q, InitialGridSource.PERIODICITY)
+        val p = q.asList()
+        for (b in listOf(a.copy(version = 4), a.copy(moduleCenterQuad = shift(q, 3.0)),
+            a.copy(moduleCenterQuad = ImageQuad(p[1], p[2], p[3], p[0])))) {
+            assertNull(InitialGridEstimator.mergePolarityEstimates(a, b))
+            assertNull(InitialGridEstimator.mergePolarityEstimates(b, a))
+        }
+        val verified = a.copy(source = InitialGridSource.TWO_FINDER,
+            autoAssignedFinders = mapOf(FinderRole.TOP_RIGHT to PointD(280.0, 60.0),
+                FinderRole.BOTTOM_LEFT to PointD(60.0, 280.0)))
+        assertNull(InitialGridEstimator.mergePolarityEstimates(verified, verified))
     }
 
     private fun shift(q: ImageQuad, dx: Double): ImageQuad = q.asList().map { PointD(it.x + dx, it.y) }

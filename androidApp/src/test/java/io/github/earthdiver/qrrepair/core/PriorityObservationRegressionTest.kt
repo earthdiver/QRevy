@@ -84,9 +84,10 @@ class PriorityObservationRegressionTest {
     @Test fun nestedRecoveryInProgressCallbackKeepsOuterEvidenceAndDiagnostics() {
         val (matrix, _, _) = damagedMatrix()
         val baselineEngine = RecoveryEngine()
-        val expected = baselineEngine.recover(matrix, maxFormatCandidates = 1)
-        val expectedAttempts = baselineEngine.lastFormatAttempts
-        val expectedFailure = baselineEngine.lastFailure
+        val expectedOutcome = baselineEngine.recoverWithDiagnostics(matrix, maxFormatCandidates = 1)
+        val expected = expectedOutcome.candidates
+        val expectedAttempts = expectedOutcome.formatAttempts
+        val expectedFailure = expectedOutcome.failure
         val engine = RecoveryEngine()
         val encoded = Encoder.encode("NESTED", ErrorCorrectionLevel.L)
         val inner = QrMatrix(encoded.matrix.width).apply {
@@ -96,20 +97,21 @@ class PriorityObservationRegressionTest {
             }
         }
         var nested = false
-        val actual = engine.recover(matrix, maxFormatCandidates = 1) { _, _ ->
+        val actualOutcome = engine.recoverWithDiagnostics(matrix, maxFormatCandidates = 1) { _, _ ->
             if (!nested) {
                 nested = true
                 assertTrue(engine.recover(inner, maxFormatCandidates = 1).any { it.text == "NESTED" })
             }
         }
+        val actual = actualOutcome.candidates
         assertTrue(nested)
         assertEquals(expected.map { it.correctedInterleaved.toList() }, actual.map { it.correctedInterleaved.toList() })
         assertEquals(expected.map { it.rsBitDiagnostic }, actual.map { it.rsBitDiagnostic })
         assertEquals(expected.map { it.knownBitsCompared }, actual.map { it.knownBitsCompared })
         assertEquals(expected.map { it.repairInfo }, actual.map { it.repairInfo })
         assertEquals(expected.map { it.priorityAssignments }, actual.map { it.priorityAssignments })
-        assertEquals(expectedAttempts, engine.lastFormatAttempts)
-        assertEquals(expectedFailure, engine.lastFailure)
+        assertEquals(expectedAttempts, actualOutcome.formatAttempts)
+        assertEquals(expectedFailure, actualOutcome.failure)
     }
 
     private fun damagedMatrix(

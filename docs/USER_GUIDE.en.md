@@ -11,7 +11,7 @@ A recovered result is not proof that it matches the original content. Independen
 | Input | Best suited for | Important note |
 | --- | --- | --- |
 | Image file | An existing photo or scan | EXIF orientation is applied during import |
-| Camera | Capturing the symbol now | Confirm the crop after capture; the hand-off JPEG is deleted after import |
+| Camera | Capturing the symbol now | Confirm the crop after capture; the temporary capture and lossless hand-off image are deleted after use |
 | `0 / 1 / ? / *` matrix text | Module decisions prepared elsewhere | Only the permitted characters and valid QR dimensions are accepted |
 
 Prefer an image containing the complete QR and, when possible, its surrounding quiet zone, with module centers that are not completely blurred. Never attach a sensitive real QR image to a public issue.
@@ -24,7 +24,15 @@ Prefer an image containing the complete QR and, when possible, its surrounding q
 4. Review the black/unknown/white thresholds so gray damage remains `?` where appropriate.
 5. Enable **Treat detected color clusters as unknown (?)** only when colored damage should be treated as unknown. It starts disabled.
 
+**Image adjustment** in the crop screen switches the bottom tool row to one slider for **Contrast** or **Brightness**, keeping the image area unchanged at standard width and text size. Use the item menu for numeric entry, an individual reset, or **Reset all image adjustments**. **Invert** is available on the normal tool row. **Done** closes the slider; it does not start analysis. On narrow screens or with large text, an open slider uses two rows. Closing it returns that space to the image; the normal tool row stays directly above the analysis buttons.
+
+**Before** toggles the same image between adjusted and unadjusted tones without changing the crop or rotation. Analysis always uses the adjustment settings; while comparing, the action says **Analyze adjusted image**.
+
 **Set thresholds automatically** is enabled by default for a new image. While enabled, the app recalculates one global threshold pair when the grid changes. Moving either slider switches to manual thresholds; turning the option off directly keeps the current pair. Manual thresholds remain unchanged during corner adjustment and repair fine-tuning. Turn the option on again to recalculate them. A reopened session restores its saved mode and values. Unstable sampling can also produce `?`; fixed and tentative edits are not overwritten.
+
+The threshold sliders in pre-repair settings show which brightness values after image adjustment are read as `0` or `1`.
+
+When the app can determine whether black and white are reversed from the square patterns at the QR code’s corners (Finder patterns), it uses that result for the preview’s cell values and the threshold descriptions. If **Auto** is selected and this has not yet been determined, assigning a Finder position makes the app check the surrounding area using both normal and inverted interpretations.
 
 Automatic estimates are starting values, not proof of the correct symbol. Align corners with the centers of the outer modules and confirm that the selected version agrees with the number of cells along one side.
 
@@ -36,7 +44,7 @@ On new image import, a grid derived from ZXing-C++ can automatically set Finder 
 
 To remove an incorrect assignment, press **Clear** in the Finder section and tap the green Finder. Clear all assigned Finders to make logical orientation unassigned again. Corners and existing cell edits are retained. Saving and reopening the work does not reapply a cleared assignment.
 
-When roles were not assigned automatically, or orientation needs changing, manually assign logical roles to visible Finders. The app refines center and polarity near the selected point. A hidden Finder need not be assigned as though it were observed.
+When roles were not assigned automatically, or orientation needs changing, manually assign logical roles to visible Finders. The app looks for the square pattern near the selected point to refine its center and determine whether black and white are reversed. A hidden Finder need not be assigned as though it were observed.
 
 With exactly one assigned role and **Automatically fine-tune sampling position** enabled, small rotations around that logical corner are also evaluated. An incorrect role can prevent the correct recovery, so compare results without an assignment when its evidence is weak.
 

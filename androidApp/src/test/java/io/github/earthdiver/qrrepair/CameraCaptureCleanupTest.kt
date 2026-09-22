@@ -53,7 +53,7 @@ class CameraCaptureCleanupTest {
                     }
                 }
                 .filterIsInstance<TextView>()
-                .first { it.text == controller.get().getString(R.string.crop_help) }
+                .first { it.text == controller.get().getString(R.string.crop_editor_title) }
             assertTrue(cropStatus.isShown)
         } finally {
             controller.get().finish()

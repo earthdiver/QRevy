@@ -502,12 +502,15 @@ class PreprocessDialogLayoutTest {
 
         val dialog = ShadowDialog.getLatestDialog() as AlertDialog
         val decor = dialog.window!!.decorView
-        listOf("左90°", "-1°", "-0.1°", "+0.1°", "+1°", "右90°", "クロップして解析").forEach { label ->
+        listOf("回転", "白黒反転", "画像調整", "クロップして解析").forEach { label ->
             assertNotNull("画像ファイルの回転・クロップ画面に$label がありません", findText(decor, label))
         }
         val cropView = findViews(decor, CropOverlayView::class.java).single()
         assertTrue("画像ファイルのクロップ範囲編集Viewがありません", cropView.isShown)
-        findText(decor, "左90°")!!.performClick()
+        findExactText(decor, "回転")!!.performClick()
+        val rotationMenu = org.robolectric.shadows.ShadowPopupMenu.getLatestPopupMenu()
+        assertEquals(6, rotationMenu.menu.size())
+        org.robolectric.Shadows.shadowOf(rotationMenu).onMenuItemClickListener.onMenuItemClick(rotationMenu.menu.getItem(0))
         val rotated = CropOverlayView::class.java.getDeclaredField("bitmap").apply { isAccessible = true }.get(cropView) as Bitmap
         assertTrue("画像ファイルの90度回転がプレビューへ反映されません", rotated.width == 480 && rotated.height == 640)
 

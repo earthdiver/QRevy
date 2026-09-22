@@ -36,7 +36,28 @@ class CropOverlayView(context: Context) : View(context) {
         invalidate()
     }
 
+    var cropEnabled: Boolean = true
+        set(value) { field = value; invalidate() }
+
+    fun setAdjustment(value: io.github.earthdiver.qrrepair.core.ImageAdjustment) {
+        imagePaint.colorFilter = if (value.isIdentity) null else android.graphics.ColorMatrixColorFilter(floatArrayOf(
+            value.scale, 0f, 0f, 0f, value.offset,
+            0f, value.scale, 0f, 0f, value.offset,
+            0f, 0f, value.scale, 0f, value.offset,
+            0f, 0f, 0f, 1f, 0f,
+        ))
+        invalidate()
+    }
+
     fun cropRect(): RectF = RectF(crop)
+
+    fun restoreCrop(rect: RectF) {
+        val source = bitmap ?: return
+        require(rect.left >= 0 && rect.top >= 0 && rect.right <= source.width && rect.bottom <= source.height &&
+            rect.width() > 0 && rect.height() > 0)
+        crop.set(rect)
+        invalidate()
+    }
 
     override fun onDraw(canvas: Canvas) {
         val source = bitmap ?: return
@@ -45,6 +66,7 @@ class CropOverlayView(context: Context) : View(context) {
         val drawH = source.height * scale
         imageRect.set((width - drawW) / 2f, (height - drawH) / 2f, (width + drawW) / 2f, (height + drawH) / 2f)
         canvas.drawBitmap(source, null, imageRect, imagePaint)
+        if (!cropEnabled) return
         val r = bitmapToView(crop)
         canvas.drawRect(imageRect.left, imageRect.top, imageRect.right, r.top, shadePaint)
         canvas.drawRect(imageRect.left, r.bottom, imageRect.right, imageRect.bottom, shadePaint)
@@ -57,6 +79,7 @@ class CropOverlayView(context: Context) : View(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (!cropEnabled || !isEnabled) return false
         val source = bitmap ?: return false
         if (imageRect.isEmpty) return false
         val (x, y) = viewToBitmap(event.x, event.y)

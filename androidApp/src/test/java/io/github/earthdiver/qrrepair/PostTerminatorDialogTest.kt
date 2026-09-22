@@ -37,9 +37,10 @@ class PostTerminatorDialogTest {
         val data = PayloadBits().apply { byteSegment("A"); put(0, 4); byteSegment(secret) }.finish()
         val matrix = postTerminatorMatrix(data)
         val engine = RecoveryEngine()
-        assertTrue(engine.recover(matrix, formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.L, 0),
-            maxKnownDataEccMismatches = 0).isEmpty())
-        val failure = requireNotNull(engine.lastFailure)
+        val outcome = engine.recoverWithDiagnostics(matrix, formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.L, 0),
+            maxKnownDataEccMismatches = 0)
+        assertTrue(outcome.candidates.isEmpty())
+        val failure = requireNotNull(outcome.failure)
         for (style in AppStyle.entries) for (language in AppLanguage.entries) {
             val app = RuntimeEnvironment.getApplication()
             AppStylePreferences.save(app, style)
@@ -137,8 +138,9 @@ class PostTerminatorDialogTest {
             byteSegment("万事"); put(0, 4); byteSegment("塞翁が馬")
         }.finish(34), version = 2)
         val engine = RecoveryEngine()
-        assertTrue(engine.recover(matrix, formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.L, 0),
-            maxKnownDataEccMismatches = 0).isEmpty())
+        val outcome = engine.recoverWithDiagnostics(matrix, formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.L, 0),
+            maxKnownDataEccMismatches = 0)
+        assertTrue(outcome.candidates.isEmpty())
         val app = RuntimeEnvironment.getApplication()
         AppLanguageManager.save(app, AppLanguage.JAPANESE)
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
@@ -147,7 +149,7 @@ class PostTerminatorDialogTest {
             val activity = controller.get()
             field<RecoveryUiState>(activity, "recoveryState").showAttempt(0,
                 GridGeometry(2, FinderRole.TOP_LEFT, 10.0, 10.0, 2.0, 0.0), matrix,
-                emptyList(), requireNotNull(engine.lastFailure), -1)
+                emptyList(), requireNotNull(outcome.failure), -1)
             MainActivity::class.java.getDeclaredMethod("showCodewordHex").apply { isAccessible = true }.invoke(activity)
             val dialog = ShadowDialog.getLatestDialog() as AlertDialog
             val toggles = descendants(dialog.window!!.decorView).filterIsInstance<android.widget.ToggleButton>()

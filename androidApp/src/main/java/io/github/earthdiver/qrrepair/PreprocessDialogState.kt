@@ -49,6 +49,8 @@ internal class PreprocessDialogState(private val initial: PreprocessSettings) {
         provisionalWhiteMin = estimate?.whiteMin ?: 160
     }
 
+    var imageAdjustment = initial.imageAdjustment
+
     var rotationDegrees: Float = initial.rotationDegrees
         private set
     var perspectiveCorrectionQuad: ImageQuad? = initial.perspectiveCorrectionQuad
@@ -71,6 +73,7 @@ internal class PreprocessDialogState(private val initial: PreprocessSettings) {
     fun previewSettings(controls: PreprocessControlSnapshot): PreprocessSettings {
         val (blackMax, whiteMin) = normalizedThresholds(controls)
         return PreprocessSettings(
+            imageAdjustment = imageAdjustment,
             polarity = controls.polarity,
             automaticThresholds = controls.automaticThresholds,
             provisionalBlackMax = provisionalBlackMax,

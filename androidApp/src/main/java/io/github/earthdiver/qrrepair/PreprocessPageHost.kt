@@ -39,7 +39,10 @@ internal class PreprocessPageHost(
         if (onDataRequested != null) onDataRequested.invoke() else navigateTo(PreprocessPage.DATA)
     } else null
     private val modernPageButton = if (modernStyle) buttonFactory(context.getString(R.string.cell_edit_tap)) {
-        navigateTo(if (navigationState.currentPage == PreprocessPage.CELL_EDITOR) PreprocessPage.BASIC else PreprocessPage.CELL_EDITOR)
+        navigateTo(when (navigationState.currentPage) {
+            PreprocessPage.CELL_EDITOR, PreprocessPage.DETAILS -> PreprocessPage.BASIC
+            else -> PreprocessPage.CELL_EDITOR
+        })
     }.apply { PrecisionStyle.button(this, primary = true) } else null
     val view = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
 
@@ -83,7 +86,10 @@ internal class PreprocessPageHost(
         }
         basicNavigation.visibility = if (modernStyle || navigationState.showsBasicActions) View.VISIBLE else View.GONE
         detailNavigation.visibility = if (modernStyle || navigationState.showsBasicActions) View.GONE else View.VISIBLE
-        modernPageButton?.setText(if (page == PreprocessPage.CELL_EDITOR) R.string.repair_settings_navigation else R.string.cell_edit_tap)
+        modernPageButton?.setText(when (page) {
+            PreprocessPage.CELL_EDITOR, PreprocessPage.DETAILS -> R.string.repair_settings_navigation
+            else -> R.string.cell_edit_tap
+        })
         onPageShown(page)
     }
 
