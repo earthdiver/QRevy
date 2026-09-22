@@ -42,22 +42,22 @@ internal class PreRecoveryDetailedSettingsPage(
                 buttonFactory(context.getString(R.string.rotate_right_90)) { actions.rotateBy(90f) },
                 buttonFactory(context.getString(R.string.reset_rotation), actions.resetRotation),
             )))
-            addView(TextView(context).apply { setText(R.string.thresholding) })
+            addSettingsItem(TextView(context).apply { setText(R.string.thresholding) }, 6)
             addView(polarity)
-            addView(searchQuadNeighborhood)
+            addSettingsItem(searchQuadNeighborhood, 6)
             addView(TextView(context).apply {
                 setText(R.string.geometry_search_note)
                 textSize = 12f
             })
-            addView(trustKnownPayloadCount)
+            addSettingsItem(trustKnownPayloadCount, 6)
             addView(TextView(context).apply {
                 setText(R.string.payload_header_trust_note)
                 textSize = 12f
             })
-            addView(allowFixedCorrections)
-            addView(formatMismatchLimitControl)
-            addView(dataEccMismatchLimitControl)
-            addView(buttonFactory(context.getString(R.string.save_debug_input), actions.saveDiagnosticInput))
+            addSettingsItem(allowFixedCorrections, 6)
+            addSettingsItem(formatMismatchLimitControl, 6)
+            addSettingsItem(dataEccMismatchLimitControl, 6)
+            addSettingsItem(buttonFactory(context.getString(R.string.save_debug_input), actions.saveDiagnosticInput), 6)
         })
     }
 
