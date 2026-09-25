@@ -109,7 +109,7 @@ Ordinary structure propagation enumerates single-segment Numeric, Alphanumeric, 
 - `Payload structure constraint`: another safe payload-structure implication, or a structural implication without a more specific classification.
 
 Bits remain `?` where selected plans disagree. Ranking the plans is hypothesis selection and does not guarantee correct final values.
-When the single-segment forcing option is enabled, however, the trusted header selects one structure and known image-derived 0/1 values that conflict with its terminator, byte alignment, or padding are changed with a constraint reason.
+When the single-segment forcing option is enabled, however, the known or explicitly `*`-assigned header selects one structure and known image-derived 0/1 values that conflict with its terminator, byte alignment, or padding are changed with a constraint reason.
 
 ## Bounded bit search
 

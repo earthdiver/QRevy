@@ -50,7 +50,7 @@ data class PreprocessSettings(
     val lockVersion: Boolean = true,
     /** Explore the legacy 19-quad neighborhood; valid only when corners and version are fixed. */
     val searchQuadNeighborhood: Boolean = false,
-    /** Trust a fully observed mode/count header and force its terminator/alignment/pad suffix. */
+    /** Trust a known or explicitly priority-assigned mode/count header and force its terminator/alignment/pad suffix. */
     val trustKnownPayloadCount: Boolean = false,
     /** Restrict recovery by ECC level, data mask, or both; null leaves both automatic. */
     val formatConstraint: QrFormatConstraint? = null,

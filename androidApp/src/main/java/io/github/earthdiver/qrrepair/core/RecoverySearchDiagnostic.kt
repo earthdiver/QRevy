@@ -20,6 +20,9 @@ data class RecoverySearchDiagnostic(
     val candidatesOmitted: Boolean = false,
     /** Equivalent explanations omitted while the representative's complete provenance is retained. */
     val derivationsOmitted: Boolean = false,
+    val singleSegmentStatuses: Set<SingleSegmentStatus> = emptySet(),
+    /** At most two distinct mode/count bit patterns, to distinguish multiple hypotheses. */
+    val priorityHeaderHypotheses: Set<String> = emptySet(),
 ) {
     fun withUnsearched() = copy(unsearched = true)
 
@@ -33,6 +36,8 @@ data class RecoverySearchDiagnostic(
                     parts.all { it?.inputBlocker == blocker && it.coverageComplete }
                 },
                 candidateRejections = known.flatMapTo(linkedSetOf()) { it.candidateRejections },
+                singleSegmentStatuses = known.flatMapTo(linkedSetOf()) { it.singleSegmentStatuses },
+                priorityHeaderHypotheses = known.asSequence().flatMap { it.priorityHeaderHypotheses }.distinct().take(2).toSet(),
                 acceptedCandidate = known.any { it.acceptedCandidate },
                 unresolvedCalculations = known.any { it.unresolvedCalculations },
                 unsearched = known.any { it.unsearched },

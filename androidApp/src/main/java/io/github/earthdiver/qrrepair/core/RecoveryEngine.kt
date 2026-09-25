@@ -44,6 +44,7 @@ data class RecoveryCandidate(
     val minRsMargin: Int = 0,
     val repairInfo: List<CodewordRepairInfo> = emptyList(),
     val constraintForcedByUserSetting: Boolean = false,
+    val singleSegmentStatus: SingleSegmentStatus? = null,
     val rsBitDiagnostic: RsBitDiagnostic? = null,
     /** Explicit priority guesses, never original observations or permanent manual pins. */
     val priorityAssignments: Map<Coord, ModuleValue> = emptyMap(),
@@ -159,6 +160,8 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         val inputBlockers = mutableMapOf<Pair<ErrorCorrectionLevel, Int>, RecoveryInputBlocker?>()
         var earlyBlocker: RecoveryInputBlocker? = null
         val candidateRejections = linkedSetOf<RecoveryCandidateRejection>()
+        val singleSegmentStatuses = linkedSetOf<SingleSegmentStatus>()
+        val priorityHeaderHypotheses = linkedSetOf<String>()
         var acceptedCandidate = false
         var unresolvedCalculations = false
         var boundedSearch = false
@@ -172,6 +175,8 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
             return RecoverySearchDiagnostic(
                 inputBlocker = earlyBlocker ?: blockers.singleOrNull()?.takeIf { allInputsChecked },
                 candidateRejections = candidateRejections.toSet(),
+                singleSegmentStatuses = singleSegmentStatuses.toSet(),
+                priorityHeaderHypotheses = priorityHeaderHypotheses.toSet(),
                 acceptedCandidate = acceptedCandidate,
                 unresolvedCalculations = unresolvedCalculations,
                 unsearched = boundedSearch || combinationSearch.stops.isNotEmpty() ||
@@ -225,6 +230,9 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 }?.let { trusted -> formats = formats.filter { it.maskedCodeword == trusted.maskedCodeword } }
             }
         }
+        val assignedPriority = if (trustOnly && matrix.prioritySearchCoordinates().isNotEmpty()) matrix.copy().apply {
+            matrix.prioritySearchCoordinates().forEach { (x, y) -> set(x, y, ModuleValue.ZERO, 1f, ModuleSource.USER) }
+        } else matrix
         for (format in formats) {
             val extraction = runCatching { CodewordExtractor.extract(matrix, version, format.dataMask) }.getOrNull() ?: continue
             val de = runCatching { QrBlockInterleaver.deinterleave(extraction, version, format.ecLevel) }.getOrNull() ?: continue
@@ -234,7 +242,13 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
             val unknownMasks = de.blocks.flatMap { block ->
                 (0 until block.numDataCodewords).map { block.unknownMasks[it] }
             }.toIntArray()
-            if (if (trustOnly) trustablePayloadHeaderAvailable(dataBytes, unknownMasks, version)
+            val priorityMasks = if (assignedPriority !== matrix) {
+                val assigned = QrBlockInterleaver.deinterleave(
+                    CodewordExtractor.extract(assignedPriority, version, format.dataMask), version, format.ecLevel)
+                val assignedUnknown = assigned.blocks.flatMap { it.unknownMasks.take(it.numDataCodewords) }
+                IntArray(unknownMasks.size) { unknownMasks[it] and assignedUnknown[it].inv() }
+            } else IntArray(unknownMasks.size)
+            if (if (trustOnly) possibleSingleSegmentHeader(dataBytes, unknownMasks, priorityMasks, version)
                 else completePayloadHeaderAvailable(dataBytes, unknownMasks, version)) return true
         }
         return false
@@ -567,11 +581,24 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
             if (maxKnownDataEccMismatches == 0 && bitDiagnostic.dimension == null) {
                 run.inputBlockers[formatKey] = RecoveryInputBlocker.ZERO_MISMATCH
             }
+            val trackSingleSegment = allowPayloadConstraints && trustKnownPayloadCount
+            val headerData = if (trackSingleSegment) de.blocks.flatMap { it.codewords.take(it.numDataCodewords) }.toIntArray() else intArrayOf()
+            val headerUnknown = if (trackSingleSegment) de.blocks.flatMap { it.unknownMasks.take(it.numDataCodewords) }.toIntArray() else intArrayOf()
             val constraints = if (allowPayloadConstraints) {
                 PayloadConstraintSolver.apply(de, version, trustKnownCount = trustKnownPayloadCount, cancellation = run.cancellation)
             } else {
                 PayloadConstraintSolver.Result(0, 0, null, null)
             }
+            val singleSegmentStatus = if (trackSingleSegment) {
+                val originalDe = if (priorityAssignments.isNotEmpty())
+                    QrBlockInterleaver.deinterleave(evidenceExtraction, version, format.ecLevel) else null
+                val originalUnknown = originalDe?.blocks?.flatMap { it.unknownMasks.take(it.numDataCodewords) }?.toIntArray()
+                val hypothesis = originalUnknown?.let { priorityHeaderHypothesis(headerData, headerUnknown, it, version) }
+                if (hypothesis != null && run.priorityHeaderHypotheses.size < 2) run.priorityHeaderHypotheses += hypothesis
+                val originalHeaderKnown = hypothesis == null
+                singleSegmentStatus(headerData, headerUnknown, version, constraints, !originalHeaderKnown)
+                    .also { run.singleSegmentStatuses += it }
+            } else null
             val constraintKinds = HashMap<Pair<Int, Int>, PayloadConstraintSolver.ConstraintKind>()
             val constraintValues = HashMap<Pair<Int, Int>, Int>()
             for (filled in constraints.filled) {
@@ -838,6 +865,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                     constraintPlans = constraints.viablePlans,
                     constraintEvidenceBits = constraints.evidenceBits,
                     constraintForcedByUserSetting = constraints.forcedByTrustedHeader,
+                    singleSegmentStatus = singleSegmentStatus,
                     inferredMode = constraints.inferredMode,
                     inferredCount = constraints.inferredCount,
                     partialGuessedBits = partialBits,

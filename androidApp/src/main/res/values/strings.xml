@@ -81,7 +81,7 @@
     <string name="reset_rotation">Reset rotation</string>
     <string name="thresholding">Thresholding</string>
     <string name="geometry_search_note">When enabled, recovery tests 0.6-module position, size, and one-corner adjustments. If exactly one Finder role is assigned, it also tests clockwise and counterclockwise rotation around that corner.</string>
-    <string name="payload_header_trust_note">Use only for a single numeric, alphanumeric, byte, or Kanji segment. Selectable when the leading mode and character/byte count are fully observed. ECI, FNC1, structured append, and Hanzi are unsupported. Do not use with multiple segments.\nThe terminator, byte-alignment, and padding region is corrected from the observed mode and count. Image-derived 0/1 values are also changed. Manual 0/1 handling follows the setting below.</string>
+    <string name="payload_header_trust_note">Use only for a single numeric, alphanumeric, byte, or Kanji segment. Selectable when the leading mode and character/byte count are known or can be assigned by * trials. Unresolved ? bits in the header do not qualify. ECI, FNC1, structured append, and Hanzi are unsupported. Do not use with multiple segments.\nThe terminator, byte-alignment, and padding region is corrected from the observed or trial-assigned mode and count. Image-derived 0/1 values are also changed. Manual 0/1 handling follows the setting below.</string>
     <string name="format_mismatch_limit">Format-information error limit</string>
     <string name="format_mismatch_limit_unlimited">Unlimited</string>
     <string name="format_mismatch_limit_exact">0 bits (exact match)</string>

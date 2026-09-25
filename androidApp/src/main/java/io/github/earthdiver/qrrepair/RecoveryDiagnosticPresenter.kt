@@ -59,6 +59,9 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
                 append(it)
             }
             if (isEmpty()) append(ui("指定条件のもとで修復候補を探索しました。", "Recovery candidates were searched under the specified conditions."))
+            if (failure.displayConditions?.trustSingleSegment == true) {
+                append("\n\n").append((context.searchDiagnostic ?: failure.searchDiagnostic).singleSegmentProcessingText())
+            }
         }
         val verification = buildString {
             append(searchResultDescription(context))

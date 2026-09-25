@@ -185,7 +185,7 @@ internal class PreprocessDialogController(
             isChecked = preprocessSettings.searchQuadNeighborhood
         }
         val trustKnownPayloadCount = CheckBox(this).apply {
-            text = ui("種類・文字数／バイト数が正しく読み取れている場合に、単一セグメントを仮定して後続構造を強制する。", "When the mode and character/byte count are read correctly, assume a single segment and force the following structure.")
+            text = ui("種類・文字数／バイト数を読み取り、または * の試行で仮定できる場合に、単一セグメントを仮定して後続構造を強制する。", "When the mode and character/byte count are read or assigned by * trials, assume a single segment and force the following structure.")
             isChecked = preprocessSettings.trustKnownPayloadCount
         }
         val allowFixedCorrections = CheckBox(this).apply {
@@ -675,6 +675,11 @@ internal class PreprocessDialogController(
         fun refreshPreRecoveryMatrix(): Pair<GridGeometry, QrMatrix>? {
             val (g, matrix) = sampleImageMatrix() ?: return null
             cellEditState.applyTo(matrix, allowFixedCorrections.isChecked)
+            // Cell edits (including *, undo and redo) must update eligibility immediately.
+            val headerComplete = recoveryEngine.hasTrustablePayloadHeader(
+                matrix, formatConstraintDraft, effectiveFormatMismatchLimit(), manualEdits = cellEditState.fixedEdits)
+            trustKnownPayloadCount.isEnabled = headerComplete
+            if (!headerComplete) trustKnownPayloadCount.isChecked = false
             return g to matrix
         }
         fun setManualFocus(enabled: Boolean) {
@@ -692,14 +697,6 @@ internal class PreprocessDialogController(
         refreshClassificationMatrix = {
             refreshSourceControls()
             refreshPreRecoveryMatrix()?.let { (geometry, matrix) ->
-                val headerComplete = recoveryEngine.hasTrustablePayloadHeader(
-                    matrix,
-                    formatConstraintDraft,
-                    effectiveFormatMismatchLimit(),
-                    manualEdits = cellEditState.fixedEdits,
-                )
-                trustKnownPayloadCount.isEnabled = headerComplete
-                if (!headerComplete) trustKnownPayloadCount.isChecked = false
                 overlay.setCellEditPreview(geometry, matrix)
                 dedicatedEditor?.setDocument(working.bitmap, geometry, matrix, keepViewport = true)
             }

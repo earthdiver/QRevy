@@ -87,7 +87,9 @@ Changing orientation rechecks existing `*` positions, removes only ineligible ma
 | Automatically fine-tune sampling position | Corners are close but module-center sampling is slightly displaced | Increases work; never changes version or logical orientation |
 | Format-information error limit | ECC-level/mask candidates should closely match known format cells | Too strict a limit can remove every format before RS is attempted |
 | Data/ECC error limit | Candidates that overturn too much known evidence should be restricted | `0 bits` requires exact agreement with every comparable known bit |
-| Force following structure when mode and character/byte count are read correctly | One segment and its mode and character/byte count are known to be correct | Do not use with ECI, FNC1, Structured Append, or multiple segments |
+| Force following structure using the read or *-assigned mode and character/byte count | One segment whose header is known or can be hypothesized using * trials | Do not use with ECI, FNC1, Structured Append, or multiple segments |
+
+When single-segment forcing is ON, “3. Processing in this run” reports application outcomes even if recovery finds no candidate. When `*` trials hypothesize multiple mode/count headers, it summarizes whether any applicable trial was found, without listing individual failure reasons. Before header assignments are tried, an unresolved header is reported only as unresolved.
 
 Both error-limit controls offer **Default**, **Exact match (0 bits)**, **Strict**, **Relaxed**, **Manual**, and **Unlimited**, with the effective bit count shown. Apply confirms the selection; Cancel leaves it unchanged. Editing the number or using ± selects Manual.
 
