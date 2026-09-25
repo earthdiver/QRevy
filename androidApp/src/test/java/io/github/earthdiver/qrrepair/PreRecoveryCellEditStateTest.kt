@@ -7,6 +7,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PreRecoveryCellEditStateTest {
+    @Test fun loweringPriorityLimitPreservesMarksAcrossCopies() {
+        val coords = (0 until 14).map { Coord(it, 12) }
+        val state = PreRecoveryCellEditState(emptyMap(), emptySet(), priorityLimit = 14)
+        assertEquals(PriorityEditResult.CHANGED, state.setPrioritySearch(coords))
+        state.priorityLimit = 4
+        assertEquals(coords.toSet(), state.prioritySearch)
+        val copy = state.copyForEditing()
+        assertEquals(coords.toSet(), copy.prioritySearch)
+        assertEquals(4, copy.priorityLimit)
+        assertEquals(PriorityEditResult.LIMIT_EXCEEDED, copy.setPrioritySearch(listOf(Coord(14, 12))))
+    }
+
     private val a = Coord(2, 3)
     private val b = Coord(4, 5)
 

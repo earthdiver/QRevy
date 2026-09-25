@@ -293,10 +293,10 @@ Version information, other function modules, and remainder bits also stay outsid
 
 ### 4.2 Priority `*` search
 
-At most four `*` markers may be assigned, and only to data/ECC modules. In the cell editors, first assign the four corner positions and roles. Selecting fixed structures or remainder bits displays their type and coordinates. Orientation changes recheck eligibility and turn ineligible `*` marks back into `?`. Version changes clear all cell edits after confirmation.
+`*` markers may be assigned only to data/ECC modules. The default limit is four; advanced settings allows 4–14. The selected count determines the displayed assignment count (`2^count`, up to 16,384). Lowering the limit preserves existing marks; repair is blocked until the count fits the limit. In the cell editors, first assign the four corner positions and roles. Selecting fixed structures or remainder bits displays their type and coordinates. Orientation changes recheck eligibility and turn ineligible `*` marks back into `?`. Version changes clear all cell edits after confirmation.
 
 1. First treat every marked cell as an ordinary erasure.
-2. If that fails, try at most `2^4 = 16` assignments for marked bits only.
+2. If that fails, try `2^count` assignments (up to `2^14 = 16384`) for marked bits only.
 3. Within each assignment trial, also allow the ordinary bounded search for other `?` bits; retain only payload-valid candidates.
 4. If distinct solutions remain, retain multiple candidates and do not declare an assignment unique.
 5. If all assignments fail, continue to the ordinary bounded `?` search using the original observation without priority guesses.
@@ -305,7 +305,9 @@ In the current implementation, payload-constraint propagation remains enabled du
 
 Temporary priority 0/1 assignments constrain only their trial; they are not known input bits. Known-bit counts, mismatch counts, original erased-codeword counts, and Before codeword views use the observation before those assignments. RS erasure counts and correction margins still describe the trial. Explicitly enumerated coordinates and values are retained in candidate provenance and displayed separately from ordinary partial-bit search. Other cells in the same codeword do not inherit priority-assignment provenance. Success on the ordinary route is not recorded as explicit priority enumeration.
 
-The ordinary search inside each priority trial uses the per-block bounds in section 4.3. The maximum of 16 priority assignments is separate from the maximum of 4096 conventional enumeration trials.
+The ordinary search inside each priority trial uses the per-block bounds in section 4.3. The maximum of 16,384 priority assignments is separate from the maximum of 4096 conventional enumeration trials.
+
+The progress dialog displays completed priority assignments for the current grid and elapsed time. Interrupt retains already found candidates and marks the search as incomplete. Geometry/profile changes restart the per-grid count. An ordinary successful pass may bypass priority enumeration. Resource limits also leave the search incomplete; one retained candidate is not evidence of uniqueness. Candidate and memory retention limits do not increase with the marker limit. QRR stores the limit; older sessions default to four.
 
 ### 4.3 Ordinary partial-bit search
 
@@ -335,7 +337,7 @@ Both controls offer Default, Exact match (0 bits), Strict, Relaxed, Manual, and 
 
 The conditions share generated source symbols and are not independent real photographs. Results depend on damage distribution, seed, scoring weights, and finite search/retention budgets. There was no fresh holdout after selecting 10%, and limits cannot reject alternatives that require zero changes to known bits. Reusable evaluation and enumeration commands are in the [study tools](../tools/detector-study/README.md#synthetic-dataecc-error-limit-study); detailed run archives are local research artifacts, not required product documentation.
 
-QRR schema 21 persists each limit mode separately from its remembered manual value. Earlier schemas retain their numeric or unlimited settings. Exact match stays at zero across versions. Explicit ECC/mask selections and fixed-cell protection retain their separate rules.
+QRR schema 22 persists each limit mode separately from its remembered manual value. Earlier schemas retain their numeric or unlimited settings. Exact match stays at zero across versions. Explicit ECC/mask selections and fixed-cell protection retain their separate rules.
 
 ## 5. Candidate validation and ranking
 
@@ -385,7 +387,7 @@ The Android app derives separate result, current-trial, and solver allowances fr
 
 Candidate agreement and candidate-based check guidance compare distinct candidates decoded as text from the same input matrix as the selected candidate. A full QR matrix is generated for each compared candidate, so the comparison uses at most the top 16 to bound memory and computation. If the selected decoded candidate is outside that range, it replaces the last entry. The compared count and the retained decoded-candidate count for that input are explicit; sample agreement is not treated as agreement among all candidates. Candidates that pass QR structure validation without decoding as text can be selected and exported but are excluded from this comparison.
 
-History in QRR schema 21 stores the selected QR’s version, ECC level, mask, corrected codewords, and actual sampling polarity. Recalculation restores selection by QR identity rather than list position; if no candidate matches, selection remains empty. Actual polarity is recorded separately from the user’s automatic/normal/inverted search preference. Older histories without QR identity retain the saved-index restoration path. User-facing history count and size limits are described in the [User Guide](USER_GUIDE.en.md#7-save-resume-and-export).
+History in QRR schema 22 stores the selected QR’s version, ECC level, mask, corrected codewords, and actual sampling polarity. Recalculation restores selection by QR identity rather than list position; if no candidate matches, selection remains empty. Actual polarity is recorded separately from the user’s automatic/normal/inverted search preference. Older histories without QR identity retain the saved-index restoration path. User-facing history count and size limits are described in the [User Guide](USER_GUIDE.en.md#7-save-resume-and-export).
 
 When conflicts with fixed values are not allowed, data/ECC pin conflicts reject the candidate and retain conflicting coordinates, input values, and required candidate values. Otherwise equivalent generic payload failures do not overwrite actionable diagnostics. Temporary priority assignments are not manual input pins.
 

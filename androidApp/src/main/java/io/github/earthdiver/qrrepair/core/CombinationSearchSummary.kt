@@ -2,7 +2,7 @@ package io.github.earthdiver.qrrepair.core
 
 import io.github.earthdiver.qrrepair.localizedText
 
-enum class CombinationSearchStop { SUCCESS_WINDOW, COMBINATION_LIMIT, NODE_LIMIT, RETENTION_LIMIT, WORKING_MEMORY_LIMIT }
+enum class CombinationSearchStop { USER_INTERRUPTED, SUCCESS_WINDOW, COMBINATION_LIMIT, NODE_LIMIT, RETENTION_LIMIT, WORKING_MEMORY_LIMIT }
 
 /** Scope is only the QR block-combination passes actually reached, not every possible QR. */
 data class CombinationSearchSummary(
@@ -30,6 +30,7 @@ data class CombinationSearchSummary(
 
     fun stopReasonsText(): String = stops.map { reason ->
         when (reason) {
+            CombinationSearchStop.USER_INTERRUPTED -> localizedText("利用者が探索を中断しました。", "Search was interrupted by the user.")
             CombinationSearchStop.SUCCESS_WINDOW -> localizedText("候補が見つかった後、追加の探索を一定範囲で終了しました。", "Additional search ended after a bounded range following candidate discovery.")
             CombinationSearchStop.COMBINATION_LIMIT, CombinationSearchStop.NODE_LIMIT -> localizedText("計算量の上限に達したため、途中で探索を終了しました。", "Search stopped early at the computation limit.")
             CombinationSearchStop.RETENTION_LIMIT -> localizedText("候補を保持できる上限に達したため、途中で探索を終了しました。", "Search stopped early at the candidate storage limit.")

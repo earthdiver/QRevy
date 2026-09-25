@@ -90,8 +90,8 @@ fun searchResultText(candidateCount: Int, unsearched: Boolean): String {
             "指定条件を満たす修復候補が${candidateCount}件見つかりました。",
             "$candidateCount recovery candidates meeting the specified conditions were found.")
         unsearched -> localizedText(
-            "探索範囲の上限に達しました。調べた範囲では修復候補は見つかりませんでしたが、未探索の組合せが残っています。",
-            "The search limit was reached. No recovery candidate was found in the checked range; unchecked combinations remain.")
+            "調べた範囲では修復候補は見つかりませんでしたが、未探索の組合せが残っています。",
+            "No recovery candidate was found in the checked range; unchecked combinations remain.")
         else -> localizedText("指定条件を満たす修復候補は見つかりませんでした。",
             "No recovery candidate meeting the specified conditions was found.")
     }

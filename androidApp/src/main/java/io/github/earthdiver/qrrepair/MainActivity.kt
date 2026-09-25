@@ -195,6 +195,7 @@ class MainActivity : Activity() {
     private val executor = Executors.newSingleThreadExecutor()
     private val ioExecutor = Executors.newSingleThreadExecutor()
     private val workGeneration = AtomicInteger(0)
+    private var recoveryProgressDialog: RecoveryProgressDialog? = null
     private val sessionSaves = SessionSaveQueue(
         ioExecutor,
         save = { id, entries, cursor -> sessionStore.save(id, UiMode.SIMPLE, entries, cursor) },
@@ -317,6 +318,8 @@ class MainActivity : Activity() {
             ioExecutor.shutdownNow()
             Thread.currentThread().interrupt()
         }
+        recoveryProgressDialog?.close()
+        recoveryProgressDialog = null
         super.onDestroy()
     }
 
@@ -1658,7 +1661,20 @@ class MainActivity : Activity() {
         // A restored snapshot represents one concrete saved geometry even though auto recovery is not persisted.
         recoveryState.restoreAttempt(geometry, source, matrix,
             snapshot.samplingInverted?.let { SamplingProfile(preprocessSettings, it) })
+        if (maxOf(requestSettings.preRecoveryPrioritySearch.size, matrix.prioritySearchCoordinates().size) > requestSettings.prioritySearchLimit) {
+            historyRestoreToken = null
+            refreshMainResultSelector()
+            onRestored?.invoke()
+            AlertDialog.Builder(this).setMessage(ui(
+                "*の指定数が上限${requestSettings.prioritySearchLimit}を超えています。詳細設定で上限を戻すか、指定数を減らしてください。既存の指定は保持されています。",
+                "The number of * marks exceeds the limit of ${requestSettings.prioritySearchLimit}. Raise the limit in advanced settings or remove some marks. Existing marks are preserved."))
+                .setPositiveButton(R.string.close, null).show()
+            return
+        }
         statusText.text = ui("$prefix。復号候補を再計算中…", "$prefix. Recalculating decode candidates…")
+        recoveryProgressDialog?.close()
+        val progressDialog = RecoveryProgressDialog(this, matrix.prioritySearchCoordinates().size)
+        recoveryProgressDialog = progressDialog
         executor.execute {
             if (token != workGeneration.get()) return@execute
             val outcome = try { recoveryEngine.recoverWithDiagnostics(
@@ -1673,7 +1689,15 @@ class MainActivity : Activity() {
                     RecoveryRetentionBudget(it.retainedBytes, workingLimitBytes = it.workingBytes)
                 },
                 cancellation = RecoveryCancellation { token != workGeneration.get() || Thread.currentThread().isInterrupted },
+                stopRequested = { progressDialog.stopped.get() },
+                onPriorityProgress = progressDialog::priorityProgress,
             ) } catch (_: RecoveryCancelledException) { return@execute }
+            finally {
+                runOnUiThread {
+                    progressDialog.close()
+                    if (recoveryProgressDialog === progressDialog) recoveryProgressDialog = null
+                }
+            }
             val ranked = outcome.candidates
             val failure = outcome.failure
             runOnUiThread {
@@ -1693,6 +1717,8 @@ class MainActivity : Activity() {
                     ui("$prefix。保存時の選択候補は今回の探索範囲では再現できませんでした。",
                         "$prefix. The saved selection could not be reproduced within this search.") else prefix)
                 updateContentPreview()
+                if (progressDialog.stopped.get()) statusText.text = ui(
+                    "探索を中断しました（未探索あり）。", "Search interrupted; some combinations remain unchecked.") + "\n" + statusText.text
                 onRestored?.invoke()
             }
         }
@@ -2401,6 +2427,13 @@ class MainActivity : Activity() {
         immediateResultShown = false
         showWorkspace()
         val requestSettings = preprocessSettings.recoverySnapshot()
+        if (requestSettings.preRecoveryPrioritySearch.size > requestSettings.prioritySearchLimit) {
+            AlertDialog.Builder(this).setMessage(ui(
+                "*の指定数が上限${requestSettings.prioritySearchLimit}を超えています。詳細設定で上限を戻すか、指定数を減らしてください。既存の指定は保持されています。",
+                "The number of * marks exceeds the limit of ${requestSettings.prioritySearchLimit}. Raise the limit in advanced settings or remove some marks. Existing marks are preserved."))
+                .setPositiveButton(R.string.close, null).show()
+            return
+        }
         settingsFormatConflict(requestSettings)?.let {
             workGeneration.incrementAndGet()
             refreshMainResultSelector()
@@ -2424,6 +2457,9 @@ class MainActivity : Activity() {
         refreshMainResultSelector()
         val searchSummary = requestSettings.searchSummary()
         statusText.text = ui("$searchSummary。固定した幾何を評価中…", "$searchSummary. Evaluating the fixed geometry…")
+        recoveryProgressDialog?.close()
+        val progressDialog = RecoveryProgressDialog(this, requestSettings.preRecoveryPrioritySearch.size)
+        recoveryProgressDialog = progressDialog
         executor.execute {
             if (token != workGeneration.get()) return@execute
             try {
@@ -2433,20 +2469,24 @@ class MainActivity : Activity() {
                     retentionBudget = RecoveryRetentionBudget(memoryPolicy.retainedBytes,
                         workingLimitBytes = memoryPolicy.workingBytes),
                     cancellation = RecoveryCancellation { token != workGeneration.get() || Thread.currentThread().isInterrupted },
+                    stopRequested = { progressDialog.stopped.get() },
+                    onPriorityProgress = progressDialog::priorityProgress,
                     onProgress = { progress ->
-                        if (token == workGeneration.get() && (progress.done % 3 == 0 || progress.done == progress.total)) {
-                            runOnUiThread {
-                                if (token == workGeneration.get()) {
-                                    statusText.text = "${progress.profile.label}: ${progress.message}  (${progress.variantIndex + 1}/${progress.variantCount}, ${progress.done}/${progress.total})"
-                                }
-                            }
-                        }
+                        progressDialog.phase("${progress.profile.label}: ${progress.message} (${progress.done}/${progress.total})")
                     },
                 )
                 if (token != workGeneration.get()) return@execute
                 runOnUiThread {
                     if (token != workGeneration.get()) return@runOnUiThread
+                    progressDialog.close()
+                    if (recoveryProgressDialog === progressDialog) recoveryProgressDialog = null
                     recoveryState.autoResult = result
+                    if (result.interrupted && result.attempts.isEmpty()) {
+                        statusText.text = ui("探索を中断しました（未探索あり）。", "Search interrupted; some combinations remain unchecked.")
+                        guideText.text = ui("保持された候補はありません。復元不能を意味しません。", "No candidates were retained. This does not establish that recovery is impossible.")
+                        recordRecoveryAttempt(statusText.text.toString(), guideText.text.toString())
+                        return@runOnUiThread
+                    }
                     if (result.attempts.isEmpty() && result.attemptedGeometries > 0) {
                         statusText.text = ui("表示用の修復結果を保持できませんでした。", "Could not retain a recovery result for display.")
                         guideText.text = ui("メモリの保持上限に達しました。作業を保存してアプリを開き直し、再実行してください。",
@@ -2469,6 +2509,9 @@ class MainActivity : Activity() {
                     val best = result.bestAttempt ?: result.attempts.first()
                     recoveryState.attemptIndex = result.attempts.indexOf(best).coerceAtLeast(0)
                     showAttempt(recoveryState.attemptIndex)
+                    statusText.text = (if (result.interrupted) ui("探索を中断しました（未探索あり）。", "Search interrupted; combinations remain unchecked.")
+                        else if (searchHasUncheckedCombinations() || result.candidatesTruncated) ui("探索は途中終了です（未探索または保持上限あり）。", "Search is incomplete (unchecked combinations or retention limits).")
+                        else ui("指定条件での探索を完了しました。", "Search completed under the specified conditions.")) + "\n" + statusText.text
                     recordHistory(
                         HistoryEventKind.AUTO_RECOVERY,
                         ui("修復処理", "Repair"),
@@ -2483,6 +2526,11 @@ class MainActivity : Activity() {
                         statusText.text = ui("修復処理に失敗: ${error.message ?: error.javaClass.simpleName}", "Repair failed: ${error.message ?: error.javaClass.simpleName}")
                         guideText.text = ui("案内: QRの四隅から有効な読み取り範囲を作成できませんでした。四隅が交差または重複していないかご確認ください。", "Guide: A valid reading area could not be created from the QR corners. Please check that the corners do not cross or overlap.")
                     }
+                }
+            } finally {
+                runOnUiThread {
+                    progressDialog.close()
+                    if (recoveryProgressDialog === progressDialog) recoveryProgressDialog = null
                 }
             }
         }

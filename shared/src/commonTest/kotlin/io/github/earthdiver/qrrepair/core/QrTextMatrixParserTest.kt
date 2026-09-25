@@ -44,8 +44,14 @@ class QrTextMatrixParserTest {
         }
     }
 
-    @Test fun rejectsMoreThanFourPriorityCells() {
-        val first = "*****" + "0".repeat(16)
+    @Test fun acceptsFourteenPriorityCells() {
+        val first = "*".repeat(14) + "0".repeat(7)
+        val parsed = QrTextMatrixParser.parse((listOf(first) + List(20) { "0".repeat(21) }).joinToString("\n"))
+        assertEquals(14, parsed.matrix.prioritySearchCoordinates().size)
+    }
+
+    @Test fun rejectsMoreThanFourteenPriorityCells() {
+        val first = "*".repeat(15) + "0".repeat(6)
         assertFailsWith<IllegalArgumentException> {
             QrTextMatrixParser.parse((listOf(first) + List(20) { "0".repeat(21) }).joinToString("\n"))
         }

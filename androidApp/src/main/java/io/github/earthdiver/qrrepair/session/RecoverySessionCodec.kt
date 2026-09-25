@@ -12,7 +12,7 @@ import java.util.zip.GZIPOutputStream
 
 /** Android-independent, bounded and checksummed persistence codec for repair sessions. */
 object RecoverySessionCodec {
-    const val CURRENT_VERSION = 21
+    const val CURRENT_VERSION = 22
     const val MAX_HISTORY_ENTRIES = 40
     const val MAX_SESSION_PAYLOAD_BYTES = 16 * 1024 * 1024
     const val MAX_SESSION_FILE_BYTES = 20 * 1024 * 1024
@@ -254,8 +254,8 @@ object RecoverySessionCodec {
         val geometry = readGeometry(input)
         val source = readMatrix(input, schema)
         val working = readMatrix(input, schema)
-        requireCorrupt(source == null || validPrioritySearch(source), "invalid source priority-search modules")
-        requireCorrupt(working == null || validPrioritySearch(working), "invalid working priority-search modules")
+        requireCorrupt(source == null || validPrioritySearch(source, if (schema.hasPrioritySearchLimit) 14 else 4), "invalid source priority-search modules")
+        requireCorrupt(working == null || validPrioritySearch(working, if (schema.hasPrioritySearchLimit) 14 else 4), "invalid working priority-search modules")
         if (source != null && working != null) requireCorrupt(source.dimension == working.dimension, "matrix dimension mismatch")
         geometry?.let { g ->
             val d = source?.dimension ?: working?.dimension
@@ -303,9 +303,9 @@ object RecoverySessionCodec {
         }
     }
 
-    private fun validPrioritySearch(matrix: QrMatrix): Boolean {
+    private fun validPrioritySearch(matrix: QrMatrix, limit: Int = 14): Boolean {
         val priority = matrix.prioritySearchCoordinates()
-        if (priority.size > 4) return false
+        if (priority.size > limit) return false
         if (priority.isEmpty()) return true
         val version = (matrix.dimension - 17) / 4
         val codewordCoords = runCatching {
@@ -382,6 +382,7 @@ object RecoverySessionCodec {
         out.writeInt(settings.imageAdjustment.contrast)
         out.writeInt(settings.imageAdjustment.brightness)
         out.writeBoolean(settings.imageAdjustment.inverted)
+        out.writeInt(settings.prioritySearchLimit)
     }
 
     private fun readPreprocessSettings(input: DataInputStream, schema: SessionSchema): PreprocessSettings {
@@ -472,7 +473,7 @@ object RecoverySessionCodec {
         }
         val priority = if (schema.hasPrioritySearch) {
             val count = input.readInt()
-            requireCorrupt(count in 0..4, "invalid priority-search count")
+            requireCorrupt(count in 0..(if (schema.hasPrioritySearchLimit) 14 else 4), "invalid priority-search count")
             buildSet {
                 repeat(count) {
                     val coord = Coord(input.readInt(), input.readInt())
@@ -514,6 +515,7 @@ object RecoverySessionCodec {
         return try {
             PreprocessSettings(
                 imageAdjustment = adjustment,
+                prioritySearchLimit = if (schema.hasPrioritySearchLimit) input.readInt() else 4,
                 rotationDegrees = rotation,
                 polarity = polarity,
                 automaticThresholds = automaticThresholds,
@@ -559,7 +561,8 @@ object RecoverySessionCodec {
         val dimension = 17 + 4 * settings.version
         require(settings.preRecoveryEdits.size <= dimension * dimension)
         require(settings.preRecoverySoftEdits.all { it in settings.preRecoveryEdits })
-        require(settings.preRecoveryPrioritySearch.size <= 4)
+        require(settings.prioritySearchLimit in 4..14)
+        require(settings.preRecoveryPrioritySearch.size <= 14)
         require(settings.preRecoveryPrioritySearch.all { settings.preRecoveryEdits[it] == ModuleValue.ERASED })
         require(settings.formatMismatchLimit == null || settings.formatMismatchLimit in 0..30)
         require(settings.dataEccMismatchLimit == null || settings.dataEccMismatchLimit in 0..MAX_QR_DATA_ECC_BITS)

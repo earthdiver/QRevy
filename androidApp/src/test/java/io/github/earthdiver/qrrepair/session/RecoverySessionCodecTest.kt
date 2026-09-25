@@ -124,7 +124,7 @@ class RecoverySessionCodecTest {
     private fun legacyThresholdSettings(mode: Int): ByteArray {
         val current = RecoverySessionCodec.encode(settingsPayload(PreprocessSettings(blackMax = 72, whiteMin = 181)))
         val raw = java.util.zip.GZIPInputStream(java.io.ByteArrayInputStream(current, 48, current.size - 48)).readBytes().let {
-            it.copyOf(it.size - 28) // Remove thresholds, selection metadata, limit modes and image adjustments.
+            it.copyOf(it.size - 32) // Remove thresholds, selection metadata, limit modes, image adjustments and priority limit.
         }
         val bytes = java.io.ByteArrayInputStream(raw)
         val input = java.io.DataInputStream(bytes)

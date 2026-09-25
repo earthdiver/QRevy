@@ -71,6 +71,17 @@ class RecoveryDiagnosticPresentationTest {
         assertTrue(searchResultText(2, false).contains(if (ja) "2件" else "2 recovery candidates"))
     }
 
+    @Test fun uncheckedCombinationsDoNotImplyAResourceLimit() = inBothLanguages { ja ->
+        val text = searchResultText(0, true)
+        assertFalse(text.contains(if (ja) "上限に達しました" else "limit was reached"))
+        assertTrue(text.contains(if (ja) "未探索の組合せ" else "unchecked combinations"))
+        val interrupted = CombinationSearchSummary(stops = setOf(CombinationSearchStop.USER_INTERRUPTED)).stopReasonsText()
+        assertTrue(interrupted.contains(if (ja) "中断" else "interrupted"))
+        assertFalse(interrupted.contains(if (ja) "上限" else "limit"))
+        val limited = CombinationSearchSummary(stops = setOf(CombinationSearchStop.COMBINATION_LIMIT)).stopReasonsText()
+        assertTrue(limited.contains(if (ja) "上限" else "limit"))
+    }
+
     @Test fun successfulConventionalCalculationKeepsInconsistentBitAnalysisInDetails() = inBothLanguages { ja ->
         val section = initialDiagnosticSection(1, ErrorCorrectionLevel.M, 2, "",
             RsBitDiagnostic(16, 0, null, 0, emptyList()), null, 2, conventional())

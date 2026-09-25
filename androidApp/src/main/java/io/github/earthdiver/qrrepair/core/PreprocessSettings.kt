@@ -80,6 +80,7 @@ data class PreprocessSettings(
     val preRecoverySoftEdits: Set<Coord> = emptySet(),
     /** Erased data/ECC modules explicitly selected for the bounded priority 0/1 search. */
     val preRecoveryPrioritySearch: Set<Coord> = emptySet(),
+    val prioritySearchLimit: Int = 4,
 ) {
     val effectiveFormatMismatchLimit: Int?
         get() = ErrorLimitPolicy.format(formatMismatchLimitMode, formatMismatchLimit)
@@ -111,7 +112,8 @@ data class PreprocessSettings(
         require(unknownColorClusters.size <= 4)
         require(version in 1..40)
         require(preRecoverySoftEdits.all { it in preRecoveryEdits })
-        require(preRecoveryPrioritySearch.size <= 4)
+        require(prioritySearchLimit in 4..14)
+        require(preRecoveryPrioritySearch.size <= 14)
         require(preRecoveryPrioritySearch.all { preRecoveryEdits[it] == ModuleValue.ERASED })
         require(formatMismatchLimit == null || formatMismatchLimit in 0..30)
         require(dataEccMismatchLimit == null || dataEccMismatchLimit in 0..MAX_QR_DATA_ECC_BITS)

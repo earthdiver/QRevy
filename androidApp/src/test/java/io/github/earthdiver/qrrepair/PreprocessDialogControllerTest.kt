@@ -73,6 +73,59 @@ class PreprocessDialogControllerTest {
         }
     }
 
+    @Test fun advancedPriorityLimitSavesAndLoweringItPreservesExistingMarks() {
+        val coords = CodewordExtractor.extract(QrMatrix(21), 1, 0).codewords.take(14).map { it.coordinates.first() }.toSet()
+        val settings = PreprocessSettings(prioritySearchLimit = 14,
+            preRecoveryEdits = coords.associateWith { ModuleValue.ERASED }, preRecoveryPrioritySearch = coords,
+            manualQuad = ImageQuad(PointD(20.0, 20.0), PointD(220.0, 20.0), PointD(220.0, 220.0), PointD(20.0, 220.0)))
+        withDialog(settings) { dialog, host, _, _ ->
+            click(dialog, "詳細設定")
+            shadowOf(Looper.getMainLooper()).idle()
+            val limit = views(dialog.window!!.decorView).filterIsInstance<TextView>()
+                .single { it.text.startsWith(" * （優先探索）の上限:") }
+            assertTrue(limit.text.contains("16384"))
+            limit.performClick()
+            val choices = ShadowDialog.getLatestDialog() as AlertDialog
+            assertEquals(11, choices.listView.adapter.count)
+            assertEquals("14", choices.listView.adapter.getItem(10))
+            choices.listView.performItemClick(null, 0, 0)
+            val notice = ShadowDialog.getLatestDialog() as AlertDialog
+            notice.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+            click(dialog, "保存")
+            assertEquals(4, host.saves.last().settings.prioritySearchLimit)
+            assertEquals(coords, host.saves.last().settings.preRecoveryPrioritySearch)
+        }
+    }
+
+    @Test fun priorityButtonHighlightsMarkerFitsItsTextAndPrecedesSamplingAdjustment() {
+        for (style in AppStyle.entries) withDialog(style = style) { dialog, _, _, _ ->
+            click(dialog, "詳細設定")
+            shadowOf(Looper.getMainLooper()).idle()
+            val button = views(dialog.window!!.decorView).filterIsInstance<android.widget.Button>()
+                .single { it.text.startsWith(" * （優先探索）の上限:") }
+            val text = button.text as android.text.Spanned
+            val highlight = text.getSpans(0, text.length, android.text.style.BackgroundColorSpan::class.java).single()
+            assertEquals(" * ", text.subSequence(text.getSpanStart(highlight), text.getSpanEnd(highlight)).toString())
+            val parent = button.parent as ViewGroup
+            val next = parent.getChildAt(parent.indexOfChild(button) + 1)
+            assertTrue(next is CheckBox)
+            assertEquals("サンプリング位置を自動微調整する", (next as CheckBox).text.toString())
+            for (width in listOf(240, 320)) {
+                button.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                button.layout(0, 0, button.measuredWidth, button.measuredHeight)
+                val layout = button.layout
+                assertTrue("$style/$width: text must fit inside vertical padding",
+                    layout.height <= button.height - button.compoundPaddingTop - button.compoundPaddingBottom)
+                assertEquals(text.length, layout.getLineEnd(layout.lineCount - 1))
+                for (line in 0 until layout.lineCount) {
+                    assertEquals(0, layout.getEllipsisCount(line))
+                    assertTrue(layout.getLineWidth(line) <= layout.width)
+                }
+            }
+        }
+    }
+
     @Test fun importedAdjustmentsArePreservedWithoutOfferingAnotherImageEditor() {
         val edits = mapOf(Coord(12, 12) to ModuleValue.ONE)
         val quad = ImageQuad(PointD(20.0, 20.0), PointD(220.0, 20.0), PointD(220.0, 220.0), PointD(20.0, 220.0))

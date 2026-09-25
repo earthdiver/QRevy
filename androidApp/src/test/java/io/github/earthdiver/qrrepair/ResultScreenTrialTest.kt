@@ -216,7 +216,8 @@ class ResultScreenTrialTest {
                 reason = RecoveryFailureReason.QR_COMBINATION_SEARCH_LIMIT,
                 searchDiagnostic = RecoverySearchDiagnostic(unsearched = true))
             refresh(activity)
-            assertTrue(field<TextView>(activity, "contentPreviewText").text.contains("上限"))
+            assertTrue(field<TextView>(activity, "contentPreviewText").text.contains("未探索の組合せ"))
+            assertFalse(field<TextView>(activity, "contentPreviewText").text.contains("上限に達しました"))
             assertTrue(field<TextView>(activity, "guideText").text.startsWith("次に試すこと"))
             val next = field<View>(activity, "resultNextAction")
             assertEquals(View.VISIBLE, next.visibility)

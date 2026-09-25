@@ -19,4 +19,5 @@ internal class SessionSchema(val version: Int) {
     val hasSelectionIdentity: Boolean get() = version >= 19
     val hasErrorLimitModes: Boolean get() = version >= 20
     val hasImageAdjustment: Boolean get() = version >= 21
+    val hasPrioritySearchLimit: Boolean get() = version >= 22
 }

@@ -43,6 +43,7 @@ data class AutoRecoveryResult(
     }.sortedWith(recoveryResultComparator),
     val attemptedGeometries: Int = attempts.size,
     val testedHypotheses: List<GeometryHypothesis> = attempts.map { it.hypothesis },
+    val interrupted: Boolean = false,
 ) {
     val candidatesTruncated: Boolean get() = searchDiagnostic?.candidatesOmitted == true
     /** A later geometry/format may exhaust the shared request budget after this result was built. */
@@ -125,6 +126,8 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
         retentionBudget: RecoveryRetentionBudget = RecoveryRetentionBudget(),
         cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
         resultAccumulator: RecoveryResultAccumulator = RecoveryResultAccumulator(retentionBudget),
+        stopRequested: () -> Boolean = { false },
+        onPriorityProgress: ((done: Int, total: Int) -> Unit)? = null,
         onProgress: ((done: Int, total: Int, message: String) -> Unit)? = null,
     ): AutoRecoveryResult {
         cancellation.check()
@@ -160,8 +163,13 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
         val geometryLimit = seeds.size > maxGeometryAttempts || baseHypotheses.size + refinedHypotheses.size > maxGeometryAttempts
         val finders = settings.manualFinders.entries.take(maxFinders).map { (_, point) -> confirmedFinderCandidate(settings, point) }
         var completed = 0
-        hypotheses.forEachIndexed { index, hypothesis ->
+        for ((index, hypothesis) in hypotheses.withIndex()) {
+            if (stopRequested()) {
+                resultAccumulator.markIncomplete(hasUnsearched = true)
+                break
+            }
             cancellation.check()
+            onPriorityProgress?.invoke(0, if (settings.preRecoveryPrioritySearch.isEmpty()) 0 else 1 shl settings.preRecoveryPrioritySearch.size)
             onProgress?.invoke(index, hypotheses.size, localizedText(
                 "指定QR格子 / V${hypothesis.geometry.version} を試行中",
                 "Trying selected QR grid / V${hypothesis.geometry.version}",
@@ -187,7 +195,9 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
                     displayLockManualBits = settings.lockManualBits,
                     retentionBudget = retentionBudget.fresh(),
                     cancellation = cancellation,
+                    stopRequested = stopRequested,
                 ) { done, total ->
+                    onPriorityProgress?.invoke(done, total)
                     onProgress?.invoke(index, hypotheses.size, localizedText(
                         "*優先セルを試行中… $done/$total",
                         "Trying priority * cells… $done/$total",

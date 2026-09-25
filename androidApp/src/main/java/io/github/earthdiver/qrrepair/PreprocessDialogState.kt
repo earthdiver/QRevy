@@ -28,6 +28,7 @@ internal data class PreprocessControlSnapshot(
     val formatMismatchLimitMode: ErrorLimitMode = ErrorLimitMode.MANUAL,
     val dataEccMismatchLimitMode: ErrorLimitMode = ErrorLimitMode.MANUAL,
     val lockManualBits: Boolean = false,
+    val prioritySearchLimit: Int = 4,
 )
 
 internal data class PreprocessGeometrySnapshot(
@@ -107,6 +108,7 @@ internal class PreprocessDialogState(private val initial: PreprocessSettings) {
             formatMismatchLimitMode = controls.formatMismatchLimitMode,
             dataEccMismatchLimitMode = controls.dataEccMismatchLimitMode,
             lockManualBits = controls.lockManualBits,
+            prioritySearchLimit = controls.prioritySearchLimit,
             perspectiveCorrectionQuad = perspectiveCorrectionQuad,
             manualQuad = geometry.quad,
             manualFinders = geometry.finders,

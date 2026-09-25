@@ -790,7 +790,12 @@ class PreprocessDialogLayoutTest {
     }
 
     @Test
-    fun failedMainResultShowsSharedActionAndCandidateSpecificReasonOnlyOnce() {
+    fun failedMainResultShowsSharedActionAndCandidateSpecificReasonOnlyOnce() = checkIncompleteResult(false)
+
+    @Test
+    fun interruptedResultDoesNotClaimSearchLimitInStatusPreviewOrDiagnostics() = checkIncompleteResult(true)
+
+    private fun checkIncompleteResult(interrupted: Boolean) {
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
         shadowOf(Looper.getMainLooper()).idle()
         val matrix = QrMatrix(21)
@@ -814,7 +819,10 @@ class PreprocessDialogLayoutTest {
                 originalErasedCodewords = 42,
                 erasedCodewords = 42,
                 rsShortfallBits = 81,
-                searchDiagnostic = io.github.earthdiver.qrrepair.core.RecoverySearchDiagnostic(unsearched = true),
+                searchDiagnostic = io.github.earthdiver.qrrepair.core.RecoverySearchDiagnostic(unsearched = true, coverageComplete = !interrupted),
+                combinationSearch = io.github.earthdiver.qrrepair.core.CombinationSearchSummary(stops = setOf(
+                    if (interrupted) io.github.earthdiver.qrrepair.core.CombinationSearchStop.USER_INTERRUPTED
+                    else io.github.earthdiver.qrrepair.core.CombinationSearchStop.COMBINATION_LIMIT)),
             ),
             -1,
         )
@@ -838,7 +846,10 @@ class PreprocessDialogLayoutTest {
         assertTrue(!guide.contains("絞り込めるセル"))
         assertTrue(!guide.contains("探索上限"))
         assertTrue(diagnostics.contains("形式情報領域: 比較対象の読み取り済み25bitとの不一致 0bit"))
-        assertTrue(candidateDetails.contains("探索範囲の上限"))
+        for (message in listOf(status, candidateDetails, diagnostics)) {
+            assertTrue(message.contains("未探索の組合せが残っています"))
+            assertFalse(message.contains("探索範囲の上限に達しました"))
+        }
         assertTrue(diagnostics.contains("追加確認の目安: 81bit"))
         assertTrue(diagnostics.contains("最初に失敗したRSブロック: 1 / 全1ブロック"))
         assertTrue(diagnostics.contains("最初に失敗したRSブロック: 1 / 全1ブロック\n失敗ブロックのECCシンボル数: 20\n失敗ブロックの未知bitを含むコード語数（探索前）: 42"))

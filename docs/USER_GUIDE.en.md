@@ -55,7 +55,7 @@ With exactly one assigned role and **Automatically fine-tune sampling position**
 | `0` | Logical white/zero | Mark a cell that can be read as white |
 | `1` | Logical black/one | Mark a cell that can be read as black |
 | `?` | Unknown | Treat a weak observation as an erasure |
-| `*` | Keep value `?`, but prioritize bounded 0/1 search | Mark at most four cells to try first if ordinary erasure handling fails |
+| `*` | Keep value `?`, but prioritize bounded 0/1 search | Mark cells to try first if ordinary erasure handling fails; default limit 4, configurable to 14 |
 
 Choose a source for the selected cells:
 
@@ -72,6 +72,8 @@ In the enlarged cell editor, dragging or pinching temporarily hides cell symbols
 Cyan solid squares mark fixed cells; dashed squares mark tentative cells. Yellow circles mark selections. **Highlight edited cells** includes both kinds and changes only the overlay. The menu also applies to multiple selected cells. `?` is image-derived or tentative; `*` is always tentative. Neither can be Fixed.
 
 **Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)** in advanced settings defaults to OFF. Turning it ON is an explicit exception to the normal Fixed behavior: the cells retain their Fixed provenance, input values, and solid outlines, but recovery may correct them as if they were tentative. Turning it OFF protects those values again. Either way, format and data/ECC error limits, explicit ECC/mask/version selections, and consistency checks between fixed cells and explicit selections remain enforced.
+
+Advanced settings lets you choose a **priority search cell limit of 4–14** (default 4). The actual selected count determines the displayed combinations: 4 cells give 16, and 14 give 16,384. Each additional cell doubles the assignments; geometry search adds further work. Candidate retention limits remain independent of this setting. Lowering the limit preserves existing marks; raise it or remove marks before repairing if the count is over the limit. The progress popup shows completed/total priority assignments for the current grid and elapsed time, with an **Interrupt** button. Interrupted searches retain candidates found so far and indicate unchecked combinations. Resource limits also prevent an exhaustive-search claim; one retained candidate does not establish uniqueness.
 
 Assign the four corner positions and roles before marking `*`. Fixed structures such as finder/alignment patterns and format information, and remainder bits, cannot be marked. Selecting an ineligible cell displays its type and coordinates. If a selection includes any ineligible cell, no cells in that selection are marked.
 

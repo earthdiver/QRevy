@@ -3,6 +3,9 @@ package io.github.earthdiver.qrrepair
 import android.app.Activity
 import android.app.AlertDialog
 import android.graphics.Bitmap
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.BackgroundColorSpan
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -114,9 +117,11 @@ internal class PreprocessDialogController(
         val cellEditState = (restoredDraft?.cellEdits ?: savedCellEditState)?.copyForEditing { validateCellEdits(it) } ?: PreRecoveryCellEditState(
             preprocessSettings.preRecoveryEdits,
             preprocessSettings.preRecoveryPrioritySearch,
+            priorityLimit = preprocessSettings.prioritySearchLimit,
             validateEdits = { validateCellEdits(it) },
             initialSoftEdits = preprocessSettings.effectiveSoftEdits,
         )
+        cellEditState.priorityLimit = preprocessSettings.prioritySearchLimit
         var updatePageLayout: (PreprocessPage) -> Unit = {}
         var manualFocus = false
         var workflowNavigation: ModernWorkflowNavigation? = null
@@ -131,7 +136,9 @@ internal class PreprocessDialogController(
         var preEditSourceControl: CellSourceControl? = null
         var dedicatedSourceControl: CellSourceControl? = null
         var refreshSourceControls: () -> Unit = {}
+        var refreshPriorityControl: () -> Unit = {}
         fun updatePreEditCountStatus() {
+            refreshPriorityControl()
             preEditCountStatus?.text = cellEditState.compactCountLabel
             dedicatedEditCountStatus?.text = cellEditState.countLabel
             refreshSourceControls()
@@ -253,6 +260,7 @@ internal class PreprocessDialogController(
             formatMismatchLimitMode = formatMismatchLimitModeDraft,
             dataEccMismatchLimitMode = dataEccMismatchLimitModeDraft,
             lockManualBits = !allowFixedCorrections.isChecked,
+            prioritySearchLimit = cellEditState.priorityLimit,
         )
         fun previewInverted(): Boolean = when (overlay.confirmedFinderPolarity()) {
             io.github.earthdiver.qrrepair.core.FinderPolarity.INVERTED -> true
@@ -577,6 +585,40 @@ internal class PreprocessDialogController(
             })
         }
         refreshDataEccMismatchLimitControl()
+        val priorityLimitButton = button("", {}).apply {
+            setSingleLine(false)
+            maxLines = Int.MAX_VALUE
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+        }
+        fun refreshPriorityLimit() {
+            val count = cellEditState.prioritySearch.size
+            priorityLimitButton.text = SpannableString(ui(
+                " * （優先探索）の上限: ${cellEditState.priorityLimit}個\n現在${count}個・${1 shl count}通り",
+                " *  (priority search) limit: ${cellEditState.priorityLimit} cells\n$count selected · ${1 shl count} combinations",
+            )).apply {
+                setSpan(BackgroundColorSpan(if (modernStyle) PrecisionStyle.OUTLINE else 0xFFE0E8E3.toInt()),
+                    0, 3, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+        }
+        refreshPriorityLimit()
+        refreshPriorityControl = ::refreshPriorityLimit
+        priorityLimitButton.setOnClickListener {
+            val choices = (4..14).toList()
+            AlertDialog.Builder(this).setTitle(ui("優先探索のセル数上限", "Priority search cell limit"))
+                .setSingleChoiceItems(choices.map { "$it" }.toTypedArray(), cellEditState.priorityLimit - 4) { dialog, which ->
+                    cellEditState.priorityLimit = choices[which]
+                    refreshPriorityLimit()
+                    updatePreEditCountStatus()
+                    noteDraftChange("priority-limit", ui("優先探索の上限を変更", "Changed priority search limit"), "${choices[which]}")
+                    dialog.dismiss()
+                    if (cellEditState.prioritySearch.size > choices[which]) {
+                        AlertDialog.Builder(this).setMessage(ui(
+                            "既存の*は保持しました。修復前に上限を戻すか、*の指定数を減らしてください。",
+                            "Existing * marks were preserved. Raise the limit or remove some marks before repair."))
+                            .setPositiveButton(R.string.close, null).show()
+                    }
+                }.setNegativeButton(R.string.close, null).show()
+        }
         val detailsPage = PreRecoveryDetailedSettingsPage(
             this,
             buttonFactory = ::button,
@@ -587,6 +629,7 @@ internal class PreprocessDialogController(
             allowFixedCorrections = allowFixedCorrections,
             formatMismatchLimitControl = formatMismatchLimitControl,
             dataEccMismatchLimitControl = dataEccMismatchLimitControl,
+            prioritySearchControl = priorityLimitButton,
             actions = DetailedSettingsPageActions(
                 rotateBy = ::rotateBy,
                 resetRotation = ::resetRotation,
@@ -759,7 +802,7 @@ internal class PreprocessDialogController(
             }
             when (cellEditState.setPrioritySearch(distinct)) {
                 PriorityEditResult.LIMIT_EXCEEDED -> {
-                    Toast.makeText(this, ui("*は最大4セルです。", "Up to four cells can be marked *."), Toast.LENGTH_SHORT).show(); return
+                    Toast.makeText(this, ui("*は最大${cellEditState.priorityLimit}セルです。詳細設定で変更できます。", "Up to ${cellEditState.priorityLimit} cells can be marked *. Change this in advanced settings."), Toast.LENGTH_SHORT).show(); return
                 }
                 PriorityEditResult.UNCHANGED -> return
                 PriorityEditResult.CHANGED -> Unit

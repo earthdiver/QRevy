@@ -104,7 +104,7 @@ class RecoverySessionSizeTest {
             it.copy(snapshot = it.snapshot.copy(selectedQr = null, samplingInverted = null))
         }) }
         val encoded = RecoverySessionCodec.encode(original)
-        val legacy = rewrite(encoded, 18) { it.copyOf(it.size - 19) }
+        val legacy = rewrite(encoded, 18) { it.copyOf(it.size - 23) }
         val restored = RecoverySessionCodec.decode(legacy).historyEntries.single().snapshot
         assertNull(restored.selectedQr)
         assertNull(restored.samplingInverted)

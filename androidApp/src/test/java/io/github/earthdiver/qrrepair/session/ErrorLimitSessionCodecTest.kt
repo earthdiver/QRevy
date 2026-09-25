@@ -41,7 +41,7 @@ class ErrorLimitSessionCodecTest {
             val encoded = RecoverySessionCodec.encode(payload(settings))
             // Drop mode and tone fields; retain the two absent-selection flags for schema 19.
             val legacy = rewrite(encoded, 19) { raw ->
-                raw.copyOfRange(0, raw.size - 19) + raw.copyOfRange(raw.size - 2, raw.size)
+                raw.copyOfRange(0, raw.size - 23) + raw.copyOfRange(raw.size - 2, raw.size)
             }
             val decoded = RecoverySessionCodec.decode(legacy).historyEntries.single().snapshot.preprocessSettings!!
             assertEquals(settings, decoded)
@@ -62,7 +62,7 @@ class ErrorLimitSessionCodecTest {
 
     @Test fun checksummedInvalidModeOrdinalsAreRejectedForEitherLimit() {
         val encoded = RecoverySessionCodec.encode(payload(PreprocessSettings()))
-        for (offsetFromEnd in listOf(19, 15)) {
+        for (offsetFromEnd in listOf(23, 19)) {
             for (invalid in listOf(-1, ErrorLimitMode.entries.size, Int.MAX_VALUE)) {
                 val altered = rewrite(encoded, RecoverySessionCodec.CURRENT_VERSION) { raw ->
                     ByteBuffer.wrap(raw).putInt(raw.size - offsetFromEnd, invalid)
@@ -78,7 +78,7 @@ class ErrorLimitSessionCodecTest {
     @Test fun currentSchemaRejectsMissingModeFieldsEvenWithAValidChecksum() {
         val encoded = RecoverySessionCodec.encode(payload(PreprocessSettings()))
         val missing = rewrite(encoded, RecoverySessionCodec.CURRENT_VERSION) { raw ->
-            raw.copyOfRange(0, raw.size - 19) + raw.copyOfRange(raw.size - 11, raw.size)
+            raw.copyOfRange(0, raw.size - 23) + raw.copyOfRange(raw.size - 15, raw.size)
         }
         assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) {
             RecoverySessionCodec.decode(missing)

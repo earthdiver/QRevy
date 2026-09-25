@@ -162,6 +162,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         var acceptedCandidate = false
         var unresolvedCalculations = false
         var boundedSearch = false
+        var interrupted = false
         var candidateCalculations = 0
         val candidates = BoundedRecoveryCandidates(retentionBudget)
 
@@ -176,6 +177,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 unsearched = boundedSearch || combinationSearch.stops.isNotEmpty() ||
                     (expectedFormats.isNotEmpty() && !allInputsChecked),
                 candidateCalculations = candidateCalculations,
+                coverageComplete = !interrupted,
                 candidatesOmitted = candidates.candidatesOmitted,
                 derivationsOmitted = candidates.derivationsOmitted,
             )
@@ -253,7 +255,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         onPriorityProgress: ((done: Int, total: Int) -> Unit)? = null,
     ): List<RecoveryCandidate> = recoverWithDiagnostics(
         matrix, maxFormatCandidates, trustKnownPayloadCount, formatConstraint, maxFormatMismatches,
-        maxKnownDataEccMismatches, manualEdits, retentionBudget, cancellation, displayLockManualBits, onPriorityProgress,
+        maxKnownDataEccMismatches, manualEdits, retentionBudget, cancellation, displayLockManualBits, onPriorityProgress = onPriorityProgress,
     ).candidates
 
     /** Returns the candidates and diagnostic evidence from this invocation as one value. */
@@ -268,11 +270,15 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         retentionBudget: RecoveryRetentionBudget = RecoveryRetentionBudget(),
         cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
         displayLockManualBits: Boolean? = null,
+        stopRequested: () -> Boolean = { false },
         onPriorityProgress: ((done: Int, total: Int) -> Unit)? = null,
     ): RecoveryOutcome {
         require(maxFormatMismatches == null || maxFormatMismatches in 0..30)
         require(maxKnownDataEccMismatches == null || maxKnownDataEccMismatches in 0..MAX_QR_DATA_ECC_BITS)
-        val run = RecoveryRunState(matrix, retentionBudget, cancellation)
+        val run = RecoveryRunState(matrix, retentionBudget, RecoveryCancellation {
+            cancellation.check()
+            stopRequested()
+        })
         val conditions = RecoveryDisplayConditions(trustKnownPayloadCount, displayLockManualBits,
             formatConstraint, maxFormatMismatches, maxKnownDataEccMismatches)
         val manual = FormatEditPolicy.manualValues(matrix) + manualEdits
@@ -299,9 +305,18 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 alternativeDerivations = candidate.alternativeDerivations.map(::annotate))
         }
         cancellation.check()
-        val candidates = recoverRun(run, matrix, maxFormatCandidates, trustKnownPayloadCount, formatConstraint,
+        val found = try { recoverRun(run, matrix, maxFormatCandidates, trustKnownPayloadCount, formatConstraint,
             maxKnownDataEccMismatches = maxKnownDataEccMismatches, maxFormatMismatches = maxFormatMismatches,
-            manualEdits = manualEdits, onPriorityProgress = onPriorityProgress).map(::annotate)
+            manualEdits = manualEdits, onPriorityProgress = onPriorityProgress)
+        } catch (error: RecoveryCancelledException) {
+            cancellation.check()
+            if (!stopRequested()) throw error
+            run.interrupted = true
+            run.boundedSearch = true
+            run.combinationSearch = run.combinationSearch.afterPass(setOf(CombinationSearchStop.USER_INTERRUPTED))
+            run.candidates.results()
+        }
+        val candidates = found.map(::annotate)
         return RecoveryOutcome(
             candidates = candidates,
             failure = run.failure?.copy(combinationSearch = run.combinationSearch, displayConditions = conditions,
@@ -347,7 +362,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         run.expectedFormats = permittedFormats.filter { effectiveLimit == null || it.mismatches <= effectiveLimit }
             .mapTo(linkedSetOf()) { it.ecLevel to it.dataMask }
         val priority = matrix.prioritySearchCoordinates()
-        require(priority.size <= 4) { "Priority search is limited to four modules" }
+        require(priority.size <= 14) { "Priority search is limited to fourteen modules" }
         val forcedFormats = formatConstraint?.let { constraint ->
             FormatSolver.ranked(matrix, run.ignoredFormatCoords)
                 .filter { constraint.permits(it.ecLevel, it.dataMask) }
@@ -365,14 +380,17 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
 
         // First preserve ordinary QR behavior: every priority bit is still an erasure.
         val ordinaryParsed = recoverInternal(run, matrix, maxFormatCandidates, forcedFormats, allowBitEnumeration = false, trustKnownPayloadCount, maxFormatMismatches = effectiveLimit, maxKnownDataEccMismatches = maxKnownDataEccMismatches)
-        if (ordinaryParsed) return finish(run, run.candidates.results())
+        if (ordinaryParsed) {
+            run.boundedSearch = true
+            return finish(run, run.candidates.results())
+        }
 
         // Then try only the explicitly authorized bits. Ordinary '?' modules remain erasures.
         var priorityParsed = false
         val totalAssignments = 1 shl priority.size
+        onPriorityProgress?.invoke(0, totalAssignments)
         for (assignment in 0 until totalAssignments) {
             run.cancellation.check()
-            onPriorityProgress?.invoke(assignment, totalAssignments)
             val guessed = matrix.copy()
             priority.forEachIndexed { index, coord ->
                 val value = if (((assignment shr index) and 1) == 1) ModuleValue.ONE else ModuleValue.ZERO
@@ -392,8 +410,8 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
             priorityParsed = recoverInternal(run, guessed, maxFormatCandidates, guessedForcedFormats,
                 allowBitEnumeration = true, trustKnownPayloadCount, maxFormatMismatches = effectiveLimit,
                 maxKnownDataEccMismatches = maxKnownDataEccMismatches, priorityAssignments = assignments) || priorityParsed
+            onPriorityProgress?.invoke(assignment + 1, totalAssignments)
         }
-        onPriorityProgress?.invoke(totalAssignments, totalAssignments)
         if (priorityParsed) {
             return finish(run, run.candidates.results())
         }
