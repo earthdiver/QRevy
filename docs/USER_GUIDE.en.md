@@ -111,7 +111,7 @@ Review results in this order:
 4. Any search-limit or candidate-retention warning.
 5. Decoded content and repair reasons for important cells.
 
-Open diagnostics with **Show detailed results**, then tap a cell to inspect provenance. **Show same Codeword** highlights the other cells in its eight-bit codeword. When multiple candidates remain, compare their content and candidate-agreement scope.
+Open diagnostics with **Show detailed results**, then tap a cell to inspect provenance. **Show same Codeword** highlights the other cells in its eight-bit codeword. Format-information cells show their role and bit position; calculation details compare both copies before and after repair and after removing the fixed format mask. The button changes to **Show ECC level cells**, **Show mask number cells**, or **Show format correction bits**, highlighting related cells in both copies. When multiple candidates remain, compare their content and candidate-agreement scope.
 
 On the recovery result screen, **Analyze additional segments after terminator** appears below the diagnostics only when error-correction candidates were rejected because the QR data structure did not validate. It parses the data after the four-bit terminator identified from the payload structure as QR segments. Consecutive `0000` sequences after the terminator are skipped in four-bit steps, preserving ECI and FNC1 context. This is diagnostic evidence only: it does not make a rejected candidate valid, and any displayed content still requires independent verification.
 

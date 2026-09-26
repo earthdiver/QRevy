@@ -1,5 +1,7 @@
 package io.github.earthdiver.qrrepair
 
+import io.github.earthdiver.qrrepair.core.FormatCellGroup
+import io.github.earthdiver.qrrepair.core.formatGroupDetailText
 import io.github.earthdiver.qrrepair.core.ModuleSource
 import io.github.earthdiver.qrrepair.core.resultContentText
 import io.github.earthdiver.qrrepair.core.resultExplanationText
@@ -978,10 +980,10 @@ class MainActivity : Activity() {
             setPadding(dp(12), dp(6), dp(12), dp(6))
             setTextIsSelectable(true)
         }
-        lateinit var codewordButton: Button
+        lateinit var relatedCellsButton: Button
         var selectedCoord: Coord? = null
         var showCellCalculations = false
-        var codewordHighlighted = false
+        var relatedCellsHighlighted = false
         var revealEvidence: () -> Unit = {}
         val view = QrResultInspectorView(this).apply {
             setDocument(before, after, recoveryState.traces, dataMask = recoveryState.selectedRecovery?.dataMask)
@@ -996,15 +998,20 @@ class MainActivity : Activity() {
             val coord = selectedCoord
             val found = coord?.let { findCodewordAt(it.x, it.y) }
             val word = found?.let { recoveryState.selectedRecovery?.extraction?.codewords?.getOrNull(it.first) }
-            codewordButton.isEnabled = word != null
-            codewordButton.visibility = if (showCellCalculations) View.VISIBLE else View.GONE
+            val formatGroup = coord?.let { FormatCellGroup.at(after.dimension, it.x, it.y) }
+            relatedCellsButton.text = formatGroup?.role?.buttonLabel() ?: ui("同じコード語を表示", "Show same codeword")
+            relatedCellsButton.isEnabled = formatGroup != null || word != null
+            relatedCellsButton.visibility = if (showCellCalculations) View.VISIBLE else View.GONE
             view.clearHighlightedCodeword()
-            if (!showCellCalculations || word == null) codewordHighlighted = false
+            if (!showCellCalculations || (word == null && formatGroup == null)) relatedCellsHighlighted = false
             if (coord == null) return
             view.setSelected(coord.x, coord.y)
             detail.text = buildString {
                 append(resultCellDetailText(coord.x, coord.y, after))
-                if (codewordHighlighted && found != null && word != null) {
+                if (formatGroup != null && showCellCalculations) {
+                    if (relatedCellsHighlighted) view.setHighlightedCodeword(formatGroup.coordinates(after.dimension))
+                    append("\n\n").append(resultCellTechnicalText(coord.x, coord.y, after))
+                } else if (relatedCellsHighlighted && found != null && word != null) {
                     view.setHighlightedCodeword(word.coordinates)
                     append('\n').append(codewordDetailText(found.first, found.second))
                 } else if (showCellCalculations) {
@@ -1014,7 +1021,7 @@ class MainActivity : Activity() {
         }
         view.onCellSelected = { x, y ->
             selectedCoord = Coord(x, y)
-            codewordHighlighted = false
+            relatedCellsHighlighted = false
             revealEvidence()
             refreshCellEvidence()
         }
@@ -1046,7 +1053,7 @@ class MainActivity : Activity() {
                         view.clearHighlightedCodeword()
                         if (!keepPosition) {
                             selectedCoord = null
-                            codewordHighlighted = false
+                            relatedCellsHighlighted = false
                             detail.text = ui("表示位置をリセットしました。セルを選択してください。", "View reset. Select a cell.")
                         }
                         refreshCellEvidence()
@@ -1054,8 +1061,8 @@ class MainActivity : Activity() {
                 })
             }
         }
-        codewordButton = button(ui("同じコード語を表示", "Show same codeword")) {
-            codewordHighlighted = true
+        relatedCellsButton = button(ui("同じコード語を表示", "Show same codeword")) {
+            relatedCellsHighlighted = true
             refreshCellEvidence()
         }.apply { isEnabled = false; visibility = View.GONE }
         val detailPanel = LinearLayout(this).apply {
@@ -1078,7 +1085,7 @@ class MainActivity : Activity() {
                 showCellCalculations = !showCellCalculations
                 refreshCellEvidence()
             })
-            addView(codewordButton)
+            addView(relatedCellsButton)
         }
         val evidenceScroll = ScrollView(this).apply {
             isFillViewport = true
@@ -1280,6 +1287,7 @@ class MainActivity : Activity() {
             append(ui("セル ($x,$y)（座標は0から）", "Cell ($x,$y) (zero-based coordinates)"))
             append('\n').append(if (before == cell.value) ui("${value(cell.value)}のまま", "Unchanged: ${value(cell.value)}")
                 else "${value(before)} → ${value(cell.value)}")
+            FormatCellGroup.at(matrix.dimension, x, y)?.let { append('\n').append(it.cellText()) }
             append('\n').append(reason)
             val source = trace?.originalSource ?: recoveryState.sourceMatrix?.get(x, y)?.source
             if (source == ModuleSource.IMAGE) append(ui("\n入力：画像から判別した結果", "\nInput: image classification result"))
@@ -1299,10 +1307,12 @@ class MainActivity : Activity() {
         val coord = Coord(x, y)
         val trace = recoveryState.traces[coord]
         val confidence = recoveryState.confidenceMap[coord]
-        if (io.github.earthdiver.qrrepair.core.RepairTraceBuilder.isFormat(x, y, matrix.dimension)) {
+        val formatGroup = FormatCellGroup.at(matrix.dimension, x, y)
+        if (formatGroup != null) {
             return io.github.earthdiver.qrrepair.core.formatCellDescription(x, y,
                 trace?.originalValue ?: recoveryState.sourceMatrix?.get(x, y)?.value ?: matrix[x, y].value,
-                matrix[x, y].value, recoveryState.selectedRecovery, matrix[x, y].source == ModuleSource.USER, includeBasic = false)
+                matrix[x, y].value, recoveryState.selectedRecovery, matrix[x, y].source == ModuleSource.USER, includeBasic = false) + "\n\n" +
+                formatGroupDetailText(formatGroup, recoveryState.sourceMatrix ?: matrix, matrix)
         }
         if (trace != null) return buildString {
             append(ui("計算の補足", "Calculation details"))

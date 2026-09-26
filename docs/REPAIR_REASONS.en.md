@@ -57,6 +57,8 @@ When conflicts with fixed values are not allowed, fixed non-codeword 0/1 values 
 - `Codeword: <before> → <after>`: original partial codeword, with unknown bits shown as `?`, and the final codeword.
 - `Input-cell relative confidence (not a probability)`: the value stored on the input cell before repair. It can include manual edits and is not necessarily image-derived. It is retained separately from correction-assigned confidence. The separately displayed relative confidence combines evidence such as candidate agreement. Neither is a correctness probability.
 
+For a format-information cell, the basic details show its role (ECC level, mask number, or error-correction bit) and position within that field. Open **Show/hide calculation details** to compare both copies before and after repair, including their values after removing the fixed format mask (0x5412). `[ ]` marks the selected bit and its counterpart; `?` remains unknown. ECC levels and mask numbers are also interpreted from each copy’s bits. The related-cell button follows the role: it highlights 4 ECC-level cells, 6 mask-number cells, or 20 correction-bit cells. The 10 correction bits are BCH bits generated from the 2 ECC-level bits and 3 mask-number bits. **Unmask** for the data region does not change format-information cell colors.
+
 Cell coordinates, codeword indices, bit positions, and RS block/local indices in cell details are zero-based; bit 0 is the MSB. The failure diagnostic's “First failing RS block” is one-based.
 
 ## User-defined values

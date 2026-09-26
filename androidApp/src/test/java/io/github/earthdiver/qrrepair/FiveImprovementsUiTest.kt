@@ -187,6 +187,81 @@ class FiveImprovementsUiTest {
             } finally { controller.pause().stop().destroy() }
         }
     }
+    @Test fun formatCellsExposeTheirRoleAndHighlightBothCopiesInBothLanguagesAndStyles() {
+        val (source, results) = candidates()
+        for (style in AppStyle.entries) for (lang in AppLanguage.entries) {
+            val app = RuntimeEnvironment.getApplication()
+            AppStylePreferences.save(app, style)
+            AppLanguageManager.save(app, lang)
+            val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+            try {
+                val a = controller.get()
+                (ShadowDialog.getLatestDialog() as? AlertDialog)?.dismiss()
+                val state = field<RecoveryUiState>(a, "recoveryState")
+                state.sourceMatrix = source.copy()
+                state.workingMatrix = source.copy()
+                state.recoveries = results
+                state.selectRecovery(0)
+                call(a, "refreshInspector")
+                call(a, "showZoomableResult")
+                val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+                val decor = dialog.window!!.decorView
+                measure(decor)
+                val view = descendants(decor).filterIsInstance<QrResultInspectorView>().single()
+                val ja = lang == AppLanguage.JAPANESE
+                fun control(japanese: String, english: String) = descendants(decor).filterIsInstance<TextView>()
+                    .first { it.text.toString() == if (ja) japanese else english }
+                fun details() = descendants(decor).filterIsInstance<TextView>()
+                    .single { it.text.startsWith(if (ja) "セル (" else "Cell (") }.text.toString()
+                fun highlighted() = QrResultInspectorView::class.java.getDeclaredField("highlightedCodeword")
+                    .apply { isAccessible = true }.get(view) as Set<*>
+                view.onCellSelected!!.invoke(2, 8)
+                assertTrue(details().contains(if (ja) "マスク番号の3ビット中、左から1番目" else "Mask number, bit 1 of 3"))
+                val button = control("マスク番号のセルを表示", "Show mask number cells")
+                assertTrue(button.isEnabled)
+                assertEquals(View.GONE, button.visibility)
+                val technical = control("計算の説明を表示／閉じる", "Show/hide calculation details")
+                technical.performClick()
+                button.performClick()
+                val expected = FormatCellGroup.at(source.dimension, 2, 8)!!.coordinates(source.dimension).toSet()
+                assertEquals(expected, highlighted())
+                measure(decor)
+                assertTrue("$style/$lang QR height=${view.height}", view.height >= 160)
+                assertTrue(details().contains("0x5412"))
+                assertTrue(details().contains(if (ja) "コピー2" else "Copy 2"))
+                val original = details()
+                descendants(decor).filterIsInstance<android.widget.CheckBox>().single().performClick()
+                assertEquals(original, details())
+                assertEquals(expected, highlighted())
+                control(a.getString(R.string.result_tab, 2), a.getString(R.string.result_tab, 2)).performClick()
+                assertEquals(expected, highlighted())
+                assertTrue(details().contains(formatGroupDetailText(FormatCellGroup.at(source.dimension, 2, 8)!!,
+                    state.sourceMatrix!!, state.inspectorMatrix!!)))
+                for ((coord, count, labels) in listOf(
+                    Triple(Coord(0, 8), 4, "ECCレベルのセルを表示" to "Show ECC level cells"),
+                    Triple(Coord(5, 8), 20, "形式情報の訂正ビットを表示" to "Show format correction bits"),
+                    Triple(Coord(12, 8), 8, "同じコード語を表示" to "Show same codeword"),
+                )) {
+                    view.onCellSelected!!.invoke(coord.x, coord.y)
+                    assertTrue(highlighted().isEmpty())
+                    control(labels.first, labels.second).performClick()
+                    assertEquals(count, highlighted().size)
+                }
+                view.onCellSelected!!.invoke(2, 8)
+                button.performClick()
+                technical.performClick()
+                assertTrue(highlighted().isEmpty())
+                assertFalse(details().contains("0x5412"))
+                assertTrue(details().contains(if (ja) "役割：" else "Role:"))
+                technical.performClick()
+                view.onCellSelected!!.invoke(6, 6)
+                assertFalse(button.isEnabled)
+                assertTrue(highlighted().isEmpty())
+                dialog.dismiss()
+            } finally { controller.pause().stop().destroy() }
+        }
+    }
+
     private fun render(v: View, name: String) {
         System.getenv("QR_REPAIR_DESIGN_PREVIEWS")?.let {
             val dir = File(it).apply { mkdirs() }
