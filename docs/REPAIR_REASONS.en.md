@@ -50,6 +50,7 @@ When conflicts with fixed values are not allowed, fixed non-codeword 0/1 values 
 
 - `Cell (x,y): <before> → <after>`: module values before and after recovery; `?` means unresolved.
 - `Reason`: the primary source of the final value.
+- `Input`: the source of the value before repair and, for manual entries, its fixed designation and whether correction is allowed. It describes the input before repair even when a repaired cell is selected. “Image classification result” includes white (0), black (1), and unknown (?). “Fixed, correction allowed” means the fixed designation is retained while the setting permits correction.
 - `Supporting evidence`: other processing that supports the same value. It is not necessarily weaker; it is separate from the source that wrote the value.
 - `Codeword #<n> / bit <b>`: placement-order codeword and bit position containing the module.
 - `RS block <n> / local <n>`: RS block and local position after deinterleaving.

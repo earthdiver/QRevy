@@ -1282,10 +1282,10 @@ class MainActivity : Activity() {
                 else "${value(before)} → ${value(cell.value)}")
             append('\n').append(reason)
             val source = trace?.originalSource ?: recoveryState.sourceMatrix?.get(x, y)?.source
-            if (source == ModuleSource.IMAGE) append(ui("\n入力：画像から読み取った値", "\nInput: sampled from the image"))
-            else if (source == ModuleSource.USER_UNLOCKED) append(ui("\n入力：固定指定（修正可）", "\nInput: fixed user value (correction allowed)"))
-            else if (source == ModuleSource.USER_SOFT) append(ui("\n入力：ユーザーの仮指定（訂正可）", "\nInput: tentative user value (correctable)"))
-            else if (source == ModuleSource.USER) append(ui("\n入力：手動で指定した値", "\nInput: manually entered value"))
+            if (source == ModuleSource.IMAGE) append(ui("\n入力：画像から判別した結果", "\nInput: image classification result"))
+            else if (source == ModuleSource.USER_UNLOCKED) append(ui("\n入力：手動で指定した値（固定あり、訂正可）", "\nInput: manually entered value (fixed, correction allowed)"))
+            else if (source == ModuleSource.USER_SOFT) append(ui("\n入力：手動で仮指定した値（固定なし、訂正可）", "\nInput: manually entered tentative value (not fixed, correction allowed)"))
+            else if (source == ModuleSource.USER) append(ui("\n入力：手動で指定した値（固定あり、訂正不可）", "\nInput: manually entered value (fixed, correction not allowed)"))
             recoveryState.confidenceMap[Coord(x, y)]?.let { c ->
                 if (c.comparedCandidates != null) append(ui(
                     "\n比較した${c.comparedCandidates}候補中${c.agreeingCandidates}候補で、このセルの白黒が一致しています。",
