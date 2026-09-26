@@ -30,6 +30,7 @@ import android.text.format.DateFormat
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.RadioButton
@@ -983,8 +984,13 @@ class MainActivity : Activity() {
         var codewordHighlighted = false
         var revealEvidence: () -> Unit = {}
         val view = QrResultInspectorView(this).apply {
-            setDocument(before, after, recoveryState.traces)
+            setDocument(before, after, recoveryState.traces, dataMask = recoveryState.selectedRecovery?.dataMask)
             setComparisonEnabled(false)
+        }
+        val unmask = CheckBox(this).apply {
+            text = ui("マスク解除", "Unmask")
+            isEnabled = recoveryState.selectedRecovery != null
+            setOnCheckedChangeListener { _, checked -> view.setUnmasked(checked) }
         }
         fun refreshCellEvidence() {
             val coord = selectedCoord
@@ -1034,7 +1040,9 @@ class MainActivity : Activity() {
                         before = nextBefore
                         after = nextAfter
                         displayedGeometry = recoveryState.geometry
-                        view.setDocument(before, after, recoveryState.traces, keepViewport = keepPosition)
+                        view.setDocument(before, after, recoveryState.traces, keepViewport = keepPosition,
+                            dataMask = recoveryState.selectedRecovery?.dataMask)
+                        unmask.isEnabled = recoveryState.selectedRecovery != null
                         view.clearHighlightedCodeword()
                         if (!keepPosition) {
                             selectedCoord = null
@@ -1110,7 +1118,14 @@ class MainActivity : Activity() {
                 isHorizontalScrollBarEnabled = false
                 addView(candidateTabs)
             })
-            addView(comparison)
+            addView(HorizontalScrollView(this@MainActivity).apply {
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(comparison)
+                    addView(unmask)
+                })
+            })
             addView(view, LinearLayout.LayoutParams(-1, 0, 1f))
             addView(TextView(this@MainActivity).apply {
                 text = ui("左右の移動・拡大は連動します。セルをタップすると修復理由を表示します。", "Both sides pan and zoom together. Tap a cell for its repair reason.")

@@ -115,6 +115,8 @@ Open diagnostics with **Show detailed results**, then tap a cell to inspect prov
 
 On the recovery result screen, **Analyze additional segments after terminator** appears below the diagnostics only when error-correction candidates were rejected because the QR data structure did not validate. It parses the data after the four-bit terminator identified from the payload structure as QR segments. Consecutive `0000` sequences after the terminator are skipped in four-bit steps, preserving ECI and FNC1 context. This is diagnostic evidence only: it does not make a rejected candidate valid, and any displayed content still requires independent verification.
 
+In the enlarged repair result, enabling **Unmask** displays both the before and after cells with the selected candidate’s QR mask removed. Function patterns and unknown cells stay unchanged. This only changes the display: saved cell values, manual edits, and fixed constraints are preserved. Clear the checkbox to restore the masked display. The checkbox is disabled when no recovery candidate is selected; scroll the controls horizontally on narrow screens.
+
 ## 7. Save, resume, and export
 
 Import automatically saves the source image and a session before you press Save or Repair. **Saved work** retains at most 20 sessions; new imports also count toward this limit. When it is exceeded, the least recently saved work and its source image are automatically deleted. The limit also applies on startup. Touch and hold an entry to delete that work, or use **Delete all**.

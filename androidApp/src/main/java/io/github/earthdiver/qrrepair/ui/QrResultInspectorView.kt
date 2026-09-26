@@ -12,9 +12,11 @@ import android.view.ScaleGestureDetector
 import android.view.View
 import io.github.earthdiver.qrrepair.localizedText
 import io.github.earthdiver.qrrepair.core.CellConfidence
+import io.github.earthdiver.qrrepair.core.CodewordExtractor
 import io.github.earthdiver.qrrepair.core.Coord
 import io.github.earthdiver.qrrepair.core.ModuleRepairTrace
 import io.github.earthdiver.qrrepair.core.ModuleValue
+import io.github.earthdiver.qrrepair.core.QrFunctionMask
 import io.github.earthdiver.qrrepair.core.QrMatrix
 import io.github.earthdiver.qrrepair.core.RepairFilter
 import io.github.earthdiver.qrrepair.core.RepairReasonKind
@@ -39,6 +41,8 @@ class QrResultInspectorView(context: Context) : View(context) {
     private var heatmapEnabled = false
     private var compareEnabled = true
     private var beforeFraction = 0.5f
+    private var dataMask: Int? = null
+    private var unmasked = false
 
     private val paired get() = compareEnabled && beforeFraction > 0f && beforeFraction < 1f
     private val paneWidth get() = if (paired) width / 2f else width.toFloat()
@@ -94,9 +98,17 @@ class QrResultInspectorView(context: Context) : View(context) {
         }
     })
 
-    fun setDocument(before: QrMatrix, after: QrMatrix, traces: Map<Coord, ModuleRepairTrace>, keepViewport: Boolean = false) {
+    fun setDocument(
+        before: QrMatrix,
+        after: QrMatrix,
+        traces: Map<Coord, ModuleRepairTrace>,
+        keepViewport: Boolean = false,
+        dataMask: Int? = null,
+    ) {
         require(before.dimension == after.dimension)
         val dimensionChanged = this.after?.dimension != after.dimension
+        require(dataMask == null || dataMask in 0..7)
+        this.dataMask = dataMask
         this.before = before
         this.after = after
         this.traces = traces
@@ -109,6 +121,8 @@ class QrResultInspectorView(context: Context) : View(context) {
     }
 
     fun clearDocument() {
+        dataMask = null
+        unmasked = false
         before = null
         after = null
         traces = emptyMap()
@@ -119,6 +133,8 @@ class QrResultInspectorView(context: Context) : View(context) {
         heatmapEnabled = false
         invalidate()
     }
+
+    fun setUnmasked(enabled: Boolean) { unmasked = enabled; invalidate() }
 
     fun setFilter(value: RepairFilter) { filter = value; invalidate() }
     fun setCandidateDiff(coords: Set<Coord>) { candidateDiff = coords; invalidate() }
@@ -227,8 +243,18 @@ class QrResultInspectorView(context: Context) : View(context) {
     }
 
     private fun drawMatrix(canvas: Canvas, matrix: QrMatrix) {
+        val version = (matrix.dimension - 17) / 4
+        val mask = dataMask
         for (y in 0 until matrix.dimension) for (x in 0 until matrix.dimension) {
-            fill.color = when (matrix[x, y].value) {
+            val stored = matrix[x, y].value
+            val invert = unmasked && mask != null &&
+                !QrFunctionMask.isFunction(version, x, y) && CodewordExtractor.maskApplies(mask, x, y)
+            val displayed = if (invert) when (stored) {
+                ModuleValue.ONE -> ModuleValue.ZERO
+                ModuleValue.ZERO -> ModuleValue.ONE
+                ModuleValue.ERASED -> ModuleValue.ERASED
+            } else stored
+            fill.color = when (displayed) {
                 ModuleValue.ONE -> Color.BLACK
                 ModuleValue.ZERO -> Color.WHITE
                 ModuleValue.ERASED -> Color.rgb(185, 185, 185)

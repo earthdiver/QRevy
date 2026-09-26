@@ -38,6 +38,115 @@ class LinkedComparisonTest {
         return Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { v.draw(Canvas(it)) }
     }
 
+    @Test fun unmaskingChangesOnlyDisplayedDataAndKeepsUnknownsAndManualCells() {
+        for (version in listOf(1, 7)) {
+            val dimension = 17 + 4 * version
+            val before = QrMatrix(dimension)
+            val after = QrMatrix(dimension)
+            for (y in 0 until dimension) for (x in 0 until dimension) {
+                before.set(x, y, ModuleValue.ZERO, .7f, ModuleSource.USER)
+                after.set(x, y, ModuleValue.ONE, .9f, ModuleSource.RECOVERED)
+            }
+            before.set(11, 10, ModuleValue.ERASED, 0f, ModuleSource.USER)
+            before.setPrioritySearch(11, 10, true)
+            val originalBefore = before.copy()
+            val originalAfter = after.copy()
+            val view = QrResultInspectorView(RuntimeEnvironment.getApplication())
+            val paneWidth = (dimension + 4) * 8
+            val height = paneWidth + 24
+            val masksAtTenTen = listOf(true, true, false, false, true, false, false, false)
+            fun bitmap() = render(view, paneWidth * 2, height)
+            fun pixel(bitmap: Bitmap, x: Int, y: Int, right: Boolean = false) =
+                bitmap.getPixel((if (right) paneWidth else 0) + (x + 2) * 8 + 4, 24 + (y + 2) * 8 + 4)
+            for (mask in 0..7) {
+                view.setDocument(before, after, emptyMap(), dataMask = mask)
+                view.setUnmasked(false)
+                val masked = bitmap()
+                view.setUnmasked(true)
+                val unmasked = bitmap()
+                assertEquals("Version $version, mask $mask", if (masksAtTenTen[mask]) android.graphics.Color.BLACK else android.graphics.Color.WHITE,
+                    pixel(unmasked, 10, 10))
+                assertEquals("Version $version, mask $mask", if (masksAtTenTen[mask]) android.graphics.Color.WHITE else android.graphics.Color.BLACK,
+                    pixel(unmasked, 10, 10, true))
+                assertEquals(pixel(masked, 11, 10), pixel(unmasked, 11, 10))
+                val functionCells = listOf(Coord(0, 0), Coord(6, 10), Coord(8, 8), Coord(8, dimension - 8)) +
+                    if (version == 7) listOf(Coord(22, 22), Coord(dimension - 10, 2)) else emptyList()
+                for (coord in functionCells) for (right in listOf(false, true)) {
+                    assertEquals(pixel(masked, coord.x, coord.y, right), pixel(unmasked, coord.x, coord.y, right))
+                }
+                view.setUnmasked(false)
+                val restored = bitmap()
+                assertTrue(masked.sameAs(restored))
+                listOf(masked, unmasked, restored).forEach(Bitmap::recycle)
+            }
+            for (y in 0 until dimension) for (x in 0 until dimension) {
+                assertEquals(originalBefore[x, y], before[x, y])
+                assertEquals(originalAfter[x, y], after[x, y])
+            }
+        }
+    }
+
+    @Test fun checkboxControlsSingleAndPairedViewsAndFollowsCandidateSelection() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        try {
+            val activity = controller.get()
+            (ShadowDialog.getLatestDialog() as? AlertDialog)?.dismiss()
+            val state = MainActivity::class.java.getDeclaredField("recoveryState").apply { isAccessible = true }
+                .get(activity) as RecoveryUiState
+            val fixtures = listOf(0, 2).map { mask ->
+                val encoded = com.google.zxing.qrcode.encoder.Encoder.encode("UNMASK",
+                    com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.M,
+                    mapOf(com.google.zxing.EncodeHintType.QR_MASK_PATTERN to mask))
+                val matrix = QrMatrix(encoded.matrix.width)
+                for (y in 0 until matrix.dimension) for (x in 0 until matrix.dimension)
+                    matrix.set(x, y, if (encoded.matrix.get(x, y).toInt() == 1) ModuleValue.ONE else ModuleValue.ZERO,
+                        1f, ModuleSource.IMAGE)
+                matrix to RecoveryEngine().recover(matrix, formatConstraint = QrFormatConstraint(encoded.ecLevel, mask))
+                    .first { it.text == "UNMASK" }
+            }
+            state.sourceMatrix = fixtures.first().first.copy()
+            state.workingMatrix = fixtures.first().first.copy()
+            state.recoveries = fixtures.map { it.second }
+            state.selectRecovery(0)
+            MainActivity::class.java.getDeclaredMethod("showZoomableResult").apply { isAccessible = true }.invoke(activity)
+            val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+            val decor = dialog.window!!.decorView
+            layout(decor)
+            val view = children(decor).filterIsInstance<QrResultInspectorView>().single()
+            val checkbox = children(decor).filterIsInstance<android.widget.CheckBox>().single()
+            val radios = children(decor).filterIsInstance<android.widget.RadioGroup>()
+            val modes = children(radios.last()).filterIsInstance<android.widget.RadioButton>()
+            assertTrue(checkbox.isEnabled)
+            assertFalse(checkbox.isChecked)
+            assertTrue(checkbox.left >= radios.last().right)
+            for (mode in modes) {
+                mode.performClick()
+                val masked = render(view, 400, 300)
+                checkbox.performClick()
+                val unmasked = render(view, 400, 300)
+                assertFalse(masked.sameAs(unmasked))
+                checkbox.performClick()
+                val restored = render(view, 400, 300)
+                assertTrue(masked.sameAs(restored))
+                listOf(masked, unmasked, restored).forEach(Bitmap::recycle)
+            }
+            checkbox.performClick()
+            children(radios.first()).filterIsInstance<android.widget.RadioButton>()[1].performClick()
+            assertTrue(checkbox.isChecked)
+            assertEquals(2, state.selectedRecovery!!.dataMask)
+            val expected = QrResultInspectorView(activity).apply {
+                setDocument(state.sourceMatrix!!, state.inspectorMatrix ?: state.workingMatrix!!, state.traces, dataMask = 2)
+                setUnmasked(true)
+            }
+            layout(view, 0, 0)
+            val actualBitmap = render(view, 400, 300)
+            val expectedBitmap = render(expected, 400, 300)
+            assertTrue("Candidate selection must update the display mask", actualBitmap.sameAs(expectedBitmap))
+            actualBitmap.recycle(); expectedBitmap.recycle()
+            dialog.dismiss()
+        } finally { controller.pause().stop().destroy() }
+    }
+
     @Test fun beforeViewIsTheRawMatrixWithoutAnyEvidenceOverlays() {
         val app = RuntimeEnvironment.getApplication()
         val before = QrMatrix(21)
@@ -142,6 +251,9 @@ class LinkedComparisonTest {
                 val decor = dialog.window!!.decorView
                 layout(decor)
                 val inspector = children(decor).filterIsInstance<QrResultInspectorView>().single()
+                val unmask = children(decor).filterIsInstance<android.widget.CheckBox>().single()
+                assertEquals(if (language == AppLanguage.JAPANESE) "マスク解除" else "Unmask", unmask.text.toString())
+                assertFalse("No selected candidate means no known mask", unmask.isEnabled)
                 children(decor).filterIsInstance<TextView>().first { it.text.toString() == if (language == AppLanguage.JAPANESE) "左右で比較" else "Compare" }.performClick()
                 inspector.onCellSelected?.invoke(10, 10)
                 layout(decor)
