@@ -17,11 +17,8 @@ import java.util.UUID
 class RecoverySessionStore(context: Context) {
     // Sensitive QR material lives in noBackupFilesDir by construction; XML backup exclusions remain defense-in-depth.
     private val root = File(context.noBackupFilesDir, "qr_sessions").apply { mkdirs() }
-    private val legacyRoot = File(context.filesDir, "qr_sessions")
 
     init {
-        migrateLegacyRoot()
-        restoreChecksumValidDecodeQuarantines()
         trimToSavedSessionLimit()
     }
 
@@ -82,10 +79,7 @@ class RecoverySessionStore(context: Context) {
 
     fun load(sessionId: String): StoredSession? {
         requireSafeId(sessionId)
-        val primary = File(dir(sessionId), "session.qrs")
-        if (primary.exists()) safeRead(primary)?.let { return it }
-        val legacy = File(File(legacyRoot, sessionId), "session.qrs")
-        return legacy.takeIf { it.exists() }?.let(::safeRead)
+        return File(dir(sessionId), "session.qrs").takeIf { it.isFile }?.let(::safeRead)
     }
 
     fun loadMostRecent(): StoredSession? {
@@ -107,32 +101,19 @@ class RecoverySessionStore(context: Context) {
                 loaded.historyEntries.getOrNull(loaded.historyCursor)?.label.orEmpty(),
             )
         }
-        .groupBy { it.id }
-        .mapNotNull { (_, sameId) -> sameId.maxByOrNull { it.updatedAtMs } }
         .sortedByDescending { it.updatedAtMs }
 
     fun delete(sessionId: String) {
         requireSafeId(sessionId)
         dir(sessionId).deleteRecursively()
-        File(legacyRoot, sessionId).deleteRecursively()
-        if (dir(sessionId).exists() || File(legacyRoot, sessionId).exists()) {
+        if (dir(sessionId).exists()) {
             throw IOException("session deletion failed")
         }
     }
 
     fun deleteAll() {
-        listOf(root, legacyRoot)
-            .distinctBy { it.absolutePath }
-            .flatMap { base ->
-                base.listFiles()
-                    ?.filter { it.isDirectory && RecoverySessionCodec.isSafeSessionId(it.name) }
-                    .orEmpty()
-            }
-            .forEach { it.deleteRecursively() }
-        val remaining = listOf(root, legacyRoot).any { base ->
-            base.listFiles()?.any { it.isDirectory && RecoverySessionCodec.isSafeSessionId(it.name) } == true
-        }
-        if (remaining) throw IOException("session deletion failed")
+        sessionDirectories().forEach { it.deleteRecursively() }
+        if (sessionDirectories().isNotEmpty()) throw IOException("session deletion failed")
     }
 
     private fun trimToSavedSessionLimit(protectedSessionId: String? = null) {
@@ -150,62 +131,13 @@ class RecoverySessionStore(context: Context) {
             .forEach(::delete)
     }
 
+    private fun sessionDirectories(): List<File> = root.listFiles()
+        ?.filter { it.isDirectory && RecoverySessionCodec.isSafeSessionId(it.name) }
+        .orEmpty()
 
-    private fun allSessionFiles(): List<File> = listOf(root, legacyRoot)
-        .distinctBy { it.absolutePath }
-        .flatMap { base ->
-            base.listFiles()
-                ?.filter { it.isDirectory && RecoverySessionCodec.isSafeSessionId(it.name) }
-                ?.map { File(it, "session.qrs") }
-                ?.filter { it.exists() }
-                .orEmpty()
-        }
-
-    /**
-     * Older builds could misclassify a source-image I/O failure as a QRR decode failure and move
-     * the valid timeline aside. Restore only current-format files that pass the codec checksum and
-     * full bounded validation; genuinely corrupt files remain quarantined.
-     */
-    private fun restoreChecksumValidDecodeQuarantines() {
-        listOf(root, legacyRoot).distinctBy { it.absolutePath }.forEach { base ->
-            base.listFiles()?.filter { it.isDirectory && RecoverySessionCodec.isSafeSessionId(it.name) }?.forEach { folder ->
-                val primary = File(folder, "session.qrs")
-                if (primary.exists()) return@forEach
-                val recoverable = folder.listFiles()
-                    ?.filter { it.isFile && it.name.startsWith("session.qrs.corrupt-") && it.name.endsWith("-decode") }
-                    ?.sortedByDescending { it.lastModified() }
-                    ?.firstOrNull { candidate ->
-                        candidate.length() in 1..RecoverySessionCodec.MAX_SESSION_FILE_BYTES.toLong() &&
-                            runCatching { RecoverySessionCodec.decode(candidate.readBytes()) }.isSuccess
-                    }
-                    ?: return@forEach
-                runCatching { atomicReplace(recoverable, primary) }
-            }
-        }
-    }
-
-    /** Best-effort one-time move of v0.5 filesDir sessions into noBackupFilesDir. */
-    private fun migrateLegacyRoot() {
-        if (!legacyRoot.exists() || legacyRoot.absolutePath == root.absolutePath) return
-        legacyRoot.listFiles()?.filter { it.isDirectory && RecoverySessionCodec.isSafeSessionId(it.name) }?.forEach { oldFolder ->
-            val target = File(root, oldFolder.name)
-            if (target.exists()) return@forEach
-            runCatching {
-                try {
-                    Files.move(oldFolder.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
-                } catch (_: Exception) {
-                    if (!oldFolder.copyRecursively(target, overwrite = false)) throw IOException("legacy session copy failed")
-                    val copiedSession = File(target, "session.qrs")
-                    if (copiedSession.exists() && safeRead(copiedSession, loadBitmap = false) == null) {
-                        target.deleteRecursively()
-                        throw IOException("legacy session verification failed")
-                    }
-                    oldFolder.deleteRecursively()
-                }
-            }
-        }
-        runCatching { if (legacyRoot.listFiles().isNullOrEmpty()) legacyRoot.delete() }
-    }
+    private fun allSessionFiles(): List<File> = sessionDirectories()
+        .map { File(it, "session.qrs") }
+        .filter { it.isFile }
 
     private fun safeRead(file: File, loadBitmap: Boolean = true): StoredSession? = try {
         if (file.length() !in 1..RecoverySessionCodec.MAX_SESSION_FILE_BYTES.toLong()) {
@@ -240,38 +172,20 @@ class RecoverySessionStore(context: Context) {
 
     private fun loadVerifiedSource(folder: File): Bitmap? {
         val ref = File(folder, "source.ref")
-        if (ref.exists()) {
-            if (ref.length() !in 64L..66L) return null
-            val expected = runCatching { ref.readText(Charsets.US_ASCII).trim().lowercase() }.getOrNull() ?: return null
-            if (!isSha256Hex(expected)) return null
-            val png = File(folder, "source-$expected.png")
-            if (!png.exists() || png.length() !in 1..MAX_SOURCE_IMAGE_BYTES) return null
-            if (!MessageDigest.isEqual(sha256File(png), hexToBytes(expected))) return null
-            return decodeBitmapBounded(png)
-        }
-
-        // Compatibility with the early v0.6 source.png + source.sha256 pair.
-        val png = File(folder, "source.png")
-        if (png.exists()) {
-            if (png.length() !in 1..MAX_SOURCE_IMAGE_BYTES) return null
-            val hashFile = File(folder, "source.sha256")
-            if (!hashFile.exists()) return null
-            val expected = runCatching { hashFile.readText(Charsets.US_ASCII).trim().lowercase() }.getOrNull() ?: return null
-            if (!isSha256Hex(expected) || !MessageDigest.isEqual(sha256File(png), hexToBytes(expected))) return null
-            return decodeBitmapBounded(png)
-        }
-        // v0.5 migration compatibility only. It is not written by v0.6.
-        val legacy = File(folder, "source.jpg")
-        return legacy.takeIf { it.exists() && it.length() in 1..MAX_SOURCE_IMAGE_BYTES }?.let(::decodeBitmapBounded)
+        if (!ref.isFile || ref.length() !in 64L..66L) return null
+        val expected = runCatching { ref.readText(Charsets.US_ASCII).trim().lowercase() }.getOrNull() ?: return null
+        if (!isSha256Hex(expected)) return null
+        val png = File(folder, "source-$expected.png")
+        if (!png.isFile || png.length() !in 1..MAX_SOURCE_IMAGE_BYTES) return null
+        if (!MessageDigest.isEqual(sha256File(png), hexToBytes(expected))) return null
+        return decodeBitmapBounded(png)
     }
-
 
     private fun cleanupObsoleteSources(folder: File, keep: File) {
         runCatching {
             folder.listFiles()?.forEach { file ->
                 val obsoleteContentAddressed = file.name.startsWith("source-") && file.name.endsWith(".png") && file != keep
-                val legacy = file.name == "source.png" || file.name == "source.sha256" || file.name == "source.jpg"
-                if (obsoleteContentAddressed || legacy) file.delete()
+                if (obsoleteContentAddressed) file.delete()
             }
         }
     }

@@ -28,17 +28,6 @@ class TentativeSessionCodecTest {
         assertEquals(ModuleSource.USER, decoded.sourceMatrix!![b.x, b.y].source)
     }
 
-    @Test fun version15RetainsValuesAndGlobalCorrectionOption() {
-        for (locked in listOf(false, true)) {
-            val settings = PreprocessSettings(lockManualBits = locked, preRecoveryEdits = mapOf(a to ModuleValue.ZERO))
-            val encoded = RecoverySessionCodec.encode(payload(settings))
-            val decoded = RecoverySessionCodec.decode(rewrite(encoded, 15) { it.copyOf(it.size - 36) })
-                .historyEntries.single().snapshot.preprocessSettings!!
-            assertEquals(settings, decoded)
-            assertEquals(emptySet<Coord>(), decoded.effectiveSoftEdits)
-        }
-    }
-
     @Test fun checksummedMalformedTentativeRecordsAreRejected() {
         val settings = PreprocessSettings(preRecoveryEdits = mapOf(a to ModuleValue.ZERO, b to ModuleValue.ONE), preRecoverySoftEdits = setOf(a, b))
         val bytes = RecoverySessionCodec.encode(payload(settings))
@@ -50,7 +39,7 @@ class TentativeSessionCodecTest {
             { raw -> raw.copyOf(raw.size - 1) },
         )
         for (mutate in mutations) assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) {
-            RecoverySessionCodec.decode(rewrite(bytes, RecoverySessionCodec.CURRENT_VERSION, mutate))
+            RecoverySessionCodec.decode(rewrite(bytes, mutate))
         }
     }
 
@@ -79,25 +68,16 @@ class TentativeSessionCodecTest {
         assertEquals(mapOf(a to ModuleValue.ZERO), decoded.preprocessSettings!!.fixedPreRecoveryEdits)
     }
 
-    @Test fun version16StillRejectsTentativePriorityRecords() {
-        val settings = PreprocessSettings(preRecoveryEdits = mapOf(b to ModuleValue.ERASED),
-            preRecoverySoftEdits = setOf(b), preRecoveryPrioritySearch = setOf(b))
-        val bytes = RecoverySessionCodec.encode(payload(settings))
-        assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) {
-            RecoverySessionCodec.decode(rewrite(bytes, 16) { it.copyOf(it.size - 32) })
-        }
-    }
-
     private fun putInt(raw: ByteArray, offset: Int, value: Int) {
         java.nio.ByteBuffer.wrap(raw).putInt(offset, value)
     }
 
     /** Recompute integrity fields so tests exercise validation inside the payload. */
-    private fun rewrite(encoded: ByteArray, version: Int, transform: (ByteArray) -> ByteArray): ByteArray {
+    private fun rewrite(encoded: ByteArray, transform: (ByteArray) -> ByteArray): ByteArray {
         val raw = transform(GZIPInputStream(ByteArrayInputStream(encoded, 48, encoded.size - 48)).readBytes())
         val compressed = ByteArrayOutputStream().also { bytes -> GZIPOutputStream(bytes).use { it.write(raw) } }.toByteArray()
         return ByteArrayOutputStream().also { bytes -> DataOutputStream(bytes).use { out ->
-            out.writeInt(0x5152523A); out.writeInt(version); out.writeInt(raw.size); out.writeInt(compressed.size)
+            out.writeInt(0x5152523A); out.writeInt(RecoverySessionCodec.CURRENT_VERSION); out.writeInt(raw.size); out.writeInt(compressed.size)
             out.write(MessageDigest.getInstance("SHA-256").digest(raw)); out.write(compressed)
         } }.toByteArray()
     }

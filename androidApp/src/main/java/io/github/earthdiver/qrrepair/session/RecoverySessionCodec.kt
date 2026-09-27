@@ -12,12 +12,11 @@ import java.util.zip.GZIPOutputStream
 
 /** Android-independent, bounded and checksummed persistence codec for repair sessions. */
 object RecoverySessionCodec {
-    const val CURRENT_VERSION = 22
+    const val CURRENT_VERSION = 23
     const val MAX_HISTORY_ENTRIES = 40
     const val MAX_SESSION_PAYLOAD_BYTES = 16 * 1024 * 1024
     const val MAX_SESSION_FILE_BYTES = 20 * 1024 * 1024
-    private const val MAGIC = 0x5152523A // QRR10
-    private const val LEGACY_MAGIC_V9 = 0x51525239
+    private const val MAGIC = 0x5152523A // QRR container signature; the schema version follows.
     private const val HASH_BYTES = 32
     private const val MAX_TEXT = 4_096
     private const val MAX_DETAIL = 16_384
@@ -122,14 +121,12 @@ object RecoverySessionCodec {
         }
     }
 
-    /** Decodes supported QRR schemas 9 through the current version with strict validation; earlier formats are rejected. */
+    /** Decodes only the current QRR schema with strict validation. */
     fun decode(fileBytes: ByteArray): Payload {
         if (fileBytes.size > MAX_SESSION_FILE_BYTES) throw CorruptSessionException("session file exceeds size limit")
-        if (fileBytes.size < 4) throw CorruptSessionException("session file is truncated")
+        if (fileBytes.size < 16 + HASH_BYTES) throw CorruptSessionException("session file is truncated")
         return try {
-            val magic = DataInputStream(ByteArrayInputStream(fileBytes)).readInt()
-            if (magic == MAGIC || magic == LEGACY_MAGIC_V9) decodeCurrent(fileBytes)
-            else throw CorruptSessionException(localizedText("旧形式のQRRセッションは読み込めません", "Legacy QRR sessions are not supported"))
+            decodeCurrent(fileBytes)
         } catch (e: CorruptSessionException) {
             throw e
         } catch (e: Exception) {
@@ -140,9 +137,9 @@ object RecoverySessionCodec {
     private fun decodeCurrent(fileBytes: ByteArray): Payload {
         DataInputStream(BufferedInputStream(ByteArrayInputStream(fileBytes))).use { input ->
             val magic = input.readInt()
-            requireCorrupt(magic == MAGIC || magic == LEGACY_MAGIC_V9, "invalid QRR magic")
+            requireCorrupt(magic == MAGIC, "invalid QRR magic")
             val version = input.readInt()
-            requireCorrupt(version in 10..CURRENT_VERSION || (magic == LEGACY_MAGIC_V9 && version == 9), localizedText("旧形式のQRRセッションは読み込めません（version $version）", "Legacy QRR session version $version is not supported"))
+            requireCorrupt(version == CURRENT_VERSION, localizedText("対応していないQRRセッションの形式です（version $version、対応: $CURRENT_VERSION）", "Unsupported QRR session version $version; expected $CURRENT_VERSION"))
             val rawSize = input.readInt()
             val compressedSize = input.readInt()
             requireCorrupt(rawSize in 1..MAX_SESSION_PAYLOAD_BYTES, "invalid raw payload size")
@@ -154,12 +151,12 @@ object RecoverySessionCodec {
             input.readFully(compressed)
             val raw = gunzipBounded(compressed, rawSize)
             requireCorrupt(MessageDigest.isEqual(expectedHash, sha256(raw)), "session SHA-256 mismatch")
-            return parsePayload(raw, version)
+            return parsePayload(raw)
         }
     }
 
-    private fun parsePayload(raw: ByteArray, version: Int): Payload = DataInputStream(BufferedInputStream(ByteArrayInputStream(raw))).use { input ->
-        val payload = readPayloadBody(input, SessionSchema(version))
+    private fun parsePayload(raw: ByteArray): Payload = DataInputStream(BufferedInputStream(ByteArrayInputStream(raw))).use { input ->
+        val payload = readPayloadBody(input)
         requireCorrupt(input.available() == 0, "trailing bytes in session payload")
         payload
     }
@@ -173,9 +170,7 @@ object RecoverySessionCodec {
         payload.historyEntries.forEach { writeHistoryEntry(out, it) }
     }
 
-    private fun readPayloadBody(
-        input: DataInputStream, schema: SessionSchema,
-    ): Payload {
+    private fun readPayloadBody(input: DataInputStream): Payload {
         val id = input.readUTF()
         requireCorrupt(isSafeSessionId(id), "invalid session id")
         val updated = input.readLong()
@@ -187,7 +182,7 @@ object RecoverySessionCodec {
         if (count == 0) requireCorrupt(cursor == -1, "empty history must have cursor -1")
         else requireCorrupt(cursor in 0 until count, "invalid history cursor")
         val history = ArrayList<RecoveryHistoryEntry>(count)
-        repeat(count) { history += readHistoryEntry(input, schema) }
+        repeat(count) { history += readHistoryEntry(input) }
         return Payload(id, updated, mode, history, cursor)
     }
 
@@ -213,9 +208,7 @@ object RecoverySessionCodec {
         writeSnapshot(out, entry.snapshot)
     }
 
-    private fun readHistoryEntry(
-        input: DataInputStream, schema: SessionSchema,
-    ): RecoveryHistoryEntry {
+    private fun readHistoryEntry(input: DataInputStream): RecoveryHistoryEntry {
         val id = input.readUTF()
         requireCorrupt(id.length <= MAX_TEXT, "history id too long")
         val timestamp = input.readLong()
@@ -224,7 +217,7 @@ object RecoverySessionCodec {
         val label = input.readUTF()
         val detail = input.readUTF()
         requireCorrupt(label.length <= 400 && detail.length <= 1600, "history text too long")
-        return RecoveryHistoryEntry(id, timestamp, kind, label, detail, readSnapshot(input, schema))
+        return RecoveryHistoryEntry(id, timestamp, kind, label, detail, readSnapshot(input))
     }
 
     private fun writeSnapshot(out: DataOutputStream, snapshot: RecoverySnapshot) {
@@ -248,14 +241,12 @@ object RecoverySessionCodec {
         snapshot.samplingInverted?.let(out::writeBoolean)
     }
 
-    private fun readSnapshot(
-        input: DataInputStream, schema: SessionSchema,
-    ): RecoverySnapshot {
+    private fun readSnapshot(input: DataInputStream): RecoverySnapshot {
         val geometry = readGeometry(input)
-        val source = readMatrix(input, schema)
-        val working = readMatrix(input, schema)
-        requireCorrupt(source == null || validPrioritySearch(source, if (schema.hasPrioritySearchLimit) 14 else 4), "invalid source priority-search modules")
-        requireCorrupt(working == null || validPrioritySearch(working, if (schema.hasPrioritySearchLimit) 14 else 4), "invalid working priority-search modules")
+        val source = readMatrix(input)
+        val working = readMatrix(input)
+        requireCorrupt(source == null || validPrioritySearch(source), "invalid source priority-search modules")
+        requireCorrupt(working == null || validPrioritySearch(working), "invalid working priority-search modules")
         if (source != null && working != null) requireCorrupt(source.dimension == working.dimension, "matrix dimension mismatch")
         geometry?.let { g ->
             val d = source?.dimension ?: working?.dimension
@@ -263,8 +254,8 @@ object RecoverySessionCodec {
         }
         val recoveryIndex = input.readInt()
         requireCorrupt(recoveryIndex >= -1 && recoveryIndex <= 100_000, "invalid recovery index")
-        val settings = if (schema.hasPreprocessSettings && input.readBoolean()) readPreprocessSettings(input, schema) else null
-        val selectedQr = if (schema.hasSelectionIdentity && input.readBoolean()) {
+        val settings = if (input.readBoolean()) readPreprocessSettings(input) else null
+        val selectedQr = if (input.readBoolean()) {
             val version = input.readInt()
             val ecLevel = input.readInt()
             val mask = input.readInt()
@@ -280,7 +271,7 @@ object RecoverySessionCodec {
             requireCorrupt(geometry == null || geometry.version == version, "selected QR/geometry mismatch")
             RecoverySelectionIdentity(version, ecLevel, mask, codewords)
         } else null
-        val samplingInverted = if (schema.hasSelectionIdentity && input.readBoolean()) input.readBoolean() else null
+        val samplingInverted = if (input.readBoolean()) input.readBoolean() else null
         return RecoverySnapshot(geometry, source, working, recoveryIndex, settings, selectedQr, samplingInverted)
     }
 
@@ -303,9 +294,9 @@ object RecoverySessionCodec {
         }
     }
 
-    private fun validPrioritySearch(matrix: QrMatrix, limit: Int = 14): Boolean {
+    private fun validPrioritySearch(matrix: QrMatrix): Boolean {
         val priority = matrix.prioritySearchCoordinates()
-        if (priority.size > limit) return false
+        if (priority.size > 14) return false
         if (priority.isEmpty()) return true
         val version = (matrix.dimension - 17) / 4
         val codewordCoords = runCatching {
@@ -319,7 +310,6 @@ object RecoverySessionCodec {
         validatePreprocessSettings(settings)
         out.writeFloat(settings.rotationDegrees)
         out.writeInt(settings.polarity.ordinal)
-        out.writeInt(0) // Reserved legacy global/local mode; all sampling now uses global thresholds.
         out.writeInt(settings.blackMax)
         out.writeInt(settings.whiteMin)
         out.writeBoolean(settings.useUnknownColorClusters)
@@ -385,28 +375,24 @@ object RecoverySessionCodec {
         out.writeInt(settings.prioritySearchLimit)
     }
 
-    private fun readPreprocessSettings(input: DataInputStream, schema: SessionSchema): PreprocessSettings {
+    private fun readPreprocessSettings(input: DataInputStream): PreprocessSettings {
         val rotation = input.readFloat()
         requireCorrupt(rotation.isFinite() && rotation in -360f..360f, "invalid preprocessing rotation")
         val polarity = enumStrict<PolarityMode>(input.readInt(), "polarity")
-        val legacyThresholdMode = input.readInt()
-        requireCorrupt(legacyThresholdMode in 0..1, "invalid legacy threshold mode")
         val blackMax = input.readInt(); val whiteMin = input.readInt()
         requireCorrupt(blackMax in 0..254 && whiteMin in 1..255 && blackMax < whiteMin, "invalid thresholds")
-        val useUnknownColorClusters = if (schema.hasUnknownColorClusters) input.readBoolean() else false
-        val unknownColorClusters = if (schema.hasUnknownColorClusters) {
-            val count = input.readInt()
-            requireCorrupt(count in 0..4, "invalid unknown color cluster count")
-            buildList {
-                repeat(count) {
-                    try {
-                        add(UnknownColorCluster(input.readInt(), input.readInt(), input.readInt(), input.readInt()))
-                    } catch (e: IllegalArgumentException) {
-                        throw CorruptSessionException("invalid unknown color cluster", e)
-                    }
+        val useUnknownColorClusters = input.readBoolean()
+        val clusterCount = input.readInt()
+        requireCorrupt(clusterCount in 0..4, "invalid unknown color cluster count")
+        val unknownColorClusters = buildList {
+            repeat(clusterCount) {
+                try {
+                    add(UnknownColorCluster(input.readInt(), input.readInt(), input.readInt(), input.readInt()))
+                } catch (e: IllegalArgumentException) {
+                    throw CorruptSessionException("invalid unknown color cluster", e)
                 }
             }
-        } else emptyList()
+        }
         val quietZone = input.readBoolean()
         val version = input.readInt()
         requireCorrupt(version in 1..40, "invalid preprocessing version")
@@ -415,7 +401,7 @@ object RecoverySessionCodec {
         val searchQuadNeighborhood = input.readBoolean()
         val trustKnownPayloadCount = input.readBoolean()
         val lockManualBits = input.readBoolean()
-        val formatConstraint = if (schema.hasFormatConstraint && input.readBoolean()) {
+        val formatConstraint = if (input.readBoolean()) {
             val ecLevel = if (input.readBoolean()) {
                 val ecBits = input.readInt()
                 requireCorrupt(ecBits in 0..3, "invalid format constraint ECC level")
@@ -427,13 +413,13 @@ object RecoverySessionCodec {
             requireCorrupt(ecLevel != null || dataMask != null, "empty format constraint")
             QrFormatConstraint(ecLevel, dataMask)
         } else null
-        val formatMismatchLimit = if (schema.hasFormatMismatchLimit && input.readBoolean()) {
+        val formatMismatchLimit = if (input.readBoolean()) {
             input.readInt().also { requireCorrupt(it in 0..30, "invalid format-information error limit") }
         } else null
-        val dataEccMismatchLimit = if (schema.hasDataEccMismatchLimit && input.readBoolean()) {
+        val dataEccMismatchLimit = if (input.readBoolean()) {
             input.readInt().also { requireCorrupt(it in 0..MAX_QR_DATA_ECC_BITS, "invalid data/ECC error limit") }
         } else null
-        val perspectiveQuad = if (schema.hasPerspectiveCorrection && input.readBoolean()) {
+        val perspectiveQuad = if (input.readBoolean()) {
             val points = List(4) { PointD(input.readDouble(), input.readDouble()) }
             ImageQuad(points[0], points[1], points[2], points[3])
         } else null
@@ -441,7 +427,7 @@ object RecoverySessionCodec {
             val points = List(4) { PointD(input.readDouble(), input.readDouble()) }
             ImageQuad(points[0], points[1], points[2], points[3])
         } else null
-        val logicalGridAssigned = if (schema.hasLogicalGridAssignment) input.readBoolean() else true
+        val logicalGridAssigned = input.readBoolean()
         val finderCount = input.readInt()
         requireCorrupt(finderCount in 0..3, "invalid confirmed finder count")
         val manualFinders = linkedMapOf<FinderRole, PointD>()
@@ -471,51 +457,40 @@ object RecoverySessionCodec {
             requireCorrupt(coord !in edits, "duplicate preprocessing edit")
             edits[coord] = enumStrict(input.readInt(), "preprocessing module value")
         }
-        val priority = if (schema.hasPrioritySearch) {
-            val count = input.readInt()
-            requireCorrupt(count in 0..(if (schema.hasPrioritySearchLimit) 14 else 4), "invalid priority-search count")
-            buildSet {
-                repeat(count) {
-                    val coord = Coord(input.readInt(), input.readInt())
-                    requireCorrupt(coord.x in 0 until dimension && coord.y in 0 until dimension, "priority-search coordinate outside matrix")
-                    requireCorrupt(add(coord), "duplicate priority-search coordinate")
-                }
+        val priorityCount = input.readInt()
+        requireCorrupt(priorityCount in 0..14, "invalid priority-search count")
+        val priority = buildSet {
+            repeat(priorityCount) {
+                val coord = Coord(input.readInt(), input.readInt())
+                requireCorrupt(coord.x in 0 until dimension && coord.y in 0 until dimension, "priority-search coordinate outside matrix")
+                requireCorrupt(add(coord), "duplicate priority-search coordinate")
             }
-        } else emptySet()
-        val softEdits = if (schema.hasSoftEdits) {
-            val count = input.readInt()
-            requireCorrupt(count in 0..editCount, "invalid tentative edit count")
-            buildSet {
-                repeat(count) {
-                    val coord = Coord(input.readInt(), input.readInt())
-                    requireCorrupt(coord in edits, "tentative coordinate has no edit")
-                    requireCorrupt(schema.hasFixedCorrections || coord !in priority, "legacy tentative edit cannot be a priority-search pin")
-                    requireCorrupt(add(coord), "duplicate tentative coordinate")
-                }
+        }
+        val softEditCount = input.readInt()
+        requireCorrupt(softEditCount in 0..editCount, "invalid tentative edit count")
+        val softEdits = buildSet {
+            repeat(softEditCount) {
+                val coord = Coord(input.readInt(), input.readInt())
+                requireCorrupt(coord in edits, "tentative coordinate has no edit")
+                requireCorrupt(add(coord), "duplicate tentative coordinate")
             }
-        } else emptySet()
-        val automaticThresholds = if (schema.hasAutomaticThresholds) input.readBoolean() else false
-        val provisionalBlackMax = if (schema.hasAutomaticThresholds) input.readInt() else blackMax
-        val provisionalWhiteMin = if (schema.hasAutomaticThresholds) input.readInt() else whiteMin
+        }
+        val automaticThresholds = input.readBoolean()
+        val provisionalBlackMax = input.readInt()
+        val provisionalWhiteMin = input.readInt()
         requireCorrupt(provisionalBlackMax in 0..254 && provisionalWhiteMin in 1..255 &&
             provisionalBlackMax < provisionalWhiteMin, "invalid provisional thresholds")
-        val formatMismatchLimitMode = if (schema.hasErrorLimitModes) {
-            enumStrict<ErrorLimitMode>(input.readInt(), "format-information error limit mode")
-        } else ErrorLimitMode.MANUAL
-        val dataEccMismatchLimitMode = if (schema.hasErrorLimitModes) {
-            enumStrict<ErrorLimitMode>(input.readInt(), "data/ECC error limit mode")
-        } else ErrorLimitMode.MANUAL
-        val adjustment = if (schema.hasImageAdjustment) {
-            val contrast = input.readInt()
-            val brightness = input.readInt()
-            val inverted = input.readUnsignedByte()
-            requireCorrupt(contrast in -100..100 && brightness in -100..100 && inverted in 0..1, "invalid image adjustment")
-            ImageAdjustment(contrast, brightness, inverted == 1)
-        } else ImageAdjustment()
+        val formatMismatchLimitMode = enumStrict<ErrorLimitMode>(input.readInt(), "format-information error limit mode")
+        val dataEccMismatchLimitMode = enumStrict<ErrorLimitMode>(input.readInt(), "data/ECC error limit mode")
+        val contrast = input.readInt()
+        val brightness = input.readInt()
+        val inverted = input.readUnsignedByte()
+        requireCorrupt(contrast in -100..100 && brightness in -100..100 && inverted in 0..1, "invalid image adjustment")
+        val adjustment = ImageAdjustment(contrast, brightness, inverted == 1)
         return try {
             PreprocessSettings(
                 imageAdjustment = adjustment,
-                prioritySearchLimit = if (schema.hasPrioritySearchLimit) input.readInt() else 4,
+                prioritySearchLimit = input.readInt(),
                 rotationDegrees = rotation,
                 polarity = polarity,
                 automaticThresholds = automaticThresholds,
@@ -603,7 +578,7 @@ object RecoverySessionCodec {
         }
     }
 
-    private fun readMatrix(input: DataInputStream, schema: SessionSchema): QrMatrix? {
+    private fun readMatrix(input: DataInputStream): QrMatrix? {
         if (!input.readBoolean()) return null
         val d = input.readInt()
         requireCorrupt(isValidQrDimension(d), "invalid QR dimension $d")
@@ -611,14 +586,11 @@ object RecoverySessionCodec {
         for (y in 0 until d) for (x in 0 until d) {
             val value = enumStrict<ModuleValue>(input.readUnsignedByte(), "module value")
             val source = enumStrict<ModuleSource>(input.readUnsignedByte(), "module source")
-            requireCorrupt(schema.hasSoftEdits || source != ModuleSource.USER_SOFT, "unsupported module source")
-            requireCorrupt(schema.hasFixedCorrections || source != ModuleSource.USER_UNLOCKED, "unsupported fixed-correction source")
             val confidence = input.readFloat()
             requireCorrupt(confidence.isFinite() && confidence in 0f..1f, "invalid confidence")
             matrix.set(x, y, value, confidence, source)
-            if (schema.hasPrioritySearch && input.readBoolean()) {
+            if (input.readBoolean()) {
                 requireCorrupt(value == ModuleValue.ERASED, "priority-search module must be erased")
-                requireCorrupt(schema.hasFixedCorrections || source != ModuleSource.USER_SOFT, "legacy tentative priority source")
                 matrix.setPrioritySearch(x, y, true)
             }
         }

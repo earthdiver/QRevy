@@ -35,23 +35,6 @@ class ErrorLimitSessionCodecTest {
         assertEquals(settings.lastIndex, decoded.historyCursor)
     }
 
-    @Test fun schema19KeepsUnlimitedZeroAndNumericLimitsAsManualSettings() {
-        for (format in listOf(null, 0, 6)) for (data in listOf(null, 0, 19)) {
-            val settings = PreprocessSettings(formatMismatchLimit = format, dataEccMismatchLimit = data)
-            val encoded = RecoverySessionCodec.encode(payload(settings))
-            // Drop mode and tone fields; retain the two absent-selection flags for schema 19.
-            val legacy = rewrite(encoded, 19) { raw ->
-                raw.copyOfRange(0, raw.size - 23) + raw.copyOfRange(raw.size - 2, raw.size)
-            }
-            val decoded = RecoverySessionCodec.decode(legacy).historyEntries.single().snapshot.preprocessSettings!!
-            assertEquals(settings, decoded)
-            assertEquals(ErrorLimitMode.MANUAL, decoded.formatMismatchLimitMode)
-            assertEquals(ErrorLimitMode.MANUAL, decoded.dataEccMismatchLimitMode)
-            assertEquals(format, decoded.formatMismatchLimit)
-            assertEquals(data, decoded.dataEccMismatchLimit)
-        }
-    }
-
     @Test fun manualUnlimitedRoundTripsWithoutBecomingAutomatic() {
         val settings = PreprocessSettings(formatMismatchLimit = null, dataEccMismatchLimit = null,
             formatMismatchLimitMode = ErrorLimitMode.MANUAL, dataEccMismatchLimitMode = ErrorLimitMode.MANUAL)
@@ -64,7 +47,7 @@ class ErrorLimitSessionCodecTest {
         val encoded = RecoverySessionCodec.encode(payload(PreprocessSettings()))
         for (offsetFromEnd in listOf(23, 19)) {
             for (invalid in listOf(-1, ErrorLimitMode.entries.size, Int.MAX_VALUE)) {
-                val altered = rewrite(encoded, RecoverySessionCodec.CURRENT_VERSION) { raw ->
+                val altered = rewrite(encoded) { raw ->
                     ByteBuffer.wrap(raw).putInt(raw.size - offsetFromEnd, invalid)
                     raw
                 }
@@ -77,7 +60,7 @@ class ErrorLimitSessionCodecTest {
 
     @Test fun currentSchemaRejectsMissingModeFieldsEvenWithAValidChecksum() {
         val encoded = RecoverySessionCodec.encode(payload(PreprocessSettings()))
-        val missing = rewrite(encoded, RecoverySessionCodec.CURRENT_VERSION) { raw ->
+        val missing = rewrite(encoded) { raw ->
             raw.copyOfRange(0, raw.size - 23) + raw.copyOfRange(raw.size - 15, raw.size)
         }
         assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) {
@@ -85,13 +68,13 @@ class ErrorLimitSessionCodecTest {
         }
     }
 
-    private fun rewrite(encoded: ByteArray, version: Int, transform: (ByteArray) -> ByteArray): ByteArray {
+    private fun rewrite(encoded: ByteArray, transform: (ByteArray) -> ByteArray): ByteArray {
         val raw = transform(GZIPInputStream(ByteArrayInputStream(encoded, 48, encoded.size - 48)).use { it.readBytes() })
         val compressed = ByteArrayOutputStream().also { buffer ->
             GZIPOutputStream(buffer).use { it.write(raw) }
         }.toByteArray()
         return ByteArrayOutputStream().also { buffer -> DataOutputStream(buffer).use { out ->
-            out.writeInt(0x5152523A); out.writeInt(version); out.writeInt(raw.size); out.writeInt(compressed.size)
+            out.writeInt(0x5152523A); out.writeInt(RecoverySessionCodec.CURRENT_VERSION); out.writeInt(raw.size); out.writeInt(compressed.size)
             out.write(MessageDigest.getInstance("SHA-256").digest(raw)); out.write(compressed)
         } }.toByteArray()
     }

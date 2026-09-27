@@ -58,9 +58,9 @@ data class RecoverySnapshot(
     val sourceMatrix: QrMatrix?,
     val workingMatrix: QrMatrix?,
     val recoveryIndex: Int,
-    /** Present for reproducible repair-setting checkpoints; null in migrated older sessions. */
+    /** Preprocessing settings for checkpoints that include image sampling. */
     val preprocessSettings: PreprocessSettings? = null,
-    /** Absent in older sessions; an unavailable identity must never select a different QR. */
+    /** Identity of the selected candidate, if a candidate was selected at this checkpoint. */
     val selectedQr: RecoverySelectionIdentity? = null,
     /** Actual sampling polarity, independent of the saved automatic-search preference. */
     val samplingInverted: Boolean? = null,

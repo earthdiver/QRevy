@@ -379,28 +379,6 @@ class PreprocessDialogLayoutTest {
     }
 
     @Test
-    fun validTimelineQuarantinedByTheOldSourceImageBugIsRecovered() {
-        val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
-        val id = "falsely-quarantined-session"
-        val entry = RecoveryHistoryEntry(
-            kind = HistoryEventKind.AUTO_RECOVERY,
-            label = "修復処理",
-            snapshot = RecoverySnapshot(null, null, null, -1),
-        )
-        RecoverySessionStore(activity).save(id, UiMode.SIMPLE, listOf(entry), 0)
-        val folder = java.io.File(activity.noBackupFilesDir, "qr_sessions/$id")
-        val primary = java.io.File(folder, "session.qrs")
-        val quarantine = java.io.File(folder, "session.qrs.corrupt-1-decode")
-        assertTrue(primary.renameTo(quarantine))
-
-        val reopened = RecoverySessionStore(activity)
-
-        assertTrue("旧版が誤隔離した正常なQRR9履歴を検出できません", reopened.listRecent().any { it.id == id })
-        assertEquals("修復処理", reopened.load(id)?.historyEntries?.single()?.label)
-        assertTrue("復帰後も履歴本体が隔離名のままです", primary.exists())
-    }
-
-    @Test
     fun pngExportUsesTheDisplayedRepairedMatrixInsteadOfTheDamagedWorkingMatrix() {
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
         shadowOf(Looper.getMainLooper()).idle()
