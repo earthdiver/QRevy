@@ -1,4 +1,4 @@
-QR Repair v0.16.2
+QR Repair v0.17.0
 
 QR Repair helps recover damaged QR codes that ordinary readers cannot decode. Processing runs entirely offline on your Android device.
 
