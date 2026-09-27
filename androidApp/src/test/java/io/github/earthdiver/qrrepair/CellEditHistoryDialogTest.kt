@@ -32,8 +32,11 @@ class CellEditHistoryDialogTest {
         val release = java.util.concurrent.CountDownLatch(1)
         worker.submit { entered.countDown(); release.await(30, TimeUnit.SECONDS) }
         assertTrue(entered.await(30, TimeUnit.SECONDS))
+        lateinit var progress: AlertDialog
         try {
             MainActivity::class.java.getDeclaredMethod("startAutoRecovery").apply { isAccessible = true }.invoke(activity)
+            progress = ShadowDialog.getLatestDialog() as AlertDialog
+            assertTrue(progress.isShowing)
             val generation = field("workGeneration").get(activity) as java.util.concurrent.atomic.AtomicInteger
             val oldToken = generation.get()
             val dialog = open(activity)
@@ -49,6 +52,8 @@ class CellEditHistoryDialogTest {
         val state = field("recoveryState").get(activity) as RecoveryUiState
         assertNull(state.autoResult)
         assertTrue(state.recoveries.isEmpty())
+        assertFalse(progress.isShowing)
+        assertNull(field("recoveryProgressDialog").get(activity))
     }
 
     private val controllers = mutableListOf<org.robolectric.android.controller.ActivityController<MainActivity>>()

@@ -65,8 +65,6 @@ import io.github.earthdiver.qrrepair.core.RecoveryFailure
 import io.github.earthdiver.qrrepair.core.SearchCompleteness
 import io.github.earthdiver.qrrepair.core.RecoveryEngine
 import io.github.earthdiver.qrrepair.core.RecoveryWorkflow
-import io.github.earthdiver.qrrepair.core.RecoveryCancellation
-import io.github.earthdiver.qrrepair.core.RecoveryCancelledException
 import io.github.earthdiver.qrrepair.core.RecoveryHistoryEntry
 import io.github.earthdiver.qrrepair.core.RecoverySessionHistory
 import io.github.earthdiver.qrrepair.core.RecoverySnapshot
@@ -198,6 +196,7 @@ class MainActivity : Activity() {
     private val executor = Executors.newSingleThreadExecutor()
     private val ioExecutor = Executors.newSingleThreadExecutor()
     private val workGeneration = AtomicInteger(0)
+    private val recoveryTasks = RecoveryTaskRunner(executor, { runOnUiThread(it) }, workGeneration::get)
     private var recoveryProgressDialog: RecoveryProgressDialog? = null
     private val sessionSaves = SessionSaveQueue(
         ioExecutor,
@@ -1700,37 +1699,29 @@ class MainActivity : Activity() {
         recoveryProgressDialog?.close()
         val progressDialog = RecoveryProgressDialog(this, matrix.prioritySearchCoordinates().size)
         recoveryProgressDialog = progressDialog
-        executor.execute {
-            if (token != workGeneration.get()) return@execute
-            val outcome = try { recoveryEngine.recoverWithDiagnostics(
-                matrix.copy(),
-                trustKnownPayloadCount = requestSettings.trustKnownPayloadCount,
-                partialBitSearchLimit = requestSettings.partialBitSearchLimit,
-                formatConstraint = requestSettings.formatConstraint,
-                maxFormatMismatches = requestSettings.effectiveFormatMismatchLimit,
-                maxKnownDataEccMismatches = requestSettings.effectiveDataEccMismatchLimit,
-                manualEdits = requestSettings.fixedPreRecoveryEdits,
-                displayLockManualBits = requestSettings.lockManualBits,
-                retentionBudget = RecoveryMemoryPolicy.current().let {
-                    RecoveryRetentionBudget(it.retainedBytes, workingLimitBytes = it.workingBytes)
-                },
-                cancellation = RecoveryCancellation { token != workGeneration.get() || Thread.currentThread().isInterrupted },
-                stopRequested = { progressDialog.stopped.get() },
-                onPriorityProgress = progressDialog::priorityProgress,
-            ) } catch (_: RecoveryCancelledException) { return@execute }
-            finally {
-                runOnUiThread {
-                    progressDialog.close()
-                    if (recoveryProgressDialog === progressDialog) recoveryProgressDialog = null
-                }
-            }
-            val ranked = outcome.candidates
-            val failure = outcome.failure
-            runOnUiThread {
-                if (token != workGeneration.get()) {
-                    if (historyRestoreToken == token) historyRestoreToken = null
-                    return@runOnUiThread
-                }
+        recoveryTasks.execute(
+            generation = token,
+            task = { cancellation ->
+                recoveryEngine.recoverWithDiagnostics(
+                    matrix.copy(),
+                    trustKnownPayloadCount = requestSettings.trustKnownPayloadCount,
+                    partialBitSearchLimit = requestSettings.partialBitSearchLimit,
+                    formatConstraint = requestSettings.formatConstraint,
+                    maxFormatMismatches = requestSettings.effectiveFormatMismatchLimit,
+                    maxKnownDataEccMismatches = requestSettings.effectiveDataEccMismatchLimit,
+                    manualEdits = requestSettings.fixedPreRecoveryEdits,
+                    displayLockManualBits = requestSettings.lockManualBits,
+                    retentionBudget = RecoveryMemoryPolicy.current().let {
+                        RecoveryRetentionBudget(it.retainedBytes, workingLimitBytes = it.workingBytes)
+                    },
+                    cancellation = cancellation,
+                    stopRequested = { progressDialog.stopped.get() },
+                    onPriorityProgress = progressDialog::priorityProgress,
+                )
+            },
+            onResult = { outcome ->
+                val ranked = outcome.candidates
+                val failure = outcome.failure
                 recoveryState.updateRecoveries(
                     ranked,
                     snapshot.selectedQr?.let { identity -> ranked.indexOfFirst(identity::matches) }
@@ -1738,15 +1729,18 @@ class MainActivity : Activity() {
                     failure,
                     outcome.searchDiagnostic,
                 )
-                if (historyRestoreToken == token) historyRestoreToken = null
                 refreshInspector()
                 updateSummary(if (snapshot.selectedQr != null && recoveryState.selectedRecovery == null)
                     ui("$prefix。保存時の選択候補は今回の探索範囲では再現できませんでした。",
                         "$prefix. The saved selection could not be reproduced within this search.") else prefix)
                 updateContentPreview()
                 onRestored?.invoke()
-            }
-        }
+            },
+            onFinished = {
+                closeRecoveryProgress(progressDialog)
+                if (historyRestoreToken == token) historyRestoreToken = null
+            },
+        )
     }
 
     private fun showRecentSessions() {
@@ -2485,79 +2479,71 @@ class MainActivity : Activity() {
         recoveryProgressDialog?.close()
         val progressDialog = RecoveryProgressDialog(this, requestSettings.preRecoveryPrioritySearch.size)
         recoveryProgressDialog = progressDialog
-        executor.execute {
-            if (token != workGeneration.get()) return@execute
-            try {
+        recoveryTasks.execute(
+            generation = token,
+            task = { cancellation ->
                 val memoryPolicy = RecoveryMemoryPolicy.current()
-                val result = RecoveryWorkflow(recoveryEngine).run(
+                RecoveryWorkflow(recoveryEngine).run(
                     p.luma, requestSettings,
                     retentionBudget = RecoveryRetentionBudget(memoryPolicy.retainedBytes,
                         workingLimitBytes = memoryPolicy.workingBytes),
-                    cancellation = RecoveryCancellation { token != workGeneration.get() || Thread.currentThread().isInterrupted },
+                    cancellation = cancellation,
                     stopRequested = { progressDialog.stopped.get() },
                     onPriorityProgress = progressDialog::priorityProgress,
                     onProgress = { progress ->
                         progressDialog.phase("${progress.profile.label}: ${progress.message} (${progress.done}/${progress.total})")
                     },
                 )
-                if (token != workGeneration.get()) return@execute
-                runOnUiThread {
-                    if (token != workGeneration.get()) return@runOnUiThread
-                    progressDialog.close()
-                    if (recoveryProgressDialog === progressDialog) recoveryProgressDialog = null
-                    recoveryState.autoResult = result
-                    if (result.searchDiagnostic?.completeness == SearchCompleteness.UNSEARCHED && result.attempts.isEmpty()) {
-                        statusText.text = searchResultDescription()
-                        guideText.text = ui("保持された候補はありません。復元不能を意味しません。", "No candidates were retained. This does not establish that recovery is impossible.")
-                        recordRecoveryAttempt(statusText.text.toString(), guideText.text.toString())
-                        return@runOnUiThread
-                    }
-                    if (result.attempts.isEmpty() && result.attemptedGeometries > 0) {
-                        statusText.text = ui("表示用の修復結果を保持できませんでした。", "Could not retain a recovery result for display.")
-                        guideText.text = ui("メモリの保持上限に達しました。作業を保存してアプリを開き直し、再実行してください。",
-                            "The memory retention limit was reached. Save the work, reopen the app and try again.")
-                        recordRecoveryAttempt(statusText.text.toString(), searchResultDescription())
-                        return@runOnUiThread
-                    }
-                    if (result.finders.isEmpty() && result.attempts.isEmpty()) {
-                        statusText.text = ui("論理四隅が未確定のため、QR行列を作成できませんでした。四隅とFinder役割を確認してください。", "The QR matrix could not be built because the logical corners are not assigned. Check the corners and Finder roles.")
-                        guideText.text = ui("案内: QR行列を作成できなかったため、修復を開始できませんでした。四隅・Finderの役割・バージョンをご確認ください。QR行列がないため、追加で確定が必要なbit数と推奨セルは算出できません。", "Guide: Repair could not be started because a QR matrix could not be created. Please review the corners, Finder roles, and Version. Without a QR matrix, the number of additional bits that must be determined and a recommended cell cannot be calculated.")
-                        recordRecoveryAttempt(ui("修復できませんでした", "Repair failed"), ui("論理四隅が未確定", "Logical corners are not assigned"))
-                        return@runOnUiThread
-                    }
-                    if (result.attempts.isEmpty()) {
-                        statusText.text = ui("固定した四隅とバージョンから幾何候補を作れませんでした。", "No geometry candidate could be built from the fixed corners and Version.")
-                        guideText.text = ui("案内: 固定された四隅とバージョンからQR行列を作成できなかったため、修復を開始できませんでした。四隅とバージョンをご確認ください。QR行列がないため、追加で確定が必要なbit数と推奨セルは算出できません。", "Guide: Repair could not be started because a QR matrix could not be created from the fixed corners and Version. Please review the corners and Version. Without a QR matrix, the number of additional bits that must be determined and a recommended cell cannot be calculated.")
-                        recordRecoveryAttempt(ui("修復できませんでした", "Repair failed"), ui("固定幾何候補なし", "No fixed geometry candidate"))
-                        return@runOnUiThread
-                    }
-                    val best = result.bestAttempt ?: result.attempts.first()
-                    recoveryState.attemptIndex = result.attempts.indexOf(best).coerceAtLeast(0)
-                    showAttempt(recoveryState.attemptIndex)
-                    recordHistory(
-                        HistoryEventKind.AUTO_RECOVERY,
-                        ui("修復処理", "Repair"),
-                        ui("試行 ${result.attemptedGeometries}件 / 保持候補 ${recoveryState.selectableEntries.size}件", "${result.attemptedGeometries} attempts / ${recoveryState.selectableEntries.size} retained candidates"),
-                    )
+            },
+            onResult = onResult@{ result ->
+                recoveryState.autoResult = result
+                if (result.searchDiagnostic?.completeness == SearchCompleteness.UNSEARCHED && result.attempts.isEmpty()) {
+                    statusText.text = searchResultDescription()
+                    guideText.text = ui("保持された候補はありません。復元不能を意味しません。", "No candidates were retained. This does not establish that recovery is impossible.")
+                    recordRecoveryAttempt(statusText.text.toString(), guideText.text.toString())
+                    return@onResult
                 }
-            } catch (_: RecoveryCancelledException) {
-                return@execute
-            } catch (error: Exception) {
-                if (token == workGeneration.get()) runOnUiThread {
-                    if (token == workGeneration.get()) {
-                        statusText.text = ui("内部エラーにより、探索の完了状況を確認できません。",
-                            "An internal error prevented determining search completion.")
-                        guideText.text = ui("案内: 修復処理を再実行してください。\nエラー詳細: ${error.message ?: error.javaClass.simpleName}",
-                            "Guide: Run repair again.\nError details: ${error.message ?: error.javaClass.simpleName}")
-                    }
+                if (result.attempts.isEmpty() && result.attemptedGeometries > 0) {
+                    statusText.text = ui("表示用の修復結果を保持できませんでした。", "Could not retain a recovery result for display.")
+                    guideText.text = ui("メモリの保持上限に達しました。作業を保存してアプリを開き直し、再実行してください。",
+                        "The memory retention limit was reached. Save the work, reopen the app and try again.")
+                    recordRecoveryAttempt(statusText.text.toString(), searchResultDescription())
+                    return@onResult
                 }
-            } finally {
-                runOnUiThread {
-                    progressDialog.close()
-                    if (recoveryProgressDialog === progressDialog) recoveryProgressDialog = null
+                if (result.finders.isEmpty() && result.attempts.isEmpty()) {
+                    statusText.text = ui("論理四隅が未確定のため、QR行列を作成できませんでした。四隅とFinder役割を確認してください。", "The QR matrix could not be built because the logical corners are not assigned. Check the corners and Finder roles.")
+                    guideText.text = ui("案内: QR行列を作成できなかったため、修復を開始できませんでした。四隅・Finderの役割・バージョンをご確認ください。QR行列がないため、追加で確定が必要なbit数と推奨セルは算出できません。", "Guide: Repair could not be started because a QR matrix could not be created. Please review the corners, Finder roles, and Version. Without a QR matrix, the number of additional bits that must be determined and a recommended cell cannot be calculated.")
+                    recordRecoveryAttempt(ui("修復できませんでした", "Repair failed"), ui("論理四隅が未確定", "Logical corners are not assigned"))
+                    return@onResult
                 }
-            }
-        }
+                if (result.attempts.isEmpty()) {
+                    statusText.text = ui("固定した四隅とバージョンから幾何候補を作れませんでした。", "No geometry candidate could be built from the fixed corners and Version.")
+                    guideText.text = ui("案内: 固定された四隅とバージョンからQR行列を作成できなかったため、修復を開始できませんでした。四隅とバージョンをご確認ください。QR行列がないため、追加で確定が必要なbit数と推奨セルは算出できません。", "Guide: Repair could not be started because a QR matrix could not be created from the fixed corners and Version. Please review the corners and Version. Without a QR matrix, the number of additional bits that must be determined and a recommended cell cannot be calculated.")
+                    recordRecoveryAttempt(ui("修復できませんでした", "Repair failed"), ui("固定幾何候補なし", "No fixed geometry candidate"))
+                    return@onResult
+                }
+                val best = result.bestAttempt ?: result.attempts.first()
+                recoveryState.attemptIndex = result.attempts.indexOf(best).coerceAtLeast(0)
+                showAttempt(recoveryState.attemptIndex)
+                recordHistory(
+                    HistoryEventKind.AUTO_RECOVERY,
+                    ui("修復処理", "Repair"),
+                    ui("試行 ${result.attemptedGeometries}件 / 保持候補 ${recoveryState.selectableEntries.size}件", "${result.attemptedGeometries} attempts / ${recoveryState.selectableEntries.size} retained candidates"),
+                )
+            },
+            onError = { error ->
+                statusText.text = ui("内部エラーにより、探索の完了状況を確認できません。",
+                    "An internal error prevented determining search completion.")
+                guideText.text = ui("案内: 修復処理を再実行してください。\nエラー詳細: ${error.message ?: error.javaClass.simpleName}",
+                    "Guide: Run repair again.\nError details: ${error.message ?: error.javaClass.simpleName}")
+            },
+            onFinished = { closeRecoveryProgress(progressDialog) },
+        )
+    }
+
+    private fun closeRecoveryProgress(progressDialog: RecoveryProgressDialog) {
+        progressDialog.close()
+        if (recoveryProgressDialog === progressDialog) recoveryProgressDialog = null
     }
 
     private fun showPreprocessDialog() = showPreprocessPage(PreprocessPage.BASIC)
