@@ -1,6 +1,7 @@
 package io.github.earthdiver.qrrepair
 
 import io.github.earthdiver.qrrepair.core.Coord
+import io.github.earthdiver.qrrepair.core.ErrorLimitMode
 import io.github.earthdiver.qrrepair.core.FinderPolarity
 import io.github.earthdiver.qrrepair.core.FinderRole
 import io.github.earthdiver.qrrepair.core.ImageQuad
@@ -20,7 +21,8 @@ class PreprocessDialogStateTest {
     @Test fun selectedPartialBitLimitSurvivesCaptureAndSamplingProfiles() {
         for (limit in 12..14) {
             val state = PreprocessDialogState(PreprocessSettings())
-            val captured = state.captureSettings(controls().copy(partialBitSearchLimit = limit),
+            state.search.partialBitSearchLimit = limit
+            val captured = state.captureSettings(controls(),
                 geometry(), emptyMap(), emptySet())
             assertEquals(limit, captured.partialBitSearchLimit)
             captured.variants().forEach { assertEquals(limit, it.settings.partialBitSearchLimit) }
@@ -113,8 +115,9 @@ class PreprocessDialogStateTest {
         val selected = QrFormatConstraint(ecLevel = ErrorCorrectionLevel.Q)
         val state = PreprocessDialogState(PreprocessSettings())
 
+        assertNull(state.search.updateFormatConstraint(1, selected.ecLevel, selected.dataMask, emptyMap()))
         val saved = state.captureSettings(
-            controls().copy(formatConstraint = selected),
+            controls(),
             geometry(),
             emptyMap(),
             emptySet(),
@@ -127,8 +130,9 @@ class PreprocessDialogStateTest {
     fun capturePreservesTheFormatInformationErrorLimit() {
         val state = PreprocessDialogState(PreprocessSettings())
 
+        state.search.setFormatMismatchLimit(ErrorLimitMode.MANUAL, 0)
         val saved = state.captureSettings(
-            controls().copy(formatMismatchLimit = 0),
+            controls(),
             geometry(),
             emptyMap(),
             emptySet(),
@@ -141,14 +145,41 @@ class PreprocessDialogStateTest {
     fun capturePreservesTheDataEccErrorLimit() {
         val state = PreprocessDialogState(PreprocessSettings())
 
+        state.search.setDataEccMismatchLimit(ErrorLimitMode.MANUAL, 7)
         val saved = state.captureSettings(
-            controls().copy(dataEccMismatchLimit = 7),
+            controls(),
             geometry(),
             emptyMap(),
             emptySet(),
         )
 
         assertEquals(7, saved.dataEccMismatchLimit)
+    }
+
+    @Test fun capturedSearchSettingsRemainIndependentAndCanRestoreAnEditorDraft() {
+        val initial = PreprocessSettings()
+        val state = PreprocessDialogState(initial)
+        state.search.setFormatMismatchLimit(ErrorLimitMode.EXACT, 5)
+        state.search.setDataEccMismatchLimit(ErrorLimitMode.AUTOMATIC, 400)
+        state.search.partialBitSearchLimit = 14
+        assertNull(state.search.updateFormatConstraint(1, ErrorCorrectionLevel.Q, 3, emptyMap()))
+        val saved = state.captureSettings(controls(), geometry(), emptyMap(), emptySet())
+
+        state.search.setFormatMismatchLimit(ErrorLimitMode.MANUAL, 9)
+        state.search.setDataEccMismatchLimit(ErrorLimitMode.UNLIMITED, 10)
+        state.search.partialBitSearchLimit = 12
+        assertNull(state.search.updateFormatConstraint(1, null, null, emptyMap()))
+
+        assertEquals(PreprocessSettings(), initial)
+        assertEquals(QrFormatConstraint(ErrorCorrectionLevel.Q, 3), saved.formatConstraint)
+        assertEquals(ErrorLimitMode.EXACT, saved.formatMismatchLimitMode)
+        assertEquals(5, saved.formatMismatchLimit)
+        assertEquals(0, saved.effectiveFormatMismatchLimit)
+        assertEquals(ErrorLimitMode.AUTOMATIC, saved.dataEccMismatchLimitMode)
+        assertEquals(400, saved.dataEccMismatchLimit)
+        assertEquals(14, saved.partialBitSearchLimit)
+        val restored = PreprocessDialogState(saved)
+        assertEquals(saved, restored.captureSettings(controls(), geometry(), emptyMap(), emptySet()))
     }
 
     private fun controls(

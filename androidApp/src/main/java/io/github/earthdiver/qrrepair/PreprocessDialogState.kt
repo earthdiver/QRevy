@@ -1,6 +1,5 @@
 package io.github.earthdiver.qrrepair
 
-import io.github.earthdiver.qrrepair.core.ErrorLimitMode
 import io.github.earthdiver.qrrepair.core.Coord
 import io.github.earthdiver.qrrepair.core.FinderPolarity
 import io.github.earthdiver.qrrepair.core.FinderRole
@@ -9,7 +8,6 @@ import io.github.earthdiver.qrrepair.core.ModuleValue
 import io.github.earthdiver.qrrepair.core.PointD
 import io.github.earthdiver.qrrepair.core.PolarityMode
 import io.github.earthdiver.qrrepair.core.PreprocessSettings
-import io.github.earthdiver.qrrepair.core.QrFormatConstraint
 
 internal data class PreprocessControlSnapshot(
     val polarity: PolarityMode,
@@ -22,14 +20,8 @@ internal data class PreprocessControlSnapshot(
     val lockVersion: Boolean = true,
     val searchQuadNeighborhood: Boolean = false,
     val trustKnownPayloadCount: Boolean = false,
-    val formatConstraint: QrFormatConstraint? = null,
-    val formatMismatchLimit: Int? = null,
-    val dataEccMismatchLimit: Int? = null,
-    val formatMismatchLimitMode: ErrorLimitMode = ErrorLimitMode.MANUAL,
-    val dataEccMismatchLimitMode: ErrorLimitMode = ErrorLimitMode.MANUAL,
     val lockManualBits: Boolean = false,
     val prioritySearchLimit: Int = 4,
-    val partialBitSearchLimit: Int = io.github.earthdiver.qrrepair.core.PartialBitSearchLimit.DEFAULT,
 )
 
 internal data class PreprocessGeometrySnapshot(
@@ -41,6 +33,8 @@ internal data class PreprocessGeometrySnapshot(
 
 /** Owns non-View state for one pre-repair dialog and assembles reproducible settings. */
 internal class PreprocessDialogState(private val initial: PreprocessSettings) {
+    val search = PreprocessSearchSettingsState(initial)
+
     var provisionalBlackMax: Int = initial.provisionalBlackMax
         private set
     var provisionalWhiteMin: Int = initial.provisionalWhiteMin
@@ -103,14 +97,14 @@ internal class PreprocessDialogState(private val initial: PreprocessSettings) {
             lockVersion = true,
             searchQuadNeighborhood = controls.searchQuadNeighborhood,
             trustKnownPayloadCount = controls.trustKnownPayloadCount,
-            formatConstraint = controls.formatConstraint,
-            formatMismatchLimit = controls.formatMismatchLimit,
-            dataEccMismatchLimit = controls.dataEccMismatchLimit,
-            formatMismatchLimitMode = controls.formatMismatchLimitMode,
-            dataEccMismatchLimitMode = controls.dataEccMismatchLimitMode,
+            formatConstraint = search.formatConstraint,
+            formatMismatchLimit = search.formatMismatchLimit,
+            dataEccMismatchLimit = search.dataEccMismatchLimit,
+            formatMismatchLimitMode = search.formatMismatchLimitMode,
+            dataEccMismatchLimitMode = search.dataEccMismatchLimitMode,
             lockManualBits = controls.lockManualBits,
             prioritySearchLimit = controls.prioritySearchLimit,
-            partialBitSearchLimit = controls.partialBitSearchLimit,
+            partialBitSearchLimit = search.partialBitSearchLimit,
             perspectiveCorrectionQuad = perspectiveCorrectionQuad,
             manualQuad = geometry.quad,
             manualFinders = geometry.finders,
