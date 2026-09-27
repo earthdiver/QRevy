@@ -80,11 +80,11 @@ class RecoverySearchDiagnosticTest {
         FormatEditPolicy.coordinates(1).forEach { input.set(it.x, it.y, ModuleValue.ERASED, 0f, ModuleSource.IMAGE) }
         val firstOutcome = engine.recoverWithDiagnostics(input, maxFormatCandidates = 1, maxKnownDataEccMismatches = 0)
         assertNull(firstOutcome.searchDiagnostic.inputBlocker)
-        assertTrue(firstOutcome.searchDiagnostic.unsearched)
+        assertEquals(SearchCompleteness.COMPLETE, firstOutcome.searchDiagnostic.completeness)
         val secondOutcome = engine.recoverWithDiagnostics(unknownData(), maxKnownDataEccMismatches = 0, formatConstraint = format)
         assertTrue(secondOutcome.candidates.isEmpty())
         assertNull(secondOutcome.searchDiagnostic.inputBlocker)
-        assertTrue(secondOutcome.searchDiagnostic.unsearched)
+        assertEquals(SearchCompleteness.COMPLETE, secondOutcome.searchDiagnostic.completeness)
         assertEquals("", secondOutcome.searchDiagnostic.failureExplanation(secondOutcome.failure!!.displayConditions))
     }
 
@@ -97,7 +97,7 @@ class RecoverySearchDiagnosticTest {
         val bounded = secondOutcome.searchDiagnostic
         val mixed = RecoverySearchDiagnostic.combine(listOf(noExactCandidate, bounded))!!
         assertNull(mixed.inputBlocker)
-        assertTrue(mixed.unsearched)
+        assertEquals(SearchCompleteness.COMPLETE, mixed.completeness)
         assertEquals("", mixed.failureExplanation(settings))
         val missing = RecoverySearchDiagnostic.combine(listOf(noExactCandidate, null))!!
         assertFalse(missing.coverageComplete)

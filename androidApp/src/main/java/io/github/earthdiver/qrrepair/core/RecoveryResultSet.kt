@@ -42,8 +42,9 @@ class RecoveryResultAccumulator(
     private var sawMissingDiagnostic = false
     private var candidatesOmitted = false
     private var derivationsOmitted = false
-    private var incomplete = false
-    private var unsearched = false
+    private val incompleteReasons = linkedSetOf<SearchIncompleteReason>()
+    private var completedPolicies = 0
+    private var excludedInputs = false
     var attemptedGeometries: Int = 0
         private set
     private val testedHypotheses = mutableListOf<GeometryHypothesis>()
@@ -82,10 +83,14 @@ class RecoveryResultAccumulator(
         rebuild(pending.values)
     }
 
-    /** A failed calculation or a skipped hypothesis is different from omitting retained details. */
-    fun markIncomplete(hasUnsearched: Boolean) {
-        incomplete = true
-        unsearched = unsearched || hasUnsearched
+    fun markIncomplete(reason: SearchIncompleteReason) {
+        incompleteReasons += reason
+    }
+
+    /** Includes normal rejection of unusable geometry and policy-limited empty scopes. */
+    fun completePolicy(hasExcludedInputs: Boolean = false) {
+        completedPolicies++
+        excludedInputs = excludedInputs || hasExcludedInputs
     }
 
     fun result(finders: List<FinderCandidate> = emptyList()): AutoRecoveryResult {
@@ -95,11 +100,16 @@ class RecoveryResultAccumulator(
         }
         val entries = ranked.map { it.copy(attempt = origins.getValue(it.attempt)) }
         val attempts = (origins.values + listOfNotNull(reference)).sortedWith(geometryAttemptComparator)
-        val known = summary ?: if (attemptedGeometries > 0 || incomplete)
-            RecoverySearchDiagnostic(coverageComplete = false) else null
+        val known = summary ?: if (attemptedGeometries > 0 || incompleteReasons.isNotEmpty() || completedPolicies > 0)
+            RecoverySearchDiagnostic(coverageComplete = !sawMissingDiagnostic,
+                solverCompleteness = if (completedPolicies > 0) SearchCompleteness.COMPLETE else SearchCompleteness.UNKNOWN)
+            else null
         val diagnostic = known?.copy(
-            coverageComplete = known.coverageComplete && !incomplete && !sawMissingDiagnostic,
-            unsearched = known.unsearched || unsearched,
+            // Execution completion does not establish a contradiction for policy-excluded inputs.
+            inputBlocker = known.inputBlocker.takeUnless { excludedInputs },
+            coverageComplete = known.coverageComplete && !sawMissingDiagnostic,
+            unsearched = known.unsearched || incompleteReasons.isNotEmpty(),
+            incompleteReasons = known.incompleteReasons + incompleteReasons,
             candidatesOmitted = known.candidatesOmitted || candidatesOmitted,
             derivationsOmitted = known.derivationsOmitted || derivationsOmitted,
         )

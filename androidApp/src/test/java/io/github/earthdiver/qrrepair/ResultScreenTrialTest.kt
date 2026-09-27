@@ -196,7 +196,7 @@ class ResultScreenTrialTest {
             assertEquals(View.VISIBLE, field<View>(activity, "resultSavePngButton").visibility)
             install(activity, matrix, listOf(result.copy(text = null, dataBytes = byteArrayOf(0x01))))
             assertTrue(field<TextView>(activity, "contentPreviewText").text.contains("誤り訂正の条件は満たしましたが"))
-            assertTrue(field<TextView>(activity, "diagnosticDetailsText").text.contains("指定条件を満たす修復候補は見つかりませんでした。"))
+            assertTrue(field<TextView>(activity, "diagnosticDetailsText").text.contains("調べた範囲では修復候補は見つかりませんでした。"))
             assertEquals(View.GONE, field<View>(activity, "resultCopyButton").visibility)
             assertEquals(View.GONE, field<View>(activity, "resultSavePngButton").visibility)
             MainActivity::class.java.getDeclaredMethod("startSavePng").apply { isAccessible = true }.invoke(activity)
@@ -207,7 +207,7 @@ class ResultScreenTrialTest {
     @Test fun earlyStopShowsActionAndClearingAnAttemptHidesOldControls() {
         val (matrix, result) = candidate("ABC-123")
         for (style in AppStyle.entries) withActivity(style, AppLanguage.JAPANESE) { activity ->
-            install(activity, matrix, listOf(result.copy(combinationSearch = CombinationSearchSummary(1, setOf(CombinationSearchStop.NODE_LIMIT)))))
+            install(activity, matrix, listOf(result.copy(combinationSearch = CombinationSearchSummary(1, setOf(CombinationSearchStop.WORKING_MEMORY_LIMIT)))))
             assertTrue(field<TextView>(activity, "resultExplanationText").text.contains("未確認の組合せ"))
             val state = field<RecoveryUiState>(activity, "recoveryState")
             state.recoveries = emptyList()

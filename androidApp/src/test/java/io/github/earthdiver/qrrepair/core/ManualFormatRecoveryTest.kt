@@ -126,7 +126,7 @@ class ManualFormatRecoveryTest {
         }
     }
 
-    @Test fun imageFormatErrorsUseOnlyFormatLimitAndFullySpecifiedFormatBypassesIt() {
+    @Test fun imageFormatErrorsUseFormatLimitEvenWithBothSelections() {
         val (matrix, selected) = fixture()
         val coord = Coord(0, 8)
         matrix.set(coord.x, coord.y, opposite(matrix[coord.x, coord.y].value), 1f, ModuleSource.IMAGE)
@@ -136,7 +136,7 @@ class ManualFormatRecoveryTest {
         assertEquals(1, candidate.formatMismatches)
         assertEquals(0, candidate.knownBitMismatchesAfterCorrection)
         assertTrue(RecoveryEngine().recover(matrix, formatConstraint = selected, maxFormatMismatches = 0,
-            maxKnownDataEccMismatches = 0).any { it.text == "FORMAT-LOCK" })
+            maxKnownDataEccMismatches = 0).none { it.text == "FORMAT-LOCK" })
     }
 
     @Test fun automaticFormatDoesNotPermitContradictoryManualFormatPins() {
@@ -189,7 +189,7 @@ class ManualFormatRecoveryTest {
         val (original, selected) = fixture()
         val coord = Coord(0, 8)
         for (constraint in listOf(null, QrFormatConstraint(ecLevel = selected.ecLevel),
-            QrFormatConstraint(dataMask = selected.dataMask))) {
+            QrFormatConstraint(dataMask = selected.dataMask), selected)) {
             val matrix = original.copy()
             matrix.set(coord.x, coord.y, opposite(matrix[coord.x, coord.y].value), 1f, ModuleSource.IMAGE)
             val engine = RecoveryEngine()
@@ -203,8 +203,8 @@ class ManualFormatRecoveryTest {
             assertEquals(0, outcome.formatAttempts)
             assertTrue(engine.recover(matrix, formatConstraint = constraint, maxFormatMismatches = 1)
                 .any { it.text == "FORMAT-LOCK" })
-            assertTrue(engine.recover(matrix, formatConstraint = selected, maxFormatMismatches = 0)
-                .any { it.text == "FORMAT-LOCK" })
+            assertTrue(engine.recover(matrix, formatConstraint = selected, maxFormatMismatches = 0).isEmpty())
+            assertEquals(SearchCompleteness.COMPLETE, outcome.searchDiagnostic.completeness)
         }
     }
 }

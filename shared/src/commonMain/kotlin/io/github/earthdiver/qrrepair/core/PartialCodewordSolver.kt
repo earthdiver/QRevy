@@ -42,26 +42,31 @@ class PartialCodewordSolver(private val rs: ReedSolomonErasures) {
         allowBitEnumeration: Boolean = true,
         nonEnumerablePositions: Set<Int> = emptySet(),
         cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
-    ): List<Result> {
+        reportSearch: (SearchCompleteness) -> Unit = {},
+    ): List<Result> = reportingCompletion(reportSearch) {
         cancellation.check()
         val dimensionLimit = if (allowBitEnumeration && nonEnumerablePositions.isEmpty()) 12 else 0
         val exact = space?.assignments(dimensionLimit, cancellation)?.map { corrected ->
             Result(corrected, block.unknownMasks.indices.filter { block.unknownMasks[it] != 0 }.toIntArray(),
                 space.dimension, 0, intArrayOf(), 0, bitConstraintSolved = true)
         }?.toList().orEmpty()
-        if (exactOnly) return exact.ifEmpty {
-            throw ReedSolomonErasures.DecodeException(
-                if (space == null) "No exact known-bit RS-consistent assignment"
-                else "Exact RS space exceeds bounded partial-bit solver dimension")
+        if (exactOnly) {
+            return@reportingCompletion exact.ifEmpty {
+                throw ReedSolomonErasures.DecodeException(
+                    if (space == null) "No exact known-bit RS-consistent assignment"
+                    else "Exact RS space exceeds bounded partial-bit solver dimension")
+            }
         }
         val conventional = try {
             decodeCandidates(block, nsym, allowBitEnumeration = allowBitEnumeration,
                 nonEnumerablePositions = nonEnumerablePositions, cancellation = cancellation)
         } catch (error: ReedSolomonErasures.DecodeException) {
-            if (exact.isEmpty()) throw error
+            if (exact.isEmpty()) {
+                throw error
+            }
             emptyList()
         }
-        return BlockCandidateAccumulator().apply {
+        return@reportingCompletion BlockCandidateAccumulator().apply {
             conventional.forEach(::add)
             exact.forEach(::add)
         }.results()
@@ -95,7 +100,8 @@ class PartialCodewordSolver(private val rs: ReedSolomonErasures) {
         allowBitEnumeration: Boolean = true,
         nonEnumerablePositions: Set<Int> = emptySet(),
         cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
-    ): List<Result> {
+        reportSearch: (SearchCompleteness) -> Unit = {},
+    ): List<Result> = reportingCompletion(reportSearch) {
         cancellation.check()
         val erasedPositions = block.unknownMasks.indices.filter { block.unknownMasks[it] != 0 }
         var erasureOnlyResult: Result? = null
@@ -114,7 +120,7 @@ class PartialCodewordSolver(private val rs: ReedSolomonErasures) {
             }
             val hasComfortableMargin = erasureOnlyResult?.rsMargin?.let { it >= 2 } == true
             if (!allowBitEnumeration || hasComfortableMargin) {
-                return listOfNotNull(erasureOnlyResult)
+                return@reportingCompletion listOfNotNull(erasureOnlyResult)
                     .ifEmpty { throw ReedSolomonErasures.DecodeException("RS decode failed without enumerable partial erasures") }
             }
         }
@@ -143,7 +149,7 @@ class PartialCodewordSolver(private val rs: ReedSolomonErasures) {
             selected += entry; totalBits += entry.second
         }
         if (selected.size < requiredBytes || totalBits > maxEnumeratedBits) {
-            if (erasureOnlyResult != null) return listOf(erasureOnlyResult)
+            if (erasureOnlyResult != null) return@reportingCompletion listOf(erasureOnlyResult)
             throw ReedSolomonErasures.DecodeException("Too many erasure bytes for bounded partial-bit solver")
         }
 
@@ -193,7 +199,25 @@ class PartialCodewordSolver(private val rs: ReedSolomonErasures) {
         // [trials] is the explicit resource bound. Preserve every distinct solution within that
         // fully enumerated assignment set; final QR payload parsing, not a per-block result cap,
         // decides which candidate is usable.
-        return candidates.results()
+        return@reportingCompletion candidates.results()
+    }
+
+    /** Completion of the specified bounded policy is independent of finding a solution. */
+    private inline fun <T> reportingCompletion(report: (SearchCompleteness) -> Unit, action: () -> T): T {
+        val result = try {
+            action()
+        } catch (error: ReedSolomonErasures.DecodeException) {
+            report(SearchCompleteness.COMPLETE)
+            throw error
+        } catch (error: RecoveryCancelledException) {
+            report(SearchCompleteness.UNSEARCHED)
+            throw error
+        } catch (error: Exception) {
+            report(SearchCompleteness.UNKNOWN)
+            throw error
+        }
+        report(SearchCompleteness.COMPLETE)
+        return result
     }
 
     private fun margin(nsym: Int, erase: IntArray, errata: IntArray): Int {

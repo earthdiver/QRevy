@@ -267,7 +267,7 @@ class RepairGuideTextTest {
                 isAccessible = true
                 invoke(activity)
             }
-            assertEquals(searchResultText(0, false),
+            assertEquals(searchResultText(0, io.github.earthdiver.qrrepair.core.SearchCompleteness.COMPLETE),
                 view("statusText").text.toString())
             assertEquals(View.VISIBLE, view("contentPreviewText").visibility)
             assertTrue(view("contentPreviewText").text.contains(if (language == AppLanguage.JAPANESE)
@@ -318,7 +318,7 @@ class RepairGuideTextTest {
                 val content = text("diagnosticDetailsText")
                 assertTrue(content.contains(if (language == AppLanguage.JAPANESE) "一致を確認できません" else "agreement cannot be checked"))
                 assertTrue(content.contains(if (language == AppLanguage.JAPANESE) "データ・ECC領域" else "Data/ECC region"))
-                assertTrue(content.contains(if (language == AppLanguage.JAPANESE) "適用しません" else "not applied"))
+                assertTrue(content.contains(if (language == AppLanguage.JAPANESE) "形式情報の不一致上限: 0bit" else "Format mismatch limit: 0 bits"))
                 assertTrue(content.contains(if (language == AppLanguage.JAPANESE) "固定セルの0/1と矛盾する復元候補を許容する（仮指定セルと同じ扱い）: ${if (locked) "OFF" else "ON"}" else "Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells): ${if (locked) "OFF" else "ON"}"))
                 if (!locked && limit == 0) assertTrue(content.contains(if (language == AppLanguage.JAPANESE)
                     "この領域の入力済み0/1は変更していません" else "in that region"))
@@ -331,7 +331,9 @@ class RepairGuideTextTest {
             assertTrue(text("statusText").contains(if (language == AppLanguage.JAPANESE) "データコード語列は2種類" else "2 distinct data codeword sequences"))
             for (stop in io.github.earthdiver.qrrepair.core.CombinationSearchStop.entries) {
                 val message = io.github.earthdiver.qrrepair.core.CombinationSearchSummary(1, setOf(stop)).description(16)
-                assertTrue(message.contains(if (language == AppLanguage.JAPANESE) "まだ調べていない組合せ" else "Some combinations remain unchecked"))
+                assertEquals(stop in setOf(io.github.earthdiver.qrrepair.core.CombinationSearchStop.USER_INTERRUPTED,
+                    io.github.earthdiver.qrrepair.core.CombinationSearchStop.WORKING_MEMORY_LIMIT),
+                    message.contains(if (language == AppLanguage.JAPANESE) "まだ調べていない組合せ" else "Some combinations remain unchecked"))
                 assertFalse(message.contains("探索窓"))
                 assertFalse(message.contains("展開ノード"))
             }
@@ -400,7 +402,7 @@ class RepairGuideTextTest {
                     invoke(activity, null)
                 }
                 val preview = text("contentPreviewText")
-                assertEquals("$style/$language/$stage", searchResultText(0, false), preview)
+                assertEquals("$style/$language/$stage", searchResultText(0, io.github.earthdiver.qrrepair.core.SearchCompleteness.UNKNOWN), preview)
                 assertFalse(preview.contains(if (language == AppLanguage.JAPANESE) "この試行" else "this attempt"))
                 assertFalse(preview.contains(if (language == AppLanguage.JAPANESE) "誤り訂正レベル:" else "Error correction level:"))
                 val report = MainActivity::class.java.getDeclaredField("diagnosticReport")

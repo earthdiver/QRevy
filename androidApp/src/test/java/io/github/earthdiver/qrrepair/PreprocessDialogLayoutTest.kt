@@ -840,7 +840,7 @@ class PreprocessDialogLayoutTest {
         val guide = text("guideText")
         val candidateDetails = text("contentPreviewText")
         val diagnostics = (MainActivity::class.java.getDeclaredField("diagnosticReport").apply { isAccessible = true }.get(activity) as io.github.earthdiver.qrrepair.core.RecoveryDiagnosticReport).fullText()
-        assertEquals(io.github.earthdiver.qrrepair.core.searchResultText(0, true), status)
+        assertEquals(io.github.earthdiver.qrrepair.core.searchResultText(0, io.github.earthdiver.qrrepair.core.SearchCompleteness.UNSEARCHED), status)
         assertTrue(guide.contains("81"))
         assertTrue(!guide.contains("推奨セル"))
         assertTrue(!guide.contains("絞り込めるセル"))

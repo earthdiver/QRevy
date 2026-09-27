@@ -92,6 +92,7 @@ enum class RecoveryFailureReason {
     FORMAT_EDIT_CONFLICT,
     FORMAT_MISMATCH_LIMIT,
     MANUAL_PIN_CONFLICT,
+    SINGLE_SEGMENT_CONDITION_UNAVAILABLE,
 }
 
 internal fun classifyRsFailure(message: String?, erasureShortfallBits: Int): RecoveryFailureReason = when {
@@ -164,8 +165,10 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         val priorityHeaderHypotheses = linkedSetOf<String>()
         var acceptedCandidate = false
         var unresolvedCalculations = false
-        var boundedSearch = false
-        var interrupted = false
+        var solverCompleteness = SearchCompleteness.COMPLETE
+        var finished = false
+        var completedSteps = 0
+        val incompleteReasons = linkedSetOf<SearchIncompleteReason>()
         var candidateCalculations = 0
         val candidates = BoundedRecoveryCandidates(retentionBudget)
 
@@ -179,10 +182,12 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 priorityHeaderHypotheses = priorityHeaderHypotheses.toSet(),
                 acceptedCandidate = acceptedCandidate,
                 unresolvedCalculations = unresolvedCalculations,
-                unsearched = boundedSearch || combinationSearch.stops.isNotEmpty() ||
-                    (expectedFormats.isNotEmpty() && !allInputsChecked),
+                unsearched = incompleteReasons.isNotEmpty() || combinationSearch.unsearched,
+                incompleteReasons = incompleteReasons + combinationSearch.incompleteReasons,
+                completedSteps = completedSteps,
                 candidateCalculations = candidateCalculations,
-                coverageComplete = !interrupted,
+                coverageComplete = finished || incompleteReasons.isNotEmpty() || combinationSearch.unsearched,
+                solverCompleteness = solverCompleteness,
                 candidatesOmitted = candidates.candidatesOmitted,
                 derivationsOmitted = candidates.derivationsOmitted,
             )
@@ -214,7 +219,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
     ): Boolean {
         require(maxFormatMismatches == null || maxFormatMismatches in 0..30)
         val version = (matrix.dimension - 17) / 4
-        val effectiveLimit = maxFormatMismatches.takeUnless { formatConstraint?.candidateCount == 1 }
+        val effectiveLimit = maxFormatMismatches
         val ignored = FormatEditPolicy.ignoredComparisonCoords(version, formatConstraint,
             FormatEditPolicy.manualValues(matrix) + manualEdits)
         var formats = FormatSolver.ranked(matrix, ignored)
@@ -289,6 +294,13 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
     ): RecoveryOutcome {
         require(maxFormatMismatches == null || maxFormatMismatches in 0..30)
         require(maxKnownDataEccMismatches == null || maxKnownDataEccMismatches in 0..MAX_QR_DATA_ECC_BITS)
+        val priority = matrix.prioritySearchCoordinates()
+        require(priority.size <= 14) { "Priority search is limited to fourteen modules" }
+        if (priority.isNotEmpty()) {
+            val codewordCoords = CodewordExtractor.extract(matrix, (matrix.dimension - 17) / 4, 0).codewords
+                .flatMapTo(hashSetOf()) { word -> word.coordinates.map { it.x to it.y } }
+            require(priority.all { it in codewordCoords }) { "Priority search is only valid for data/ECC modules" }
+        }
         val run = RecoveryRunState(matrix, retentionBudget, RecoveryCancellation {
             cancellation.check()
             stopRequested()
@@ -321,13 +333,15 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         cancellation.check()
         val found = try { recoverRun(run, matrix, maxFormatCandidates, trustKnownPayloadCount, formatConstraint,
             maxKnownDataEccMismatches = maxKnownDataEccMismatches, maxFormatMismatches = maxFormatMismatches,
-            manualEdits = manualEdits, onPriorityProgress = onPriorityProgress)
+            manualEdits = manualEdits, onPriorityProgress = onPriorityProgress).also { run.finished = true; run.completedSteps++ }
         } catch (error: RecoveryCancelledException) {
             cancellation.check()
             if (!stopRequested()) throw error
-            run.interrupted = true
-            run.boundedSearch = true
+            run.incompleteReasons += SearchIncompleteReason.USER_INTERRUPTED
             run.combinationSearch = run.combinationSearch.afterPass(setOf(CombinationSearchStop.USER_INTERRUPTED))
+            run.candidates.results()
+        } catch (_: Exception) {
+            run.incompleteReasons += SearchIncompleteReason.INTERNAL_ERROR
             run.candidates.results()
         }
         val candidates = found.map(::annotate)
@@ -362,7 +376,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 reason = RecoveryFailureReason.FORMAT_EDIT_CONFLICT, manualConflicts = conflict.cells)
             return emptyList()
         }
-        val effectiveLimit = maxFormatMismatches.takeUnless { formatConstraint?.candidateCount == 1 }
+        val effectiveLimit = maxFormatMismatches
         val permittedFormats = FormatSolver.ranked(matrix, run.ignoredFormatCoords)
             .filter { formatConstraint?.permits(it.ecLevel, it.dataMask) != false }
         if (effectiveLimit != null && permittedFormats.none { it.mismatches <= effectiveLimit }) {
@@ -376,7 +390,6 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         run.expectedFormats = permittedFormats.filter { effectiveLimit == null || it.mismatches <= effectiveLimit }
             .mapTo(linkedSetOf()) { it.ecLevel to it.dataMask }
         val priority = matrix.prioritySearchCoordinates()
-        require(priority.size <= 14) { "Priority search is limited to fourteen modules" }
         val forcedFormats = formatConstraint?.let { constraint ->
             FormatSolver.ranked(matrix, run.ignoredFormatCoords)
                 .filter { constraint.permits(it.ecLevel, it.dataMask) }
@@ -387,15 +400,9 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
             recoverInternal(run, matrix, maxFormatCandidates, forcedFormats, allowBitEnumeration = true, trustKnownPayloadCount, maxFormatMismatches = effectiveLimit, maxKnownDataEccMismatches = maxKnownDataEccMismatches)
             return finish(run, run.candidates.results())
         }
-        val version = (matrix.dimension - 17) / 4
-        val codewordCoords = CodewordExtractor.extract(matrix, version, 0).codewords
-            .flatMapTo(hashSetOf()) { partial -> partial.coordinates.map { it.x to it.y } }
-        require(priority.all { it in codewordCoords }) { "Priority search is only valid for data/ECC modules" }
-
         // First preserve ordinary QR behavior: every priority bit is still an erasure.
         val ordinaryParsed = recoverInternal(run, matrix, maxFormatCandidates, forcedFormats, allowBitEnumeration = false, trustKnownPayloadCount, maxFormatMismatches = effectiveLimit, maxKnownDataEccMismatches = maxKnownDataEccMismatches)
         if (ordinaryParsed) {
-            run.boundedSearch = true
             return finish(run, run.candidates.results())
         }
 
@@ -432,6 +439,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
 
         // No priority assignment produced a validated payload; retain the existing bounded '?'
         // search as the final fallback.
+        onPriorityProgress?.invoke(0, 0)
         recoverInternal(run, matrix, maxFormatCandidates, forcedFormats, allowBitEnumeration = true, trustKnownPayloadCount, maxFormatMismatches = effectiveLimit, maxKnownDataEccMismatches = maxKnownDataEccMismatches)
         return finish(run, run.candidates.results())
     }
@@ -515,6 +523,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 CodewordExtractor.extract(matrix, version, format.dataMask)
             } catch (_: Exception) {
                 run.unresolvedCalculations = true
+                run.incompleteReasons += SearchIncompleteReason.INTERNAL_ERROR
                 considerFailure(run, format, RecoveryFailureStage.EXTRACTION)
                 continue
             }
@@ -522,9 +531,11 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 QrBlockInterleaver.deinterleave(extraction, version, format.ecLevel)
             } catch (_: Exception) {
                 run.unresolvedCalculations = true
+                run.incompleteReasons += SearchIncompleteReason.INTERNAL_ERROR
                 considerFailure(run, format, RecoveryFailureStage.DEINTERLEAVE)
                 continue
             }
+            run.completedSteps++
             // Preserve the pre-trial observation for metrics and Before/provenance views.
             // The trial extraction and blocks still drive RS and enforce temporary guesses.
             val evidenceExtraction = if (matrix === run.diagnosticInput) extraction else
@@ -599,6 +610,13 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 singleSegmentStatus(headerData, headerUnknown, version, constraints, !originalHeaderKnown)
                     .also { run.singleSegmentStatuses += it }
             } else null
+            if (trackSingleSegment && constraints.trustedStructure == null) {
+                // Keep the user's condition in force even when the header cannot establish it.
+                considerFailure(run, format, RecoveryFailureStage.PAYLOAD_VALIDATION,
+                    reason = RecoveryFailureReason.SINGLE_SEGMENT_CONDITION_UNAVAILABLE,
+                    rsBitDiagnostic = bitDiagnostic)
+                continue
+            }
             val constraintKinds = HashMap<Pair<Int, Int>, PayloadConstraintSolver.ConstraintKind>()
             val constraintValues = HashMap<Pair<Int, Int>, Int>()
             for (filled in constraints.filled) {
@@ -636,7 +654,6 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                         de.ecSymbolsPerBlock, conventionalDiagnostic.blocks.getOrNull(blockIndex)?.margin
                             .takeIf { matrix === run.diagnosticInput && constraints.filledBits == 0 })
                     if (requiredBytes > run.retentionBudget.workingLimitBytes - blockWorkingBytes) {
-                        run.boundedSearch = true
                         run.combinationSearch = run.combinationSearch.afterPass(setOf(CombinationSearchStop.WORKING_MEMORY_LIMIT))
                         throw ReedSolomonErasures.DecodeException("Exact RS space exceeds working-memory allowance")
                     }
@@ -649,6 +666,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                         allowBitEnumeration = allowBitEnumeration,
                         nonEnumerablePositions = nonEnumerable,
                         cancellation = run.cancellation,
+                        reportSearch = { run.solverCompleteness = run.solverCompleteness.combine(it) },
                     )
                 } catch (error: ReedSolomonErasures.DecodeException) {
                     failed = true
@@ -660,11 +678,8 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 blockCandidateResults += results
             }
             if (failed) {
+                // An ordinary no-result outcome terminates this block's specified policy.
                 run.unresolvedCalculations = true
-                if (classifyRsFailure(failureMessage, rsShortfallBits) in setOf(
-                        RecoveryFailureReason.RS_BIT_SPACE_LIMIT, RecoveryFailureReason.BOUNDED_BIT_SEARCH_LIMIT)) {
-                    run.boundedSearch = true
-                }
                 considerFailure(
                     run,
                     format,
@@ -683,10 +698,9 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 )
                 // A recursive unconstrained retry uses the same working allowance.
                 blockCandidateResults.clear()
-                // Payload structure is an optional accelerator, not a reason to discard an
-                // otherwise recoverable QR. Retry this exact format once from freshly
-                // deinterleaved, unconstrained blocks before moving to another format.
-                if (allowPayloadConstraints && constraints.filledBits > 0) {
+                // Heuristic filling may be retried from the original blocks. An explicit
+                // structure condition remains enforced in every attempt.
+                if (!trustKnownPayloadCount && allowPayloadConstraints && constraints.filledBits > 0) {
                     parsedFound = recoverInternal(
                         run,
                         matrix = matrix,
@@ -711,14 +725,13 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
             val affordableNodes = ((run.retentionBudget.workingLimitBytes - blockWorkingBytes) /
                 (256L + de.blocks.size * 16L)).coerceIn(0L, MAX_QR_COMBINATION_TRIALS.toLong()).toInt()
             if (affordableNodes == 0) {
-                run.boundedSearch = true
                 run.combinationSearch = run.combinationSearch.afterPass(setOf(CombinationSearchStop.WORKING_MEMORY_LIMIT))
                 blockCandidateResults.clear()
                 considerFailure(run, format, RecoveryFailureStage.REED_SOLOMON,
                     reason = RecoveryFailureReason.QR_COMBINATION_SEARCH_LIMIT,
                     rsBlockCount = de.blocks.size, ecSymbolsPerBlock = de.ecSymbolsPerBlock,
                     rsBitDiagnostic = bitDiagnostic)
-                if (shouldRetryWithoutPayloadConstraints(allowPayloadConstraints, constraints.filledBits)) {
+                if (!trustKnownPayloadCount && shouldRetryWithoutPayloadConstraints(allowPayloadConstraints, constraints.filledBits)) {
                     parsedFound = recoverInternal(run, matrix, 1, listOf(format), allowBitEnumeration,
                         false, false, maxFormatMismatches, maxKnownDataEccMismatches, formatRoute,
                         priorityAssignments) || parsedFound
@@ -763,6 +776,10 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 val dataBytes = ByteArray(data.size) { data[it].toByte() }
                 // Most Cartesian combinations are RS-valid blockwise but not a valid QR data
                 // stream. Reject them before allocating provenance and reinterleaved arrays.
+                if (trackSingleSegment && constraints.trustedStructure?.matches(dataBytes) != true) {
+                    run.candidateRejections += RecoveryCandidateRejection.SINGLE_SEGMENT_STRUCTURE
+                    continue
+                }
                 if (!StrictQrPayloadValidator.isValid(dataBytes, version)) {
                     run.candidateRejections += RecoveryCandidateRejection.QR_STRUCTURE
                     continue
@@ -831,6 +848,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 } catch (_: FormatException) {
                     null
                 } catch (_: RuntimeException) {
+                    run.incompleteReasons += SearchIncompleteReason.INTERNAL_ERROR
                     null
                 }
                 val text = decoded?.text
@@ -901,10 +919,9 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                     rsBitDiagnostic = bitDiagnostic,
                 )
             }
-            // The solver currently models a single data segment. Even a fully parsed constrained
-            // result cannot prove that an erased second segment did not exist, so every mutation
-            // made by this optional accelerator keeps a fresh unconstrained route in the result set.
-            if (shouldRetryWithoutPayloadConstraints(allowPayloadConstraints, constraints.filledBits)) {
+            // Heuristic filling cannot rule out another segment. Only when forcing is OFF,
+            // retain the original-input route after a mutation, even after a parsed result.
+            if (!trustKnownPayloadCount && shouldRetryWithoutPayloadConstraints(allowPayloadConstraints, constraints.filledBits)) {
                 blockCandidateResults.clear()
                 parsedFound = recoverInternal(
                     run,

@@ -67,12 +67,13 @@ class SingleSegmentProcessingTest {
             assertTrue("Marking * must immediately enable header forcing", option.isEnabled)
             option.isChecked = true
             all.filterIsInstance<TextView>().first { it.text.toString() == "?" }.performClick()
-            assertFalse("An ordinary unknown must disable header forcing", option.isEnabled)
-            assertFalse(option.isChecked)
+            assertTrue("The selected condition must remain editable", option.isEnabled)
+            assertTrue("Changing the input must not silently relax the condition", option.isChecked)
             all.filterIsInstance<TextView>().first { it.text.toString() == activity.getString(R.string.undo) }.performClick()
             assertTrue(option.isEnabled)
             all.filterIsInstance<TextView>().first { it.text.toString() == activity.getString(R.string.redo) }.performClick()
-            assertFalse(option.isEnabled)
+            assertTrue(option.isEnabled)
+            assertTrue(option.isChecked)
         } finally { controller.pause().stop().destroy() }
     }
 

@@ -61,8 +61,8 @@ import io.github.earthdiver.qrrepair.core.FormatEditPolicy
 import io.github.earthdiver.qrrepair.core.FormatEditConflict
 import io.github.earthdiver.qrrepair.core.QrTextMatrixParser
 import io.github.earthdiver.qrrepair.core.RecoveryCandidate
-import io.github.earthdiver.qrrepair.core.description
 import io.github.earthdiver.qrrepair.core.RecoveryFailure
+import io.github.earthdiver.qrrepair.core.SearchCompleteness
 import io.github.earthdiver.qrrepair.core.RecoveryEngine
 import io.github.earthdiver.qrrepair.core.RecoveryWorkflow
 import io.github.earthdiver.qrrepair.core.RecoveryCancellation
@@ -1735,6 +1735,7 @@ class MainActivity : Activity() {
                     snapshot.selectedQr?.let { identity -> ranked.indexOfFirst(identity::matches) }
                         ?: preferredRecoveryIndex(ranked, snapshot.recoveryIndex),
                     failure,
+                    outcome.searchDiagnostic,
                 )
                 if (historyRestoreToken == token) historyRestoreToken = null
                 refreshInspector()
@@ -1742,8 +1743,6 @@ class MainActivity : Activity() {
                     ui("$prefix。保存時の選択候補は今回の探索範囲では再現できませんでした。",
                         "$prefix. The saved selection could not be reproduced within this search.") else prefix)
                 updateContentPreview()
-                if (progressDialog.stopped.get()) statusText.text = ui(
-                    "探索を中断しました（未探索あり）。", "Search interrupted; some combinations remain unchecked.") + "\n" + statusText.text
                 onRestored?.invoke()
             }
         }
@@ -1911,10 +1910,10 @@ class MainActivity : Activity() {
 
     private fun searchCandidateCount(): Int = decodedRecoveryEntries().size
 
-    private fun searchHasUncheckedCombinations(): Boolean = recoveryState.searchDiagnostic?.unsearched == true ||
+    private fun searchHasUncheckedCombinations(): Boolean = recoveryState.searchDiagnostic?.completeness == SearchCompleteness.UNSEARCHED ||
         (recoveryState.searchDiagnostic == null &&
             (recoveryState.selectedRecovery?.combinationSearch ?: recoveryState.failure?.combinationSearch)
-                ?.stops?.isNotEmpty() == true)
+                ?.unsearched == true)
 
     private fun searchResultDescription(): String = diagnosticPresenter().searchResultDescription(diagnosticContext())
 
@@ -2506,8 +2505,8 @@ class MainActivity : Activity() {
                     progressDialog.close()
                     if (recoveryProgressDialog === progressDialog) recoveryProgressDialog = null
                     recoveryState.autoResult = result
-                    if (result.interrupted && result.attempts.isEmpty()) {
-                        statusText.text = ui("探索を中断しました（未探索あり）。", "Search interrupted; some combinations remain unchecked.")
+                    if (result.searchDiagnostic?.completeness == SearchCompleteness.UNSEARCHED && result.attempts.isEmpty()) {
+                        statusText.text = searchResultDescription()
                         guideText.text = ui("保持された候補はありません。復元不能を意味しません。", "No candidates were retained. This does not establish that recovery is impossible.")
                         recordRecoveryAttempt(statusText.text.toString(), guideText.text.toString())
                         return@runOnUiThread
@@ -2534,9 +2533,6 @@ class MainActivity : Activity() {
                     val best = result.bestAttempt ?: result.attempts.first()
                     recoveryState.attemptIndex = result.attempts.indexOf(best).coerceAtLeast(0)
                     showAttempt(recoveryState.attemptIndex)
-                    statusText.text = (if (result.interrupted) ui("探索を中断しました（未探索あり）。", "Search interrupted; combinations remain unchecked.")
-                        else if (searchHasUncheckedCombinations() || result.candidatesTruncated) ui("探索は途中終了です（未探索または保持上限あり）。", "Search is incomplete (unchecked combinations or retention limits).")
-                        else ui("指定条件での探索を完了しました。", "Search completed under the specified conditions.")) + "\n" + statusText.text
                     recordHistory(
                         HistoryEventKind.AUTO_RECOVERY,
                         ui("修復処理", "Repair"),
@@ -2548,8 +2544,10 @@ class MainActivity : Activity() {
             } catch (error: Exception) {
                 if (token == workGeneration.get()) runOnUiThread {
                     if (token == workGeneration.get()) {
-                        statusText.text = ui("修復処理に失敗: ${error.message ?: error.javaClass.simpleName}", "Repair failed: ${error.message ?: error.javaClass.simpleName}")
-                        guideText.text = ui("案内: QRの四隅から有効な読み取り範囲を作成できませんでした。四隅が交差または重複していないかご確認ください。", "Guide: A valid reading area could not be created from the QR corners. Please check that the corners do not cross or overlap.")
+                        statusText.text = ui("内部エラーにより、探索の完了状況を確認できません。",
+                            "An internal error prevented determining search completion.")
+                        guideText.text = ui("案内: 修復処理を再実行してください。\nエラー詳細: ${error.message ?: error.javaClass.simpleName}",
+                            "Guide: Run repair again.\nError details: ${error.message ?: error.javaClass.simpleName}")
                     }
                 }
             } finally {

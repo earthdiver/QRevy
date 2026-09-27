@@ -95,7 +95,7 @@ class QrRecoveryIntegrationTest {
     }
 
     @Test
-    fun fullySpecifiedFormatIgnoresTheAutomaticFormatMismatchLimit() {
+    fun fullySpecifiedFormatRespectsTheFormatMismatchLimit() {
         val encoded = Encoder.encode(text, ErrorCorrectionLevel.Q, mapOf(EncodeHintType.QR_VERSION to 2))
         val matrix = toTriState(encoded.matrix)
         val damaged = formatCoordinates(matrix.dimension).first().first()
@@ -114,7 +114,15 @@ class QrRecoveryIntegrationTest {
             maxFormatMismatches = 0,
         )
 
-        assertTrue(recovered.any { it.text == text })
+        assertTrue(recovered.isEmpty())
+        val allowed = RecoveryEngine().recoverWithDiagnostics(matrix,
+            formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.Q, encoded.maskPattern),
+            maxFormatMismatches = 1)
+        assertTrue(allowed.candidates.any { it.text == text })
+        val excluded = RecoveryEngine().recoverWithDiagnostics(matrix,
+            formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.Q, encoded.maskPattern),
+            maxFormatMismatches = 0)
+        assertEquals(SearchCompleteness.COMPLETE, excluded.searchDiagnostic.completeness)
     }
 
     @Test
@@ -243,7 +251,7 @@ class QrRecoveryIntegrationTest {
     }
 
     @Test
-    fun constrainedRsCoincidenceFallsBackToUnconstrainedPayloadRecovery() {
+    fun forcedStructureDoesNotFallBackToUnconstrainedPayloadRecovery() {
         val encoded = Encoder.encode("A", ErrorCorrectionLevel.H, mapOf(EncodeHintType.QR_VERSION to 1))
         val matrix = toTriState(encoded.matrix)
         val extraction = CodewordExtractor.extract(matrix, 1, encoded.maskPattern)
@@ -271,7 +279,8 @@ class QrRecoveryIntegrationTest {
             trustKnownPayloadCount = true,
         )
 
-        assertTrue(recovered.any { it.text == "A" && it.constraintFilledBits == 0 })
+        assertTrue(recovered.isEmpty())
+        assertTrue(RecoveryEngine().recover(matrix, maxFormatCandidates = 1).any { it.text == "A" })
     }
 
     @Test
@@ -288,7 +297,7 @@ class QrRecoveryIntegrationTest {
         val pinnedValue = matrix[pinned.x, pinned.y].value
         matrix.set(pinned.x, pinned.y, pinnedValue, 1f, ModuleSource.USER)
 
-        val candidate = RecoveryEngine().recover(matrix, trustKnownPayloadCount = true).first { it.text == "A" }
+        val candidate = RecoveryEngine().recover(matrix).first { it.text == "A" }
         val after = RepairTraceBuilder.candidateMatrix(matrix, candidate, RecoveryEngine())
 
         assertTrue(extraction.codewords.flatMap { it.coordinates }.all { after[it.x, it.y].value != ModuleValue.ERASED })

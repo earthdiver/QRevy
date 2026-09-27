@@ -482,15 +482,11 @@ internal class PreprocessDialogController(
             else -> resources.getQuantityString(R.plurals.format_mismatch_limit_bits, value, value)
         }
         fun refreshFormatMismatchLimitControl() {
-            val fullySpecified = formatConstraintDraft?.candidateCount == 1
             val effective = effectiveFormatMismatchLimit()
             formatMismatchLimitButton.text = errorLimitModeLabel(formatMismatchLimitModeDraft, effective,
                 formatMismatchLimitValueLabel(effective))
-            formatMismatchLimitButton.isEnabled = !fullySpecified
-            formatMismatchLimitNote.setText(
-                if (fullySpecified) R.string.format_mismatch_limit_fixed_note
-                else R.string.format_mismatch_limit_note,
-            )
+            formatMismatchLimitButton.isEnabled = true
+            formatMismatchLimitNote.setText(R.string.format_mismatch_limit_note)
         }
         formatMismatchLimitButton = button("", {})
         formatMismatchLimitButton.setOnClickListener {
@@ -678,8 +674,7 @@ internal class PreprocessDialogController(
             // Cell edits (including *, undo and redo) must update eligibility immediately.
             val headerComplete = recoveryEngine.hasTrustablePayloadHeader(
                 matrix, formatConstraintDraft, effectiveFormatMismatchLimit(), manualEdits = cellEditState.fixedEdits)
-            trustKnownPayloadCount.isEnabled = headerComplete
-            if (!headerComplete) trustKnownPayloadCount.isChecked = false
+            trustKnownPayloadCount.isEnabled = headerComplete || trustKnownPayloadCount.isChecked
             return g to matrix
         }
         fun setManualFocus(enabled: Boolean) {

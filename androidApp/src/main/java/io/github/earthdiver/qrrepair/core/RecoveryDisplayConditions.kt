@@ -24,10 +24,6 @@ fun inputAgreementText(known: Int, mismatches: Int, format: Boolean): String {
 }
 
 fun RecoveryDisplayConditions.limitText(formatRegion: Boolean): String {
-    if (formatRegion && format?.candidateCount == 1) return localizedText(
-        "形式情報の不一致上限: 適用しません（ECC・マスクの両方を指定）",
-        "Format mismatch limit: not applied (both ECC and mask are specified)",
-    )
     val limit = if (formatRegion) formatLimit else dataEccLimit
     val nameJa = if (formatRegion) "形式情報" else "データ・ECC"
     val nameEn = if (formatRegion) "Format" else "Data/ECC"

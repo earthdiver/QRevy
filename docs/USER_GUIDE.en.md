@@ -67,13 +67,15 @@ Choose a source for the selected cells:
 
 Changing an image-derived value to a different 0/1 makes it Fixed; entering the image value again does not remove that designation. You can also fix the current image-derived 0/1 without changing it. Editing a tentative 0/1 keeps it tentative, while changing `?` or `*` to 0/1 makes it Fixed. Fixed and tentative edits survive threshold changes, Undo/Redo, and saving.
 
-In the enlarged cell editor, dragging or pinching temporarily hides cell symbols and overlays, leaving the image and QR boundary visible. The overlays return when all fingers are lifted or the gesture is canceled. Cell values and edits are unchanged.
+In the enlarged cell editor, dragging or pinching temporarily hides cell symbols and overlays, leaving the image and QR boundary visible. The overlays return when all fingers are lifted or the gesture is canceled.
 
 Cyan solid squares mark fixed cells; dashed squares mark tentative cells. Yellow circles mark selections. **Highlight edited cells** includes both kinds and changes only the overlay. The menu also applies to multiple selected cells. `?` is image-derived or tentative; `*` is always tentative. Neither can be Fixed.
 
 **Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)** in advanced settings defaults to OFF. Turning it ON is an explicit exception to the normal Fixed behavior: the cells retain their Fixed provenance, input values, and solid outlines, but recovery may correct them as if they were tentative. Turning it OFF protects those values again. Either way, format and data/ECC error limits, explicit ECC/mask/version selections, and consistency checks between fixed cells and explicit selections remain enforced.
 
-Advanced settings lets you choose a **priority search cell limit of 4–14** (default 4). The actual selected count determines the displayed combinations: 4 cells give 16, and 14 give 16,384. Each additional cell doubles the assignments; geometry search adds further work. Candidate retention limits remain independent of this setting. Lowering the limit preserves existing marks; raise it or remove marks before repairing if the count is over the limit. The progress popup shows completed/total priority assignments for the current grid and elapsed time, with an **Interrupt** button. Interrupted searches retain candidates found so far and indicate unchecked combinations. Resource limits also prevent an exhaustive-search claim; one retained candidate does not establish uniqueness.
+In advanced settings, **Priority search cell limit** accepts 4–14 cells (default 4). The actual selected count determines the assignments: 4 cells give 16, and 14 give 16,384. Each additional cell doubles the assignments; **Automatically fine-tune sampling position** adds further work. Candidate retention limits remain independent of this setting. Lowering the limit preserves existing marks; raise it or remove marks before repairing if the count is over the limit.
+
+The **Repair progress** dialog shows the current grid/reading-condition phase and elapsed time. During `*` assignment trials, it also shows completed and total assignments for the current grid. **Interrupt repair** stops the whole repair, including further grids and reading conditions, and retains candidates already found.
 
 Assign the four corner positions and roles before marking `*`. Fixed structures such as finder/alignment patterns and format information, and remainder bits, cannot be marked. Selecting an ineligible cell displays its type and coordinates. If a selection includes any ineligible cell, no cells in that selection are marked.
 
@@ -84,20 +86,22 @@ Changing orientation rechecks existing `*` positions, removes only ineligible ma
 | Setting | Consider it when | Main risk or limit |
 | --- | --- | --- |
 | Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells) | Retain fixed designations while allowing recovery to correct their values | Defaults to OFF; ON still enforces error limits and explicit ECC/mask selections |
-| Automatically fine-tune sampling position | Corners are close but module-center sampling is slightly displaced | Increases work; never changes version or logical orientation |
+| Automatically fine-tune sampling position | Corners are close but module-center sampling is slightly displaced | Includes alignment-pattern refinement and increases work; preserves version and logical orientation |
 | Format-information error limit | ECC-level/mask candidates should closely match known format cells | Too strict a limit can remove every format before RS is attempted |
 | Data/ECC error limit | Candidates that overturn too much known evidence should be restricted | `0 bits` requires exact agreement with every comparable known bit |
-| Force following structure using the read or *-assigned mode and character/byte count | One segment whose header is known or can be hypothesized using * trials | Do not use with ECI, FNC1, Structured Append, or multiple segments |
+| When the mode and character/byte count are read or assigned by \* trials, assume a single segment and force the following structure. | One segment whose header is known or can be hypothesized using * trials | Do not use with ECI, FNC1, Structured Append, or multiple segments |
 
-When single-segment forcing is ON, “3. Processing in this run” reports application outcomes even if recovery finds no candidate. When `*` trials hypothesize multiple mode/count headers, it summarizes whether any applicable trial was found, without listing individual failure reasons. Before header assignments are tried, an unresolved header is reported only as unresolved.
+Below, the last setting in the table is called **Single-segment assumption**, matching the diagnostic label. When ON, “3. Processing in this run” reports its application. When `*` trials hypothesize multiple mode/count headers, the report summarizes whether any applicable trial was found.
 
-Both error-limit controls offer **Default**, **Exact match (0 bits)**, **Strict**, **Relaxed**, **Manual**, and **Unlimited**, with the effective bit count shown. Apply confirms the selection; Cancel leaves it unchanged. Editing the number or using ± selects Manual.
+Both error-limit controls offer **Default**, **Exact match (0 bits)**, **Strict**, **Relaxed**, **Manual**, and **Unlimited**, with the effective bit count shown. Editing the number or using ± selects Manual.
 
 For new imports, the format-information limit starts at **6 bits** across both copies (Strict); Relaxed allows **9 bits**, independent of version. The data/ECC limit starts at **0.875%** of the version's total data/ECC bits for **V1–4**, and **10%** for **V5–40**, rounded up to whole bits. For example, V4 starts at 7 bits and V5 at 108 bits. These presets are operational compromises, not guarantees of correct recovery.
 
-Default follows that version rule. An explicitly selected Strict or Relaxed preset keeps its selected policy and recalculates its bit count when version changes; Manual and Unlimited remain explicit. Stored manual numbers are retained while using a preset. Existing QRR sessions keep their saved numeric limits or Unlimited. Both an ECC level and a mask selected explicitly disable the format limit, as before. If the limits remove a correct candidate, select a higher manual limit or Unlimited and retry.
+Default follows that version rule. An explicitly selected Strict or Relaxed preset keeps its selected policy and recalculates its bit count when version changes; Manual and Unlimited remain explicit. Stored manual numbers are retained while using a preset. The format limit also applies when both ECC and mask are explicitly selected. If the limits remove a correct candidate, select a higher manual limit or Unlimited and retry.
 
 See [Recovery Strategy](RECOVERY_STRATEGY.en.md) for exact interactions and bounds.
+
+Search completion covers the specified conditions and bounded search policy. It is separate from candidate or explanation retention omissions and does not guarantee correctness or uniqueness. See [Recovery Result Fields](RECOVERY_RESULT_FIELDS.en.md) for the messages and reasons for unfinished work.
 
 ## 6. Recover and inspect results
 

@@ -59,22 +59,37 @@ class RecoveryDiagnosticPresentationTest {
 
     @Test fun finalResultsSeparateNotFoundFromUnsearchedAndMixedRejectionReasons() = inBothLanguages { ja ->
         val settings = RecoveryDisplayConditions(false, true, null, null, 2)
-        val mixed = RecoverySearchDiagnostic(candidateRejections = setOf(
+        val mixed = RecoverySearchDiagnostic(solverCompleteness = SearchCompleteness.COMPLETE, candidateRejections = setOf(
             RecoveryCandidateRejection.FIXED_CELLS, RecoveryCandidateRejection.MISMATCH_LIMIT))
         assertTrue(mixed.failureExplanation(settings).contains(if (ja) "不一致上限を超えるものや" else "exceeded the mismatch limit or"))
         assertEquals("", mixed.copy(unsearched = true).failureExplanation(settings))
         assertEquals("", mixed.copy(acceptedCandidate = true).failureExplanation(settings))
-        assertTrue(searchResultText(0, false).contains(if (ja) "見つかりませんでした" else "was found"))
-        assertFalse(searchResultText(0, false).contains(if (ja) "候補はありません" else "No RS candidate meets"))
-        assertTrue(searchResultText(0, true).contains(if (ja) "未探索" else "unchecked"))
-        assertTrue(searchResultText(2, true).contains(if (ja) "ほかにも候補" else "additional candidates"))
-        assertTrue(searchResultText(2, false).contains(if (ja) "2件" else "2 recovery candidates"))
+        assertTrue(searchResultText(0, io.github.earthdiver.qrrepair.core.SearchCompleteness.UNKNOWN).contains(if (ja) "見つかりませんでした" else "was found"))
+        assertFalse(searchResultText(0, io.github.earthdiver.qrrepair.core.SearchCompleteness.UNKNOWN).contains(if (ja) "候補はありません" else "No RS candidate meets"))
+        assertTrue(searchResultText(0, io.github.earthdiver.qrrepair.core.SearchCompleteness.UNSEARCHED).contains(if (ja) "未探索" else "unchecked"))
+        assertTrue(searchResultText(2, io.github.earthdiver.qrrepair.core.SearchCompleteness.UNSEARCHED).contains(if (ja) "未探索" else "unchecked"))
+        assertTrue(searchResultText(2, io.github.earthdiver.qrrepair.core.SearchCompleteness.UNKNOWN).contains(if (ja) "2件" else "2 recovery candidates"))
+    }
+
+    @Test fun coverageStatesAndRetentionOmissionAreIndependentInBothLanguages() = inBothLanguages { ja ->
+        val complete = searchResultText(2, SearchCompleteness.COMPLETE)
+        val unknown = searchResultText(2, SearchCompleteness.UNKNOWN)
+        val unchecked = searchResultText(2, SearchCompleteness.UNSEARCHED)
+        assertTrue(complete.contains(if (ja) "範囲で探索を完了しました" else "Search completed"))
+        assertTrue(unknown.contains(if (ja) "完了状況を確認できません" else "completion could not be determined"))
+        assertFalse(unknown.contains(if (ja) "未探索" else "unchecked"))
+        assertTrue(unchecked.contains(if (ja) "未探索" else "unchecked"))
+        val retained = searchResultText(0, SearchCompleteness.COMPLETE, candidatesOmitted = true)
+        assertTrue(retained.contains(if (ja) "保持上限" else "retention limit"))
+        assertTrue(retained.contains(if (ja) "範囲で探索を完了しました" else "Search completed"))
+        assertFalse(retained.contains(if (ja) "未探索" else "unchecked"))
+        assertFalse(retained.contains(if (ja) "見つかりません" else "No recovery candidate"))
     }
 
     @Test fun uncheckedCombinationsDoNotImplyAResourceLimit() = inBothLanguages { ja ->
-        val text = searchResultText(0, true)
+        val text = searchResultText(0, io.github.earthdiver.qrrepair.core.SearchCompleteness.UNSEARCHED)
         assertFalse(text.contains(if (ja) "上限に達しました" else "limit was reached"))
-        assertTrue(text.contains(if (ja) "未探索の組合せ" else "unchecked combinations"))
+        assertTrue(text.contains(if (ja) "未探索の組合せ" else "combinations remain unchecked"))
         val interrupted = CombinationSearchSummary(stops = setOf(CombinationSearchStop.USER_INTERRUPTED)).stopReasonsText()
         assertTrue(interrupted.contains(if (ja) "中断" else "interrupted"))
         assertFalse(interrupted.contains(if (ja) "上限" else "limit"))
@@ -172,4 +187,14 @@ class RecoveryDiagnosticPresentationTest {
         assertTrue(firstDifferenceExcerpt("a\n", "a\t").left.contains("\\n"))
         assertTrue(firstDifferenceExcerpt("a\n", "a\t").right.contains("\\t"))
     }
+    @Test fun internalErrorMessagesUseExecutionEvidenceRatherThanCandidateCount() = inBothLanguages { ja ->
+        val error = RecoverySearchDiagnostic(incompleteReasons = setOf(SearchIncompleteReason.INTERNAL_ERROR),
+            solverCompleteness = SearchCompleteness.COMPLETE)
+        assertTrue(error.completionReasonsText().contains(if (ja) "修復処理を実行できません" else "prevented repair"))
+        assertTrue(error.copy(completedSteps = 1).completionReasonsText().contains(if (ja) "一部の探索" else "part of the search"))
+        assertTrue(error.copy(coverageComplete = false).completionReasonsText().contains(if (ja) "完了状況を確認できません" else "determining search completion"))
+        val both = error.copy(incompleteReasons = error.incompleteReasons + SearchIncompleteReason.WORKING_MEMORY_LIMIT)
+        assertTrue(both.completionReasonsText().contains(if (ja) "計算用メモリ" else "working-memory"))
+    }
+
 }

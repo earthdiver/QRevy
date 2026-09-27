@@ -39,4 +39,47 @@ class RecoveryProgressDialogTest {
             activity.pause().stop().destroy()
         }
     }
+    @Test fun ordinaryRepairHasNoStarCounterButCanBeInterrupted() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup()
+        val progress = RecoveryProgressDialog(activity.get(), 0)
+        try {
+            progress.phase("Grid 1 / 2")
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
+            val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+            val message = dialog.findViewById<TextView>(android.R.id.message).text.toString()
+            assertTrue(message.contains("Grid 1 / 2"))
+            assertFalse(message.contains("*"))
+            assertFalse(message.contains("0 / 0"))
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+            assertTrue(progress.stopped.get())
+        } finally {
+            progress.close()
+            activity.pause().stop().destroy()
+        }
+    }
+
+    @Test fun priorityCounterStartsOnlyWithEnumerationAndResetsForNextGrid() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup()
+        val progress = RecoveryProgressDialog(activity.get(), 4)
+        try {
+            val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+            fun message(): String {
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(250))
+                return dialog.findViewById<TextView>(android.R.id.message).text.toString()
+            }
+            assertFalse(message().contains("0 / 16"))
+            progress.priorityProgress(3, 16)
+            assertTrue(message().contains("3 / 16"))
+            progress.priorityProgress(0, 0)
+            assertFalse(message().contains(" / 16"))
+            assertFalse(message().contains("0 / 0"))
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+            progress.phase("Trials completed")
+            assertFalse(message().contains("Trials completed"))
+        } finally {
+            progress.close()
+            activity.pause().stop().destroy()
+        }
+    }
+
 }

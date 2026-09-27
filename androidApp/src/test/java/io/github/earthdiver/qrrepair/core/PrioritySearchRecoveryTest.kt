@@ -131,4 +131,25 @@ class PrioritySearchRecoveryTest {
         matrix.setPrioritySearch(0, 0, true)
         RecoveryEngine().recover(matrix)
     }
+    @Test fun lateStopAfterFinalAssignmentDoesNotLeaveUnfinishedWork() {
+        val (matrix, mask) = damaged(5)
+        var stopped = false
+        val outcome = RecoveryEngine().recoverWithDiagnostics(matrix,
+            formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.L, mask),
+            stopRequested = { stopped }, onPriorityProgress = { done, total -> if (done == total) stopped = true })
+        assertTrue(stopped)
+        assertTrue(outcome.candidates.any { it.text == "STAR-STOP" })
+        assertEquals(SearchCompleteness.COMPLETE, outcome.searchDiagnostic.completeness)
+    }
+
+    @Test fun internalErrorAfterOrdinaryProcessingRetainsPartialExecutionEvidence() {
+        val (matrix, mask) = damaged(5)
+        val outcome = RecoveryEngine().recoverWithDiagnostics(matrix,
+            formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.L, mask),
+            onPriorityProgress = { _, _ -> error("Injected processing failure") })
+        assertEquals(SearchCompleteness.UNSEARCHED, outcome.searchDiagnostic.completeness)
+        assertEquals(setOf(SearchIncompleteReason.INTERNAL_ERROR), outcome.searchDiagnostic.incompleteReasons)
+        assertTrue(outcome.searchDiagnostic.completedSteps > 0)
+    }
+
 }

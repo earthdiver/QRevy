@@ -14,11 +14,16 @@ internal data class RecoveryDiagnosticContext(
 /** Builds diagnostic content without retaining an Activity, Views, or mutable UI state. */
 internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
     fun searchResultDescription(context: RecoveryDiagnosticContext): String {
-        val count = context.candidateCount
-        if (!context.candidatesOmitted) return searchResultText(count, context.unsearched)
-        return ui("優先度の高い修復候補を${count}件保持しています。ほかの候補の詳細は保持上限により省略しています。",
-            "Retained $count highest-ranked recovery candidates. Other candidate details were omitted at the retention limit.") +
-            if (context.unsearched) ui("\n未探索の組合せが残っています。", "\nSome combinations remain unchecked.") else ""
+        val completeness = if (context.unsearched) SearchCompleteness.UNSEARCHED
+            else context.searchDiagnostic?.completeness ?: SearchCompleteness.UNKNOWN
+        val diagnostic = context.searchDiagnostic ?: RecoverySearchDiagnostic(
+            unsearched = context.unsearched, coverageComplete = false)
+        val reasons = diagnostic.completionReasonsText()
+        if (diagnostic.coverageComplete && diagnostic.completedSteps == 0 &&
+            SearchIncompleteReason.INTERNAL_ERROR in diagnostic.incompleteReasons) {
+            return completeness.description() + "\n" + reasons
+        }
+        return searchResultText(context.candidateCount, completeness, context.candidatesOmitted, reasons)
     }
 
     fun candidateReport(candidate: RecoveryCandidate, geometry: GridGeometry?, context: RecoveryDiagnosticContext): RecoveryDiagnosticReport {
@@ -36,8 +41,10 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
             append(ui("\n\n今回の探索全体\n", "\n\nSearch-wide results\n"))
             append(searchResultDescription(context))
         }
-        val processing = listOf(candidate.displayConditions.candidateCalculationPolicyText(), candidate.usedMethodsText(), candidate.combinationSearch.stopReasonsText()
-            .takeIf { it.isNotBlank() }?.let { ui("今回の探索全体の終了理由\n", "Search-wide stop reasons\n") + it })
+        val processing = listOf(candidate.displayConditions.candidateCalculationPolicyText(), candidate.usedMethodsText(), candidate.combinationSearch.copy(stops = candidate.combinationSearch.stops.filterTo(linkedSetOf()) {
+            it != CombinationSearchStop.USER_INTERRUPTED && it != CombinationSearchStop.WORKING_MEMORY_LIMIT
+        }).stopReasonsText()
+            .takeIf { it.isNotBlank() }?.let { ui("この探索経路の終了理由\n", "Stop reasons for this search route\n") + it })
             .filterNotNull().filter(String::isNotBlank).joinToString("\n\n")
         return RecoveryDiagnosticReport(ui("選択中の候補の診断", "Diagnostics for the selected candidate"), listOf(
             DiagnosticSection(DiagnosticStage.SETTINGS, candidate.displayConditions.runSettingsText()),

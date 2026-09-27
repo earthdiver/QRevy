@@ -15,7 +15,8 @@ class RecoveryWorkflowTest {
             stopRequested = { true })
         assertTrue(result.interrupted)
         assertTrue(result.searchDiagnostic!!.unsearched)
-        assertFalse(result.searchDiagnostic!!.coverageComplete)
+        assertTrue(result.searchDiagnostic!!.coverageComplete)
+        assertEquals(setOf(SearchIncompleteReason.USER_INTERRUPTED), result.searchDiagnostic!!.incompleteReasons)
         assertEquals(0, result.attemptedGeometries)
     }
 
@@ -51,4 +52,24 @@ class RecoveryWorkflowTest {
         assertTrue(progress.isNotEmpty())
         assertTrue(progress.all { it.variantIndex == 0 })
     }
+    @Test fun lateStopAfterFinalProfileDoesNotChangeCompletedResult() {
+        var stopped = false
+        val result = RecoveryWorkflow(RecoveryEngine()).run(image, settings, RecoveryRetentionBudget(),
+            stopRequested = { stopped }, onProgress = {
+                if (it.variantIndex == it.variantCount - 1 && it.done == it.total) stopped = true
+            })
+        assertTrue(stopped)
+        assertFalse(result.interrupted)
+        assertEquals(SearchCompleteness.COMPLETE, result.searchDiagnostic!!.completeness)
+    }
+
+    @Test fun stoppingBetweenProfilesReportsTheUnperformedProfile() {
+        var stopped = false
+        val result = RecoveryWorkflow(RecoveryEngine()).run(image, settings, RecoveryRetentionBudget(),
+            stopRequested = { stopped }, onProgress = { if (it.done == it.total) stopped = true })
+        assertTrue(result.interrupted)
+        assertEquals(1, result.attemptedGeometries)
+        assertEquals(setOf(SearchIncompleteReason.USER_INTERRUPTED), result.searchDiagnostic!!.incompleteReasons)
+    }
+
 }

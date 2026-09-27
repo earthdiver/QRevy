@@ -26,19 +26,28 @@ internal class RecoveryWorkflow(private val engine: RecoveryEngine) {
         var finders = emptyList<FinderCandidate>()
         for ((index, profile) in variants.withIndex()) {
             cancellation.check()
-            if (stopRequested()) break
-            finders = AutoRecoveryEngine(engine).run(
-                image, profile = profile, retentionBudget = retentionBudget, resultAccumulator = accumulator,
-                cancellation = cancellation,
-                stopRequested = stopRequested,
-                onPriorityProgress = onPriorityProgress,
-                onProgress = { done, total, message ->
-                    onProgress(RecoveryProgress(profile, index, variants.size, done, total, message))
-                },
-            ).finders
+            if (stopRequested()) {
+                accumulator.markIncomplete(SearchIncompleteReason.USER_INTERRUPTED)
+                break
+            }
+            try {
+                finders = AutoRecoveryEngine(engine).run(
+                    image, profile = profile, retentionBudget = retentionBudget, resultAccumulator = accumulator,
+                    cancellation = cancellation,
+                    stopRequested = stopRequested,
+                    onPriorityProgress = onPriorityProgress,
+                    onProgress = { done, total, message ->
+                        onProgress(RecoveryProgress(profile, index, variants.size, done, total, message))
+                    },
+                ).finders
+            } catch (error: RecoveryCancelledException) {
+                throw error
+            } catch (_: Exception) {
+                accumulator.markIncomplete(SearchIncompleteReason.INTERNAL_ERROR)
+            }
         }
-        val interrupted = stopRequested()
-        if (interrupted) accumulator.markIncomplete(hasUnsearched = true)
-        return accumulator.result(finders).copy(interrupted = interrupted)
+        val result = accumulator.result(finders)
+        return result.copy(interrupted = SearchIncompleteReason.USER_INTERRUPTED in
+            result.searchDiagnostic?.incompleteReasons.orEmpty())
     }
 }

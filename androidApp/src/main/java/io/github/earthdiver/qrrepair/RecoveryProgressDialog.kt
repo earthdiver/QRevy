@@ -9,11 +9,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
-/** Displays completed priority assignments for the current grid, independently of solver threads. */
+/** Shows repair phases and, only while applicable, priority assignments for the current grid. */
 internal class RecoveryProgressDialog(activity: Activity, priorityCount: Int) {
     val stopped = AtomicBoolean(false)
     private val done = AtomicInteger(0)
-    private val total = AtomicInteger(if (priorityCount == 0) 0 else 1 shl priorityCount)
+    private val total = AtomicInteger(0)
+    private val hasPriority = priorityCount > 0
     private val phase = AtomicReference(localizedText("復元を準備中", "Preparing repair"))
     private val started = SystemClock.elapsedRealtime()
     private val handler = Handler(Looper.getMainLooper())
@@ -22,15 +23,25 @@ internal class RecoveryProgressDialog(activity: Activity, priorityCount: Int) {
         .setTitle(localizedText("修復の進捗", "Repair progress"))
         .setMessage("")
         .setCancelable(false)
-        .setNegativeButton(localizedText("中断", "Interrupt"), null)
+        .setNegativeButton(localizedText("修復を中断", "Interrupt repair"), null)
         .create()
     private val ticker = object : Runnable {
         override fun run() {
             if (closed) return
             val seconds = (SystemClock.elapsedRealtime() - started) / 1000
-            dialog.setMessage(phase.get() + "\n" + localizedText(
-                "現在の格子の*探索: ${done.get()} / ${total.get()}通り\n経過時間: ${seconds}秒",
-                "* combinations completed for current grid: ${done.get()} / ${total.get()}\nElapsed: ${seconds}s"))
+            dialog.setMessage(buildString {
+                append(phase.get())
+                if (hasPriority && total.get() > 0) {
+                    append("\n").append(localizedText(
+                        "現在の格子の*探索: ${done.get()} / ${total.get()}通り",
+                        "* combinations completed for current grid: ${done.get()} / ${total.get()}"))
+                } else if (hasPriority) {
+                    append("\n").append(localizedText(
+                        "通常処理を実行中（必要な場合に*探索を行います）",
+                        "Running ordinary recovery; * search runs when needed"))
+                }
+                append("\n").append(localizedText("経過時間: ${seconds}秒", "Elapsed: ${seconds}s"))
+            })
             handler.postDelayed(this, 250)
         }
     }
@@ -46,6 +57,7 @@ internal class RecoveryProgressDialog(activity: Activity, priorityCount: Int) {
         handler.post(ticker)
     }
     fun priorityProgress(completed: Int, count: Int) {
+        if (stopped.get()) return
         done.set(completed)
         total.set(count)
     }

@@ -56,6 +56,18 @@ class RecoveryUiStateTest {
         assertEquals(-1, state.recoveryIndex)
     }
 
+    @Test fun emptyDirectSearchKeepsItsExecutionRecordUntilTheNextAttempt() {
+        val state = RecoveryUiState()
+        val diagnostic = RecoverySearchDiagnostic(incompleteReasons = setOf(
+            io.github.earthdiver.qrrepair.core.SearchIncompleteReason.INTERNAL_ERROR))
+        state.updateRecoveries(emptyList(), -1, null, diagnostic)
+        assertEquals(diagnostic, state.searchDiagnostic)
+        state.selectRecovery(-1)
+        assertEquals(diagnostic, state.searchDiagnostic)
+        state.clearAttempt()
+        assertNull(state.searchDiagnostic)
+    }
+
     private fun candidate(mask: Int) = RecoveryCandidate(
         1, ErrorCorrectionLevel.M, mask, "decoded-$mask", byteArrayOf(),
         15, 0, 0, 0, 0, 0, 8, intArrayOf(), CodewordExtraction(emptyList()),

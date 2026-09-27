@@ -101,7 +101,9 @@ A structure module whose observed value was already correct is not highlighted m
 
 ## Payload-structure constraint reasons
 
-Ordinary structure propagation enumerates single-segment Numeric, Alphanumeric, Byte, and Kanji hypotheses. Among plans compatible with known bits, it selects those with the most known terminator, byte-alignment, and padding matches; fewer than six matches disables filling. It fills only values shared by all selected plans. This is inference within selected single-segment hypotheses, not proof of uniqueness across all QR streams, including multiple segments. Reaching the plan-enumeration limit also disables filling. Every mutation by these constraints retains an unconstrained retry, even after a successful constrained result.
+This document uses **Single-segment assumption**, the diagnostic label, for the advanced setting “When the mode and character/byte count are read or assigned by \* trials, assume a single segment and force the following structure.”
+
+Ordinary structure propagation selects single-segment Numeric, Alphanumeric, Byte, and Kanji plans compatible with known bits and having the most known terminator, byte-alignment, and padding matches. It fills only values shared by all selected plans; other bits remain `?`. Fewer than six matches or reaching the plan-enumeration limit disables filling. This inference depends on the selected hypotheses and does not guarantee correct values.
 
 - `Payload mode constraint`: determined from the numeric, alphanumeric, byte, Kanji, or other supported mode indicator.
 - `Payload count constraint`: determined from the mode- and version-specific character or byte count field.
@@ -111,8 +113,7 @@ Ordinary structure propagation enumerates single-segment Numeric, Alphanumeric, 
 - `Pad codeword constraint`: alternating `0xEC / 0x11` padding after the payload.
 - `Payload structure constraint`: another safe payload-structure implication, or a structural implication without a more specific classification.
 
-Bits remain `?` where selected plans disagree. Ranking the plans is hypothesis selection and does not guarantee correct final values.
-When the single-segment forcing option is enabled, however, the known or explicitly `*`-assigned header selects one structure and known image-derived 0/1 values that conflict with its terminator, byte alignment, or padding are changed with a constraint reason.
+With **Single-segment assumption** ON, the known or `*`-assigned header selects one structure. Known image-derived 0/1 values conflicting with its terminator, byte alignment, or padding are also changed and receive a structure-constraint reason. See [Recovery Strategy](RECOVERY_STRATEGY.en.md) for eligibility and retry behavior.
 
 ## Bounded bit search
 
