@@ -99,6 +99,7 @@ internal class PreprocessDialogController(
         val preprocessSettings = restoredDraft?.settings ?: this@PreprocessDialogController.preprocessSettings
         val modernStyle = AppStylePreferences.isModern(this)
         val dialogState = PreprocessDialogState(preprocessSettings)
+        var partialBitSearchLimit = preprocessSettings.partialBitSearchLimit
         var working = initialWorking
         fun releaseWorkingIfTemporary(previous: BitmapUtils.Prepared, replacement: BitmapUtils.Prepared) {
             if (previous !== source && !host.retains(previous) && previous.bitmap !== replacement.bitmap &&
@@ -261,6 +262,7 @@ internal class PreprocessDialogController(
             dataEccMismatchLimitMode = dataEccMismatchLimitModeDraft,
             lockManualBits = !allowFixedCorrections.isChecked,
             prioritySearchLimit = cellEditState.priorityLimit,
+            partialBitSearchLimit = partialBitSearchLimit,
         )
         fun previewInverted(): Boolean = when (overlay.confirmedFinderPolarity()) {
             io.github.earthdiver.qrrepair.core.FinderPolarity.INVERTED -> true
@@ -581,6 +583,35 @@ internal class PreprocessDialogController(
             })
         }
         refreshDataEccMismatchLimitControl()
+        val partialBitLimitButton = button("", {}).apply {
+            setSingleLine(false)
+            maxLines = Int.MAX_VALUE
+        }
+        fun refreshPartialBitLimit() {
+            partialBitLimitButton.text = getString(R.string.partial_bit_search_limit, partialBitSearchLimit)
+        }
+        refreshPartialBitLimit()
+        partialBitLimitButton.setOnClickListener {
+            val choices = io.github.earthdiver.qrrepair.core.PartialBitSearchLimit.supported.toList()
+            AlertDialog.Builder(this).setTitle(R.string.partial_bit_search_limit_title)
+                .setSingleChoiceItems(choices.map { getString(R.string.partial_bit_search_limit_choice, it) }.toTypedArray(),
+                    choices.indexOf(partialBitSearchLimit)) { dialog, which ->
+                    partialBitSearchLimit = choices[which]
+                    refreshPartialBitLimit()
+                    noteDraftChange("partial-bit-limit", getString(R.string.partial_bit_search_limit_title),
+                        getString(R.string.partial_bit_search_limit_choice, partialBitSearchLimit))
+                    dialog.dismiss()
+                }.setNegativeButton(R.string.close, null).show()
+        }
+        val partialBitSearchControl = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(partialBitLimitButton, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(TextView(activity).apply {
+                setText(R.string.partial_bit_search_limit_note)
+                textSize = 12f
+            })
+        }
         val priorityLimitButton = button("", {}).apply {
             setSingleLine(false)
             maxLines = Int.MAX_VALUE
@@ -626,6 +657,7 @@ internal class PreprocessDialogController(
             formatMismatchLimitControl = formatMismatchLimitControl,
             dataEccMismatchLimitControl = dataEccMismatchLimitControl,
             prioritySearchControl = priorityLimitButton,
+            partialBitSearchControl = partialBitSearchControl,
             actions = DetailedSettingsPageActions(
                 rotateBy = ::rotateBy,
                 resetRotation = ::resetRotation,

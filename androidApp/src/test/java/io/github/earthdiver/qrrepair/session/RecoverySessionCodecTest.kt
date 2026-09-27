@@ -104,10 +104,10 @@ class RecoverySessionCodecTest {
         "threshold-settings", 2L, UiMode.ANALYSIS, listOf(RecoveryHistoryEntry(kind = HistoryEventKind.SETTINGS,
             label = "thresholds", snapshot = RecoverySnapshot(null, null, null, -1, settings))), 0)
 
-    @Test fun onlyCurrentSchemaVersionIsAccepted() {
+    @Test fun unsupportedSchemaVersionsAreRejected() {
         val original = RecoverySessionCodec.encode(settingsPayload(PreprocessSettings()))
         assertEquals(RecoverySessionCodec.CURRENT_VERSION, ByteBuffer.wrap(original).getInt(4))
-        for (version in (0 until RecoverySessionCodec.CURRENT_VERSION) + listOf(-1, RecoverySessionCodec.CURRENT_VERSION + 1, Int.MAX_VALUE)) {
+        for (version in (0 until 23) + listOf(-1, RecoverySessionCodec.CURRENT_VERSION + 1, Int.MAX_VALUE)) {
             val altered = original.copyOf().also { ByteBuffer.wrap(it).putInt(4, version) }
             val error = assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) {
                 RecoverySessionCodec.decode(altered)

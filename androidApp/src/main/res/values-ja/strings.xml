@@ -200,4 +200,8 @@
     <string name="image_adjustment_help">コントラスト・明るさ・白黒反転は表示と解析に反映されます。「調整前」でクロップや回転を変えずに比較できます。元画像と調整値は別々に保存されます。</string>
     <string name="image_help">ヘルプ</string>
     <string name="image_adjustment_failed">画像処理に失敗: %1$s</string>
+    <string name="partial_bit_search_limit">部分bit探索・自由度の上限: %1$dbit</string>
+    <string name="partial_bit_search_limit_title">部分bit探索・自由度の上限</string>
+    <string name="partial_bit_search_limit_choice">%1$dbit</string>
+    <string name="partial_bit_search_limit_note">部分bit探索と、RS制約を解いた後に残る自由度に共通する、RSブロックごとの上限です。既定値は12bit。1bit増やすと最大列挙数は2倍になり、*探索との併用では処理量がさらに増えます。メモリ制限により、上限まで探索できない場合があります。</string>
 </resources>

@@ -12,7 +12,7 @@ import java.util.zip.GZIPOutputStream
 
 /** Android-independent, bounded and checksummed persistence codec for repair sessions. */
 object RecoverySessionCodec {
-    const val CURRENT_VERSION = 23
+    const val CURRENT_VERSION = 24
     const val MAX_HISTORY_ENTRIES = 40
     const val MAX_SESSION_PAYLOAD_BYTES = 16 * 1024 * 1024
     const val MAX_SESSION_FILE_BYTES = 20 * 1024 * 1024
@@ -139,7 +139,7 @@ object RecoverySessionCodec {
             val magic = input.readInt()
             requireCorrupt(magic == MAGIC, "invalid QRR magic")
             val version = input.readInt()
-            requireCorrupt(version == CURRENT_VERSION, localizedText("対応していないQRRセッションの形式です（version $version、対応: $CURRENT_VERSION）", "Unsupported QRR session version $version; expected $CURRENT_VERSION"))
+            requireCorrupt(version in 23..CURRENT_VERSION, localizedText("対応していないQRRセッションの形式です（version $version、対応: 23〜$CURRENT_VERSION）", "Unsupported QRR session version $version; supported: 23..$CURRENT_VERSION"))
             val rawSize = input.readInt()
             val compressedSize = input.readInt()
             requireCorrupt(rawSize in 1..MAX_SESSION_PAYLOAD_BYTES, "invalid raw payload size")
@@ -151,12 +151,12 @@ object RecoverySessionCodec {
             input.readFully(compressed)
             val raw = gunzipBounded(compressed, rawSize)
             requireCorrupt(MessageDigest.isEqual(expectedHash, sha256(raw)), "session SHA-256 mismatch")
-            return parsePayload(raw)
+            return parsePayload(raw, version)
         }
     }
 
-    private fun parsePayload(raw: ByteArray): Payload = DataInputStream(BufferedInputStream(ByteArrayInputStream(raw))).use { input ->
-        val payload = readPayloadBody(input)
+    private fun parsePayload(raw: ByteArray, formatVersion: Int): Payload = DataInputStream(BufferedInputStream(ByteArrayInputStream(raw))).use { input ->
+        val payload = readPayloadBody(input, formatVersion)
         requireCorrupt(input.available() == 0, "trailing bytes in session payload")
         payload
     }
@@ -170,7 +170,7 @@ object RecoverySessionCodec {
         payload.historyEntries.forEach { writeHistoryEntry(out, it) }
     }
 
-    private fun readPayloadBody(input: DataInputStream): Payload {
+    private fun readPayloadBody(input: DataInputStream, formatVersion: Int): Payload {
         val id = input.readUTF()
         requireCorrupt(isSafeSessionId(id), "invalid session id")
         val updated = input.readLong()
@@ -182,7 +182,7 @@ object RecoverySessionCodec {
         if (count == 0) requireCorrupt(cursor == -1, "empty history must have cursor -1")
         else requireCorrupt(cursor in 0 until count, "invalid history cursor")
         val history = ArrayList<RecoveryHistoryEntry>(count)
-        repeat(count) { history += readHistoryEntry(input) }
+        repeat(count) { history += readHistoryEntry(input, formatVersion) }
         return Payload(id, updated, mode, history, cursor)
     }
 
@@ -208,7 +208,7 @@ object RecoverySessionCodec {
         writeSnapshot(out, entry.snapshot)
     }
 
-    private fun readHistoryEntry(input: DataInputStream): RecoveryHistoryEntry {
+    private fun readHistoryEntry(input: DataInputStream, formatVersion: Int): RecoveryHistoryEntry {
         val id = input.readUTF()
         requireCorrupt(id.length <= MAX_TEXT, "history id too long")
         val timestamp = input.readLong()
@@ -217,7 +217,7 @@ object RecoverySessionCodec {
         val label = input.readUTF()
         val detail = input.readUTF()
         requireCorrupt(label.length <= 400 && detail.length <= 1600, "history text too long")
-        return RecoveryHistoryEntry(id, timestamp, kind, label, detail, readSnapshot(input))
+        return RecoveryHistoryEntry(id, timestamp, kind, label, detail, readSnapshot(input, formatVersion))
     }
 
     private fun writeSnapshot(out: DataOutputStream, snapshot: RecoverySnapshot) {
@@ -241,7 +241,7 @@ object RecoverySessionCodec {
         snapshot.samplingInverted?.let(out::writeBoolean)
     }
 
-    private fun readSnapshot(input: DataInputStream): RecoverySnapshot {
+    private fun readSnapshot(input: DataInputStream, formatVersion: Int): RecoverySnapshot {
         val geometry = readGeometry(input)
         val source = readMatrix(input)
         val working = readMatrix(input)
@@ -254,7 +254,7 @@ object RecoverySessionCodec {
         }
         val recoveryIndex = input.readInt()
         requireCorrupt(recoveryIndex >= -1 && recoveryIndex <= 100_000, "invalid recovery index")
-        val settings = if (input.readBoolean()) readPreprocessSettings(input) else null
+        val settings = if (input.readBoolean()) readPreprocessSettings(input, formatVersion) else null
         val selectedQr = if (input.readBoolean()) {
             val version = input.readInt()
             val ecLevel = input.readInt()
@@ -373,9 +373,10 @@ object RecoverySessionCodec {
         out.writeInt(settings.imageAdjustment.brightness)
         out.writeBoolean(settings.imageAdjustment.inverted)
         out.writeInt(settings.prioritySearchLimit)
+        out.writeInt(settings.partialBitSearchLimit)
     }
 
-    private fun readPreprocessSettings(input: DataInputStream): PreprocessSettings {
+    private fun readPreprocessSettings(input: DataInputStream, formatVersion: Int): PreprocessSettings {
         val rotation = input.readFloat()
         requireCorrupt(rotation.isFinite() && rotation in -360f..360f, "invalid preprocessing rotation")
         val polarity = enumStrict<PolarityMode>(input.readInt(), "polarity")
@@ -491,6 +492,7 @@ object RecoverySessionCodec {
             PreprocessSettings(
                 imageAdjustment = adjustment,
                 prioritySearchLimit = input.readInt(),
+                partialBitSearchLimit = if (formatVersion >= 24) input.readInt() else PartialBitSearchLimit.DEFAULT,
                 rotationDegrees = rotation,
                 polarity = polarity,
                 automaticThresholds = automaticThresholds,
@@ -537,6 +539,7 @@ object RecoverySessionCodec {
         require(settings.preRecoveryEdits.size <= dimension * dimension)
         require(settings.preRecoverySoftEdits.all { it in settings.preRecoveryEdits })
         require(settings.prioritySearchLimit in 4..14)
+        require(settings.partialBitSearchLimit in PartialBitSearchLimit.supported)
         require(settings.preRecoveryPrioritySearch.size <= 14)
         require(settings.preRecoveryPrioritySearch.all { settings.preRecoveryEdits[it] == ModuleValue.ERASED })
         require(settings.formatMismatchLimit == null || settings.formatMismatchLimit in 0..30)

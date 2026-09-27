@@ -150,7 +150,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
     private val bitSolver = RsBitConstraintSolver(rs)
     /** Mutable search evidence belongs to exactly one invocation, including its fallback trials. */
     private class RecoveryRunState(val diagnosticInput: QrMatrix, val retentionBudget: RecoveryRetentionBudget,
-        val cancellation: RecoveryCancellation) {
+        val cancellation: RecoveryCancellation, val partialBitSearchLimit: Int) {
         var ignoredFormatCoords: Set<Coord> = emptySet()
         val bitDiagnostics = mutableMapOf<Pair<ErrorCorrectionLevel, Int>, RsBitDiagnostic>()
         val conventionalDiagnostics = mutableMapOf<Pair<ErrorCorrectionLevel, Int>, ConventionalRsDiagnostic>()
@@ -271,10 +271,11 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         retentionBudget: RecoveryRetentionBudget = RecoveryRetentionBudget(),
         cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
         displayLockManualBits: Boolean? = null,
+        partialBitSearchLimit: Int = PartialBitSearchLimit.DEFAULT,
         onPriorityProgress: ((done: Int, total: Int) -> Unit)? = null,
     ): List<RecoveryCandidate> = recoverWithDiagnostics(
         matrix, maxFormatCandidates, trustKnownPayloadCount, formatConstraint, maxFormatMismatches,
-        maxKnownDataEccMismatches, manualEdits, retentionBudget, cancellation, displayLockManualBits, onPriorityProgress = onPriorityProgress,
+        maxKnownDataEccMismatches, manualEdits, retentionBudget, cancellation, displayLockManualBits, partialBitSearchLimit = partialBitSearchLimit, onPriorityProgress = onPriorityProgress,
     ).candidates
 
     /** Returns the candidates and diagnostic evidence from this invocation as one value. */
@@ -290,8 +291,10 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
         displayLockManualBits: Boolean? = null,
         stopRequested: () -> Boolean = { false },
+        partialBitSearchLimit: Int = PartialBitSearchLimit.DEFAULT,
         onPriorityProgress: ((done: Int, total: Int) -> Unit)? = null,
     ): RecoveryOutcome {
+        require(partialBitSearchLimit in PartialBitSearchLimit.supported)
         require(maxFormatMismatches == null || maxFormatMismatches in 0..30)
         require(maxKnownDataEccMismatches == null || maxKnownDataEccMismatches in 0..MAX_QR_DATA_ECC_BITS)
         val priority = matrix.prioritySearchCoordinates()
@@ -304,9 +307,9 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         val run = RecoveryRunState(matrix, retentionBudget, RecoveryCancellation {
             cancellation.check()
             stopRequested()
-        })
+        }, partialBitSearchLimit)
         val conditions = RecoveryDisplayConditions(trustKnownPayloadCount, displayLockManualBits,
-            formatConstraint, maxFormatMismatches, maxKnownDataEccMismatches)
+            formatConstraint, maxFormatMismatches, maxKnownDataEccMismatches, partialBitSearchLimit)
         val manual = FormatEditPolicy.manualValues(matrix) + manualEdits
         // Share one immutable summary across potentially thousands of retained derivations.
         val publishedDiagnostic by lazy(LazyThreadSafetyMode.NONE) { run.searchDiagnostic() }
@@ -652,7 +655,8 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                     val requiredBytes = blockCandidateWorkingBytes(block, space?.dimension,
                         allowBitEnumeration, nonEnumerable, maxKnownDataEccMismatches == 0,
                         de.ecSymbolsPerBlock, conventionalDiagnostic.blocks.getOrNull(blockIndex)?.margin
-                            .takeIf { matrix === run.diagnosticInput && constraints.filledBits == 0 })
+                            .takeIf { matrix === run.diagnosticInput && constraints.filledBits == 0 },
+                        partialBitSearchLimit = run.partialBitSearchLimit)
                     if (requiredBytes > run.retentionBudget.workingLimitBytes - blockWorkingBytes) {
                         run.combinationSearch = run.combinationSearch.afterPass(setOf(CombinationSearchStop.WORKING_MEMORY_LIMIT))
                         throw ReedSolomonErasures.DecodeException("Exact RS space exceeds working-memory allowance")
@@ -666,6 +670,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                         allowBitEnumeration = allowBitEnumeration,
                         nonEnumerablePositions = nonEnumerable,
                         cancellation = run.cancellation,
+                        maxEnumeratedBits = run.partialBitSearchLimit,
                         reportSearch = { run.solverCompleteness = run.solverCompleteness.combine(it) },
                     )
                 } catch (error: ReedSolomonErasures.DecodeException) {

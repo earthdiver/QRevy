@@ -1705,6 +1705,7 @@ class MainActivity : Activity() {
             val outcome = try { recoveryEngine.recoverWithDiagnostics(
                 matrix.copy(),
                 trustKnownPayloadCount = requestSettings.trustKnownPayloadCount,
+                partialBitSearchLimit = requestSettings.partialBitSearchLimit,
                 formatConstraint = requestSettings.formatConstraint,
                 maxFormatMismatches = requestSettings.effectiveFormatMismatchLimit,
                 maxKnownDataEccMismatches = requestSettings.effectiveDataEccMismatchLimit,

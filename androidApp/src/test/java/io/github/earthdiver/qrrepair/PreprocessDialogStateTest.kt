@@ -17,6 +17,17 @@ import org.junit.Test
 class PreprocessDialogStateTest {
     private val quad = ImageQuad(PointD(1.0, 2.0), PointD(22.0, 2.0), PointD(22.0, 23.0), PointD(1.0, 23.0))
 
+    @Test fun selectedPartialBitLimitSurvivesCaptureAndSamplingProfiles() {
+        for (limit in 12..14) {
+            val state = PreprocessDialogState(PreprocessSettings())
+            val captured = state.captureSettings(controls().copy(partialBitSearchLimit = limit),
+                geometry(), emptyMap(), emptySet())
+            assertEquals(limit, captured.partialBitSearchLimit)
+            captured.variants().forEach { assertEquals(limit, it.settings.partialBitSearchLimit) }
+            assertEquals(limit, captured.recoverySnapshot().partialBitSearchLimit)
+        }
+    }
+
     @Test fun toneChangesSurviveGeometryChangesAndPreserveManualEdits() {
         val tones = io.github.earthdiver.qrrepair.core.ImageAdjustment(25, -10, true)
         val state = PreprocessDialogState(PreprocessSettings(imageAdjustment = tones))

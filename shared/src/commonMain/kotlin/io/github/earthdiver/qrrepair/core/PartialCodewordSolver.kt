@@ -42,10 +42,12 @@ class PartialCodewordSolver(private val rs: ReedSolomonErasures) {
         allowBitEnumeration: Boolean = true,
         nonEnumerablePositions: Set<Int> = emptySet(),
         cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
+        maxEnumeratedBits: Int = PartialBitSearchLimit.DEFAULT,
         reportSearch: (SearchCompleteness) -> Unit = {},
     ): List<Result> = reportingCompletion(reportSearch) {
         cancellation.check()
-        val dimensionLimit = if (allowBitEnumeration && nonEnumerablePositions.isEmpty()) 12 else 0
+        require(maxEnumeratedBits in 0..20)
+        val dimensionLimit = if (allowBitEnumeration && nonEnumerablePositions.isEmpty()) maxEnumeratedBits else 0
         val exact = space?.assignments(dimensionLimit, cancellation)?.map { corrected ->
             Result(corrected, block.unknownMasks.indices.filter { block.unknownMasks[it] != 0 }.toIntArray(),
                 space.dimension, 0, intArrayOf(), 0, bitConstraintSolved = true)
@@ -58,7 +60,7 @@ class PartialCodewordSolver(private val rs: ReedSolomonErasures) {
             }
         }
         val conventional = try {
-            decodeCandidates(block, nsym, allowBitEnumeration = allowBitEnumeration,
+            decodeCandidates(block, nsym, maxEnumeratedBits = maxEnumeratedBits, allowBitEnumeration = allowBitEnumeration,
                 nonEnumerablePositions = nonEnumerablePositions, cancellation = cancellation)
         } catch (error: ReedSolomonErasures.DecodeException) {
             if (exact.isEmpty()) {
@@ -75,9 +77,9 @@ class PartialCodewordSolver(private val rs: ReedSolomonErasures) {
     fun decode(
         block: RsBlockWork,
         nsym: Int,
-        maxEnumeratedBits: Int = 12,
+        maxEnumeratedBits: Int = PartialBitSearchLimit.DEFAULT,
         maxUnknownBitsPerByte: Int = 4,
-        maxTrials: Int = 4096,
+        maxTrials: Int = 1 shl maxEnumeratedBits,
         allowBitEnumeration: Boolean = true,
         nonEnumerablePositions: Set<Int> = emptySet(),
         cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
@@ -94,15 +96,17 @@ class PartialCodewordSolver(private val rs: ReedSolomonErasures) {
     fun decodeCandidates(
         block: RsBlockWork,
         nsym: Int,
-        maxEnumeratedBits: Int = 12,
+        maxEnumeratedBits: Int = PartialBitSearchLimit.DEFAULT,
         maxUnknownBitsPerByte: Int = 4,
-        maxTrials: Int = 4096,
+        maxTrials: Int = 1 shl maxEnumeratedBits,
         allowBitEnumeration: Boolean = true,
         nonEnumerablePositions: Set<Int> = emptySet(),
         cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
         reportSearch: (SearchCompleteness) -> Unit = {},
     ): List<Result> = reportingCompletion(reportSearch) {
         cancellation.check()
+        require(maxEnumeratedBits in 0..20)
+        require(maxTrials > 0)
         val erasedPositions = block.unknownMasks.indices.filter { block.unknownMasks[it] != 0 }
         var erasureOnlyResult: Result? = null
         if (erasedPositions.size <= nsym) {

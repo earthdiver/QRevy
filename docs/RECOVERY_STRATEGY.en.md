@@ -309,22 +309,23 @@ In the current implementation, payload-constraint propagation remains enabled du
 
 Temporary priority 0/1 assignments constrain only their trial; they are not known input bits. Known-bit counts, mismatch counts, original erased-codeword counts, and Before codeword views use the observation before those assignments. RS erasure counts and correction margins still describe the trial. Explicitly enumerated coordinates and values are retained in candidate provenance and displayed separately from ordinary partial-bit search. Other cells in the same codeword do not inherit priority-assignment provenance. Success on the ordinary route is not recorded as explicit priority enumeration.
 
-The ordinary search inside each priority trial uses the per-block bounds in section 4.3. The maximum of 16,384 priority assignments is separate from the maximum of 4096 conventional enumeration trials.
+The ordinary search inside each priority trial uses the per-block bounds in section 4.3. The maximum of 16,384 priority assignments is separate from the selected maximum of 4,096, 8,192, or 16,384 conventional enumeration trials.
 
 See the [user guide](USER_GUIDE.en.md#4-edit-cells) for progress display and interruption controls.
 
 ### 4.3 Ordinary partial-bit search
 
-When erasure decoding fails, or when the combined error/erasure correction margin is small, partial codewords with more known evidence are prioritized for a bounded enumeration: at most 12 unknown bits and 4096 trials. The solver fixes enough partial erasures, within those bounds, to reserve capacity for multiple unknown-position errors. This is not an unlimited brute-force search over every `?` in the image.
+When erasure decoding fails, or when the combined error/erasure correction margin is small, partial codewords with more known evidence are prioritized for a bounded enumeration: a shared per-block limit of 12, 13, or 14 bits (default 12), with at most 4,096, 8,192, or 16,384 trials respectively. The same setting bounds the remaining dimension enumerated by the exact RS-constraint route. The solver fixes enough partial erasures, within those bounds, to reserve capacity for multiple unknown-position errors.
 
 These are per-block limits. Only codewords with one to four unknown bits are eligible for conventional enumeration. They are selected by increasing unknown-bit count, preserving local codeword order on ties. Codewords with five to eight unknown bits remain erasures on this route; the separate binary-constraint route may still use them.
 
-### 4.4 Partial-bit RS constraints (automatic, no additional option)
+### 4.4 Partial-bit RS constraints (automatic, shared enumeration limit)
 
 For each format interpretation and RS block, expand the GF(256) zero-syndrome equations into GF(2) equations on individual unknown bits. All known data and ECC bits are constants. Row reduction produces either an inconsistent system or an affine space with dimension `d = unknown bits − rank`. The solver computes bits fixed across every solution and a set of independent measurement bits without enumerating that space.
 
 - With a data/ECC error limit of zero, this exact-match route supplies block candidates. With a positive or unlimited allowance, its candidates supplement conventional errors+erasures decoding; finding an exact solution does not skip that conventional route. This is not exhaustive error-location search under an arbitrary bit-error budget.
-- A space with `d = 0` supplies one conditional RS solution. For `1 <= d <= 12`, all `2^d` assignments are passed to QR-level validation. Larger spaces remain symbolic, not an arbitrary sample of 4096 assignments. QR-level combination limits still apply. The initial priority-`*` pass permits only a unique exact solution, not free-variable enumeration; explicit priority trials and the existing fallback remain available.
+- A space with `d = 0` supplies one conditional RS solution. For `1 <= d <=` the selected partial-bit limit (12, 13, or 14), all `2^d` assignments are passed to QR-level validation. Larger spaces remain symbolic rather than being partially sampled. QR-level combination limits still apply.
+- In the ordinary attempt before priority `*` search, `*` cells remain unknown and the partial-bit constraint route supplies candidates only from zero-dimensional spaces. Neither free variables nor ordinary partial-bit assignments are enumerated at this stage. If no payload is decoded, 0/1 values are assigned to the `*` cells; each assignment permits partial-bit search and free-variable enumeration up to the configured limit. If no assignment yields a decoded payload, the solver returns to the original input without tentative assignments and tries ordinary partial-bit search, excluding codewords containing `*` from enumeration. See section 4.2 for the search order.
 - Payload-structure constraints can reduce the space used for candidate generation. With **Single-segment assumption** OFF, the search also retries without those constraints. Diagnostics and measurement recommendations describe the original observation before structure forcing or temporary priority guesses.
 - Fixed-bit values never overwrite the input or become manual pins. A completed candidate carries RS partial-bit provenance. A conventional symbol correction margin is not inferred from binary rank.
 - Incorrect known ECC bits can make the system inconsistent **or** produce a consistent but incorrect solution. Even a unique solution is conditional on the version, format and known bits being correct; payload validation, manual locks and final mismatch checks remain mandatory.
@@ -341,7 +342,7 @@ Both controls offer Default, Exact match (0 bits), Strict, Relaxed, Manual, and 
 
 The conditions share generated source symbols and are not independent real photographs. Results depend on damage distribution, seed, scoring weights, and finite search/retention budgets. There was no fresh holdout after selecting 10%, and limits cannot reject alternatives that require zero changes to known bits. Reusable evaluation and enumeration commands are in the [study tools](../tools/detector-study/README.md#synthetic-dataecc-error-limit-study); detailed run archives are local research artifacts, not required product documentation.
 
-QRR schema 23 persists each limit mode separately from its remembered manual value. Exact match stays at zero across versions. Explicit ECC/mask selections and fixed-cell protection retain their separate rules.
+QRR schema 24 persists each limit mode separately from its remembered manual value. Exact match stays at zero across versions. Explicit ECC/mask selections and fixed-cell protection retain their separate rules.
 
 ## 5. Candidate validation and ranking
 
@@ -377,7 +378,7 @@ While combining RS blocks, a prefix can end inside the next mode indicator. An i
 
 QR combination-search diagnostics distinguish a window ending after success, the combination limit, and the expanded-node limit.
 
-Search completion means the specified conditions and bounded search policy have been processed. Skipping further search after ordinary RS success, completing the selected partial-bit search (at most 12 bits / 4096 trials), symbolic analysis above the enumeration limit, and reaching combination/node/geometry limits are policy-defined endings. User interruption, insufficient working memory, or an internal error that prevents required work leaves the search unfinished; insufficient execution records make completion unknown. Candidate and explanation retention omissions are reported separately. See [Recovery Result Fields](RECOVERY_RESULT_FIELDS.en.md) for the messages and their interpretation.
+Search completion means the specified conditions and bounded search policy have been processed. Skipping further search after ordinary RS success, completing the selected partial-bit search (the selected 12, 13, or 14 bits / up to 4,096, 8,192, or 16,384 trials), symbolic analysis above the enumeration limit, and reaching combination/node/geometry limits are policy-defined endings. User interruption, insufficient working memory, or an internal error that prevents required work leaves the search unfinished; insufficient execution records make completion unknown. Candidate and explanation retention omissions are reported separately. See [Recovery Result Fields](RECOVERY_RESULT_FIELDS.en.md) for the messages and their interpretation.
 
 The eight-bit FNC1 second-position application indicator is retained separately from the body. Only the private decoding view sent to ZXing 3.5.4 omits that field; original codewords, RS consistency, structure validation and mismatch counts use the original stream. This also applies after a Structured Append header.
 
@@ -393,7 +394,7 @@ The Android app derives separate result, current-trial, and solver allowances fr
 
 Candidate agreement and candidate-based check guidance compare distinct candidates decoded as text from the same input matrix as the selected candidate. A full QR matrix is generated for each compared candidate, so the comparison uses at most the top 16 to bound memory and computation. If the selected decoded candidate is outside that range, it replaces the last entry. The compared count and the retained decoded-candidate count for that input are explicit; sample agreement is not treated as agreement among all candidates. Candidates that pass QR structure validation without decoding as text can be selected and exported but are excluded from this comparison.
 
-History in QRR schema 23 stores the selected QR’s version, ECC level, mask, corrected codewords, and actual sampling polarity. Recalculation restores selection by QR identity rather than list position; if no candidate matches, selection remains empty. Actual polarity is recorded separately from the user’s automatic/normal/inverted search preference. User-facing history count and size limits are described in the [User Guide](USER_GUIDE.en.md#7-save-resume-and-export).
+History in QRR schema 24 stores the selected QR’s version, ECC level, mask, corrected codewords, and actual sampling polarity. Recalculation restores selection by QR identity rather than list position; if no candidate matches, selection remains empty. Actual polarity is recorded separately from the user’s automatic/normal/inverted search preference. User-facing history count and size limits are described in the [User Guide](USER_GUIDE.en.md#7-save-resume-and-export).
 
 When conflicts with fixed values are not allowed, data/ECC pin conflicts reject the candidate and retain conflicting coordinates, input values, and required candidate values. Otherwise equivalent generic payload failures do not overwrite actionable diagnostics. Temporary priority assignments are not manual input pins.
 

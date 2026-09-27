@@ -85,6 +85,7 @@ Changing orientation rechecks existing `*` positions, removes only ineligible ma
 
 | Setting | Consider it when | Main risk or limit |
 | --- | --- | --- |
+| Partial-bit search / dimension limit | Extend partial-bit enumeration or enumerate more remaining RS degrees of freedom | Choose 12, 13, or 14 bits (default 12), per RS block; each extra bit doubles the maximum enumeration count |
 | Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells) | Retain fixed designations while allowing recovery to correct their values | Defaults to OFF; ON still enforces error limits and explicit ECC/mask selections |
 | Automatically fine-tune sampling position | Corners are close but module-center sampling is slightly displaced | Includes alignment-pattern refinement and increases work; preserves version and logical orientation |
 | Format-information error limit | ECC-level/mask candidates should closely match known format cells | Too strict a limit can remove every format before RS is attempted |
@@ -92,6 +93,8 @@ Changing orientation rechecks existing `*` positions, removes only ineligible ma
 | When the mode and character/byte count are read or assigned by \* trials, assume a single segment and force the following structure. | One segment whose header is known or can be hypothesized using * trials | Do not use with ECI, FNC1, Structured Append, or multiple segments |
 
 Below, the last setting in the table is called **Single-segment assumption**, matching the diagnostic label. When ON, “3. Processing in this run” reports its application. When `*` trials hypothesize multiple mode/count headers, the report summarizes whether any applicable trial was found.
+
+**Partial-bit search / dimension limit** is above the priority-search limit. It controls both enumeration routes, with up to 4,096, 8,192, or 16,384 assignments respectively. It is not a limit on the total unknown cells in the QR. Combining it with `*` search increases work multiplicatively. Working-memory and QR-combination limits remain in effect, so raising it may stop a route before candidate generation; it does not guarantee more recovered candidates. The chosen value is saved with the session.
 
 Both error-limit controls offer **Default**, **Exact match (0 bits)**, **Strict**, **Relaxed**, **Manual**, and **Unlimited**, with the effective bit count shown. Editing the number or using ± selects Manual.
 
@@ -125,7 +128,7 @@ In the enlarged repair result, enabling **Unmask** displays both the before and 
 
 Import automatically saves the source image and a session before you press Save or Repair. **Saved work** retains at most 20 sessions; new imports also count toward this limit. When it is exceeded, the least recently saved work and its source image are automatically deleted. The limit also applies on startup. Touch and hold an entry to delete that work, or use **Delete all**.
 
-Resume saved sessions from **Saved work**. **Operation history** shows the current edit history. QRR sessions and saved source images stay in app-private no-backup storage, but they are not encrypted files. Saved work uses QRR schema 23; sessions in other schema versions cannot be opened.
+Resume saved sessions from **Saved work**. **Operation history** shows the current edit history. QRR sessions and saved source images stay in app-private no-backup storage, but they are not encrypted files. Saved work uses QRR schema 24. Schema 23 sessions can also be opened, using a partial-bit search / dimension limit of 12 bits; other schema versions cannot be opened.
 
 Each session has at most 40 history checkpoints. Memory or storage limits can reduce that number. Trimming history to fit these limits removes older checkpoints while preserving the currently selected checkpoint and the latest one.
 

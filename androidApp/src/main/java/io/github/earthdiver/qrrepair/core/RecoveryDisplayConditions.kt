@@ -9,6 +9,7 @@ data class RecoveryDisplayConditions(
     val format: QrFormatConstraint?,
     val formatLimit: Int?,
     val dataEccLimit: Int?,
+    val partialBitSearchLimit: Int = PartialBitSearchLimit.DEFAULT,
 )
 
 fun inputAgreementText(known: Int, mismatches: Int, format: Boolean): String {
@@ -35,6 +36,8 @@ fun RecoveryCandidate.conditionText(): String = buildString {
     val conditions = displayConditions
     conditions?.let {
         append(it.limitText(true)).append('\n').append(it.limitText(false))
+        append(localizedText("\n部分bit探索・自由度の上限: ${it.partialBitSearchLimit}bit／RSブロック",
+            "\nPartial-bit search / dimension limit: ${it.partialBitSearchLimit} bits per RS block"))
         append(localizedText("\n形式の選択: ECC ", "\nFormat selection: ECC "))
         append(if (it.format?.ecLevel != null) localizedText("指定", "specified") else localizedText("自動", "automatic"))
         append(localizedText(" / マスク ", " / mask "))

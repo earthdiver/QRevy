@@ -29,6 +29,7 @@ internal data class PreprocessControlSnapshot(
     val dataEccMismatchLimitMode: ErrorLimitMode = ErrorLimitMode.MANUAL,
     val lockManualBits: Boolean = false,
     val prioritySearchLimit: Int = 4,
+    val partialBitSearchLimit: Int = io.github.earthdiver.qrrepair.core.PartialBitSearchLimit.DEFAULT,
 )
 
 internal data class PreprocessGeometrySnapshot(
@@ -109,6 +110,7 @@ internal class PreprocessDialogState(private val initial: PreprocessSettings) {
             dataEccMismatchLimitMode = controls.dataEccMismatchLimitMode,
             lockManualBits = controls.lockManualBits,
             prioritySearchLimit = controls.prioritySearchLimit,
+            partialBitSearchLimit = controls.partialBitSearchLimit,
             perspectiveCorrectionQuad = perspectiveCorrectionQuad,
             manualQuad = geometry.quad,
             manualFinders = geometry.finders,

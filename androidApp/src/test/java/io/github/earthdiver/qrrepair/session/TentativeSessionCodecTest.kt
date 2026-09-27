@@ -32,10 +32,10 @@ class TentativeSessionCodecTest {
         val settings = PreprocessSettings(preRecoveryEdits = mapOf(a to ModuleValue.ZERO, b to ModuleValue.ONE), preRecoverySoftEdits = setOf(a, b))
         val bytes = RecoverySessionCodec.encode(payload(settings))
         val mutations = listOf<(ByteArray) -> ByteArray>(
-            { raw -> raw.apply { putInt(this, size - 52, -1) } },
-            { raw -> raw.apply { putInt(this, size - 52, 3) } },
-            { raw -> raw.apply { putInt(this, size - 40, a.x); putInt(this, size - 36, a.y) } },
-            { raw -> raw.apply { putInt(this, size - 40, 999) } },
+            { raw -> raw.apply { putInt(this, size - 56, -1) } },
+            { raw -> raw.apply { putInt(this, size - 56, 3) } },
+            { raw -> raw.apply { putInt(this, size - 44, a.x); putInt(this, size - 40, a.y) } },
+            { raw -> raw.apply { putInt(this, size - 44, 999) } },
             { raw -> raw.copyOf(raw.size - 1) },
         )
         for (mutate in mutations) assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) {
