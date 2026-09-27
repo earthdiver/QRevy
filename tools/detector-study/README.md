@@ -25,6 +25,8 @@ per-case metrics. `fixed-report/` repeats recovery with fixed black/white thresh
 96/160; detector outputs are reused. Checked-in measurements and interpretation are linked from
 `docs/DETECTOR_COMPARISON.ja.md`.
 
+For historical comparisons, use the recorded `source_commit` and verify the harness and production-source hashes in [the saved environment record](../../docs/detector-study/2026-09-17/automatic/environment.json). This tool compiles the current production sources, so a run at another revision is a new measurement and need not reproduce the stored numbers.
+
 ## Protocol
 
 - 240 positive images: versions 1/3/7, four synthetic ASCII payloads/orientations per

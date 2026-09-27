@@ -21,7 +21,8 @@ This checklist is a technical release gate, not legal advice.
 
 ## Automated quality gates
 
-- [ ] `./bootstrap-wrapper.sh` and verify it reports the expected Gradle distribution and wrapper-JAR SHA-256 checksums.
+- [ ] `./bootstrap-wrapper.sh` and `./scripts/verify-wrapper.sh`; verify the expected Gradle distribution and wrapper-JAR SHA-256 checksums.
+- [ ] `./scripts/check-publication-readiness.sh` and `./scripts/check-shared-boundary.sh`.
 - [ ] Commit the verified Gradle Wrapper files (`gradlew`, `gradlew.bat`, `gradle-wrapper.jar`, `gradle-wrapper.properties`) in the public repository.
 - [ ] `./gradlew --no-daemon :shared:jvmTest :androidApp:testDebugUnitTest :androidApp:lint :androidApp:assembleDebug :androidApp:assembleRelease :androidApp:bundleRelease`
 - [ ] Review `build/androidApp/reports/` and fix all release-blocking lint/test failures.
@@ -46,9 +47,15 @@ This checklist is a technical release gate, not legal advice.
 - [ ] Keep the project `LICENSE` and `THIRD_PARTY_NOTICES.md` in source distributions.
 - [ ] Verify the in-app Licenses/Privacy screen renders Apache-2.0 and third-party notices.
 - [ ] Generate `releaseRuntimeClasspath` with `scripts/release-audit.sh` and reconcile **every resolved runtime/transitive artifact** with its license/NOTICE obligations before release; do not assume the hand-maintained direct-dependency list is exhaustive.
-- [ ] Re-run the license audit whenever dependency versions change.
+- [ ] Re-run the license audit whenever dependency versions change. Maintain `THIRD_PARTY_NOTICES.md` as the canonical inventory and synchronize `androidApp/src/main/res/raw/third_party_notices.txt` byte for byte. Keep the paired privacy documents and localized app notices aligned.
 - [ ] Keep the QR Code trademark attribution in notices/About materials.
 - [ ] Do not copy text, figures, or screenshots from Robert Xiao's article unless separate permission/license permits it; citation/reference is sufficient for the algorithmic inspiration used here.
+
+## Tester-facing documentation
+
+- [ ] Match `RELEASE_NOTE.txt` to the APK version and current changes, including supported saved-work schemas and any compatibility break.
+- [ ] Check result messages, settings, and saved-work instructions in both User Guides and result references against the packaged app.
+- [ ] For Firebase distribution, review the notes at the workflow commit; they may differ from the selected APK release tag.
 
 ## Store publication
 

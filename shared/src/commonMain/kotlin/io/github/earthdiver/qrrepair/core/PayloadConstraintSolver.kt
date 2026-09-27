@@ -27,6 +27,29 @@ object PayloadConstraintSolver {
         val kind: ConstraintKind,
     )
 
+    /** Compact hard condition, checked again after RS may have changed supplied bits. */
+    data class TrustedStructure(val mode: Int, val count: Int, val headerBits: Int,
+        val payloadEnd: Int, val totalBits: Int) {
+        fun matches(data: ByteArray): Boolean {
+            if (data.size * 8 != totalBits) return false
+            val alignmentEnd = min(totalBits, ((min(totalBits, payloadEnd + 4) + 7) / 8) * 8)
+            for (bit in 0 until totalBits) {
+                val expected = when {
+                    bit < 4 -> (mode shr (3 - bit)) and 1
+                    bit < headerBits -> (count shr (headerBits - 1 - bit)) and 1
+                    bit < payloadEnd -> continue
+                    bit < alignmentEnd -> 0
+                    else -> {
+                        val pad = if (((bit - alignmentEnd) / 8) % 2 == 0) 0xEC else 0x11
+                        (pad shr (7 - bit % 8)) and 1
+                    }
+                }
+                if (((data[bit / 8].toInt() shr (7 - bit % 8)) and 1) != expected) return false
+            }
+            return true
+        }
+    }
+
     data class Result(
         val filledBits: Int,
         val viablePlans: Int,
@@ -38,6 +61,7 @@ object PayloadConstraintSolver {
         val exhaustive: Boolean = true,
         /** True when an explicitly trusted, fully observed mode/count header forced the suffix. */
         val forcedByTrustedHeader: Boolean = false,
+        val trustedStructure: TrustedStructure? = null,
     )
 
     private data class Ref(val blockIndex: Int, val block: RsBlockWork, val byteIndex: Int)
@@ -373,6 +397,9 @@ object PayloadConstraintSolver {
             evidenceBits = bestEvidence,
             filled = filledTrace,
             forcedByTrustedHeader = trustedHeaderPlan != null,
+            trustedStructure = trustedHeaderPlan?.let {
+                TrustedStructure(it.mode, it.count, it.headerBits, it.payloadEnd, totalBits)
+            },
         )
     }
 }

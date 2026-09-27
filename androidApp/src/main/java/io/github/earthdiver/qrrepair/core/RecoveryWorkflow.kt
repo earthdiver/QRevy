@@ -16,20 +16,38 @@ internal class RecoveryWorkflow(private val engine: RecoveryEngine) {
         settings: PreprocessSettings,
         retentionBudget: RecoveryRetentionBudget,
         cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
+        stopRequested: () -> Boolean = { false },
+        onPriorityProgress: (Int, Int) -> Unit = { _, _ -> },
         onProgress: (RecoveryProgress) -> Unit = {},
     ): AutoRecoveryResult {
+        require(settings.preRecoveryPrioritySearch.size <= settings.prioritySearchLimit) { "Priority marks exceed the configured limit" }
         val variants = settings.variants()
         val accumulator = RecoveryResultAccumulator(retentionBudget)
         var finders = emptyList<FinderCandidate>()
         for ((index, profile) in variants.withIndex()) {
-            finders = AutoRecoveryEngine(engine).run(
-                image, profile = profile, retentionBudget = retentionBudget, resultAccumulator = accumulator,
-                cancellation = cancellation,
-                onProgress = { done, total, message ->
-                    onProgress(RecoveryProgress(profile, index, variants.size, done, total, message))
-                },
-            ).finders
+            cancellation.check()
+            if (stopRequested()) {
+                accumulator.markIncomplete(SearchIncompleteReason.USER_INTERRUPTED)
+                break
+            }
+            try {
+                finders = AutoRecoveryEngine(engine).run(
+                    image, profile = profile, retentionBudget = retentionBudget, resultAccumulator = accumulator,
+                    cancellation = cancellation,
+                    stopRequested = stopRequested,
+                    onPriorityProgress = onPriorityProgress,
+                    onProgress = { done, total, message ->
+                        onProgress(RecoveryProgress(profile, index, variants.size, done, total, message))
+                    },
+                ).finders
+            } catch (error: RecoveryCancelledException) {
+                throw error
+            } catch (_: Exception) {
+                accumulator.markIncomplete(SearchIncompleteReason.INTERNAL_ERROR)
+            }
         }
-        return accumulator.result(finders)
+        val result = accumulator.result(finders)
+        return result.copy(interrupted = SearchIncompleteReason.USER_INTERRUPTED in
+            result.searchDiagnostic?.incompleteReasons.orEmpty())
     }
 }

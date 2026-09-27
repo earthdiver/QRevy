@@ -14,6 +14,8 @@ A recovered result is not proof that it matches the original content. Independen
 | Camera | Capturing the symbol now | Confirm the crop after capture; the temporary capture and lossless hand-off image are deleted after use |
 | `0 / 1 / ? / *` matrix text | Module decisions prepared elsewhere | Only the permitted characters and valid QR dimensions are accepted |
 
+Ready-to-edit [matrix templates for versions 1–40](../templates/text-matrices/README.md) are available for text import.
+
 Prefer an image containing the complete QR and, when possible, its surrounding quiet zone, with module centers that are not completely blurred. Never attach a sensitive real QR image to a public issue.
 
 ## 2. Adjust image and geometry
@@ -24,7 +26,7 @@ Prefer an image containing the complete QR and, when possible, its surrounding q
 4. Review the black/unknown/white thresholds so gray damage remains `?` where appropriate.
 5. Enable **Treat detected color clusters as unknown (?)** only when colored damage should be treated as unknown. It starts disabled.
 
-**Image adjustment** in the crop screen switches the bottom tool row to one slider for **Contrast** or **Brightness**, keeping the image area unchanged at standard width and text size. Use the item menu for numeric entry, an individual reset, or **Reset all image adjustments**. **Invert** is available on the normal tool row. **Done** closes the slider; it does not start analysis. On narrow screens or with large text, an open slider uses two rows. Closing it returns that space to the image; the normal tool row stays directly above the analysis buttons.
+**Image adjustment** in the crop screen opens a **Contrast** or **Brightness** slider. Use the item menu for numeric entry, an individual reset, or **Reset all image adjustments**. **Invert** is available on the normal tool row. **Done** closes the slider; it does not start analysis.
 
 **Before** toggles the same image between adjusted and unadjusted tones without changing the crop or rotation. Analysis always uses the adjustment settings; while comparing, the action says **Analyze adjusted image**.
 
@@ -55,7 +57,7 @@ With exactly one assigned role and **Automatically fine-tune sampling position**
 | `0` | Logical white/zero | Mark a cell that can be read as white |
 | `1` | Logical black/one | Mark a cell that can be read as black |
 | `?` | Unknown | Treat a weak observation as an erasure |
-| `*` | Keep value `?`, but prioritize bounded 0/1 search | Mark at most four cells to try first if ordinary erasure handling fails |
+| `*` | Keep value `?`, but prioritize bounded 0/1 search | Mark cells to try first if ordinary erasure handling fails; default limit 4, configurable to 14 |
 
 Choose a source for the selected cells:
 
@@ -67,11 +69,15 @@ Choose a source for the selected cells:
 
 Changing an image-derived value to a different 0/1 makes it Fixed; entering the image value again does not remove that designation. You can also fix the current image-derived 0/1 without changing it. Editing a tentative 0/1 keeps it tentative, while changing `?` or `*` to 0/1 makes it Fixed. Fixed and tentative edits survive threshold changes, Undo/Redo, and saving.
 
-In the enlarged cell editor, dragging or pinching temporarily hides cell symbols and overlays, leaving the image and QR boundary visible. The overlays return when all fingers are lifted or the gesture is canceled. Cell values and edits are unchanged.
+In the enlarged cell editor, dragging or pinching temporarily hides cell symbols and overlays, leaving the image and QR boundary visible. The overlays return when all fingers are lifted or the gesture is canceled.
 
 Cyan solid squares mark fixed cells; dashed squares mark tentative cells. Yellow circles mark selections. **Highlight edited cells** includes both kinds and changes only the overlay. The menu also applies to multiple selected cells. `?` is image-derived or tentative; `*` is always tentative. Neither can be Fixed.
 
 **Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)** in advanced settings defaults to OFF. Turning it ON is an explicit exception to the normal Fixed behavior: the cells retain their Fixed provenance, input values, and solid outlines, but recovery may correct them as if they were tentative. Turning it OFF protects those values again. Either way, format and data/ECC error limits, explicit ECC/mask/version selections, and consistency checks between fixed cells and explicit selections remain enforced.
+
+In advanced settings, **Priority search cell limit** accepts 4–14 cells (default 4). The actual selected count determines the assignments: 4 cells give 16, and 14 give 16,384. Each additional cell doubles the assignments; **Automatically fine-tune sampling position** adds further work. Candidate retention limits remain independent of this setting. Lowering the limit preserves existing marks; raise it or remove marks before repairing if the count is over the limit.
+
+The **Repair progress** dialog shows the current grid/reading-condition phase and elapsed time. During `*` assignment trials, it also shows completed and total assignments for the current grid. **Interrupt repair** stops the whole repair, including further grids and reading conditions, and retains candidates already found.
 
 Assign the four corner positions and roles before marking `*`. Fixed structures such as finder/alignment patterns and format information, and remainder bits, cannot be marked. Selecting an ineligible cell displays its type and coordinates. If a selection includes any ineligible cell, no cells in that selection are marked.
 
@@ -81,19 +87,26 @@ Changing orientation rechecks existing `*` positions, removes only ineligible ma
 
 | Setting | Consider it when | Main risk or limit |
 | --- | --- | --- |
+| Partial-bit search / dimension limit | Extend partial-bit enumeration or enumerate more remaining RS degrees of freedom | Choose 12, 13, or 14 bits (default 12), per RS block; each extra bit doubles the maximum enumeration count |
 | Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells) | Retain fixed designations while allowing recovery to correct their values | Defaults to OFF; ON still enforces error limits and explicit ECC/mask selections |
-| Automatically fine-tune sampling position | Corners are close but module-center sampling is slightly displaced | Increases work; never changes version or logical orientation |
+| Automatically fine-tune sampling position | Corners are close but module-center sampling is slightly displaced | Includes alignment-pattern refinement and increases work; preserves version and logical orientation |
 | Format-information error limit | ECC-level/mask candidates should closely match known format cells | Too strict a limit can remove every format before RS is attempted |
 | Data/ECC error limit | Candidates that overturn too much known evidence should be restricted | `0 bits` requires exact agreement with every comparable known bit |
-| Force following structure when mode and character/byte count are read correctly | One segment and its mode and character/byte count are known to be correct | Do not use with ECI, FNC1, Structured Append, or multiple segments |
+| When the mode and character/byte count are read or assigned by \* trials, assume a single segment and force the following structure. | One segment whose header is known or can be hypothesized using * trials | Do not use with ECI, FNC1, Structured Append, or multiple segments |
 
-Both error-limit controls offer **Default**, **Exact match (0 bits)**, **Strict**, **Relaxed**, **Manual**, and **Unlimited**, with the effective bit count shown. Apply confirms the selection; Cancel leaves it unchanged. Editing the number or using ± selects Manual.
+Below, the last setting in the table is called **Single-segment assumption**, matching the diagnostic label. When ON, “3. Processing in this run” reports its application. When `*` trials hypothesize multiple mode/count headers, the report summarizes whether any applicable trial was found.
+
+**Partial-bit search / dimension limit** is above the priority-search limit. It controls both enumeration routes, with up to 4,096, 8,192, or 16,384 assignments respectively. It is not a limit on the total unknown cells in the QR. Combining it with `*` search increases work multiplicatively. Working-memory and QR-combination limits remain in effect, so raising it may stop a route before candidate generation; it does not guarantee more recovered candidates. The chosen value is saved with the session.
+
+Both error-limit controls offer **Default**, **Exact match (0 bits)**, **Strict**, **Relaxed**, **Manual**, and **Unlimited**, with the effective bit count shown. Editing the number or using ± selects Manual.
 
 For new imports, the format-information limit starts at **6 bits** across both copies (Strict); Relaxed allows **9 bits**, independent of version. The data/ECC limit starts at **0.875%** of the version's total data/ECC bits for **V1–4**, and **10%** for **V5–40**, rounded up to whole bits. For example, V4 starts at 7 bits and V5 at 108 bits. These presets are operational compromises, not guarantees of correct recovery.
 
-Default follows that version rule. An explicitly selected Strict or Relaxed preset keeps its selected policy and recalculates its bit count when version changes; Manual and Unlimited remain explicit. Stored manual numbers are retained while using a preset. Existing QRR sessions keep their saved numeric limits or Unlimited. Both an ECC level and a mask selected explicitly disable the format limit, as before. If the limits remove a correct candidate, select a higher manual limit or Unlimited and retry.
+Default follows that version rule. An explicitly selected Strict or Relaxed preset keeps its selected policy and recalculates its bit count when version changes; Manual and Unlimited remain explicit. Stored manual numbers are retained while using a preset. The format limit also applies when both ECC and mask are explicitly selected. If the limits remove a correct candidate, select a higher manual limit or Unlimited and retry.
 
 See [Recovery Strategy](RECOVERY_STRATEGY.en.md) for exact interactions and bounds.
+
+Search completion covers the specified conditions and bounded search policy. It is separate from candidate or explanation retention omissions and does not guarantee correctness or uniqueness. See [Recovery Result Fields](RECOVERY_RESULT_FIELDS.en.md) for the messages and reasons for unfinished work.
 
 ## 6. Recover and inspect results
 
@@ -101,21 +114,25 @@ See [Recovery Strategy](RECOVERY_STRATEGY.en.md) for exact interactions and boun
 
 Review results in this order:
 
-1. Whether the outcome is Repair succeeded, incomplete, or failed.
+1. Whether any recovery candidates meeting the specified conditions were found, and whether the selected candidate can be displayed as text.
 2. The number of validated candidates and distinct contents.
 3. ECC level, mask, format mismatches, and data/ECC mismatches.
-4. Any search-limit or candidate-retention warning.
+4. Search completion, unchecked combinations, and omitted-candidate notices.
 5. Decoded content and repair reasons for important cells.
 
-Open diagnostics with **Show detailed results**, then tap a cell to inspect provenance. **Show same Codeword** highlights the other cells in its eight-bit codeword. When multiple candidates remain, compare their content and candidate-agreement scope.
+Use **Show diagnostics** for the search and candidate report. Open **Show detailed results** for the enlarged QR, then tap a cell to inspect provenance. **Show same codeword** highlights the other cells in its eight-bit codeword. Format-information cells show their role and bit position; calculation details compare both copies before and after repair and after removing the fixed format mask. The button changes to **Show ECC level cells**, **Show mask number cells**, or **Show format correction bits**, highlighting related cells in both copies. When multiple candidates remain, compare their content and candidate-agreement scope.
 
 On the recovery result screen, **Analyze additional segments after terminator** appears below the diagnostics only when error-correction candidates were rejected because the QR data structure did not validate. It parses the data after the four-bit terminator identified from the payload structure as QR segments. Consecutive `0000` sequences after the terminator are skipped in four-bit steps, preserving ECI and FNC1 context. This is diagnostic evidence only: it does not make a rejected candidate valid, and any displayed content still requires independent verification.
 
+In the enlarged repair result, enabling **Unmask** displays both the before and after cells with the selected candidate’s QR mask removed. Function patterns and unknown cells stay unchanged. This only changes the display: saved cell values, manual edits, and fixed constraints are preserved. Clear the checkbox to restore the masked display. The checkbox is disabled when no recovery candidate is selected; scroll the controls horizontally on narrow screens.
+
 ## 7. Save, resume, and export
+
+In this guide, **Saved work** is called **Recent work** in Classic.
 
 Import automatically saves the source image and a session before you press Save or Repair. **Saved work** retains at most 20 sessions; new imports also count toward this limit. When it is exceeded, the least recently saved work and its source image are automatically deleted. The limit also applies on startup. Touch and hold an entry to delete that work, or use **Delete all**.
 
-Resume saved sessions from **Saved work**. **Operation history** shows the current edit history. QRR sessions and saved source images stay in app-private no-backup storage, but they are not encrypted files.
+Resume saved sessions from **Saved work**. **Operation history** shows the current edit history. QRR sessions and saved source images stay in app-private no-backup storage, but they are not encrypted files. Saved work uses QRR schema 24. Schema 23 sessions can also be opened, using a partial-bit search / dimension limit of 12 bits; other schema versions cannot be opened.
 
 Each session has at most 40 history checkpoints. Memory or storage limits can reduce that number. Trimming history to fit these limits removes older checkpoints while preserving the currently selected checkpoint and the latest one.
 
@@ -123,7 +140,7 @@ Reopening work or a history checkpoint recalculates recovery candidates from the
 
 Deleting the currently open saved work leaves the on-screen work available. Choosing **Save** or running repair afterward saves it as a new session.
 
-Explicitly exporting a recovered image or other result moves it outside app-private storage. Review sharing and backup behavior at the destination. See [Privacy](../PRIVACY.md) and [Security](../SECURITY.md).
+**Copy content** sends the complete recovered text to the operating-system clipboard. Exporting a recovered image writes it outside app-private storage. Saving work inside the app keeps it in app-private storage. Review sharing and backup behavior at the destination. See [Privacy](../PRIVACY.md) and [Security](../SECURITY.md).
 
 ## 8. Appearance and navigation
 

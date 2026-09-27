@@ -50,7 +50,7 @@ data class PreprocessSettings(
     val lockVersion: Boolean = true,
     /** Explore the legacy 19-quad neighborhood; valid only when corners and version are fixed. */
     val searchQuadNeighborhood: Boolean = false,
-    /** Trust a fully observed mode/count header and force its terminator/alignment/pad suffix. */
+    /** Trust a known or explicitly priority-assigned mode/count header and force its terminator/alignment/pad suffix. */
     val trustKnownPayloadCount: Boolean = false,
     /** Restrict recovery by ECC level, data mask, or both; null leaves both automatic. */
     val formatConstraint: QrFormatConstraint? = null,
@@ -80,6 +80,8 @@ data class PreprocessSettings(
     val preRecoverySoftEdits: Set<Coord> = emptySet(),
     /** Erased data/ECC modules explicitly selected for the bounded priority 0/1 search. */
     val preRecoveryPrioritySearch: Set<Coord> = emptySet(),
+    val prioritySearchLimit: Int = 4,
+    val partialBitSearchLimit: Int = PartialBitSearchLimit.DEFAULT,
 ) {
     val effectiveFormatMismatchLimit: Int?
         get() = ErrorLimitPolicy.format(formatMismatchLimitMode, formatMismatchLimit)
@@ -111,7 +113,9 @@ data class PreprocessSettings(
         require(unknownColorClusters.size <= 4)
         require(version in 1..40)
         require(preRecoverySoftEdits.all { it in preRecoveryEdits })
-        require(preRecoveryPrioritySearch.size <= 4)
+        require(prioritySearchLimit in 4..14)
+        require(partialBitSearchLimit in PartialBitSearchLimit.supported)
+        require(preRecoveryPrioritySearch.size <= 14)
         require(preRecoveryPrioritySearch.all { preRecoveryEdits[it] == ModuleValue.ERASED })
         require(formatMismatchLimit == null || formatMismatchLimit in 0..30)
         require(dataEccMismatchLimit == null || dataEccMismatchLimit in 0..MAX_QR_DATA_ECC_BITS)

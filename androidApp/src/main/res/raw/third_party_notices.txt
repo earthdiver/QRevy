@@ -40,9 +40,9 @@ ZXing upstream NOTICE (release `zxing-3.5.4`):
 >
 > Copyright 2010 Cedric Beust cedric@beust.com
 
-### AndroidX Activity / Core / CameraX
+### AndroidX Activity / Core / ExifInterface / CameraX
 
-- Artifacts: `androidx.activity:activity-ktx`, `androidx.core:core`, `androidx.camera:*`
+- Artifacts: `androidx.activity:activity-ktx`, `androidx.core:core`, `androidx.exifinterface:exifinterface`, `androidx.camera:*`
 - License: Apache License 2.0
 - Upstream: https://github.com/androidx/androidx
 

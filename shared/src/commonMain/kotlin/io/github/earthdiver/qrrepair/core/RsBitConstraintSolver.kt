@@ -67,7 +67,7 @@ class RsBitConstraintSolver(private val rs: ReedSolomonErasures = ReedSolomonEra
         }
 
         /** No sampling of a large space: either enumerate the entire space or leave it symbolic. */
-        fun assignments(maxDimension: Int = 12, cancellation: RecoveryCancellation = RecoveryCancellation.NONE): Sequence<IntArray> {
+        fun assignments(maxDimension: Int = PartialBitSearchLimit.DEFAULT, cancellation: RecoveryCancellation = RecoveryCancellation.NONE): Sequence<IntArray> {
             require(maxDimension in 0..20)
             if (dimension > maxDimension) return emptySequence()
             return sequence {

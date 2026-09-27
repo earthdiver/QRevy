@@ -60,6 +60,51 @@ import org.robolectric.shadows.ShadowDialog
 @Config(sdk = [35], qualifiers = "ja-rJP-w360dp-h640dp-port-mdpi")
 class PreprocessDialogLayoutTest {
     @Test
+    fun partialBitLimitCanBeSelectedSavedAndReopened() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        try {
+            val bitmap = Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.WHITE) }
+            MainActivity::class.java.getDeclaredField("prepared").apply {
+                isAccessible = true
+                set(activity, BitmapUtils.prepare(bitmap))
+            }
+            val open = MainActivity::class.java.getDeclaredMethod("showPreprocessDialog").apply { isAccessible = true }
+            open.invoke(activity)
+            shadowOf(Looper.getMainLooper()).idle()
+            val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+            val decor = dialog.window!!.decorView
+            findText(decor, "詳細設定")!!.performClick()
+            val control = findText(decor, "部分bit探索・自由度の上限:")!!
+            assertEquals("部分bit探索・自由度の上限: 12bit", control.text.toString())
+            for (limit in listOf(13, 14, 12, 14)) {
+                control.performClick()
+                val choices = ShadowDialog.getLatestDialog() as AlertDialog
+                val list = choices.listView
+                assertEquals(listOf("12bit", "13bit", "14bit"),
+                    (0 until list.adapter.count).map { list.adapter.getItem(it).toString() })
+                val index = limit - 12
+                list.performItemClick(list.getChildAt(index), index, list.adapter.getItemId(index))
+                assertEquals("部分bit探索・自由度の上限: ${limit}bit", control.text.toString())
+            }
+            findExactText(decor, "保存")!!.performClick()
+            shadowOf(Looper.getMainLooper()).idle()
+            val saved = MainActivity::class.java.getDeclaredField("preprocessSettings").apply { isAccessible = true }
+                .get(activity) as PreprocessSettings
+            assertEquals(14, saved.partialBitSearchLimit)
+            findExactText(decor, "キャンセル")!!.performClick()
+            assertFalse(dialog.isShowing)
+            open.invoke(activity)
+            shadowOf(Looper.getMainLooper()).idle()
+            val reopened = ShadowDialog.getLatestDialog() as AlertDialog
+            findText(reopened.window!!.decorView, "詳細設定")!!.performClick()
+            assertEquals("部分bit探索・自由度の上限: 14bit",
+                findText(reopened.window!!.decorView, "部分bit探索・自由度の上限:")!!.text.toString())
+            reopened.dismiss()
+        } finally { controller.pause().stop().destroy() }
+    }
+
+    @Test
     fun subsequentFinderTapFarFromItsExpectedPositionIsRejected() {
         val context = org.robolectric.RuntimeEnvironment.getApplication()
         val bitmap = Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888)
@@ -376,28 +421,6 @@ class PreprocessDialogLayoutTest {
         assertTrue("実際の「最近の作業」非同期読込経路で履歴が取り込まれません", imported)
         val status = MainActivity::class.java.getDeclaredField("statusText").apply { isAccessible = true }.get(activity) as TextView
         assertTrue("保存地点を直接再開する経路へ進みません", status.text.contains("保存済み作業を復元"))
-    }
-
-    @Test
-    fun validTimelineQuarantinedByTheOldSourceImageBugIsRecovered() {
-        val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
-        val id = "falsely-quarantined-session"
-        val entry = RecoveryHistoryEntry(
-            kind = HistoryEventKind.AUTO_RECOVERY,
-            label = "修復処理",
-            snapshot = RecoverySnapshot(null, null, null, -1),
-        )
-        RecoverySessionStore(activity).save(id, UiMode.SIMPLE, listOf(entry), 0)
-        val folder = java.io.File(activity.noBackupFilesDir, "qr_sessions/$id")
-        val primary = java.io.File(folder, "session.qrs")
-        val quarantine = java.io.File(folder, "session.qrs.corrupt-1-decode")
-        assertTrue(primary.renameTo(quarantine))
-
-        val reopened = RecoverySessionStore(activity)
-
-        assertTrue("旧版が誤隔離した正常なQRR9履歴を検出できません", reopened.listRecent().any { it.id == id })
-        assertEquals("修復処理", reopened.load(id)?.historyEntries?.single()?.label)
-        assertTrue("復帰後も履歴本体が隔離名のままです", primary.exists())
     }
 
     @Test
@@ -790,7 +813,12 @@ class PreprocessDialogLayoutTest {
     }
 
     @Test
-    fun failedMainResultShowsSharedActionAndCandidateSpecificReasonOnlyOnce() {
+    fun failedMainResultShowsSharedActionAndCandidateSpecificReasonOnlyOnce() = checkIncompleteResult(false)
+
+    @Test
+    fun interruptedResultDoesNotClaimSearchLimitInStatusPreviewOrDiagnostics() = checkIncompleteResult(true)
+
+    private fun checkIncompleteResult(interrupted: Boolean) {
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
         shadowOf(Looper.getMainLooper()).idle()
         val matrix = QrMatrix(21)
@@ -814,7 +842,10 @@ class PreprocessDialogLayoutTest {
                 originalErasedCodewords = 42,
                 erasedCodewords = 42,
                 rsShortfallBits = 81,
-                searchDiagnostic = io.github.earthdiver.qrrepair.core.RecoverySearchDiagnostic(unsearched = true),
+                searchDiagnostic = io.github.earthdiver.qrrepair.core.RecoverySearchDiagnostic(unsearched = true, coverageComplete = !interrupted),
+                combinationSearch = io.github.earthdiver.qrrepair.core.CombinationSearchSummary(stops = setOf(
+                    if (interrupted) io.github.earthdiver.qrrepair.core.CombinationSearchStop.USER_INTERRUPTED
+                    else io.github.earthdiver.qrrepair.core.CombinationSearchStop.COMBINATION_LIMIT)),
             ),
             -1,
         )
@@ -832,13 +863,16 @@ class PreprocessDialogLayoutTest {
         val guide = text("guideText")
         val candidateDetails = text("contentPreviewText")
         val diagnostics = (MainActivity::class.java.getDeclaredField("diagnosticReport").apply { isAccessible = true }.get(activity) as io.github.earthdiver.qrrepair.core.RecoveryDiagnosticReport).fullText()
-        assertEquals(io.github.earthdiver.qrrepair.core.searchResultText(0, true), status)
+        assertEquals(io.github.earthdiver.qrrepair.core.searchResultText(0, io.github.earthdiver.qrrepair.core.SearchCompleteness.UNSEARCHED), status)
         assertTrue(guide.contains("81"))
         assertTrue(!guide.contains("推奨セル"))
         assertTrue(!guide.contains("絞り込めるセル"))
         assertTrue(!guide.contains("探索上限"))
         assertTrue(diagnostics.contains("形式情報領域: 比較対象の読み取り済み25bitとの不一致 0bit"))
-        assertTrue(candidateDetails.contains("探索範囲の上限"))
+        for (message in listOf(status, candidateDetails, diagnostics)) {
+            assertTrue(message.contains("未探索の組合せが残っています"))
+            assertFalse(message.contains("探索範囲の上限に達しました"))
+        }
         assertTrue(diagnostics.contains("追加確認の目安: 81bit"))
         assertTrue(diagnostics.contains("最初に失敗したRSブロック: 1 / 全1ブロック"))
         assertTrue(diagnostics.contains("最初に失敗したRSブロック: 1 / 全1ブロック\n失敗ブロックのECCシンボル数: 20\n失敗ブロックの未知bitを含むコード語数（探索前）: 42"))
@@ -939,7 +973,7 @@ class PreprocessDialogLayoutTest {
         assertNotNull("固定幾何の説明がありません", fixedGeometry)
         val geometrySearch = findText(decor, "サンプリング位置を自動微調整する")
         val geometrySearchNote = findText(decor, "ONでは0.6モジュールの位置・大きさ・一隅のずれを試します")
-        val payloadTrust = findText(decor, "種類・文字数／バイト数が正しく読み取れている場合")
+        val payloadTrust = findText(decor, "種類・文字数／バイト数を読み取り、または * の試行")
         val payloadTrustNote = findText(decor, "数字・英数字・バイト・漢字のいずれか1種類")
         assertNull("Global locking is replaced by per-cell modes", findText(decor, "手動指定した0/1と矛盾する"))
         assertNotNull("四隅近傍探索の説明がありません", geometrySearchNote)

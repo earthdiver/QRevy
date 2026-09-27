@@ -146,7 +146,7 @@ class DiagnosticOrderTest {
                 assertTrue(report.sections[0].summary.contains(if (ja) "不一致上限: 0bit" else "mismatch limit: 0 bits"))
                 assertTrue(report.sections[2].summary.contains(if (ja) "不一致上限が0bit" else "mismatch limit is zero"))
                 assertFalse(report.sections[2].summary.contains(if (ja) "RS候補はありません" else "No RS candidate"))
-                assertTrue(report.sections[3].summary.contains(if (ja) "未探索" else "unchecked"))
+                assertTrue(report.sections[3].summary.contains(if (ja) "探索を完了しました" else "Search completed"))
                 val content = field<TextView>(activity, "contentPreviewText").text.toString()
                 assertFalse(content.contains(if (ja) "RS候補はありません" else "No RS candidate"))
                 assertFalse(report.fullText().contains(if (ja) "この試行" else "this attempt"))
@@ -264,4 +264,12 @@ class DiagnosticOrderTest {
             bitmap.recycle()
         }
     }
+    @Test fun totalInternalFailureDoesNotClaimThatSearchWasPerformed() {
+        val diagnostic = RecoverySearchDiagnostic(incompleteReasons = setOf(SearchIncompleteReason.INTERNAL_ERROR))
+        val text = RecoveryDiagnosticPresenter(true).searchResultDescription(
+            RecoveryDiagnosticContext(0, true, false, diagnostic, null))
+        assertTrue(text.contains(localizedText("修復処理を実行できませんでした", "prevented repair from running")))
+        assertFalse(text.contains(localizedText("指定の条件下で探索を行いました", "Searched under the specified conditions")))
+    }
+
 }

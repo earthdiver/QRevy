@@ -111,8 +111,10 @@ internal fun blockCandidateWorkingBytes(
     exactOnly: Boolean,
     ecSymbols: Int,
     conventionalMargin: Int? = null,
+    partialBitSearchLimit: Int = PartialBitSearchLimit.DEFAULT,
 ): Long {
-    val dimensionLimit = if (allowEnumeration && nonEnumerable.isEmpty()) 12 else 0
+    require(partialBitSearchLimit in PartialBitSearchLimit.supported)
+    val dimensionLimit = if (allowEnumeration && nonEnumerable.isEmpty()) partialBitSearchLimit else 0
     val exact = exactDimension?.takeIf { it in 0..dimensionLimit }?.let { 1L shl it } ?: 0L
     val erased = block.unknownMasks.count { it != 0 }
     if (exactOnly) {
@@ -130,7 +132,7 @@ internal fun blockCandidateWorkingBytes(
     if (allowEnumeration && !comfortableErasureDecode) {
         block.unknownMasks.indices.filter { it !in nonEnumerable }
             .map { block.unknownMasks[it].countOneBits() }.filter { it in 1..4 }.sorted()
-            .forEach { bits -> if (enumeratedBits + bits <= 12) enumeratedBits += bits }
+            .forEach { bits -> if (enumeratedBits + bits <= partialBitSearchLimit) enumeratedBits += bits }
     }
     val conventional = if (!allowEnumeration || comfortableErasureDecode) 1L else 1L + (1L shl enumeratedBits)
     return (exact + conventional).coerceAtLeast(1L) * (384L + block.codewords.size * 16L)

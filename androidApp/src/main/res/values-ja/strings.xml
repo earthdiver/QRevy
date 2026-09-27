@@ -80,7 +80,7 @@
     <string name="reset_rotation">回転リセット</string>
     <string name="thresholding">白黒判定</string>
     <string name="geometry_search_note">ONでは0.6モジュールの位置・大きさ・一隅のずれを試します。Finder役割が1点だけ指定されている場合は、その隅を支点とする時計回り・反時計回りも試します。</string>
-    <string name="payload_header_trust_note">数字・英数字・バイト・漢字のいずれか1種類の単一セグメントにのみ使用できます。先頭の種類と文字数／バイト数がすべて読み取れている場合に選択できます。ECI、FNC1、構造的連接、Hanziには対応していません。複数セグメントのQRには使用しないでください。\n終端・バイト境界・埋め草の領域は、読み取った種類と文字数／バイト数に基づいて補正します。画像から読み取った0/1も変更されます。手動0/1の扱いは下の設定に従います。</string>
+    <string name="payload_header_trust_note">数字・英数字・バイト・漢字のいずれか1種類の単一セグメントにのみ使用できます。先頭の種類と文字数／バイト数が既知、または * の試行で仮定できる場合に選択できます。ヘッダーに未確定の ? が残る場合は対象外です。ECI、FNC1、構造的連接、Hanziには対応していません。複数セグメントのQRには使用しないでください。\n終端・バイト境界・埋め草の領域は、読み取りまたは試行で仮定した種類と文字数／バイト数に基づいて補正します。画像から読み取った0/1も変更されます。手動0/1の扱いは下の設定に従います。修復後も種類・文字数と後続構造を守り、この条件を外した再探索は行いません。適用できない場合はONを維持して理由を表示します。</string>
     <string name="format_mismatch_limit">形式情報の誤り上限</string>
     <string name="format_mismatch_limit_unlimited">制限なし</string>
     <string name="format_mismatch_limit_exact">0bit（完全一致）</string>
@@ -88,7 +88,6 @@
         <item quantity="other">%1$dbit</item>
     </plurals>
     <string name="format_mismatch_limit_note">初期設定・厳しめは6bit、緩めは9bitです。両コピーの既知0/1と比較します。? と、ECC・mask指定だけで値が決まる位置の手動0/1は比較対象外です。0では比較対象の完全一致が必要です。</string>
-    <string name="format_mismatch_limit_fixed_note">ECCとマスクを指定中のため、この設定は適用されません。</string>
     <string name="data_ecc_mismatch_limit">データ・ECCの誤り上限</string>
     <string name="data_ecc_mismatch_limit_unlimited">制限なし</string>
     <string name="data_ecc_mismatch_limit_exact">0bit（完全一致）</string>
@@ -201,4 +200,8 @@
     <string name="image_adjustment_help">コントラスト・明るさ・白黒反転は表示と解析に反映されます。「調整前」でクロップや回転を変えずに比較できます。元画像と調整値は別々に保存されます。</string>
     <string name="image_help">ヘルプ</string>
     <string name="image_adjustment_failed">画像処理に失敗: %1$s</string>
+    <string name="partial_bit_search_limit">部分bit探索・自由度の上限: %1$dbit</string>
+    <string name="partial_bit_search_limit_title">部分bit探索・自由度の上限</string>
+    <string name="partial_bit_search_limit_choice">%1$dbit</string>
+    <string name="partial_bit_search_limit_note">部分bit探索と、RS制約を解いた後に残る自由度に共通する、RSブロックごとの上限です。既定値は12bit。1bit増やすと最大列挙数は2倍になり、*探索との併用では処理量がさらに増えます。メモリ制限により、上限まで探索できない場合があります。</string>
 </resources>

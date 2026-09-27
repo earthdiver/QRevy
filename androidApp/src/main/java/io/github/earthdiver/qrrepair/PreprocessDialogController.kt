@@ -3,6 +3,9 @@ package io.github.earthdiver.qrrepair
 import android.app.Activity
 import android.app.AlertDialog
 import android.graphics.Bitmap
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.BackgroundColorSpan
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -23,14 +26,11 @@ import io.github.earthdiver.qrrepair.core.FinderRole
 import io.github.earthdiver.qrrepair.core.GridGeometry
 import io.github.earthdiver.qrrepair.core.GeometryModel
 import io.github.earthdiver.qrrepair.core.ModuleValue
-import com.google.zxing.qrcode.decoder.Version
 import io.github.earthdiver.qrrepair.core.PolarityMode
 import io.github.earthdiver.qrrepair.core.PreprocessSettings
 import io.github.earthdiver.qrrepair.core.SamplingProfile
 import io.github.earthdiver.qrrepair.core.QrMatrix
-import io.github.earthdiver.qrrepair.core.FormatEditPolicy
 import io.github.earthdiver.qrrepair.core.FormatEditConflict
-import io.github.earthdiver.qrrepair.core.QrFormatConstraint
 import io.github.earthdiver.qrrepair.core.QrFunctionMask
 import io.github.earthdiver.qrrepair.core.RecoveryEngine
 import io.github.earthdiver.qrrepair.ui.BitmapUtils
@@ -96,6 +96,7 @@ internal class PreprocessDialogController(
         val preprocessSettings = restoredDraft?.settings ?: this@PreprocessDialogController.preprocessSettings
         val modernStyle = AppStylePreferences.isModern(this)
         val dialogState = PreprocessDialogState(preprocessSettings)
+        val searchSettings = dialogState.search
         var working = initialWorking
         fun releaseWorkingIfTemporary(previous: BitmapUtils.Prepared, replacement: BitmapUtils.Prepared) {
             if (previous !== source && !host.retains(previous) && previous.bitmap !== replacement.bitmap &&
@@ -114,9 +115,11 @@ internal class PreprocessDialogController(
         val cellEditState = (restoredDraft?.cellEdits ?: savedCellEditState)?.copyForEditing { validateCellEdits(it) } ?: PreRecoveryCellEditState(
             preprocessSettings.preRecoveryEdits,
             preprocessSettings.preRecoveryPrioritySearch,
+            priorityLimit = preprocessSettings.prioritySearchLimit,
             validateEdits = { validateCellEdits(it) },
             initialSoftEdits = preprocessSettings.effectiveSoftEdits,
         )
+        cellEditState.priorityLimit = preprocessSettings.prioritySearchLimit
         var updatePageLayout: (PreprocessPage) -> Unit = {}
         var manualFocus = false
         var workflowNavigation: ModernWorkflowNavigation? = null
@@ -131,7 +134,9 @@ internal class PreprocessDialogController(
         var preEditSourceControl: CellSourceControl? = null
         var dedicatedSourceControl: CellSourceControl? = null
         var refreshSourceControls: () -> Unit = {}
+        var refreshPriorityControl: () -> Unit = {}
         fun updatePreEditCountStatus() {
+            refreshPriorityControl()
             preEditCountStatus?.text = cellEditState.compactCountLabel
             dedicatedEditCountStatus?.text = cellEditState.countLabel
             refreshSourceControls()
@@ -178,18 +183,13 @@ internal class PreprocessDialogController(
             isChecked = preprocessSettings.searchQuadNeighborhood
         }
         val trustKnownPayloadCount = CheckBox(this).apply {
-            text = ui("種類・文字数／バイト数が正しく読み取れている場合に、単一セグメントを仮定して後続構造を強制する。", "When the mode and character/byte count are read correctly, assume a single segment and force the following structure.")
+            text = ui("種類・文字数／バイト数を読み取り、または * の試行で仮定できる場合に、単一セグメントを仮定して後続構造を強制する。", "When the mode and character/byte count are read or assigned by * trials, assume a single segment and force the following structure.")
             isChecked = preprocessSettings.trustKnownPayloadCount
         }
         val allowFixedCorrections = CheckBox(this).apply {
             setText(R.string.allow_fixed_corrections)
             isChecked = !preprocessSettings.lockManualBits
         }
-        var formatConstraintDraft = preprocessSettings.formatConstraint
-        var formatMismatchLimitDraft = preprocessSettings.formatMismatchLimit
-        var dataEccMismatchLimitDraft = preprocessSettings.dataEccMismatchLimit
-        var formatMismatchLimitModeDraft = preprocessSettings.formatMismatchLimitMode
-        var dataEccMismatchLimitModeDraft = preprocessSettings.dataEccMismatchLimitMode
         val blackLabel = TextView(this)
         val black = SeekBar(this).apply { max = 254; progress = preprocessSettings.blackMax }
         val whiteLabel = TextView(this)
@@ -247,12 +247,8 @@ internal class PreprocessDialogController(
             lockVersion = true,
             searchQuadNeighborhood = searchQuadNeighborhood.isChecked,
             trustKnownPayloadCount = trustKnownPayloadCount.isChecked,
-            formatConstraint = formatConstraintDraft,
-            formatMismatchLimit = formatMismatchLimitDraft,
-            dataEccMismatchLimit = dataEccMismatchLimitDraft,
-            formatMismatchLimitMode = formatMismatchLimitModeDraft,
-            dataEccMismatchLimitMode = dataEccMismatchLimitModeDraft,
             lockManualBits = !allowFixedCorrections.isChecked,
+            prioritySearchLimit = cellEditState.priorityLimit,
         )
         fun previewInverted(): Boolean = when (overlay.confirmedFinderPolarity()) {
             io.github.earthdiver.qrrepair.core.FinderPolarity.INVERTED -> true
@@ -467,35 +463,30 @@ internal class PreprocessDialogController(
             ErrorLimitMode.EXACT -> getString(R.string.error_limit_exact)
             ErrorLimitMode.UNLIMITED -> valueLabel
         }
-        fun effectiveFormatMismatchLimit() = ErrorLimitPolicy.format(formatMismatchLimitModeDraft, formatMismatchLimitDraft)
+        fun effectiveFormatMismatchLimit() = searchSettings.effectiveFormatMismatchLimit()
         fun formatMismatchLimitValueLabel(value: Int?): String = when (value) {
             null -> getString(R.string.format_mismatch_limit_unlimited)
             0 -> getString(R.string.format_mismatch_limit_exact)
             else -> resources.getQuantityString(R.plurals.format_mismatch_limit_bits, value, value)
         }
         fun refreshFormatMismatchLimitControl() {
-            val fullySpecified = formatConstraintDraft?.candidateCount == 1
             val effective = effectiveFormatMismatchLimit()
-            formatMismatchLimitButton.text = errorLimitModeLabel(formatMismatchLimitModeDraft, effective,
+            formatMismatchLimitButton.text = errorLimitModeLabel(searchSettings.formatMismatchLimitMode, effective,
                 formatMismatchLimitValueLabel(effective))
-            formatMismatchLimitButton.isEnabled = !fullySpecified
-            formatMismatchLimitNote.setText(
-                if (fullySpecified) R.string.format_mismatch_limit_fixed_note
-                else R.string.format_mismatch_limit_note,
-            )
+            formatMismatchLimitButton.isEnabled = true
+            formatMismatchLimitNote.setText(R.string.format_mismatch_limit_note)
         }
         formatMismatchLimitButton = button("", {})
         formatMismatchLimitButton.setOnClickListener {
             showBitErrorLimitDialog(this, getString(R.string.format_mismatch_limit),
-                currentMode = formatMismatchLimitModeDraft,
-                currentManualValue = formatMismatchLimitDraft,
+                currentMode = searchSettings.formatMismatchLimitMode,
+                currentManualValue = searchSettings.formatMismatchLimit,
                 maximum = 30,
                 automaticLimit = ErrorLimitPolicy.format(ErrorLimitMode.AUTOMATIC, null),
                 strictLimit = ErrorLimitPolicy.STRICT_FORMAT,
                 relaxedLimit = ErrorLimitPolicy.RELAXED_FORMAT,
             ) { mode, value ->
-                formatMismatchLimitModeDraft = mode
-                formatMismatchLimitDraft = value
+                searchSettings.setFormatMismatchLimit(mode, value)
                 refreshFormatMismatchLimitControl()
                 refreshLabels()
                 noteDraftChange(
@@ -516,8 +507,7 @@ internal class PreprocessDialogController(
         }
         refreshFormatMismatchLimitControl()
         lateinit var dataEccMismatchLimitButton: Button
-        fun effectiveDataEccMismatchLimit() = ErrorLimitPolicy.data(version.progress + 1,
-            dataEccMismatchLimitModeDraft, dataEccMismatchLimitDraft)
+        fun effectiveDataEccMismatchLimit() = searchSettings.effectiveDataEccMismatchLimit(version.progress + 1)
         fun dataEccMismatchLimitValueLabel(value: Int?): String = when (value) {
             null -> getString(R.string.data_ecc_mismatch_limit_unlimited)
             0 -> getString(R.string.data_ecc_mismatch_limit_exact)
@@ -525,24 +515,22 @@ internal class PreprocessDialogController(
         }
         fun refreshDataEccMismatchLimitControl() {
             val effective = effectiveDataEccMismatchLimit()
-            dataEccMismatchLimitButton.text = errorLimitModeLabel(dataEccMismatchLimitModeDraft, effective,
+            dataEccMismatchLimitButton.text = errorLimitModeLabel(searchSettings.dataEccMismatchLimitMode, effective,
                 dataEccMismatchLimitValueLabel(effective))
         }
         dataEccMismatchLimitButton = button("", {})
-        fun dataEccMaximum() = Version.getVersionForNumber(version.progress + 1).totalCodewords * 8
-        fun dataEccLimitIsValid() = effectiveDataEccMismatchLimit()?.let { it <= dataEccMaximum() } != false
+        fun dataEccMaximum() = searchSettings.dataEccMaximum(version.progress + 1)
         fun editDataEccLimit(notice: String? = null) {
             showBitErrorLimitDialog(this, getString(R.string.data_ecc_mismatch_limit),
-                currentMode = dataEccMismatchLimitModeDraft,
-                currentManualValue = dataEccMismatchLimitDraft,
+                currentMode = searchSettings.dataEccMismatchLimitMode,
+                currentManualValue = searchSettings.dataEccMismatchLimit,
                 maximum = dataEccMaximum(),
                 automaticLimit = ErrorLimitPolicy.data(version.progress + 1, ErrorLimitMode.AUTOMATIC, null),
                 strictLimit = ErrorLimitPolicy.strictData(version.progress + 1),
                 relaxedLimit = ErrorLimitPolicy.relaxedData(version.progress + 1),
                 notice = notice,
             ) { mode, value ->
-                dataEccMismatchLimitModeDraft = mode
-                dataEccMismatchLimitDraft = value
+                searchSettings.setDataEccMismatchLimit(mode, value)
                 refreshDataEccMismatchLimitControl()
                 noteDraftChange(
                     "dataEccMismatchLimit",
@@ -552,7 +540,7 @@ internal class PreprocessDialogController(
             }
         }
         fun requestValidDataEccLimit(): Boolean {
-            if (dataEccLimitIsValid()) return true
+            if (searchSettings.dataEccLimitIsValid(version.progress + 1)) return true
             editDataEccLimit(ui(
                 "現在の上限はVersion ${version.progress + 1}のデータ・ECC総bit数を超えています。上限を再指定するか「制限なし」を選択してください。",
                 "The current limit exceeds the total data/ECC bits for Version ${version.progress + 1}. Enter a new limit or select Unlimited.",
@@ -577,6 +565,69 @@ internal class PreprocessDialogController(
             })
         }
         refreshDataEccMismatchLimitControl()
+        val partialBitLimitButton = button("", {}).apply {
+            setSingleLine(false)
+            maxLines = Int.MAX_VALUE
+        }
+        fun refreshPartialBitLimit() {
+            partialBitLimitButton.text = getString(R.string.partial_bit_search_limit, searchSettings.partialBitSearchLimit)
+        }
+        refreshPartialBitLimit()
+        partialBitLimitButton.setOnClickListener {
+            val choices = io.github.earthdiver.qrrepair.core.PartialBitSearchLimit.supported.toList()
+            AlertDialog.Builder(this).setTitle(R.string.partial_bit_search_limit_title)
+                .setSingleChoiceItems(choices.map { getString(R.string.partial_bit_search_limit_choice, it) }.toTypedArray(),
+                    choices.indexOf(searchSettings.partialBitSearchLimit)) { dialog, which ->
+                    searchSettings.partialBitSearchLimit = choices[which]
+                    refreshPartialBitLimit()
+                    noteDraftChange("partial-bit-limit", getString(R.string.partial_bit_search_limit_title),
+                        getString(R.string.partial_bit_search_limit_choice, searchSettings.partialBitSearchLimit))
+                    dialog.dismiss()
+                }.setNegativeButton(R.string.close, null).show()
+        }
+        val partialBitSearchControl = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(partialBitLimitButton, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(TextView(activity).apply {
+                setText(R.string.partial_bit_search_limit_note)
+                textSize = 12f
+            })
+        }
+        val priorityLimitButton = button("", {}).apply {
+            setSingleLine(false)
+            maxLines = Int.MAX_VALUE
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+        }
+        fun refreshPriorityLimit() {
+            val count = cellEditState.prioritySearch.size
+            priorityLimitButton.text = SpannableString(ui(
+                " * （優先探索）の上限: ${cellEditState.priorityLimit}個\n現在${count}個・${1 shl count}通り",
+                " *  (priority search) limit: ${cellEditState.priorityLimit} cells\n$count selected · ${1 shl count} combinations",
+            )).apply {
+                setSpan(BackgroundColorSpan(if (modernStyle) PrecisionStyle.OUTLINE else 0xFFE0E8E3.toInt()),
+                    0, 3, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+        }
+        refreshPriorityLimit()
+        refreshPriorityControl = ::refreshPriorityLimit
+        priorityLimitButton.setOnClickListener {
+            val choices = (4..14).toList()
+            AlertDialog.Builder(this).setTitle(ui("優先探索のセル数上限", "Priority search cell limit"))
+                .setSingleChoiceItems(choices.map { "$it" }.toTypedArray(), cellEditState.priorityLimit - 4) { dialog, which ->
+                    cellEditState.priorityLimit = choices[which]
+                    refreshPriorityLimit()
+                    updatePreEditCountStatus()
+                    noteDraftChange("priority-limit", ui("優先探索の上限を変更", "Changed priority search limit"), "${choices[which]}")
+                    dialog.dismiss()
+                    if (cellEditState.prioritySearch.size > choices[which]) {
+                        AlertDialog.Builder(this).setMessage(ui(
+                            "既存の*は保持しました。修復前に上限を戻すか、*の指定数を減らしてください。",
+                            "Existing * marks were preserved. Raise the limit or remove some marks before repair."))
+                            .setPositiveButton(R.string.close, null).show()
+                    }
+                }.setNegativeButton(R.string.close, null).show()
+        }
         val detailsPage = PreRecoveryDetailedSettingsPage(
             this,
             buttonFactory = ::button,
@@ -587,6 +638,8 @@ internal class PreprocessDialogController(
             allowFixedCorrections = allowFixedCorrections,
             formatMismatchLimitControl = formatMismatchLimitControl,
             dataEccMismatchLimitControl = dataEccMismatchLimitControl,
+            prioritySearchControl = priorityLimitButton,
+            partialBitSearchControl = partialBitSearchControl,
             actions = DetailedSettingsPageActions(
                 rotateBy = ::rotateBy,
                 resetRotation = ::resetRotation,
@@ -632,6 +685,10 @@ internal class PreprocessDialogController(
         fun refreshPreRecoveryMatrix(): Pair<GridGeometry, QrMatrix>? {
             val (g, matrix) = sampleImageMatrix() ?: return null
             cellEditState.applyTo(matrix, allowFixedCorrections.isChecked)
+            // Cell edits (including *, undo and redo) must update eligibility immediately.
+            val headerComplete = recoveryEngine.hasTrustablePayloadHeader(
+                matrix, searchSettings.formatConstraint, effectiveFormatMismatchLimit(), manualEdits = cellEditState.fixedEdits)
+            trustKnownPayloadCount.isEnabled = headerComplete || trustKnownPayloadCount.isChecked
             return g to matrix
         }
         fun setManualFocus(enabled: Boolean) {
@@ -649,14 +706,6 @@ internal class PreprocessDialogController(
         refreshClassificationMatrix = {
             refreshSourceControls()
             refreshPreRecoveryMatrix()?.let { (geometry, matrix) ->
-                val headerComplete = recoveryEngine.hasTrustablePayloadHeader(
-                    matrix,
-                    formatConstraintDraft,
-                    effectiveFormatMismatchLimit(),
-                    manualEdits = cellEditState.fixedEdits,
-                )
-                trustKnownPayloadCount.isEnabled = headerComplete
-                if (!headerComplete) trustKnownPayloadCount.isChecked = false
                 overlay.setCellEditPreview(geometry, matrix)
                 dedicatedEditor?.setDocument(working.bitmap, geometry, matrix, keepViewport = true)
             }
@@ -690,7 +739,7 @@ internal class PreprocessDialogController(
             selectPreEditCell((current.x + dx).coerceIn(0, dimension - 1), (current.y + dy).coerceIn(0, dimension - 1))
         }
         validateCellEdits = { edits ->
-            val conflict = FormatEditPolicy.conflict(version.progress + 1, formatConstraintDraft, edits)
+            val conflict = searchSettings.formatConflict(version.progress + 1, edits)
             if (conflict != null) showFormatEditError(conflict)
             conflict == null
         }
@@ -759,7 +808,7 @@ internal class PreprocessDialogController(
             }
             when (cellEditState.setPrioritySearch(distinct)) {
                 PriorityEditResult.LIMIT_EXCEEDED -> {
-                    Toast.makeText(this, ui("*は最大4セルです。", "Up to four cells can be marked *."), Toast.LENGTH_SHORT).show(); return
+                    Toast.makeText(this, ui("*は最大${cellEditState.priorityLimit}セルです。詳細設定で変更できます。", "Up to ${cellEditState.priorityLimit} cells can be marked *. Change this in advanced settings."), Toast.LENGTH_SHORT).show(); return
                 }
                 PriorityEditResult.UNCHANGED -> return
                 PriorityEditResult.CHANGED -> Unit
@@ -976,7 +1025,7 @@ internal class PreprocessDialogController(
                     PreRecoveryDataInput(matrix, version.progress + 1)
                 }
             },
-            formatConstraintProvider = { formatConstraintDraft },
+            formatConstraintProvider = { searchSettings.formatConstraint },
         )
         val preRecoveryDataPage = createDataPage()
         refreshPreRecoveryDataPage = preRecoveryDataPage::refresh
@@ -988,25 +1037,19 @@ internal class PreprocessDialogController(
             gravity = Gravity.CENTER_HORIZONTAL
         }
         fun refreshFormatConstraintControls() {
-            eccConstraintButton?.text = formatConstraintDraft?.ecLevel?.let { "ECC: $it" }
+            eccConstraintButton?.text = searchSettings.formatConstraint?.ecLevel?.let { "ECC: $it" }
                 ?: ui("ECC: 自動", "ECC: Auto")
-            maskConstraintButton?.text = formatConstraintDraft?.dataMask?.let { "mask: $it" }
+            maskConstraintButton?.text = searchSettings.formatConstraint?.dataMask?.let { "mask: $it" }
                 ?: ui("mask: 自動", "Mask: Auto")
-            val count = formatConstraintDraft?.candidateCount ?: 32
+            val count = searchSettings.formatConstraint?.candidateCount ?: 32
             formatSearchCount.text = ui("探索対象: ${count}形式", "Formats to search: $count")
             refreshFormatMismatchLimitControl()
         }
         fun updateFormatConstraint(ecLevel: ErrorCorrectionLevel?, dataMask: Int?) {
-            val next = if (ecLevel == null && dataMask == null) null
-            else QrFormatConstraint(ecLevel = ecLevel, dataMask = dataMask)
-            if (!FormatEditPolicy.returnsToAuto(formatConstraintDraft, next)) {
-                val conflict = FormatEditPolicy.conflict(version.progress + 1, next, cellEditState.fixedEdits)
-                if (conflict != null) {
-                    showFormatEditError(conflict)
-                    return
-                }
+            searchSettings.updateFormatConstraint(version.progress + 1, ecLevel, dataMask, cellEditState.fixedEdits)?.let {
+                showFormatEditError(it)
+                return
             }
-            formatConstraintDraft = next
             refreshFormatConstraintControls()
             refreshClassificationMatrix()
             refreshPreRecoveryDataPage()
@@ -1025,11 +1068,11 @@ internal class PreprocessDialogController(
                 ErrorCorrectionLevel.H,
             )
             val labels = choices.map { it?.let { level -> "ECC: $level" } ?: ui("ECC: 自動", "ECC: Auto") }.toTypedArray()
-            val selected = choices.indexOf(formatConstraintDraft?.ecLevel).coerceAtLeast(0)
+            val selected = choices.indexOf(searchSettings.formatConstraint?.ecLevel).coerceAtLeast(0)
             AlertDialog.Builder(this)
                 .setTitle(ui("誤り訂正レベルを指定", "Select ECC level"))
                 .setSingleChoiceItems(labels, selected) { dialog, which ->
-                    updateFormatConstraint(choices[which], formatConstraintDraft?.dataMask)
+                    updateFormatConstraint(choices[which], searchSettings.formatConstraint?.dataMask)
                     dialog.dismiss()
                 }
                 .setNegativeButton(R.string.close, null)
@@ -1038,11 +1081,11 @@ internal class PreprocessDialogController(
         maskConstraintButton = button(ui("mask: 自動", "Mask: Auto")) {
             val choices = listOf<Int?>(null) + (0..7)
             val labels = choices.map { it?.let { mask -> "mask: $mask" } ?: ui("mask: 自動", "Mask: Auto") }.toTypedArray()
-            val selected = choices.indexOf(formatConstraintDraft?.dataMask).coerceAtLeast(0)
+            val selected = choices.indexOf(searchSettings.formatConstraint?.dataMask).coerceAtLeast(0)
             AlertDialog.Builder(this)
                 .setTitle(ui("マスクを指定", "Select mask"))
                 .setSingleChoiceItems(labels, selected) { dialog, which ->
-                    updateFormatConstraint(formatConstraintDraft?.ecLevel, choices[which])
+                    updateFormatConstraint(searchSettings.formatConstraint?.ecLevel, choices[which])
                     dialog.dismiss()
                 }
                 .setNegativeButton(R.string.close, null)
@@ -1267,7 +1310,7 @@ internal class PreprocessDialogController(
             fun persistPreprocessDraft(): Boolean {
                 if (!requestValidDataEccLimit()) return false
                 val captured = capturePreprocessSettings()
-                FormatEditPolicy.conflict(captured.version, captured.formatConstraint, captured.fixedPreRecoveryEdits)?.let { showFormatEditError(it); return false }
+                searchSettings.formatConflict(captured.version, captured.fixedPreRecoveryEdits)?.let { showFormatEditError(it); return false }
                 val events = mutableListOf<PreprocessDraftEvent>()
                 draftState.commit(captured, events::add)
                 host.save(PreprocessSave(captured, cellEditState.copyForEditing(), working, events))

@@ -25,6 +25,7 @@ class AutoRecoveryLimitsTest {
         )
 
         assertEquals(0, result.attempts.size)
+        assertEquals(SearchCompleteness.COMPLETE, result.searchDiagnostic!!.completeness)
     }
 
     @Test fun finderLimitIsHonored() {
@@ -46,15 +47,15 @@ class AutoRecoveryLimitsTest {
         assertEquals(1, result.finders.size)
     }
 
-    @Test fun skippedGeometryCannotSupportAWholeSearchFailureClaim() {
+    @Test fun geometryPolicyLimitCompletesWithoutAWholeSearchFailureClaim() {
         val settings = PreprocessSettings(manualQuad = quad, searchQuadNeighborhood = true,
             formatConstraint = QrFormatConstraint(com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.M, 0),
             dataEccMismatchLimit = 0)
         val result = AutoRecoveryEngine().run(image, maxGeometryAttempts = 1,
             profile = SamplingProfile(settings, inverted = false))
         assertEquals(1, result.attempts.size)
-        assertTrue(result.searchDiagnostic!!.unsearched)
-        assertFalse(result.searchDiagnostic.coverageComplete)
+        assertEquals(SearchCompleteness.COMPLETE, result.searchDiagnostic!!.completeness)
+        assertTrue(result.searchDiagnostic.coverageComplete)
         assertEquals("", result.searchDiagnostic.failureExplanation(result.bestFailure?.displayConditions))
     }
 
@@ -70,5 +71,6 @@ class AutoRecoveryLimitsTest {
         )
 
         assertEquals(0, result.attempts.size)
+        assertEquals(SearchCompleteness.COMPLETE, result.searchDiagnostic!!.completeness)
     }
 }

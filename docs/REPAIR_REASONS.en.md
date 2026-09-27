@@ -2,7 +2,7 @@
 
 English | [Japanese](REPAIR_REASONS.ja.md)
 
-Tapping a cell in “Show result” displays the primary reason for its final value and any supporting evidence. These reasons explain provenance; they are not probabilities of correctness. RS success alone is not proof that a result is correct.
+Tapping a cell in “Show detailed results” displays the primary reason for its final value and any supporting evidence. These reasons explain provenance; they are not probabilities of correctness. RS success alone is not proof that a result is correct.
 
 An attempt that fails payload validation does not modify the original matrix, so unvalidated guesses receive no repair reasons. The reasons below apply to payload-validated results or explicit user edits.
 
@@ -34,11 +34,11 @@ The app distinguishes these checks (some run more than once during search):
 6. reject corrected candidates with disallowed conflicts against fixed data/ECC values, or violations of known-bit mismatch limits;
 7. decode the validated data stream with ZXing.
 
-When conflicts with fixed values are not allowed, format and non-codeword fixed values are checked before RS. RS consistency and complete structural validation alone are insufficient: successful repair also requires final ZXing decoding.
+When conflicts with fixed values are not allowed, format and non-codeword fixed values are checked before RS. RS consistency alone is insufficient. A selectable candidate must pass QR structure validation and the specified input constraints; final ZXing decoding separately determines whether it can be displayed as text.
 
-Only a candidate that reaches final payload validation is a successful decode. RS success without a parseable payload is shown as “Repair incomplete: an RS-consistent candidate is available”. If RS fails, only the best failed attempt is retained, favoring fewer format disagreements and a smaller erasure-capacity bit shortfall.
+The result reports candidate count and search completion separately. A structure-validated candidate without decoded text can still be selected and exported; the display explains that the data cannot be displayed as text. If no selectable candidate remains, the app reports that none was found in the checked range. The reference failure favors fewer format disagreements and a smaller erasure-capacity bit shortfall, while search-wide explanations aggregate all attempts.
 
-For RS failures, `erasure-capacity shortfall bits` measures erasures only. It can be zero when known-bit errors exceed the combined correction budget, bounded search finds no consistent assignment, or a syndrome remains after correction. Check the failure reason and diagnostic details as well. See [result fields](RECOVERY_RESULT_FIELDS.en.md) for the current display.
+For RS failures, the erasure-capacity shortfall measures erasures only. It can be zero when known-bit errors exceed the combined correction budget, bounded search finds no consistent assignment, or a syndrome remains after correction. Check the failure reason and diagnostic details as well. See [result fields](RECOVERY_RESULT_FIELDS.en.md) for the current display.
 
 When BCH evidence confirms the format, RS or payload failure does not permit switching to another ECC level or mask. When the format is not confirmed, provisional and remaining formats may be tried, but format disagreement is a stronger ranking condition than RS success among attempts without a valid payload.
 
@@ -48,15 +48,18 @@ When conflicts with fixed values are not allowed, fixed non-codeword 0/1 values 
 
 ## Displayed fields
 
-- `Cell (x,y): <before> → <after>`: module values before and after recovery; `?` means unresolved.
-- `Reason`: the primary source of the final value.
+- `Cell (x,y) (zero-based coordinates)`: the selected cell. The following line describes whether its white (0), black (1), or unknown (?) value changed.
+- The reason below the values explains the primary source of the final value.
+- `Input`: the source of the value before repair and, for manual entries, its fixed designation and whether correction is allowed. It describes the input before repair even when a repaired cell is selected. “Image classification result” includes white (0), black (1), and unknown (?). “Fixed, correction allowed” means the fixed designation is retained while the setting permits correction.
 - `Supporting evidence`: other processing that supports the same value. It is not necessarily weaker; it is separate from the source that wrote the value.
-- `Codeword #<n> / bit <b>`: placement-order codeword and bit position containing the module.
-- `RS block <n> / local <n>`: RS block and local position after deinterleaving.
-- `Codeword: <before> → <after>`: original partial codeword, with unknown bits shown as `?`, and the final codeword.
-- `Input-cell relative confidence (not a probability)`: the value stored on the input cell before repair. It can include manual edits and is not necessarily image-derived. It is retained separately from correction-assigned confidence. The separately displayed relative confidence combines evidence such as candidate agreement. Neither is a correctness probability.
+- `Codeword <n> / RS block <n> / position <n> in block`: placement-order codeword, RS block, and position after deinterleaving.
+- `After removing the QR mask`: original partial codeword, with unknown bits shown as `?`, and the final codeword. Brackets mark the selected bit.
+- `Selected: bit <n> from the left (in [ ])`: the bit position within the codeword.
+- `Input-cell relative confidence (not a probability)`: the value stored on the input cell before repair. It can include manual edits and is not necessarily image-derived. It is retained separately from correction-assigned confidence. “Candidate assessment (not a probability)” combines evidence such as candidate agreement. Neither is a correctness probability.
 
-Cell coordinates, codeword indices, bit positions, and RS block/local indices in cell details are zero-based; bit 0 is the MSB. The failure diagnostic's “First failing RS block” is one-based.
+For a format-information cell, the basic details show its role (ECC level, mask number, or error-correction bit) and position within that field. Open **Show/hide calculation details** to compare both copies before and after repair, including their values after removing the fixed format mask (0x5412). `[ ]` marks the selected bit and its counterpart; `?` remains unknown. ECC levels and mask numbers are also interpreted from each copy’s bits. The related-cell button follows the role: it highlights 4 ECC-level cells, 6 mask-number cells, or 20 correction-bit cells. The 10 correction bits are BCH bits generated from the 2 ECC-level bits and 3 mask-number bits. **Unmask** for the data region does not change format-information cell colors.
+
+Cell coordinates `(x,y)` are zero-based. Displayed codeword numbers, RS block numbers, positions within a block, and bit positions are one-based; bit 1 is the leftmost (most significant) bit. Failure diagnostics also use one-based block numbers.
 
 ## User-defined values
 
@@ -98,7 +101,9 @@ A structure module whose observed value was already correct is not highlighted m
 
 ## Payload-structure constraint reasons
 
-Ordinary structure propagation enumerates single-segment Numeric, Alphanumeric, Byte, and Kanji hypotheses. Among plans compatible with known bits, it selects those with the most known terminator, byte-alignment, and padding matches; fewer than six matches disables filling. It fills only values shared by all selected plans. This is inference within selected single-segment hypotheses, not proof of uniqueness across all QR streams, including multiple segments. Reaching the plan-enumeration limit also disables filling. Every mutation by these constraints retains an unconstrained retry, even after a successful constrained result.
+This document uses **Single-segment assumption**, the diagnostic label, for the advanced setting “When the mode and character/byte count are read or assigned by \* trials, assume a single segment and force the following structure.”
+
+Ordinary structure propagation selects single-segment Numeric, Alphanumeric, Byte, and Kanji plans compatible with known bits and having the most known terminator, byte-alignment, and padding matches. It fills only values shared by all selected plans; other bits remain `?`. Fewer than six matches or reaching the plan-enumeration limit disables filling. This inference depends on the selected hypotheses and does not guarantee correct values.
 
 - `Payload mode constraint`: determined from the numeric, alphanumeric, byte, Kanji, or other supported mode indicator.
 - `Payload count constraint`: determined from the mode- and version-specific character or byte count field.
@@ -108,8 +113,7 @@ Ordinary structure propagation enumerates single-segment Numeric, Alphanumeric, 
 - `Pad codeword constraint`: alternating `0xEC / 0x11` padding after the payload.
 - `Payload structure constraint`: another safe payload-structure implication, or a structural implication without a more specific classification.
 
-Bits remain `?` where selected plans disagree. Ranking the plans is hypothesis selection and does not guarantee correct final values.
-When the single-segment forcing option is enabled, however, the trusted header selects one structure and known image-derived 0/1 values that conflict with its terminator, byte alignment, or padding are changed with a constraint reason.
+With **Single-segment assumption** ON, the known or `*`-assigned header selects one structure. Known image-derived 0/1 values conflicting with its terminator, byte alignment, or padding are also changed and receive a structure-constraint reason. See [Recovery Strategy](RECOVERY_STRATEGY.en.md) for eligibility and retry behavior.
 
 ## Bounded bit search
 
@@ -121,7 +125,7 @@ If the detail says that unknown bits were enumerated within a limit, that codewo
 
 ### RS partial-bit constraints and priority search
 
-Conventional erasure decoding and later enumeration may produce the same block values with different explanations. Both are retained. The representative conventional route prefers larger RS margin, fewer search bits, fewer targets, then lower penalty; traversal separately uses the minimum penalty across routes. Cell reasons use the representative rather than a mixture of different routes' metrics.
+Conventional erasure decoding and later enumeration may produce the same block values with different explanations. Both are retained. The representative conventional route prefers larger RS margin, fewer search bits, fewer targets, then lower penalty; traversal separately uses the minimum penalty across routes. Cell reasons use the representative rather than a mixture of different routes' metrics. Equivalent partial-bit constraint routes are also retained. Products of block-route counts are not added to QR-level derivation or result counts.
 
 Cells using RS partial-bit constraints carry a note that exact known-data/ECC agreement is assumed and uniqueness depends on that assumption. Free-variable enumeration differs from conventional partial-codeword enumeration and does not necessarily receive a magenta primary reason.
 
@@ -131,9 +135,7 @@ Explicit priority assignments have coordinate-specific provenance only for the c
 
 The unmasked value assigned by a structure constraint is compared with the final codeword bit. If different, the constraint is recorded as intermediate history corrected by RS, not a primary reason or supporting evidence. Cells whose final values remain unchanged are still not highlighted; route-level codeword information retains the history.
 
-Identical QRs from multiple routes count as one result while preserving each derivation's provenance. Cell details describe representative route 1. Consensus compares validated results only; see [result fields](RECOVERY_RESULT_FIELDS.en.md) for the 16-candidate comparison limit and its scope.
-
-When conventional RS and partial-bit constraints produce the same block values, those values remain one candidate while each route retains its targets, enumerated positions, search bits, and RS margin. Diagnostics list derivations per RS block with route 1 as representative. Main cell reasons and conventional margins describe that representative; other routes appear separately. Products of block-route counts are not added to QR-level derivation or result counts.
+Identical QRs from multiple routes count as one result while preserving each derivation's provenance. Cell details describe representative route 1. Candidate agreement compares text-decoded results only; see [result fields](RECOVERY_RESULT_FIELDS.en.md) for the 16-candidate comparison limit and its scope.
 
 ## `Repair`
 

@@ -1,4 +1,4 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="app_name">QR Repair</string>
     <string name="menu">Menu</string>
     <string name="history">History</string>
@@ -81,7 +81,7 @@
     <string name="reset_rotation">Reset rotation</string>
     <string name="thresholding">Thresholding</string>
     <string name="geometry_search_note">When enabled, recovery tests 0.6-module position, size, and one-corner adjustments. If exactly one Finder role is assigned, it also tests clockwise and counterclockwise rotation around that corner.</string>
-    <string name="payload_header_trust_note">Use only for a single numeric, alphanumeric, byte, or Kanji segment. Selectable when the leading mode and character/byte count are fully observed. ECI, FNC1, structured append, and Hanzi are unsupported. Do not use with multiple segments.\nThe terminator, byte-alignment, and padding region is corrected from the observed mode and count. Image-derived 0/1 values are also changed. Manual 0/1 handling follows the setting below.</string>
+    <string name="payload_header_trust_note">Use only for a single numeric, alphanumeric, byte, or Kanji segment. Selectable when the leading mode and character/byte count are known or can be assigned by * trials. Unresolved ? bits in the header do not qualify. ECI, FNC1, structured append, and Hanzi are unsupported. Do not use with multiple segments.\nThe terminator, byte-alignment, and padding region is corrected from the observed or trial-assigned mode and count. Image-derived 0/1 values are also changed. Manual 0/1 handling follows the setting below. The recovered header and suffix must satisfy this condition; recovery does not retry with it disabled. If the condition cannot be applied, it remains enabled and the reason is reported.</string>
     <string name="format_mismatch_limit">Format-information error limit</string>
     <string name="format_mismatch_limit_unlimited">Unlimited</string>
     <string name="format_mismatch_limit_exact">0 bits (exact match)</string>
@@ -90,7 +90,6 @@
         <item quantity="other">%1$d bits</item>
     </plurals>
     <string name="format_mismatch_limit_note">Default and Strict allow 6 bits; Relaxed allows 9 bits. Compares known bits in both copies. Excludes ? and manual bits determined by explicit ECC/mask selections alone. Zero requires exact agreement at compared positions.</string>
-    <string name="format_mismatch_limit_fixed_note">This setting is not applied while both ECC and mask are specified.</string>
     <string name="data_ecc_mismatch_limit">Known data/ECC bit error limit</string>
     <string name="data_ecc_mismatch_limit_unlimited">Unlimited</string>
     <string name="data_ecc_mismatch_limit_exact">0 bits (exact match)</string>
@@ -204,4 +203,9 @@
     <string name="image_adjustment_help">Contrast, brightness and inversion affect both the preview and analysis. Before compares tones without changing the crop or rotation. The original image and adjustment settings are saved separately.</string>
     <string name="image_help">Help</string>
     <string name="image_adjustment_failed">Image processing failed: %1$s</string>
+    <!-- These limits only accept 12, 13, or 14, so singular quantities are not supported. -->
+    <string name="partial_bit_search_limit" tools:ignore="PluralsCandidate">Partial-bit search / dimension limit: %1$d bits</string>
+    <string name="partial_bit_search_limit_title">Partial-bit search / dimension limit</string>
+    <string name="partial_bit_search_limit_choice" tools:ignore="PluralsCandidate">%1$d bits</string>
+    <string name="partial_bit_search_limit_note">Shared limit per RS block for partial-bit search and the remaining degrees of freedom after solving RS constraints. Default: 12 bits. Each extra bit doubles the maximum enumeration count; combining this with * search increases the workload further. Memory limits may stop the search before this limit is reached.</string>
 </resources>

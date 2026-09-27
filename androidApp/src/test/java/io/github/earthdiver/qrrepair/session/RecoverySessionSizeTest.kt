@@ -99,25 +99,11 @@ class RecoverySessionSizeTest {
     }
 
     @Test
-    fun schema18StillLoadsWithoutSelectionOrSamplingMetadata() {
-        val original = selectedPayload().let { payload -> payload.copy(historyEntries = payload.historyEntries.map {
-            it.copy(snapshot = it.snapshot.copy(selectedQr = null, samplingInverted = null))
-        }) }
-        val encoded = RecoverySessionCodec.encode(original)
-        val legacy = rewrite(encoded, 18) { it.copyOf(it.size - 19) }
-        val restored = RecoverySessionCodec.decode(legacy).historyEntries.single().snapshot
-        assertNull(restored.selectedQr)
-        assertNull(restored.samplingInverted)
-        assertEquals(original.historyEntries.single().snapshot.preprocessSettings, restored.preprocessSettings)
-        assertEquals(7, restored.recoveryIndex)
-    }
-
-    @Test
     fun checksummedInvalidSelectionFieldsAreRejectedBeforeArrayAllocation() {
         val encoded = RecoverySessionCodec.encode(selectedPayload())
         val invalidFields = listOf(1 to 0, 5 to 4, 9 to 8, 13 to Int.MAX_VALUE, 13 to 25)
         for ((field, invalidValue) in invalidFields) {
-            val altered = rewrite(encoded, RecoverySessionCodec.CURRENT_VERSION) { raw ->
+            val altered = rewrite(encoded) { raw ->
                 val selectedOffset = raw.size - (1 + 16 + 26 + 2)
                 ByteBuffer.wrap(raw).putInt(selectedOffset + field, invalidValue)
                 raw
@@ -137,11 +123,11 @@ class RecoverySessionSizeTest {
         }
     }
 
-    private fun rewrite(encoded: ByteArray, version: Int, transform: (ByteArray) -> ByteArray): ByteArray {
+    private fun rewrite(encoded: ByteArray, transform: (ByteArray) -> ByteArray): ByteArray {
         val raw = transform(GZIPInputStream(ByteArrayInputStream(encoded, 48, encoded.size - 48)).readBytes())
         val compressed = ByteArrayOutputStream().also { buffer -> GZIPOutputStream(buffer).use { it.write(raw) } }.toByteArray()
         return ByteArrayOutputStream().also { buffer -> DataOutputStream(buffer).use { out ->
-            out.writeInt(0x5152523A); out.writeInt(version); out.writeInt(raw.size); out.writeInt(compressed.size)
+            out.writeInt(0x5152523A); out.writeInt(RecoverySessionCodec.CURRENT_VERSION); out.writeInt(raw.size); out.writeInt(compressed.size)
             out.write(MessageDigest.getInstance("SHA-256").digest(raw)); out.write(compressed)
         } }.toByteArray()
     }

@@ -27,6 +27,8 @@ internal class PreRecoveryDetailedSettingsPage(
     formatMismatchLimitControl: View,
     dataEccMismatchLimitControl: View,
     actions: DetailedSettingsPageActions,
+    prioritySearchControl: View? = null,
+    partialBitSearchControl: View? = null,
 ) {
     val view: View = ScrollView(context).apply {
         addView(LinearLayout(context).apply {
@@ -44,6 +46,8 @@ internal class PreRecoveryDetailedSettingsPage(
             )))
             addSettingsItem(TextView(context).apply { setText(R.string.thresholding) }, 6)
             addView(polarity)
+            partialBitSearchControl?.let { addSettingsItem(it, 6) }
+            prioritySearchControl?.let { addSettingsItem(it, 6) }
             addSettingsItem(searchQuadNeighborhood, 6)
             addView(TextView(context).apply {
                 setText(R.string.geometry_search_note)

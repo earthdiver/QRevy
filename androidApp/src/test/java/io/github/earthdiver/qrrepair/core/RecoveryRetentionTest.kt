@@ -38,7 +38,7 @@ class RecoveryRetentionTest {
         assertTrue(results.size < 4096)
         assertTrue(budget.retainedBytes <= budget.limitBytes)
         assertTrue(results.all { it.payloadParsed && it.searchDiagnostic?.candidatesOmitted == true })
-        assertTrue(results.none { CombinationSearchStop.RETENTION_LIMIT in it.combinationSearch.stops })
+        assertTrue(results.all { it.searchDiagnostic?.completeness == SearchCompleteness.COMPLETE })
         val result = results.first()
         assertTrue(result.repairInfo is DeferredRepairInfo)
         assertEquals(3706, result.repairInfo.size)

@@ -20,7 +20,7 @@ internal enum class PriorityEditResult { CHANGED, UNCHANGED, LIMIT_EXCEEDED }
 internal class PreRecoveryCellEditState(
     initialEdits: Map<Coord, ModuleValue>,
     initialPrioritySearch: Set<Coord>,
-    private val priorityLimit: Int = 4,
+    var priorityLimit: Int = 4,
     private val validateEdits: (Map<Coord, ModuleValue>) -> Boolean = { true },
     initialSoftEdits: Set<Coord> = emptySet(),
 ) {
@@ -60,7 +60,7 @@ internal class PreRecoveryCellEditState(
     init {
         require(mutableSoftEdits.all { it in mutableEdits })
         require(priorityLimit >= 0)
-        require(mutablePrioritySearch.size <= priorityLimit)
+        require(mutablePrioritySearch.size <= 14)
         mutablePrioritySearch.forEach { coord ->
             require(mutableEdits[coord] == ModuleValue.ERASED) { "Priority search requires an erased edit" }
         }

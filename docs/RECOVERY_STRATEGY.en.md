@@ -13,10 +13,11 @@ QR Repair does not guess one answer from an image and immediately declare it cor
 | Display or state | What has been established | What it does not establish by itself |
 | --- | --- | --- |
 | RS-consistent | The RS equations hold under the selected version, format, and known bits | The original QR content, correct geometry, or correct format |
-| Payload-validated candidate | QR payload structure and final decoding succeeded in addition to RS | The real-world author's intended content or a unique solution |
+| Validated candidate | QR payload structure and the specified input constraints passed in addition to RS | The real-world author's intended content or a unique solution |
+| Text-decoded candidate | Final ZXing decoding also produced text | That the text matches the original content |
 | Multiple candidates | Distinct solutions passed validation | Which candidate was the original content |
 | No candidate | No validated candidate was found within the finite search performed | That no correct solution exists |
-| Candidate agreement | The cell agrees across the validated candidates selected for comparison | Mathematical uniqueness across unretained or unexplored solutions |
+| Candidate agreement | The cell agrees across the text-decoded candidates selected for comparison | Mathematical uniqueness across unretained or unexplored solutions |
 | Confidence | An explanatory comparison of image evidence and provenance | A statistical probability of correctness |
 
 Recovery checks described as requiring fixed-value agreement in this document apply when **Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)** is OFF. ON allows correction while retaining fixed designations. Consistency with explicit ECC/mask selections remains enforced (section 3.1).
@@ -51,7 +52,7 @@ One possible candidate:  1 0 0 1 1 0 0 1
 | User enters `0` or `1` | `0` or `1` | Retain the input value and its fixed or tentative designation |
 | User applies `*` | `?` | Prioritizes bounded 0/1 enumeration for that cell if the ordinary route fails |
 
-Even if the last line in the example is RS-consistent, it is not accepted on that basis alone. It becomes a validated candidate only after format, manual constraints, QR payload structure, and final decoding also pass.
+Even if the last line in the example is RS-consistent, it is not accepted on that basis alone. It becomes a validated candidate only after format, manual constraints, error limits, and QR payload structure also pass. Final decoding separately determines whether it can be displayed as text.
 
 ## 2. Pipeline
 
@@ -74,31 +75,19 @@ Image files have their EXIF orientation applied, while camera captures pass thro
 
 The working image is converted to luminance values that represent each pixel’s brightness. If it is not known whether black and white are reversed, both normal and inverted interpretations can be tried. Once a confirmed Finder pattern establishes which interpretation to use, reading follows that result. When quiet-zone correction is enabled, the image used to find these patterns receives a margin representing QR white (0).
 
-Contrast and brightness are bounded integer settings from −100 to 100. Each RGB channel uses gain `2^(contrast/50)` about 127.5 and an offset of `2.55 * brightness`, followed by optional inversion and clamping to 0–255. Geometry is applied to the unadjusted source before tones; display pixels and sampled luminance share this transform. Color-marker classification retains the corresponding original RGB values. Decoder polarity describes the adjusted image, so importing an inverted image does not also force inverted decoding. QRR stores the original image and adjustment parameters separately; older sessions default to neutral adjustments.
+Contrast and brightness are bounded integer settings from −100 to 100. Each RGB channel uses gain `2^(contrast/50)` about 127.5 and an offset of `2.55 * brightness`, followed by optional inversion and clamping to 0–255. Geometry is applied to the unadjusted source before tones; display pixels and sampled luminance share this transform. Color-marker classification retains the corresponding original RGB values. Decoder polarity describes the adjusted image, so importing an inverted image does not also force inverted decoding. QRR stores the original image and adjustment parameters separately.
 
 ### 2.2 Initial version and corner estimation
 
-On new image import, the Android adapter obtains Model 2 boundaries from ZXing-C++ 3.1.1. Shared code tests versions 1–40 and four rotations against a single boundary. Finder and timing mismatch must each be at most 20%, with a runner-up gap of at least 0.03 in the score weighted 0.55/0.45. Accepted boundaries are converted to outer module centers. Decoded native text is not used as a recovery result.
+On new image import, the app first validates Model 2 boundaries from ZXing-C++ and converts accepted boundaries to outer module centers. It searches versions 1–40 and logical rotations; native decoded text is not used as a recovery result. Multiple boundaries can be merged only if all agree on the same QR.
 
-Each detected set of corners is checked with both normal and reversed black and white. If both interpretations meet the requirements, the app cannot choose between them and does not establish a grid from that candidate. When it can also automatically assign the Finder centers and their top-left, top-right, and bottom-left roles, it saves whether the code is normal or inverted.
+If native boundaries cannot be accepted, the app tries grid periodicity, then geometry from two individually detected Finders. Normal and inverted interpretations are checked. Conflicting periodicity results stop automatic estimation rather than falling through to another estimator; multiple native boundaries also disable the two-Finder route. A two-Finder estimate covers version 2 and later, approximately under a similarity transform. A diagonal pair can establish top-right and bottom-left roles from both timing axes; otherwise a verified lower-right alignment pattern may support corners without assigning roles.
 
-Multiple boundaries are validated individually. They are treated as duplicates only when every pair agrees in version and logical orientation, with each corresponding corner within 0.25 module. A representative that passes the automatic-role gate is preferred; coordinates are not averaged and repetition does not increase confidence. An unverified boundary or a distinct QR candidate prevents merging.
+The estimates are editable starting values. If no estimate is accepted, the app displays version 1 and default corners. Recovery treats the displayed corners and selected version as confirmed inputs, so review them before repairing.
 
-If the boundary is rejected, multiple boundaries cannot be merged, or JNI loading or execution fails, the existing grid-period estimator is tried. Luminance gradients identify two orthogonal edge families, and their projected coordinates are searched for a phase and module pitch that align with an evenly spaced boundary grid. When a half-period or another harmonic has similar agreement, the fundamental period is preferred so that the harmonic is not mistaken for a different version.
+Physical corner positions and logical orientation are separate. Strong native evidence can automatically assign all three Finder roles; a verified diagonal pair can assign two. Periodicity alone does not assign roles. Automatic assignment runs only on new import and is recorded in history. Clearing all roles makes logical orientation unassigned while retaining corners and cell edits, and saved assignments are not re-estimated on reopening.
 
-The periodicity estimator checks both the adjusted image and its black-and-white inverse. If neither yields a grid, the two-Finder fallback also checks both. A result from only one interpretation can be used. When both yield a grid, their versions and corner ordering must agree, with corresponding corners within 0.25 module; otherwise automatic estimation stops. Conflicting results are not bypassed by trying a later estimator. Periodicity alone does not establish whether black and white are reversed. A two-Finder result records that distinction only when its Finder roles are verified; opposite confirmed interpretations are rejected even if their corners agree.
-
-An initial version is set from `dimension = 17 + 4 × version` only when the pitches on both axes agree, the extent supported by definite-black pixels is approximately square, and it sufficiently matches one of the permitted dimensions `21, 25, 29, …, 177`. A phase-aligned window spanning that dimension also supplies initial corners at the centers of the outer modules. Large gray damaged regions and isolated dark background pixels are excluded from definite-black boundary evidence so that they do not enlarge the symbol by several modules.
-
-If periodicity also fails, a fallback uses individual Finder detection and two-Finder geometry hypotheses. It checks both Finders’ pitch, axes, and patterns. For a diagonal pair, both timing axes can establish the observed top-right and bottom-left roles without an alignment pattern. Each axis requires at least eight known cells covering at least 60% of its length, at least three black and three white observations, and at most 5% mismatches. These checks must also pass at offsets of 0.2 module in each axial direction. Unknown cells do not count as matches. A score gap of at least 0.12 against competing hypotheses and white-separator checks are required.
-
-If timing cannot establish roles, a verified lower-right alignment pattern may still support provisional corners without role assignment. The fallback covers version 2 and later symbols approximately described by a similarity transform. Version 1 has only five timing cells per axis, below the evidence requirement. Multiple native boundaries disable the fallback. A hidden Finder is never treated as observed.
-
-These estimates are editable starting values, not proof of recovery. If every estimator fails, the UI falls back to version 1 and default corners. Recovery treats the displayed corners and selected version as confirmed inputs.
-
-Physical corner positions and the choice of logical coordinate `(0, 0)` are separate. A grid derived from ZXing-C++ can automatically assign Finder centers and roles through the following gate: at most 2/49 mismatches per Finder, 1/15 per white separator, 5% timing mismatch, a score gap of at least 0.08 including rejected alternatives, and at least two pixels per module along every edge. Samples offset by 0.25 module in each axial direction must also have at most 2/49 mismatches per Finder. Weaker native grids and periodicity estimates do not assign roles automatically. Two-Finder estimates use the separate conditions above.
-
-Automatic assignment runs only on new image import and is recorded in history. Saved Finder assignments are not re-estimated. Press **Clear** and tap a green Finder to remove its assignment; clearing all roles also unassigns logical orientation. Corners and cell edits are retained, and cells are not marked as manually specified. The thresholds are heuristics, not probabilities. See the [implementation and validation record](ZXING_CPP_INTEGRATION.en.md) for details.
+See [Initial grid estimation and automatic Finder assignment](ZXING_CPP_INTEGRATION.en.md) for the mismatch thresholds, ambiguity gates, polarity handling, and validation measurements. These are heuristics, not correctness probabilities.
 
 ### 2.3 Manual Finder-role assignment
 
@@ -110,6 +99,8 @@ Automatic Model 1 classification is not implemented yet. Input must therefore be
 
 The following table counts currently assigned Finder roles during recovery, including automatic and manual assignments that have not been cleared. It does not count Finder-like shapes visible in the image.
 
+This document calls the search around the selected grid enabled by **Automatically fine-tune sampling position** the **neighborhood search**.
+
 | Assigned roles | Logical orientation | Base hypotheses with neighborhood search | Important qualification |
 | --- | --- | --- | --- |
 | 0 | Use the displayed corners and default logical orientation | At most 19 | No global Finder search or automatic role assignment during recovery |
@@ -117,7 +108,7 @@ The following table counts currently assigned Finder roles during recovery, incl
 | 2 | Fix orientation from the two roles and corners | At most 19 | Do not add the two rotation hypotheses |
 | 3 | Use the fully explicit role assignment | At most 19 | Incorrect roles can prevent the correct recovery |
 
-For version 2 and later, at most one alignment-refined variant may be added for each base hypothesis. The next section gives the complete bounds.
+When **Automatically fine-tune sampling position** is ON, version 2 and later may add at most one alignment-refined variant for each base hypothesis. The next section gives the complete bounds.
 
 ### 2.4 Geometry hypotheses
 
@@ -125,7 +116,7 @@ Recovery fixes the logically assigned corners and selected version. It first cre
 
 If exactly one Finder role is assigned, two more base hypotheses rotate clockwise and counterclockwise around its logical corner, for 21 base hypotheses in total. The angle is chosen so the farthest outer corner moves by 0.6 module. No rotation hypothesis is added with zero or at least two assigned Finder roles. These neighborhood transformations are not combined with one another, and logical orientation and version remain unchanged.
 
-For each base hypothesis, when an interior alignment pattern available in version 2 or later has sufficient image evidence, the engine adds one alignment-refined geometry. The observed alignment pattern must differ from its predicted position by 0.1 to 1.25 modules; refinement moves only the nearest logical corner to fit that observation. A refinement is rejected if it materially worsens the independent timing pattern score. It never replaces the user-selected geometry: both the base and refined hypotheses are evaluated. If alignment refinement succeeds for every base hypothesis, the resulting maxima are two hypotheses normally, 38 with neighborhood search, and 42 with neighborhood search plus exactly one assigned Finder role. The engine-wide bound is 72 geometry hypotheses.
+Only when **Automatically fine-tune sampling position** is ON, for each base hypothesis with sufficient interior alignment-pattern evidence in version 2 or later, the engine adds one alignment-refined geometry. The observed alignment pattern must differ from its predicted position by 0.1 to 1.25 modules; refinement moves only the nearest logical corner to fit that observation. A refinement is rejected if it materially worsens the independent timing pattern score. It never replaces the user-selected geometry: both the base and refined hypotheses are evaluated. If alignment refinement succeeds for every base hypothesis, the resulting maxima are one hypothesis with **Automatically fine-tune sampling position** OFF, 38 with neighborhood search, and 42 with neighborhood search plus exactly one assigned Finder role. The engine-wide bound is 72 geometry hypotheses.
 
 Every geometry hypothesis uses fixed and tentative edits as input at the same cell coordinates. Sampled image values do not need to match the edits. With **Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)** OFF, candidates that contradict fixed values are rejected. ON permits correction, subject to error limits and explicit QR settings.
 
@@ -135,7 +126,7 @@ On image import, the whole-image two-/three-class luminance estimate supplies pr
 
 Before using the provisional thresholds from the whole source image for an inverted QR code, the app converts them to preserve the same brightness ranges after inversion. The new dark threshold is `255 − original light threshold`, and the new light threshold is `255 − original dark threshold`. For example, thresholds of 40/80 become 175/215. Thresholds estimated from the grid or set manually already refer to brightness after accounting for inversion, so they are used without this conversion.
 
-The **Set thresholds automatically** checkbox starts checked for a new image. Changing either threshold slider unchecks it and makes the whole pair manual. Unchecking it directly preserves the current pair. That pair is kept through corner movement and repair fine-tuning; checking the box again recalculates the thresholds and resumes automatic mode. The automatic/manual choice, effective thresholds and provisional fallback are saved with the session. Sessions without an automatic/manual choice retain their saved thresholds as manual values.
+The **Set thresholds automatically** checkbox starts checked for a new image. Changing either threshold slider unchecks it and makes the whole pair manual. Unchecking it directly preserves the current pair. That pair is kept through corner movement and repair fine-tuning; checking the box again recalculates the thresholds and resumes automatic mode. The automatic/manual choice, effective thresholds and provisional fallback are saved with the session.
 
 Colored unknown regions are initially estimated as approximate clusters in Lab color space. Cluster acceptance uses color frequency, color-density, and separation from black and white; it does not use spatial grouping, module size, finders, or version. “Treat detected color clusters as unknown (?),” directly below the Version button in basic settings, starts disabled and applies detected clusters only when enabled. Achromatic gray regions are handled by the luminance thresholds instead.
 
@@ -151,7 +142,7 @@ These synthetic scenarios explain how to use the mechanisms. They are not test v
 
 1. The user confirms the version and corners, then assigns the correct logical role to the one trusted Finder.
 2. Enabling **Automatically fine-tune sampling position** adds two pivot rotations to the ordinary 19 base hypotheses.
-3. Every hypothesis retains the same version and logical orientation. An alignment-refined variant is evaluated separately when supported by image evidence.
+3. Every hypothesis retains the same version and logical orientation. With **Automatically fine-tune sampling position** ON, an alignment-refined variant is evaluated separately when supported by image evidence.
 4. If multiple validated candidates remain, the app retains them and reports their agreement instead of choosing one silently.
 
 Seeing one Finder-like shape does not trigger this route automatically. Role assignment is a user decision, and the rotation hypotheses do not change the selected version or logical orientation.
@@ -187,7 +178,7 @@ Even when neither rule applies, the engine creates a **provisional candidate** i
 
 Agreement or complementary reconstruction of the five information bits is not treated as BCH correction and does not confirm the format.
 
-A BCH-trusted candidate becomes the confirmed format for that geometry when it satisfies the manual-value consistency conditions in section 3.2. Failure of RS recovery or final payload validation does not cause a fallback to the other 31 formats. A provisional candidate is not confirmed: it stops the search only after final payload validation; otherwise the engine falls back to the remaining candidate set, at most 31 formats after excluding the attempted one.
+A BCH-trusted candidate becomes the confirmed format for that geometry when it satisfies the manual-value consistency conditions in section 3.2. Failure of RS recovery or final payload validation does not cause a fallback to the other 31 formats. A provisional candidate is not confirmed: it stops the search only after a candidate passes final text decoding; otherwise the engine falls back to the remaining candidate set, at most 31 formats after excluding the attempted one.
 
 The BCH-confirmed and provisional single-format fast paths apply when both ECC and mask are automatic. With either selection explicit, recovery tries the permitted set in rank order: at most eight formats for ECC only, four for mask only, and one for both. A partial explicit selection does not narrow the set to a BCH-trusted format alone. Format-error limits and manual pins further restrict the attempted set.
 
@@ -235,7 +226,7 @@ A position determined by **explicit ECC/mask selections alone** has the same val
 | `?` | Cannot be Fixed | Fill from the candidate format; exclude from comparison |
 | `*` | Not permitted | Same as left |
 
-A format error limit of zero requires exact agreement at compared known positions. When **both** ECC and mask are explicit, this limit is bypassed and the selected format is used. Fixed-value conflicts are still rejected by the consistency check. Format cells never count toward the data/ECC error limit.
+A format error limit of zero requires exact agreement at compared known positions. When **both** ECC and mask are explicit, the selected format must also satisfy this limit. Fixed-value conflicts are still rejected by the consistency check. Format cells never count toward the data/ECC error limit.
 
 When ECC and mask are automatic and conflicts with fixed values are not allowed, a BCH-correctable candidate is checked against fixed 0/1 values in format, version, function, and remainder modules before confirmation. A conflict prevents confirmation and leaves other compatible formats eligible. Tentative values do not create this veto, but format-error limits still apply.
 
@@ -255,19 +246,21 @@ Before RS decoding, safe constraints are propagated from a known payload prefix:
 - zero bits used for byte alignment
 - alternating padding codewords `0xEC / 0x11`
 
-Ordinary structure propagation enumerates single-segment Numeric, Alphanumeric, Byte, and Kanji hypotheses. Among plans compatible with known bits, it selects those with the most known terminator, byte-alignment, and padding matches; fewer than six matches disables filling. It fills only values shared by all selected plans. This is inference within selected single-segment hypotheses, not proof of uniqueness across all QR streams, including multiple segments. Reaching the plan-enumeration limit also disables filling. Every mutation by these constraints retains an unconstrained retry, even after a successful constrained result.
+This document uses **Single-segment assumption**, the diagnostic label, for the advanced setting “When the mode and character/byte count are read or assigned by \* trials, assume a single segment and force the following structure.”
 
-The explicit known-count option is valid only when the QR content consists of exactly one Numeric, Alphanumeric, Byte, or Kanji segment and its mode and character count (byte count in Byte mode) are fully and correctly observed. The option forces the area immediately after that segment to the terminator, byte-alignment, and padding values, replacing conflicting known image-derived 0/1 values as well. Fixed 0/1 edits remain protected unless conflicting candidates are allowed; tentative edits may be corrected. It must not be used with ECI, FNC1, structured append, or multiple segments.
+Ordinary structure propagation enumerates single-segment Numeric, Alphanumeric, Byte, and Kanji hypotheses. Among plans compatible with known bits, it selects those with the most known terminator, byte-alignment, and padding matches; fewer than six matches disables filling. It fills only values shared by all selected plans. This is inference within selected single-segment hypotheses, not proof of uniqueness across all QR streams, including multiple segments. Reaching the plan-enumeration limit also disables filling. With **Single-segment assumption** OFF, mutations by these heuristic constraints retain an unconstrained retry, even after a successful constrained result. With this setting ON, recovery never retries without that condition; final candidates must preserve the observed or priority-assigned mode/count header and its terminator, alignment, and padding.
+
+**Single-segment assumption** applies to QR content consisting of exactly one Numeric, Alphanumeric, Byte, or Kanji segment. It forces the area immediately after that segment to the terminator, byte-alignment, and padding values, replacing conflicting known image-derived 0/1 values as well. Fixed 0/1 edits may be corrected only when **Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)** is ON; tentative edits may be corrected.
 
 The conventional route decodes each block as GF(256) errors plus erasures, with the capacity relation `2 × errors + erasures <= ECC symbols`. A complementary binary constraint route also uses known bits inside partial codewords, as described below. Mathematical RS success alone does not make a candidate correct.
 
 Trust applies to the mode and character/byte count. An observed numeric or alphanumeric body outside its valid range does not disable suffix forcing; RS correction and final validation still handle the body itself.
 
-This option is selectable when an eligible format has a fully observed leading Numeric, Alphanumeric, Byte, or Kanji mode/count header. Automatic BCH confirmation restricts this check to the confirmed format. General diagnostics may recognize ECI, FNC1, structured-append prefixes, or Hanzi, but those do not qualify for suffix forcing. An ineligible input disables and unchecks the option. Absence of another segment in an unknown region cannot be established automatically; the user must still confirm the single-segment assumption.
+This option is selectable when an eligible format has a leading Numeric, Alphanumeric, Byte, or Kanji mode/count header that is known or can be completed by explicit `*` assignments. Ordinary `?` bits cannot complete this eligibility check. Each priority assignment is evaluated separately before suffix forcing; assigned header values remain hypotheses in the repair evidence. Automatic BCH confirmation restricts this check to the confirmed format. General diagnostics may recognize ECI, FNC1, structured-append prefixes, or Hanzi, but those do not qualify for suffix forcing. If an enabled condition becomes inapplicable, it remains ON and reports the reason; no candidate is accepted by silently relaxing it. Absence of another segment in an unknown region cannot be established automatically; the user must still confirm the single-segment assumption.
 
 ### 4.1 Data/ECC error limit and manual input values
 
-Enter an error limit directly and adjust it one bit at a time with −/＋. Apply confirms the value; Unlimited and Cancel are also available. Format limits range from 0 to 30 bits. Data/ECC limits range from 0 to eight times the total codewords of the selected version, independent of ECC level. Blank, non-integer, and out-of-range values cannot be applied. If a version change makes the existing limit too large, the app requests a new value without changing it automatically. Cancel retains the value; saving settings or starting repair requires a valid limit or Unlimited.
+Enter an error limit directly and adjust it one bit at a time with −/＋. Format limits range from 0 to 30 bits. Data/ECC limits range from 0 to eight times the total codewords of the selected version, independent of ECC level. Blank, non-integer, and out-of-range values cannot be applied. If a version change makes the existing limit too large, the app requests a new value without changing it automatically. Saving settings or starting repair requires a valid limit or Unlimited.
 
 For every RS-corrected candidate, the final codewords are mapped back to QR modules with the selected mask reapplied and compared bit by bit against input `0 / 1` values known in data/ECC modules. Unknown (`?`) modules, format information, version information, function modules, and remainder bits are excluded from this comparison.
 
@@ -293,10 +286,10 @@ Version information, other function modules, and remainder bits also stay outsid
 
 ### 4.2 Priority `*` search
 
-At most four `*` markers may be assigned, and only to data/ECC modules. In the cell editors, first assign the four corner positions and roles. Selecting fixed structures or remainder bits displays their type and coordinates. Orientation changes recheck eligibility and turn ineligible `*` marks back into `?`. Version changes clear all cell edits after confirmation.
+`*` markers may be assigned only to data/ECC modules. The default limit is four; advanced settings allows 4–14. The selected count determines the displayed assignment count (`2^count`, up to 16,384). Lowering the limit preserves existing marks; repair is blocked until the count fits the limit. In the cell editors, first assign the four corner positions and roles. Selecting fixed structures or remainder bits displays their type and coordinates. Orientation changes recheck eligibility and turn ineligible `*` marks back into `?`. Version changes clear all cell edits after confirmation.
 
 1. First treat every marked cell as an ordinary erasure.
-2. If that fails, try at most `2^4 = 16` assignments for marked bits only.
+2. If that fails, try `2^count` assignments (up to `2^14 = 16384`) for marked bits only.
 3. Within each assignment trial, also allow the ordinary bounded search for other `?` bits; retain only payload-valid candidates.
 4. If distinct solutions remain, retain multiple candidates and do not declare an assignment unique.
 5. If all assignments fail, continue to the ordinary bounded `?` search using the original observation without priority guesses.
@@ -305,21 +298,24 @@ In the current implementation, payload-constraint propagation remains enabled du
 
 Temporary priority 0/1 assignments constrain only their trial; they are not known input bits. Known-bit counts, mismatch counts, original erased-codeword counts, and Before codeword views use the observation before those assignments. RS erasure counts and correction margins still describe the trial. Explicitly enumerated coordinates and values are retained in candidate provenance and displayed separately from ordinary partial-bit search. Other cells in the same codeword do not inherit priority-assignment provenance. Success on the ordinary route is not recorded as explicit priority enumeration.
 
-The ordinary search inside each priority trial uses the per-block bounds in section 4.3. The maximum of 16 priority assignments is separate from the maximum of 4096 conventional enumeration trials.
+The ordinary search inside each priority trial uses the per-block bounds in section 4.3. The maximum of 16,384 priority assignments is separate from the selected maximum of 4,096, 8,192, or 16,384 conventional enumeration trials.
+
+See the [user guide](USER_GUIDE.en.md#4-edit-cells) for progress display and interruption controls.
 
 ### 4.3 Ordinary partial-bit search
 
-When erasure decoding fails, or when the combined error/erasure correction margin is small, partial codewords with more known evidence are prioritized for a bounded enumeration: at most 12 unknown bits and 4096 trials. The solver fixes enough partial erasures, within those bounds, to reserve capacity for multiple unknown-position errors. This is not an unlimited brute-force search over every `?` in the image.
+When erasure decoding fails, or when the combined error/erasure correction margin is small, partial codewords with more known evidence are prioritized for a bounded enumeration: a shared per-block limit of 12, 13, or 14 bits (default 12), with at most 4,096, 8,192, or 16,384 trials respectively. The same setting bounds the remaining dimension enumerated by the exact RS-constraint route. The solver fixes enough partial erasures, within those bounds, to reserve capacity for multiple unknown-position errors.
 
 These are per-block limits. Only codewords with one to four unknown bits are eligible for conventional enumeration. They are selected by increasing unknown-bit count, preserving local codeword order on ties. Codewords with five to eight unknown bits remain erasures on this route; the separate binary-constraint route may still use them.
 
-### 4.4 Partial-bit RS constraints (automatic, no additional option)
+### 4.4 Partial-bit RS constraints (automatic, shared enumeration limit)
 
 For each format interpretation and RS block, expand the GF(256) zero-syndrome equations into GF(2) equations on individual unknown bits. All known data and ECC bits are constants. Row reduction produces either an inconsistent system or an affine space with dimension `d = unknown bits − rank`. The solver computes bits fixed across every solution and a set of independent measurement bits without enumerating that space.
 
 - With a data/ECC error limit of zero, this exact-match route supplies block candidates. With a positive or unlimited allowance, its candidates supplement conventional errors+erasures decoding; finding an exact solution does not skip that conventional route. This is not exhaustive error-location search under an arbitrary bit-error budget.
-- A space with `d = 0` supplies one conditional RS solution. For `1 <= d <= 12`, all `2^d` assignments are passed to QR-level validation. Larger spaces remain symbolic, not an arbitrary sample of 4096 assignments. QR-level combination limits still apply. The initial priority-`*` pass permits only a unique exact solution, not free-variable enumeration; explicit priority trials and the existing fallback remain available.
-- Payload-structure constraints can reduce the space used for candidate generation. The existing retry without those constraints is retained. Diagnostics and measurement recommendations describe the original observation before structure forcing or temporary priority guesses.
+- A space with `d = 0` supplies one conditional RS solution. For `1 <= d <=` the selected partial-bit limit (12, 13, or 14), all `2^d` assignments are passed to QR-level validation. Larger spaces remain symbolic rather than being partially sampled. QR-level combination limits still apply.
+- In the ordinary attempt before priority `*` search, `*` cells remain unknown and the partial-bit constraint route supplies candidates only from zero-dimensional spaces. Neither free variables nor ordinary partial-bit assignments are enumerated at this stage. If no payload is decoded, 0/1 values are assigned to the `*` cells; each assignment permits partial-bit search and free-variable enumeration up to the configured limit. If no assignment yields a decoded payload, the solver returns to the original input without tentative assignments and tries ordinary partial-bit search, excluding codewords containing `*` from enumeration. See section 4.2 for the search order.
+- Payload-structure constraints can reduce the space used for candidate generation. With **Single-segment assumption** OFF, the search also retries without those constraints. Diagnostics and measurement recommendations describe the original observation before structure forcing or temporary priority guesses.
 - Fixed-bit values never overwrite the input or become manual pins. A completed candidate carries RS partial-bit provenance. A conventional symbol correction margin is not inferred from binary rank.
 - Incorrect known ECC bits can make the system inconsistent **or** produce a consistent but incorrect solution. Even a unique solution is conditional on the version, format and known bits being correct; payload validation, manual locks and final mismatch checks remain mandatory.
 
@@ -335,11 +331,11 @@ Both controls offer Default, Exact match (0 bits), Strict, Relaxed, Manual, and 
 
 The conditions share generated source symbols and are not independent real photographs. Results depend on damage distribution, seed, scoring weights, and finite search/retention budgets. There was no fresh holdout after selecting 10%, and limits cannot reject alternatives that require zero changes to known bits. Reusable evaluation and enumeration commands are in the [study tools](../tools/detector-study/README.md#synthetic-dataecc-error-limit-study); detailed run archives are local research artifacts, not required product documentation.
 
-QRR schema 21 persists each limit mode separately from its remembered manual value. Earlier schemas retain their numeric or unlimited settings. Exact match stays at zero across versions. Explicit ECC/mask selections and fixed-cell protection retain their separate rules.
+QRR schema 24 persists each limit mode separately from its remembered manual value. Exact match stays at zero across versions. Explicit ECC/mask selections and fixed-cell protection retain their separate rules.
 
 ## 5. Candidate validation and ranking
 
-Candidates are rejected for violating fixed values when conflicts are not allowed, contradicting fixed structures outside codewords, exceeding configured error limits, or failing QR structure validation. RS consistency alone is not success; final decoding is also checked.
+Candidates are rejected for violating fixed values when conflicts are not allowed, contradicting fixed structures outside codewords, exceeding configured error limits, or failing QR structure validation. RS consistency alone is insufficient for retaining a candidate. Final decoding separately determines whether a validated candidate can be displayed as text.
 
 The retained-candidate comparator uses this order:
 
@@ -355,7 +351,7 @@ The retained-candidate comparator uses this order:
 
 Ties preserve discovery order; comparisons across geometries finally use the image geometry score. Structure-filled bits are diagnostic information, not a comparator condition. The internal margin placeholder for an RS partial-bit constraint route is zero; the UI reports symbol margin as not applicable.
 
-Identical version, ECC, mask, and corrected codewords are merged into one result across geometries and polarities. Other derivations retain their diagnostics and provenance within the retention allowance, with omissions disclosed. Retrying without structure constraints is preserved. The main display uses the best derivation’s provenance; route counts are not result counts.
+Identical version, ECC, mask, and corrected codewords are merged into one result across geometries and polarities. Other derivations retain their diagnostics and provenance within the retention allowance, with omissions disclosed. The main display uses the best derivation’s provenance; route counts are not result counts.
 
 Equivalent block solutions also retain distinct conventional erasure/enumeration routes, including those found later. A conventional representative is chosen by larger RS margin, fewer search bits, fewer target symbols, then lower penalty; exact ties preserve discovery order. A conventional route remains representative when an equivalent binary-constraint route exists. Combination traversal independently uses the lowest penalty of all retained routes. Improving that traversal rank does not rewrite the representative's own metrics.
 
@@ -363,13 +359,15 @@ Final payload validation has the highest priority. Among candidates without a va
 
 When multiple RS blocks have alternatives, combinations are examined in an initial ranked window of 4096, doubling to 8192, 16,384, 32,768, and 65,536 while no decoded payload has been found. A candidate that has valid QR bitstream structure but cannot be decoded by ZXing does not stop this search. Reaching the bound without a decoded payload is reported as a combination-search limit.
 
-The best-first prefix traversal uses lazy siblings rather than a visited Cartesian grid. Each format/structure pass also has a 65,536 expanded-prefix-node limit, including prefixes rejected by QR validation. This bounds work and frontier memory even if almost no complete combination is valid. Hitting either bound is a search truncation, not proof that no valid payload exists.
+The best-first prefix traversal uses lazy siblings rather than a visited Cartesian grid. Each format/structure pass also has a 65,536 expanded-prefix-node limit, including prefixes rejected by QR validation. This bounds work and frontier memory even if almost no complete combination is valid. Reaching either fixed bound completes the specified policy; it does not prove that no valid payload exists outside that policy.
 
 If no recovery candidate is produced, the engine retains a representative failure for the format-specific reference diagnosis and cell guidance. It is ranked by format disagreement, erasure-capacity bit shortfall, agreement with known bits, and erasure evidence. Separate search-wide evidence aggregates input restrictions, candidate rejections, and unsearched ranges across formats, geometries, and sampling profiles. Final explanations use this aggregate rather than treating one failure as the reason for the entire search. The original matrix remains unchanged.
 
 While combining RS blocks, a prefix can end inside the next mode indicator. An incomplete tail alone does not reject the prefix; the complete stream still undergoes final validation of its terminator, byte alignment, and padding. Passing prefix validation does not constitute successful decoding.
 
-QR combination-search diagnostics are shown on success as well as failure. They distinguish a window ending after success, the combination limit, and the expanded-node limit. An unexplored remainder in any pass is retained even if an unconstrained retry exhausts its combinations. Displayed candidate counts cover retained validated results, not every candidate found during search. Exhausting attempted passes does not imply exhaustive formats, geometries, or solution spaces.
+QR combination-search diagnostics distinguish a window ending after success, the combination limit, and the expanded-node limit.
+
+Search completion means the specified conditions and bounded search policy have been processed. Skipping further search after ordinary RS success, completing the selected partial-bit search (the selected 12, 13, or 14 bits / up to 4,096, 8,192, or 16,384 trials), symbolic analysis above the enumeration limit, and reaching combination/node/geometry limits are policy-defined endings. User interruption, insufficient working memory, or an internal error that prevents required work leaves the search unfinished; insufficient execution records make completion unknown. Candidate and explanation retention omissions are reported separately. See [Recovery Result Fields](RECOVERY_RESULT_FIELDS.en.md) for the messages and their interpretation.
 
 The eight-bit FNC1 second-position application indicator is retained separately from the body. Only the private decoding view sent to ZXing 3.5.4 omits that field; original codewords, RS consistency, structure validation and mismatch counts use the original stream. This also applies after a Structured Append header.
 
@@ -385,11 +383,11 @@ The Android app derives separate result, current-trial, and solver allowances fr
 
 Candidate agreement and candidate-based check guidance compare distinct candidates decoded as text from the same input matrix as the selected candidate. A full QR matrix is generated for each compared candidate, so the comparison uses at most the top 16 to bound memory and computation. If the selected decoded candidate is outside that range, it replaces the last entry. The compared count and the retained decoded-candidate count for that input are explicit; sample agreement is not treated as agreement among all candidates. Candidates that pass QR structure validation without decoding as text can be selected and exported but are excluded from this comparison.
 
-History in QRR schema 21 stores the selected QR’s version, ECC level, mask, corrected codewords, and actual sampling polarity. Recalculation restores selection by QR identity rather than list position; if no candidate matches, selection remains empty. Actual polarity is recorded separately from the user’s automatic/normal/inverted search preference. Older histories without QR identity retain the saved-index restoration path. User-facing history count and size limits are described in the [User Guide](USER_GUIDE.en.md#7-save-resume-and-export).
+History in QRR schema 24 stores the selected QR’s version, ECC level, mask, corrected codewords, and actual sampling polarity. Recalculation restores selection by QR identity rather than list position; if no candidate matches, selection remains empty. Actual polarity is recorded separately from the user’s automatic/normal/inverted search preference. User-facing history count and size limits are described in the [User Guide](USER_GUIDE.en.md#7-save-resume-and-export).
 
 When conflicts with fixed values are not allowed, data/ECC pin conflicts reject the candidate and retain conflicting coordinates, input values, and required candidate values. Otherwise equivalent generic payload failures do not overwrite actionable diagnostics. Temporary priority assignments are not manual input pins.
 
-The result matrix retains a repair reason for each changed module. Tapping a cell displays its value, provenance, applicable structure/constraint/RS operations, and explanatory confidence. The eight modules belonging to its codeword are highlighted only after the user presses “Show same Codeword.”
+The result matrix retains a repair reason for each changed module. Tapping a cell displays its value, provenance, applicable structure/constraint/RS operations, and explanatory confidence. The eight modules belonging to its codeword are highlighted only after the user presses “Show same codeword.”
 
 Cells uniquely determined after recovery are rendered as 0 or 1. Modules that are irrelevant to decoding, such as QR remainder positions, are distinguished from genuinely unresolved `?` values.
 
@@ -421,5 +419,5 @@ The main primitives for finder detection, geometry, tri-state matrices, GF(256) 
 | Geometry hypothesis | One mapping from logical module centers to sampling positions in the image |
 | Provenance | The route that supplied a value: image, user, fixed structure, constraint, RS, and so on |
 | RS consistency | Satisfaction of Reed–Solomon equations; not synonymous with correct QR content |
-| Validated candidate | A candidate that passed QR structure and final decoding; uniqueness is separate |
+| Validated candidate | A candidate that passed QR structure and the specified input constraints; text decoding and uniqueness are separate |
 | Degrees of freedom | Unknown bits that remain independently selectable in a partial-bit RS solution space |

@@ -8,6 +8,61 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PrioritySearchRecoveryTest {
+    private fun damaged(priorityCount: Int): Pair<QrMatrix, Int> {
+        val encoded = Encoder.encode("STAR-STOP", ErrorCorrectionLevel.L, mapOf(EncodeHintType.QR_VERSION to 1))
+        val matrix = QrMatrix(encoded.matrix.width)
+        for (y in 0 until matrix.dimension) for (x in 0 until matrix.dimension) {
+            matrix.set(x, y, if (encoded.matrix.get(x, y).toInt() == 1) ModuleValue.ONE else ModuleValue.ZERO, 1f, ModuleSource.IMAGE)
+        }
+        val extraction = CodewordExtractor.extract(matrix, 1, encoded.maskPattern)
+        extraction.codewords.take(maxOf(8, priorityCount)).forEachIndexed { index, word ->
+            val c = word.coordinates.first()
+            matrix.set(c.x, c.y, ModuleValue.ERASED, 0f, ModuleSource.IMAGE)
+            if (index < priorityCount) matrix.setPrioritySearch(c.x, c.y, true)
+        }
+        val error = extraction.codewords[15].coordinates.first()
+        val value = if (matrix[error.x, error.y].value == ModuleValue.ONE) ModuleValue.ZERO else ModuleValue.ONE
+        matrix.set(error.x, error.y, value, 1f, ModuleSource.IMAGE)
+        return matrix to encoded.maskPattern
+    }
+
+    @Test fun interruptionRetainsValidatedCandidatesAndMarksUncheckedSearch() {
+        val (matrix, mask) = damaged(5)
+        var stopped = false
+        val progress = mutableListOf<Pair<Int, Int>>()
+        val outcome = RecoveryEngine().recoverWithDiagnostics(matrix,
+            formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.L, mask),
+            retentionBudget = RecoveryRetentionBudget(maxCandidates = 1),
+            stopRequested = { stopped },
+            onPriorityProgress = { done, total ->
+                progress += done to total
+                if (done == 31) stopped = true
+            })
+        assertTrue(outcome.candidates.any { it.text == "STAR-STOP" })
+        assertTrue(outcome.candidates.size <= 1)
+        assertTrue(outcome.searchDiagnostic.unsearched)
+        assertTrue(outcome.candidates.all { CombinationSearchStop.USER_INTERRUPTED in it.combinationSearch.stops })
+        assertEquals(31 to 32, progress.last())
+    }
+
+    @Test fun fourteenPriorityCellsReport16384TrialsAndCanStopBeforeEnumeration() {
+        val (matrix, mask) = damaged(14)
+        var stopped = false
+        var total = 0
+        val outcome = RecoveryEngine().recoverWithDiagnostics(matrix,
+            formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.L, mask),
+            stopRequested = { stopped }, onPriorityProgress = { _, count -> total = count; stopped = true })
+        assertEquals(16384, total)
+        assertTrue(outcome.searchDiagnostic.unsearched)
+    }
+
+    @Test(expected = RecoveryCancelledException::class)
+    fun lifecycleCancellationStillEscapesWhenUserStopIsAlsoRequested() {
+        val (matrix, _) = damaged(5)
+        RecoveryEngine().recoverWithDiagnostics(matrix,
+            cancellation = RecoveryCancellation { true }, stopRequested = { true })
+    }
+
     @Test
     fun fourPriorityBitsAreTriedBeforeTheGeneralPartialBitSearch() {
         val text = "STAR-SEARCH"
@@ -76,4 +131,25 @@ class PrioritySearchRecoveryTest {
         matrix.setPrioritySearch(0, 0, true)
         RecoveryEngine().recover(matrix)
     }
+    @Test fun lateStopAfterFinalAssignmentDoesNotLeaveUnfinishedWork() {
+        val (matrix, mask) = damaged(5)
+        var stopped = false
+        val outcome = RecoveryEngine().recoverWithDiagnostics(matrix,
+            formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.L, mask),
+            stopRequested = { stopped }, onPriorityProgress = { done, total -> if (done == total) stopped = true })
+        assertTrue(stopped)
+        assertTrue(outcome.candidates.any { it.text == "STAR-STOP" })
+        assertEquals(SearchCompleteness.COMPLETE, outcome.searchDiagnostic.completeness)
+    }
+
+    @Test fun internalErrorAfterOrdinaryProcessingRetainsPartialExecutionEvidence() {
+        val (matrix, mask) = damaged(5)
+        val outcome = RecoveryEngine().recoverWithDiagnostics(matrix,
+            formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.L, mask),
+            onPriorityProgress = { _, _ -> error("Injected processing failure") })
+        assertEquals(SearchCompleteness.UNSEARCHED, outcome.searchDiagnostic.completeness)
+        assertEquals(setOf(SearchIncompleteReason.INTERNAL_ERROR), outcome.searchDiagnostic.incompleteReasons)
+        assertTrue(outcome.searchDiagnostic.completedSteps > 0)
+    }
+
 }

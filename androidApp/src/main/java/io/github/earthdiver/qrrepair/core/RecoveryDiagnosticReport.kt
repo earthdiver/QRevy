@@ -215,6 +215,11 @@ fun RecoveryCandidate.usedMethodsText(): String = buildString {
     if (displayConditions?.trustSingleSegment == true && !constraintForcedByUserSetting) append(localizedText(
         "\n単一セグメントの仮定はONですが、この候補の補完には使用していません。",
         "\nThe single-segment assumption was ON but was not used to fill this candidate."))
+    if (displayConditions?.trustSingleSegment == true) singleSegmentStatus?.let {
+        append('\n').append(it.description())
+        if (constraintForcedByUserSetting && constraintFilledBits == 0) append(localizedText(
+            "（補完・変更は0bit）", " (0 bits filled/changed)"))
+    }
 }
 
 fun RecoveryCandidate.inputComparisonText(): String = buildString {

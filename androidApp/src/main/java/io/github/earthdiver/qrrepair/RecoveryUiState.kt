@@ -53,12 +53,15 @@ internal class RecoveryUiState {
     var recoveryIndex: Int = -1
     var confidenceMap: Map<Coord, CellConfidence> = emptyMap()
     var recommendation: CellRecommendation? = null
+    private var directSearchDiagnostic: RecoverySearchDiagnostic? = null
     val searchDiagnostic: RecoverySearchDiagnostic?
         get() = if (autoResult != null) autoResult?.searchDiagnostic
+            else if (directSearchDiagnostic != null) directSearchDiagnostic
             else if (recoveries.isNotEmpty()) selectedRecovery?.searchDiagnostic ?: recoveries.firstOrNull()?.searchDiagnostic
             else failure?.searchDiagnostic
 
     fun clear() {
+        directSearchDiagnostic = null
         autoResult = null
         attemptIndex = -1
         samplingProfile = null
@@ -76,6 +79,7 @@ internal class RecoveryUiState {
     }
 
     fun clearAttempt() {
+        directSearchDiagnostic = null
         samplingProfile = null
         geometry = null
         sourceMatrix = null
@@ -127,6 +131,7 @@ internal class RecoveryUiState {
         attemptFailure: RecoveryFailure?,
         preferredIndex: Int,
     ) {
+        directSearchDiagnostic = null
         attemptIndex = index
         samplingProfile = autoResult?.profile
         this.geometry = geometry
@@ -151,7 +156,9 @@ internal class RecoveryUiState {
         candidates: List<RecoveryCandidate>,
         preferredIndex: Int,
         attemptFailure: RecoveryFailure?,
+        diagnostic: RecoverySearchDiagnostic? = null,
     ) {
+        directSearchDiagnostic = diagnostic
         recoveries = candidates
         failure = attemptFailure
         selectRecovery(preferredIndex)

@@ -23,6 +23,10 @@ For a newly imported image, the app tries these routes in order:
 
 The selected route and initial version are recorded in import history. Recovery treats the displayed corners and selected version as user-confirmed inputs, so they must still be reviewed.
 
+## Normal and inverted images
+
+Each boundary is checked with normal and inverted luminance. If both interpretations pass, that boundary is ambiguous and is not accepted. Periodicity and the two-Finder fallback also check both interpretations. If both produce estimates, their versions, corner ordering, and corresponding corners must agree within 0.25 module; contradictory confirmed polarities are rejected. Conflicting periodicity estimates stop automatic estimation rather than falling through to the two-Finder route. Periodicity alone does not confirm polarity. A native or two-Finder result records polarity only when Finder roles are verified.
+
 ## ZXing-C++ boundary validation
 
 Each single native boundary is tested against versions 1–40 and four logical rotations. Coordinates must be finite and inside the image, and the quadrilateral must be convex. Finder-pattern and timing-pattern mismatch rates must each be at most 20%. Candidate ranking weights these scores 0.55 and 0.45; a gap below 0.03 from the runner-up is treated as ambiguous.

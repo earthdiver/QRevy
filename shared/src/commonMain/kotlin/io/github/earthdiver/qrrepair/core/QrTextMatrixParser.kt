@@ -7,7 +7,7 @@ data class ParsedQrTextMatrix(
 
 /** Strict interchange format containing only an N x N grid of 0, 1, ?, and * cells. */
 object QrTextMatrixParser {
-    const val MAX_PRIORITY_CELLS = 4
+    const val MAX_PRIORITY_CELLS = 14
     const val MAX_TEXT_CHARS = 64 * 1024
 
     fun parse(text: String): ParsedQrTextMatrix {

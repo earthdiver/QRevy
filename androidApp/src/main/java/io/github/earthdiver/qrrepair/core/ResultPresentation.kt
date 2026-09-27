@@ -38,7 +38,7 @@ fun RecoveryCandidate.resultExplanationText(): String = buildString {
     if ((manualDataEccMismatches ?: 0) > 0) append(localizedText(
         "\n手動指定と異なる値: ${manualDataEccMismatches}bit（データ・ECC領域）",
         "\nValues differing from manual entries: $manualDataEccMismatches bits (data/ECC region)"))
-    if (combinationSearch.stops.isNotEmpty()) append(localizedText(
+    if (combinationSearch.unsearched) append(localizedText(
         "\n探索は途中で終了しました。未確認の組合せがあります。",
         "\nSearch ended early. Some combinations remain unchecked."))
 }

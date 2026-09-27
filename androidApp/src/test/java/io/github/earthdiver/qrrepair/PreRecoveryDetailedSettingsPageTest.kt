@@ -48,6 +48,8 @@ class PreRecoveryDetailedSettingsPageTest {
         val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         val formatLimitControl = View(activity)
         val dataEccLimitControl = View(activity)
+        val partialBitControl = View(activity)
+        val priorityControl = View(activity)
         val page = PreRecoveryDetailedSettingsPage(
             context = activity,
             buttonFactory = { label, action -> Button(activity).apply {
@@ -62,10 +64,13 @@ class PreRecoveryDetailedSettingsPageTest {
             formatMismatchLimitControl = formatLimitControl,
             dataEccMismatchLimitControl = dataEccLimitControl,
             actions = DetailedSettingsPageActions({}, {}, {}),
+            partialBitSearchControl = partialBitControl,
+            prioritySearchControl = priorityControl,
         )
 
         val content = (page.view as ScrollView).getChildAt(0) as LinearLayout
 
+        assertEquals(content.indexOfChild(partialBitControl) + 1, content.indexOfChild(priorityControl))
         assertSame(formatLimitControl, content.getChildAt(content.childCount - 3))
         assertSame(dataEccLimitControl, content.getChildAt(content.childCount - 2))
         assertEquals(

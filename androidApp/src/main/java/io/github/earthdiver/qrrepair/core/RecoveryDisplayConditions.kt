@@ -9,6 +9,7 @@ data class RecoveryDisplayConditions(
     val format: QrFormatConstraint?,
     val formatLimit: Int?,
     val dataEccLimit: Int?,
+    val partialBitSearchLimit: Int = PartialBitSearchLimit.DEFAULT,
 )
 
 fun inputAgreementText(known: Int, mismatches: Int, format: Boolean): String {
@@ -24,10 +25,6 @@ fun inputAgreementText(known: Int, mismatches: Int, format: Boolean): String {
 }
 
 fun RecoveryDisplayConditions.limitText(formatRegion: Boolean): String {
-    if (formatRegion && format?.candidateCount == 1) return localizedText(
-        "形式情報の不一致上限: 適用しません（ECC・マスクの両方を指定）",
-        "Format mismatch limit: not applied (both ECC and mask are specified)",
-    )
     val limit = if (formatRegion) formatLimit else dataEccLimit
     val nameJa = if (formatRegion) "形式情報" else "データ・ECC"
     val nameEn = if (formatRegion) "Format" else "Data/ECC"
@@ -39,6 +36,8 @@ fun RecoveryCandidate.conditionText(): String = buildString {
     val conditions = displayConditions
     conditions?.let {
         append(it.limitText(true)).append('\n').append(it.limitText(false))
+        append(localizedText("\n部分bit探索・自由度の上限: ${it.partialBitSearchLimit}bit／RSブロック",
+            "\nPartial-bit search / dimension limit: ${it.partialBitSearchLimit} bits per RS block"))
         append(localizedText("\n形式の選択: ECC ", "\nFormat selection: ECC "))
         append(if (it.format?.ecLevel != null) localizedText("指定", "specified") else localizedText("自動", "automatic"))
         append(localizedText(" / マスク ", " / mask "))

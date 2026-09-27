@@ -14,7 +14,8 @@ class CombinationSearchSummaryTest {
             for (stop in CombinationSearchStop.entries) {
                 val stopped = summary.copy(stops = setOf(stop)).description(count)
                 assertTrue(stopped.startsWith(message))
-                assertTrue(stopped.contains("まだ調べていない組合せ"))
+                assertEquals(stop in setOf(CombinationSearchStop.USER_INTERRUPTED, CombinationSearchStop.WORKING_MEMORY_LIMIT),
+                    stopped.contains("まだ調べていない組合せ"))
                 assertFalse(stopped.contains("正解が含まれるとは限りません"))
             }
         }
@@ -27,7 +28,7 @@ class CombinationSearchSummaryTest {
         assertFalse(truncated)
     }
 
-    @Test fun nodeLimitRetainsSuccessfulResultsAndReportsUnexploredCombinations() {
+    @Test fun nodeLimitRetainsSuccessfulResultsAndCompletesPolicy() {
         val stops = linkedSetOf<CombinationSearchStop>()
         val results = bestFirstCartesianProductSequence(listOf(listOf(0, 1), listOf(0, 1)), { it },
             maxExpandedNodes = 2, onLimitReached = { stops += CombinationSearchStop.NODE_LIMIT }).toList()
@@ -35,9 +36,10 @@ class CombinationSearchSummaryTest {
         val summary = CombinationSearchSummary().afterPass(stops).afterPass(emptySet())
         assertEquals(2, summary.passes)
         assertEquals(setOf(CombinationSearchStop.NODE_LIMIT), summary.stops)
+        assertFalse(summary.unsearched)
     }
 
-    @Test fun successfulWindowRetainsTruncationNotification() {
+    @Test fun successfulWindowEndsAtThePolicyBoundary() {
         var stopped = false
         val results = (0..4).asSequence().takeInExpandingWindows(2, 4, { false }, { stopped = true }).toList()
         assertEquals(listOf(0, 1), results)
@@ -71,6 +73,7 @@ class CombinationSearchSummaryTest {
         val results = engine.recover(matrix, maxKnownDataEccMismatches = 0)
         assertEquals(256, results.size)
         assertTrue(results.all { it.searchDiagnostic?.candidatesOmitted == true })
+        assertTrue(results.all { it.searchDiagnostic?.completeness == SearchCompleteness.COMPLETE })
         assertTrue(results.all { it.payloadParsed && CombinationSearchStop.SUCCESS_WINDOW in it.combinationSearch.stops })
         val clean = engine.recover(source, maxKnownDataEccMismatches = 0).single()
         assertTrue(clean.combinationSearch.stops.isEmpty())
