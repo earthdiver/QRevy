@@ -15,8 +15,14 @@ Thank you for helping improve QR Repair. Contributions should preserve explainab
 - Preserve provenance for inferred, corrected, and user-edited modules.
 - Preserve manual `0 / 1 / ?` edits and hard constraints.
 - Do not silently weaken QRR validation, backup exclusions, source-image integrity checks, or bounded-search diagnostics.
-- When changing the QRR schema or supported versions, update both `SECURITY.md` and `SECURITY.ja.md` and retain compatibility/validation tests for every supported input format.
+- When changing the QRR schema or supported versions, update both `SECURITY.md` and `SECURITY.ja.md`, both User Guides, and the release notes, and retain compatibility/validation tests for every supported input format.
 - Confidence values are explanatory heuristics, not probabilities.
+
+## Documentation changes
+
+Keep paired English/Japanese documents and localized in-app notices aligned with the current UI. Quote actual control labels; use consistent product terms in explanatory prose. Describe selectable, structure-validated candidates separately from candidates decoded as text, and report search completion separately from candidate count.
+
+Maintain dependency versions and license texts in `THIRD_PARTY_NOTICES.md`, then copy it unchanged to `androidApp/src/main/res/raw/third_party_notices.txt`. `NOTICE.md` points to that inventory. Check local links and the relevant resource-display tests after updating app notices.
 
 ## Platform boundary
 

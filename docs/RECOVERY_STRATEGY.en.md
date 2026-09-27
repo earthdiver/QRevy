@@ -13,10 +13,11 @@ QR Repair does not guess one answer from an image and immediately declare it cor
 | Display or state | What has been established | What it does not establish by itself |
 | --- | --- | --- |
 | RS-consistent | The RS equations hold under the selected version, format, and known bits | The original QR content, correct geometry, or correct format |
-| Payload-validated candidate | QR payload structure and final decoding succeeded in addition to RS | The real-world author's intended content or a unique solution |
+| Validated candidate | QR payload structure and the specified input constraints passed in addition to RS | The real-world author's intended content or a unique solution |
+| Text-decoded candidate | Final ZXing decoding also produced text | That the text matches the original content |
 | Multiple candidates | Distinct solutions passed validation | Which candidate was the original content |
 | No candidate | No validated candidate was found within the finite search performed | That no correct solution exists |
-| Candidate agreement | The cell agrees across the validated candidates selected for comparison | Mathematical uniqueness across unretained or unexplored solutions |
+| Candidate agreement | The cell agrees across the text-decoded candidates selected for comparison | Mathematical uniqueness across unretained or unexplored solutions |
 | Confidence | An explanatory comparison of image evidence and provenance | A statistical probability of correctness |
 
 Recovery checks described as requiring fixed-value agreement in this document apply when **Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)** is OFF. ON allows correction while retaining fixed designations. Consistency with explicit ECC/mask selections remains enforced (section 3.1).
@@ -51,7 +52,7 @@ One possible candidate:  1 0 0 1 1 0 0 1
 | User enters `0` or `1` | `0` or `1` | Retain the input value and its fixed or tentative designation |
 | User applies `*` | `?` | Prioritizes bounded 0/1 enumeration for that cell if the ordinary route fails |
 
-Even if the last line in the example is RS-consistent, it is not accepted on that basis alone. It becomes a validated candidate only after format, manual constraints, QR payload structure, and final decoding also pass.
+Even if the last line in the example is RS-consistent, it is not accepted on that basis alone. It becomes a validated candidate only after format, manual constraints, error limits, and QR payload structure also pass. Final decoding separately determines whether it can be displayed as text.
 
 ## 2. Pipeline
 
@@ -78,27 +79,15 @@ Contrast and brightness are bounded integer settings from −100 to 100. Each RG
 
 ### 2.2 Initial version and corner estimation
 
-On new image import, the Android adapter obtains Model 2 boundaries from ZXing-C++ 3.1.1. Shared code tests versions 1–40 and four rotations against a single boundary. Finder and timing mismatch must each be at most 20%, with a runner-up gap of at least 0.03 in the score weighted 0.55/0.45. Accepted boundaries are converted to outer module centers. Decoded native text is not used as a recovery result.
+On new image import, the app first validates Model 2 boundaries from ZXing-C++ and converts accepted boundaries to outer module centers. It searches versions 1–40 and logical rotations; native decoded text is not used as a recovery result. Multiple boundaries can be merged only if all agree on the same QR.
 
-Each detected set of corners is checked with both normal and reversed black and white. If both interpretations meet the requirements, the app cannot choose between them and does not establish a grid from that candidate. When it can also automatically assign the Finder centers and their top-left, top-right, and bottom-left roles, it saves whether the code is normal or inverted.
+If native boundaries cannot be accepted, the app tries grid periodicity, then geometry from two individually detected Finders. Normal and inverted interpretations are checked. Conflicting periodicity results stop automatic estimation rather than falling through to another estimator; multiple native boundaries also disable the two-Finder route. A two-Finder estimate covers version 2 and later, approximately under a similarity transform. A diagonal pair can establish top-right and bottom-left roles from both timing axes; otherwise a verified lower-right alignment pattern may support corners without assigning roles.
 
-Multiple boundaries are validated individually. They are treated as duplicates only when every pair agrees in version and logical orientation, with each corresponding corner within 0.25 module. A representative that passes the automatic-role gate is preferred; coordinates are not averaged and repetition does not increase confidence. An unverified boundary or a distinct QR candidate prevents merging.
+The estimates are editable starting values. If no estimate is accepted, the app displays version 1 and default corners. Recovery treats the displayed corners and selected version as confirmed inputs, so review them before repairing.
 
-If the boundary is rejected, multiple boundaries cannot be merged, or JNI loading or execution fails, the existing grid-period estimator is tried. Luminance gradients identify two orthogonal edge families, and their projected coordinates are searched for a phase and module pitch that align with an evenly spaced boundary grid. When a half-period or another harmonic has similar agreement, the fundamental period is preferred so that the harmonic is not mistaken for a different version.
+Physical corner positions and logical orientation are separate. Strong native evidence can automatically assign all three Finder roles; a verified diagonal pair can assign two. Periodicity alone does not assign roles. Automatic assignment runs only on new import and is recorded in history. Clearing all roles makes logical orientation unassigned while retaining corners and cell edits, and saved assignments are not re-estimated on reopening.
 
-The periodicity estimator checks both the adjusted image and its black-and-white inverse. If neither yields a grid, the two-Finder fallback also checks both. A result from only one interpretation can be used. When both yield a grid, their versions and corner ordering must agree, with corresponding corners within 0.25 module; otherwise automatic estimation stops. Conflicting results are not bypassed by trying a later estimator. Periodicity alone does not establish whether black and white are reversed. A two-Finder result records that distinction only when its Finder roles are verified; opposite confirmed interpretations are rejected even if their corners agree.
-
-An initial version is set from `dimension = 17 + 4 × version` only when the pitches on both axes agree, the extent supported by definite-black pixels is approximately square, and it sufficiently matches one of the permitted dimensions `21, 25, 29, …, 177`. A phase-aligned window spanning that dimension also supplies initial corners at the centers of the outer modules. Large gray damaged regions and isolated dark background pixels are excluded from definite-black boundary evidence so that they do not enlarge the symbol by several modules.
-
-If periodicity also fails, a fallback uses individual Finder detection and two-Finder geometry hypotheses. It checks both Finders’ pitch, axes, and patterns. For a diagonal pair, both timing axes can establish the observed top-right and bottom-left roles without an alignment pattern. Each axis requires at least eight known cells covering at least 60% of its length, at least three black and three white observations, and at most 5% mismatches. These checks must also pass at offsets of 0.2 module in each axial direction. Unknown cells do not count as matches. A score gap of at least 0.12 against competing hypotheses and white-separator checks are required.
-
-If timing cannot establish roles, a verified lower-right alignment pattern may still support provisional corners without role assignment. The fallback covers version 2 and later symbols approximately described by a similarity transform. Version 1 has only five timing cells per axis, below the evidence requirement. Multiple native boundaries disable the fallback. A hidden Finder is never treated as observed.
-
-These estimates are editable starting values, not proof of recovery. If every estimator fails, the UI falls back to version 1 and default corners. Recovery treats the displayed corners and selected version as confirmed inputs.
-
-Physical corner positions and the choice of logical coordinate `(0, 0)` are separate. A grid derived from ZXing-C++ can automatically assign Finder centers and roles through the following gate: at most 2/49 mismatches per Finder, 1/15 per white separator, 5% timing mismatch, a score gap of at least 0.08 including rejected alternatives, and at least two pixels per module along every edge. Samples offset by 0.25 module in each axial direction must also have at most 2/49 mismatches per Finder. Weaker native grids and periodicity estimates do not assign roles automatically. Two-Finder estimates use the separate conditions above.
-
-Automatic assignment runs only on new image import and is recorded in history. Saved Finder assignments are not re-estimated. Press **Clear** and tap a green Finder to remove its assignment; clearing all roles also unassigns logical orientation. Corners and cell edits are retained, and cells are not marked as manually specified. The thresholds are heuristics, not probabilities. See the [implementation and validation record](ZXING_CPP_INTEGRATION.en.md) for details.
+See [Initial grid estimation and automatic Finder assignment](ZXING_CPP_INTEGRATION.en.md) for the mismatch thresholds, ambiguity gates, polarity handling, and validation measurements. These are heuristics, not correctness probabilities.
 
 ### 2.3 Manual Finder-role assignment
 
@@ -189,7 +178,7 @@ Even when neither rule applies, the engine creates a **provisional candidate** i
 
 Agreement or complementary reconstruction of the five information bits is not treated as BCH correction and does not confirm the format.
 
-A BCH-trusted candidate becomes the confirmed format for that geometry when it satisfies the manual-value consistency conditions in section 3.2. Failure of RS recovery or final payload validation does not cause a fallback to the other 31 formats. A provisional candidate is not confirmed: it stops the search only after final payload validation; otherwise the engine falls back to the remaining candidate set, at most 31 formats after excluding the attempted one.
+A BCH-trusted candidate becomes the confirmed format for that geometry when it satisfies the manual-value consistency conditions in section 3.2. Failure of RS recovery or final payload validation does not cause a fallback to the other 31 formats. A provisional candidate is not confirmed: it stops the search only after a candidate passes final text decoding; otherwise the engine falls back to the remaining candidate set, at most 31 formats after excluding the attempted one.
 
 The BCH-confirmed and provisional single-format fast paths apply when both ECC and mask are automatic. With either selection explicit, recovery tries the permitted set in rank order: at most eight formats for ECC only, four for mask only, and one for both. A partial explicit selection does not narrow the set to a BCH-trusted format alone. Format-error limits and manual pins further restrict the attempted set.
 
@@ -346,7 +335,7 @@ QRR schema 24 persists each limit mode separately from its remembered manual val
 
 ## 5. Candidate validation and ranking
 
-Candidates are rejected for violating fixed values when conflicts are not allowed, contradicting fixed structures outside codewords, exceeding configured error limits, or failing QR structure validation. RS consistency alone is not success; final decoding is also checked.
+Candidates are rejected for violating fixed values when conflicts are not allowed, contradicting fixed structures outside codewords, exceeding configured error limits, or failing QR structure validation. RS consistency alone is insufficient for retaining a candidate. Final decoding separately determines whether a validated candidate can be displayed as text.
 
 The retained-candidate comparator uses this order:
 
@@ -398,7 +387,7 @@ History in QRR schema 24 stores the selected QR’s version, ECC level, mask, co
 
 When conflicts with fixed values are not allowed, data/ECC pin conflicts reject the candidate and retain conflicting coordinates, input values, and required candidate values. Otherwise equivalent generic payload failures do not overwrite actionable diagnostics. Temporary priority assignments are not manual input pins.
 
-The result matrix retains a repair reason for each changed module. Tapping a cell displays its value, provenance, applicable structure/constraint/RS operations, and explanatory confidence. The eight modules belonging to its codeword are highlighted only after the user presses “Show same Codeword.”
+The result matrix retains a repair reason for each changed module. Tapping a cell displays its value, provenance, applicable structure/constraint/RS operations, and explanatory confidence. The eight modules belonging to its codeword are highlighted only after the user presses “Show same codeword.”
 
 Cells uniquely determined after recovery are rendered as 0 or 1. Modules that are irrelevant to decoding, such as QR remainder positions, are distinguished from genuinely unresolved `?` values.
 
@@ -430,5 +419,5 @@ The main primitives for finder detection, geometry, tri-state matrices, GF(256) 
 | Geometry hypothesis | One mapping from logical module centers to sampling positions in the image |
 | Provenance | The route that supplied a value: image, user, fixed structure, constraint, RS, and so on |
 | RS consistency | Satisfaction of Reed–Solomon equations; not synonymous with correct QR content |
-| Validated candidate | A candidate that passed QR structure and final decoding; uniqueness is separate |
+| Validated candidate | A candidate that passed QR structure and the specified input constraints; text decoding and uniqueness are separate |
 | Degrees of freedom | Unknown bits that remain independently selectable in a partial-bit RS solution space |

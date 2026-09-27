@@ -37,8 +37,6 @@ For compactness, the UI uses “Finder” for a finder pattern, “cell” for a
 - Diagnostic analysis of additional QR segments after the terminator, including raw tail bits and correction provenance
 - Offline, on-device processing
 
-The supported symbol family is QR Code Model 2, versions 1 through 40. Model 1, Micro QR, and rMQR are unsupported.
-
 ## Basic workflow
 
 1. Load an image, capture one with the camera, or import a QR matrix text file containing `0 / 1 / ? / *`.
@@ -47,6 +45,8 @@ The supported symbol family is QR Code Model 2, versions 1 through 40. Model 1, 
 4. Review Finder positions and roles, which are assigned automatically when image agreement is sufficient. To correct an assignment, press **Clear**, tap the green Finder, and assign the intended role.
 5. Adjust cells and search options in advanced settings when needed.
 6. Start recovery and inspect the decoded content and per-cell explanations.
+
+For text input, start with a [matrix template for the selected version](templates/text-matrices/README.md).
 
 See the [User Guide](docs/USER_GUIDE.en.md) for cell editing, advanced settings, result review, saved work, and Classic/Modern navigation. The search order, constraints, Reed–Solomon processing, and candidate-validation rules are collected in [Recovery Strategy](docs/RECOVERY_STRATEGY.en.md).
 

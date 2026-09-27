@@ -14,6 +14,8 @@ A recovered result is not proof that it matches the original content. Independen
 | Camera | Capturing the symbol now | Confirm the crop after capture; the temporary capture and lossless hand-off image are deleted after use |
 | `0 / 1 / ? / *` matrix text | Module decisions prepared elsewhere | Only the permitted characters and valid QR dimensions are accepted |
 
+Ready-to-edit [matrix templates for versions 1–40](../templates/text-matrices/README.md) are available for text import.
+
 Prefer an image containing the complete QR and, when possible, its surrounding quiet zone, with module centers that are not completely blurred. Never attach a sensitive real QR image to a public issue.
 
 ## 2. Adjust image and geometry
@@ -24,7 +26,7 @@ Prefer an image containing the complete QR and, when possible, its surrounding q
 4. Review the black/unknown/white thresholds so gray damage remains `?` where appropriate.
 5. Enable **Treat detected color clusters as unknown (?)** only when colored damage should be treated as unknown. It starts disabled.
 
-**Image adjustment** in the crop screen switches the bottom tool row to one slider for **Contrast** or **Brightness**, keeping the image area unchanged at standard width and text size. Use the item menu for numeric entry, an individual reset, or **Reset all image adjustments**. **Invert** is available on the normal tool row. **Done** closes the slider; it does not start analysis. On narrow screens or with large text, an open slider uses two rows. Closing it returns that space to the image; the normal tool row stays directly above the analysis buttons.
+**Image adjustment** in the crop screen opens a **Contrast** or **Brightness** slider. Use the item menu for numeric entry, an individual reset, or **Reset all image adjustments**. **Invert** is available on the normal tool row. **Done** closes the slider; it does not start analysis.
 
 **Before** toggles the same image between adjusted and unadjusted tones without changing the crop or rotation. Analysis always uses the adjustment settings; while comparing, the action says **Analyze adjusted image**.
 
@@ -112,19 +114,21 @@ Search completion covers the specified conditions and bounded search policy. It 
 
 Review results in this order:
 
-1. Whether the outcome is Repair succeeded, incomplete, or failed.
+1. Whether any recovery candidates meeting the specified conditions were found, and whether the selected candidate can be displayed as text.
 2. The number of validated candidates and distinct contents.
 3. ECC level, mask, format mismatches, and data/ECC mismatches.
-4. Any search-limit or candidate-retention warning.
+4. Search completion, unchecked combinations, and omitted-candidate notices.
 5. Decoded content and repair reasons for important cells.
 
-Open diagnostics with **Show detailed results**, then tap a cell to inspect provenance. **Show same Codeword** highlights the other cells in its eight-bit codeword. Format-information cells show their role and bit position; calculation details compare both copies before and after repair and after removing the fixed format mask. The button changes to **Show ECC level cells**, **Show mask number cells**, or **Show format correction bits**, highlighting related cells in both copies. When multiple candidates remain, compare their content and candidate-agreement scope.
+Use **Show diagnostics** for the search and candidate report. Open **Show detailed results** for the enlarged QR, then tap a cell to inspect provenance. **Show same codeword** highlights the other cells in its eight-bit codeword. Format-information cells show their role and bit position; calculation details compare both copies before and after repair and after removing the fixed format mask. The button changes to **Show ECC level cells**, **Show mask number cells**, or **Show format correction bits**, highlighting related cells in both copies. When multiple candidates remain, compare their content and candidate-agreement scope.
 
 On the recovery result screen, **Analyze additional segments after terminator** appears below the diagnostics only when error-correction candidates were rejected because the QR data structure did not validate. It parses the data after the four-bit terminator identified from the payload structure as QR segments. Consecutive `0000` sequences after the terminator are skipped in four-bit steps, preserving ECI and FNC1 context. This is diagnostic evidence only: it does not make a rejected candidate valid, and any displayed content still requires independent verification.
 
 In the enlarged repair result, enabling **Unmask** displays both the before and after cells with the selected candidate’s QR mask removed. Function patterns and unknown cells stay unchanged. This only changes the display: saved cell values, manual edits, and fixed constraints are preserved. Clear the checkbox to restore the masked display. The checkbox is disabled when no recovery candidate is selected; scroll the controls horizontally on narrow screens.
 
 ## 7. Save, resume, and export
+
+In this guide, **Saved work** is called **Recent work** in Classic.
 
 Import automatically saves the source image and a session before you press Save or Repair. **Saved work** retains at most 20 sessions; new imports also count toward this limit. When it is exceeded, the least recently saved work and its source image are automatically deleted. The limit also applies on startup. Touch and hold an entry to delete that work, or use **Delete all**.
 
@@ -136,7 +140,7 @@ Reopening work or a history checkpoint recalculates recovery candidates from the
 
 Deleting the currently open saved work leaves the on-screen work available. Choosing **Save** or running repair afterward saves it as a new session.
 
-Explicitly exporting a recovered image or other result moves it outside app-private storage. Review sharing and backup behavior at the destination. See [Privacy](../PRIVACY.md) and [Security](../SECURITY.md).
+**Copy content** sends the complete recovered text to the operating-system clipboard. Exporting a recovered image writes it outside app-private storage. Saving work inside the app keeps it in app-private storage. Review sharing and backup behavior at the destination. See [Privacy](../PRIVACY.md) and [Security](../SECURITY.md).
 
 ## 8. Appearance and navigation
 

@@ -13,8 +13,9 @@ This document describes the current boundary between the Kotlin Multiplatform sh
 
 The dependency direction is platform application → shared core. When common logic needs a platform service, define a small interface in common code and implement it in the platform layer; do not import a platform framework into `commonMain`.
 
-## What moved to commonMain
-The following components are now compiled as Kotlin Multiplatform common code:
+## Current commonMain components
+
+The following components compile as Kotlin Multiplatform common code:
 - `QrTypes.kt`
 - `LumaImage.kt`
 - `Homography.kt`
@@ -23,10 +24,14 @@ The following components are now compiled as Kotlin Multiplatform common code:
 - `ReedSolomonErasures.kt`
 - `QrBlockModels.kt`
 - `PartialCodewordSolver.kt`
+- `PartialBitSearchLimit.kt`
 - `PayloadConstraintSolver.kt`
 - `RsBitConstraintSolver.kt`
 - `RecoveryCancellation.kt` (platform-independent cancellation callback)
+- `SearchCompleteness.kt`
 - `GridPeriodicityEstimator.kt`
+- `InitialGridEstimator.kt`
+- `TwoFinderGridEstimator.kt`
 - `QrTextMatrixParser.kt`
 - `QRRepairCoreApi.kt`
 
