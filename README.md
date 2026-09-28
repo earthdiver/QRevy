@@ -34,7 +34,7 @@ For compactness, the UI uses “Finder” for a finder pattern, “cell” for a
 - Per-cell repair explanations and same-codeword highlighting
 - Recovered-image export
 - Work history and session storage
-- Diagnostic analysis of additional QR segments after the terminator, including raw tail bits and correction provenance
+- Analyze data after the terminator using alternative interpretations, and inspect decoded content, parsing issues, and raw data
 - Offline, on-device processing
 
 ## Basic workflow

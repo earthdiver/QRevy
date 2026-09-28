@@ -107,6 +107,122 @@ class PostTerminatorDialogTest {
         }
     }
 
+    @Test fun switchesInterpretationsAndRawOffsetsWithoutMixingTextOrFillingPartialBytes() {
+        for (language in listOf(AppLanguage.ENGLISH, AppLanguage.JAPANESE)) {
+            AppLanguageManager.save(RuntimeEnvironment.getApplication(), language)
+            AppLanguageManager.wrap(RuntimeEnvironment.getApplication())
+            val data = PayloadBits().apply {
+                put(2, 4); put(1, 9); put(10, 6); put(0, 4); put(0, 1); byteSegment("A@")
+            }.finish()
+            val original = data.copyOf()
+            val report = PostTerminatorAnalysis.analyze(data, 1, ErrorCorrectionLevel.L)
+            val controller = Robolectric.buildActivity(android.app.Activity::class.java).setup()
+            try {
+                val dialog = showPostTerminatorDialog(controller.get(), PostTerminatorAnalysis.Attempt(listOf(
+                    PostTerminatorAnalysis.View(PostTerminatorAnalysis.Source.OBSERVED, report)), false), 1, "L", 0)
+                fun views() = descendants(dialog.window!!.decorView)
+                fun values() = views().filterIsInstance<TextView>().map { it.text.toString() }
+                val japanese = language == AppLanguage.JAPANESE
+                assertTrue(values().any { it.contains(if (japanese)
+                    "追加セグメントの開始位置を選択してください" else "Choose the starting position of the additional segments") })
+                assertTrue(values().any { it.contains(if (japanese)
+                    "本文のデータの先頭を bit 0" else "bit 0 of the main payload data") })
+                val choices = views().filterIsInstance<android.widget.Spinner>().first().adapter
+                for (i in 0 until choices.count) {
+                    val candidate = (listOf(report) + report.alternatives)[i]
+                    assertTrue(choices.getItem(i).toString().contains("bit ${candidate.boundaries.first().startBit}"))
+                }
+                assertTrue("BR" in values())
+                assertFalse("A@" in values())
+                views().filterIsInstance<android.widget.Spinner>().first().setSelection(1)
+                shadowOf(Looper.getMainLooper()).idle()
+                assertTrue("A@" in values())
+                assertFalse("BR" in values())
+                assertFalse("ABR" in values())
+                views().filterIsInstance<Button>().single {
+                    it.text == if (japanese) "終端後の生データを表示／閉じる" else "Show/hide raw tail bits and HEX"
+                }.performClick()
+                val basis = views().filterIsInstance<android.widget.Spinner>().last()
+                basis.setSelection(1)
+                shadowOf(Looper.getMainLooper()).idle()
+                assertTrue(values().any { it.contains("24: 01000000  40") })
+                basis.setSelection(2)
+                shadowOf(Looper.getMainLooper()).idle()
+                val offset = views().filterIsInstance<android.widget.EditText>().single()
+                val show = views().filterIsInstance<Button>().single {
+                    it.text == if (japanese) "指定位置から表示" else "Show from starting bit"
+                }
+                assertTrue(offset.isEnabled)
+                val keyboard = controller.get().getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+                fun openKeyboard() {
+                    offset.requestFocus()
+                    keyboard.showSoftInput(offset, 0)
+                    assertTrue(shadowOf(keyboard).isSoftInputVisible)
+                }
+                openKeyboard()
+                offset.setText("36")
+                offset.onEditorAction(android.view.inputmethod.EditorInfo.IME_ACTION_DONE)
+                assertFalse(shadowOf(keyboard).isSoftInputVisible)
+                assertTrue(values().any { it.contains("36: 01000001  41") && it.contains("148: 0001  --") })
+                openKeyboard()
+                offset.setText("40")
+                offset.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_ENTER))
+                offset.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_ENTER))
+                assertFalse(shadowOf(keyboard).isSoftInputVisible)
+                assertTrue(values().any { it.contains("40: ") })
+                openKeyboard()
+                offset.setText("22")
+                offset.onEditorAction(android.view.inputmethod.EditorInfo.IME_ACTION_DONE)
+                assertNotNull(offset.error)
+                assertTrue(shadowOf(keyboard).isSoftInputVisible)
+                assertTrue(values().any { it.contains("40: ") })
+                offset.setText("36"); show.performClick()
+                assertFalse(shadowOf(keyboard).isSoftInputVisible)
+                offset.setText("22"); show.performClick()
+                assertNotNull(offset.error)
+                assertTrue(values().any { it.contains("36: 01000001  41") })
+                basis.setSelection(0)
+                shadowOf(Looper.getMainLooper()).idle()
+                assertTrue(values().any { it.contains("23: 00100000  20") })
+                assertArrayEquals(original, data)
+                dialog.dismiss()
+            } finally { controller.pause().stop().destroy() }
+        }
+    }
+
+    @Test fun showsOpaqueModeAndPaddingEvidenceAndPreservesUnknownRawBits() {
+        AppLanguageManager.save(RuntimeEnvironment.getApplication(), AppLanguage.ENGLISH)
+        AppLanguageManager.wrap(RuntimeEnvironment.getApplication())
+        val data = PayloadBits().apply {
+            put(2, 4); put(1, 9); put(10, 6); put(0, 4); put(0, 1)
+            put(0, 4); put(0, 4); put(12, 4); put(0x55, 8); put(0xA6, 8)
+        }.finish()
+        val unknown = IntArray(data.size).apply { this[5] = 1 }
+        val report = PostTerminatorAnalysis.analyze(data, 1, ErrorCorrectionLevel.L, unknown)
+        val controller = Robolectric.buildActivity(android.app.Activity::class.java).setup()
+        try {
+            val dialog = showPostTerminatorDialog(controller.get(), PostTerminatorAnalysis.Attempt(listOf(
+                PostTerminatorAnalysis.View(PostTerminatorAnalysis.Source.OBSERVED, report)), false), 1, "L", 0)
+            fun views() = descendants(dialog.window!!.decorView)
+            fun values() = views().filterIsInstance<TextView>().map { it.text.toString() }
+            views().filterIsInstance<android.widget.Spinner>().first().setSelection(1)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(values().any { it.contains("bit 32 / Mode (data format): 1100") && it.contains("Unsupported") })
+            assertTrue(values().any { it.contains("From the next byte at bit 24, skipping any consecutive 0000 sequences") })
+            assertTrue(values().any { it.contains("bits 23–31 / 9 bits (all confirmed zero; retained in raw data)") })
+            val skippedIndex = values().indexOfFirst { it.startsWith("Skipped during parsing:") }
+            val startIndex = values().indexOfFirst { it.startsWith("Additional segment starting position:") }
+            assertTrue(skippedIndex >= 0 && skippedIndex < startIndex)
+            assertTrue(values().any { it.contains("alternating EC / 11 from bit 56") })
+            views().filterIsInstance<Button>().single { it.text == "Show/hide raw tail bits and HEX" }.performClick()
+            val basis = views().filterIsInstance<android.widget.Spinner>().last()
+            basis.setSelection(1)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(values().any { it.contains("40: 0101101?  --") })
+            dialog.dismiss()
+        } finally { controller.pause().stop().destroy() }
+    }
+
     @Test fun selectingDifferentSourcesHidesIneligibleCombinedContent() {
         AppLanguageManager.save(RuntimeEnvironment.getApplication(), AppLanguage.ENGLISH)
         val same = PostTerminatorAnalysis.analyze(PayloadBits().apply {

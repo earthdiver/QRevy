@@ -9,6 +9,10 @@ internal object PostTerminatorAnalysis {
     enum class Source { OBSERVED, CONVENTIONAL_RS, RECOVERY }
     data class Group(val startBit: Int, val endBit: Int, val modes: List<Int>, val text: String?)
     data class CombinedContent(val mode: Int, val text: String?, val bytes: ByteArray?)
+    enum class StartKind { IMMEDIATE, ZERO_MODES, BYTE_ALIGNED }
+    enum class StopReason { UNKNOWN_MODE_BITS, UNSUPPORTED_MODE, INVALID_OR_INCOMPLETE_SEGMENT, NO_PAYLOAD }
+    data class Boundary(val afterTerminatorBit: Int, val startBit: Int, val kind: StartKind)
+    data class Stop(val bit: Int, val modeBits: String, val reason: StopReason)
     data class Report(
         val status: Status,
         val terminatorBit: Int? = null,
@@ -16,6 +20,11 @@ internal object PostTerminatorAnalysis {
         val groups: List<Group> = emptyList(),
         val remainingStartBit: Int? = null,
         val combinedContent: CombinedContent? = null,
+        val boundaries: List<Boundary> = emptyList(),
+        val stop: Stop? = null,
+        val paddingCandidateStartBit: Int? = null,
+        val alternatives: List<Report> = emptyList(),
+        val alternativesTruncated: Boolean = false,
     )
     data class View(
         val source: Source,
@@ -74,56 +83,94 @@ internal object PostTerminatorAnalysis {
         val original = data.indices.flatMap { i -> (7 downTo 0).map { bit ->
             if (unknownMasks[i] and (1 shl bit) != 0) null else (data[i].toInt() ushr bit) and 1
         } }
-        fun scan(bits: List<Int?>): StrictQrPayloadValidator.Prefix? =
-            StrictQrPayloadValidator.inspectPrefix(pack(bits), version, masks(bits), bits.size)
-        var working = original
-        var prefix = scan(working) ?: return Report(Status.UNREADABLE_PREFIX)
-        val firstTerminator = prefix.terminatorBit ?: return Report(Status.NO_TERMINATOR)
+        fun scan(bits: List<Int?>, failure: ((Int) -> Unit)? = null): StrictQrPayloadValidator.Prefix? =
+            StrictQrPayloadValidator.inspectPrefix(pack(bits), version, masks(bits), bits.size, failure)
+        val main = scan(original) ?: return Report(Status.UNREADABLE_PREFIX)
+        val firstTerminator = main.terminatorBit ?: return Report(Status.NO_TERMINATOR)
         val tail = original.drop(firstTerminator + 4).joinToString("") { it?.toString() ?: "?" }
-        val groups = mutableListOf<Group>()
-        val hasMainPayload = prefix.modes.isNotEmpty()
-        var parsedText: String? = null
-        fun report(status: Status, remaining: Int? = null): Report {
-            val commonMode = prefix.modes.distinct().singleOrNull()
-            val combined = if (hasMainPayload && groups.isNotEmpty() && commonMode != null) {
-                val bytes = if (commonMode == 4) prefix.byteSegments.flatMap { it.second.asList() }.toByteArray() else null
-                CombinedContent(commonMode, parsedText, bytes)
-            } else null
-            return Report(status, firstTerminator, tail, groups.toList(), remaining, combined)
+        fun skipZeroModes(start: Int): Int {
+            var position = start
+            while (position + 4 <= original.size && (position until position + 4).all { original[it] == 0 })
+                position += 4
+            return position
         }
-        var removed = 0
-        repeat(16) {
-            val terminator = prefix.terminatorBit ?: return report(Status.ADDITIONAL_SEGMENTS)
-            var originalStart = terminator + removed + 4
-            if (canonicalFiller(original, originalStart))
-                return report(if (groups.isEmpty()) Status.STANDARD_PADDING else Status.ADDITIONAL_SEGMENTS)
-            val beforeText = decode(working.take(terminator), version, ecLevel)
-            // Skip only complete, known zero mode indicators at the segment boundary.
-            // These do not consume the additional-group budget or alter the original data.
-            var resume = terminator + 4
-            while (resume + 4 <= working.size && (resume until resume + 4).all { working[it] == 0 }) {
-                resume += 4
-                originalStart += 4
+        val results = mutableListOf<Report>()
+        var truncated = false
+        // Bound branching as well as group depth. Keep the existing interpretation first.
+        fun walk(working: List<Int?>, prefix: StrictQrPayloadValidator.Prefix, removed: Int,
+            groups: List<Group>, boundaries: List<Boundary>, parsedText: String?) {
+            if (results.size >= 16) { truncated = true; return }
+            fun report(status: Status, remaining: Int? = null, stop: Stop? = null,
+                starts: List<Boundary> = boundaries) {
+                val commonMode = prefix.modes.distinct().singleOrNull()
+                val combined = if (main.modes.isNotEmpty() && groups.isNotEmpty() && commonMode != null) {
+                    val bytes = if (commonMode == 4) prefix.byteSegments.flatMap { it.second.asList() }.toByteArray() else null
+                    CombinedContent(commonMode, parsedText, bytes)
+                } else null
+                results += Report(status, firstTerminator, tail, groups, remaining, combined, starts, stop)
             }
-            // Keep earlier segments so ECI and FNC1 context remains in effect.
-            val removedBits = resume - terminator
-            working = working.take(terminator) + working.drop(resume)
-            removed += removedBits
-            val next = scan(working) ?: return report(Status.UNPARSED_TAIL, originalStart)
-            val newModes = next.modes.drop(prefix.modes.size)
-            if (newModes.isEmpty()) return report(Status.UNPARSED_TAIL, originalStart)
-            val end = next.endBit
-            val combinedText = decode(working.take(end), version, ecLevel)
-            val text = if (beforeText != null && combinedText?.startsWith(beforeText) == true)
-                combinedText.substring(beforeText.length) else null
-            groups += Group(originalStart, end + removed, newModes, text)
-            prefix = next
-            parsedText = combinedText
-            if (next.terminatorBit == null) return report(Status.ADDITIONAL_SEGMENTS)
+            val terminator = prefix.terminatorBit ?: run { report(Status.ADDITIONAL_SEGMENTS); return }
+            val after = terminator + removed + 4
+            if (canonicalFiller(original, after)) {
+                report(if (groups.isEmpty()) Status.STANDARD_PADDING else Status.ADDITIONAL_SEGMENTS)
+                return
+            }
+            if (groups.size >= 16) { report(Status.LIMIT, after); return }
+            val direct = skipZeroModes(after)
+            val choices = mutableListOf(Boundary(after, direct,
+                if (direct == after) StartKind.IMMEDIATE else StartKind.ZERO_MODES))
+            // Alignment is measured in the original codeword stream, never the spliced stream.
+            val aligned = (after + 7) / 8 * 8
+            if (aligned > after && aligned < original.size &&
+                (after until aligned).all { original[it] == 0 }) {
+                val alignedStart = skipZeroModes(aligned)
+                if (alignedStart != direct) choices += Boundary(after, alignedStart, StartKind.BYTE_ALIGNED)
+            }
+            val beforeText = decode(working.take(terminator), version, ecLevel)
+            for (boundary in choices) {
+                if (results.size >= 16) { truncated = true; break }
+                val start = boundary.startBit
+                val resume = start - removed
+                val nextWorking = working.take(terminator) + working.drop(resume)
+                val nextRemoved = removed + resume - terminator
+                var failureBit = terminator
+                val next = scan(nextWorking) { failureBit = it }
+                val starts = boundaries + boundary
+                if (next == null || next.modes.size == prefix.modes.size) {
+                    val failed = if (next == null) (failureBit + nextRemoved).coerceAtLeast(start) else start
+                    val modeBits = original.drop(failed).take(4).joinToString("") { it?.toString() ?: "?" }
+                    val reason = when {
+                        next != null -> StopReason.NO_PAYLOAD
+                        '?' in modeBits -> StopReason.UNKNOWN_MODE_BITS
+                        modeBits.length == 4 && modeBits.toInt(2) !in setOf(0, 1, 2, 3, 4, 5, 7, 8, 9, 13) -> StopReason.UNSUPPORTED_MODE
+                        else -> StopReason.INVALID_OR_INCOMPLETE_SEGMENT
+                    }
+                    report(Status.UNPARSED_TAIL, start, Stop(failed, modeBits, reason), starts)
+                    continue
+                }
+                val end = next.endBit
+                val combinedText = decode(nextWorking.take(end), version, ecLevel)
+                val text = if (beforeText != null && combinedText?.startsWith(beforeText) == true)
+                    combinedText.substring(beforeText.length) else null
+                val group = Group(start, end + nextRemoved, next.modes.drop(prefix.modes.size), text)
+                walk(nextWorking, next, nextRemoved, groups + group, starts, combinedText)
+            }
         }
-        val remaining = prefix.endBit + removed + 4
-        return if (canonicalFiller(original, remaining)) report(Status.ADDITIONAL_SEGMENTS)
-            else report(Status.LIMIT, remaining)
+        walk(original, main, 0, emptyList(), emptyList(), null)
+        // A matching suffix is evidence only; it is never removed from the raw tail.
+        var suffix = original.size
+        var expected: Int? = null
+        for (byteIndex in data.indices.reversed()) {
+            val value = data[byteIndex].toInt() and 255
+            if (byteIndex * 8 < firstTerminator + 4 || unknownMasks[byteIndex] != 0 ||
+                value !in listOf(0xEC, 0x11) || (expected != null && value != expected)) break
+            suffix = byteIndex * 8
+            expected = value xor 0xFD
+        }
+        if (suffix < original.size && (data[suffix / 8].toInt() and 255) == 0x11) suffix += 8
+        val padding = suffix.takeIf { it < original.size }
+        val reports = results.map { it.copy(paddingCandidateStartBit = padding) }
+        return reports.first().copy(alternatives = reports.drop(1), alternativesTruncated = truncated)
     }
 
     private fun canonicalFiller(bits: List<Int?>, start: Int): Boolean {

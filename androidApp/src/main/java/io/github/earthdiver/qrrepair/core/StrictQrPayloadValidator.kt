@@ -29,27 +29,32 @@ internal object StrictQrPayloadValidator {
     internal data class Prefix(val terminatorBit: Int?, val endBit: Int, val modes: List<Int>, val byteSegments: List<Pair<Int, ByteArray>>)
 
     internal fun inspectPrefix(data: ByteArray, version: Int, unknownMasks: IntArray = IntArray(data.size),
-        bitLength: Int = data.size * 8): Prefix? {
+        bitLength: Int = data.size * 8, onFailure: ((Int) -> Unit)? = null): Prefix? {
         require(version in 1..40 && unknownMasks.size == data.size && bitLength in 0..data.size * 8)
         val modes = mutableListOf<Int>()
         val segments = mutableListOf<Pair<Int, ByteArray>>()
         var terminator: Int? = null
         var endBit = 0
+        var modeStart = 0
         val valid = validate(data, version, false, modes = modes, byteSegments = segments, unknownMasks = unknownMasks,
-            bitLength = bitLength, onTerminator = { terminator = it }, onPayloadEnd = { endBit = it })
-        return if (valid) Prefix(terminator, endBit, modes, segments) else null
+            bitLength = bitLength, onTerminator = { terminator = it }, onPayloadEnd = { endBit = it }, onMode = { modeStart = it })
+        return if (valid) Prefix(terminator, endBit, modes, segments) else {
+            onFailure?.invoke(modeStart)
+            null
+        }
     }
 
     private fun validate(data: ByteArray, version: Int, allowIncomplete: Boolean,
         modes: MutableList<Int>? = null, byteSegments: MutableList<Pair<Int, ByteArray>>? = null,
         unknownMasks: IntArray? = null, bitLength: Int = data.size * 8,
-        onTerminator: ((Int) -> Unit)? = null, onPayloadEnd: ((Int) -> Unit)? = null,
+        onTerminator: ((Int) -> Unit)? = null, onPayloadEnd: ((Int) -> Unit)? = null, onMode: ((Int) -> Unit)? = null,
     ): Boolean = try {
         val bits = Bits(data, unknownMasks, bitLength)
         var structuredAppendSeen = false
         var fnc1Seen = false
         var modeSeenAfterStructuredAppend = false
         while (bits.available >= 4) {
+            onMode?.invoke(bits.position)
             val mode = bits.read(4)
             if (mode == 1 || mode == 2 || mode == 4 || mode == 8 || mode == 13) modes?.add(mode)
             when (mode) {
@@ -105,6 +110,7 @@ internal object StrictQrPayloadValidator {
         // A prefix may end inside the next mode indicator. Only a complete stream must
         // interpret these remaining bits as a shortened terminator.
         if (!allowIncomplete) {
+            if (bits.available > 0) onMode?.invoke(bits.position)
             while (bits.available > 0) if (bits.read(1) != 0) return false
         }
         true

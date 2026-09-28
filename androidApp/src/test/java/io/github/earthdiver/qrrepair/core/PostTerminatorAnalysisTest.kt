@@ -40,6 +40,193 @@ class PostTerminatorAnalysisTest {
     private fun analyze(data: ByteArray, version: Int = 1, unknown: IntArray = IntArray(data.size)) =
         PostTerminatorAnalysis.analyze(data, version, ErrorCorrectionLevel.L, unknown)
 
+    private fun interpretations(report: PostTerminatorAnalysis.Report) = listOf(report) + report.alternatives
+
+    @Test fun readsByteAlignedSegmentsForEveryZeroFillLengthWithoutChangingInput() {
+        val widths = mutableSetOf<Int>()
+        for (count in 1..24) {
+            val after = 18 + count / 3 * 10 + intArrayOf(0, 4, 7)[count % 3]
+            val fill = (8 - after % 8) % 8
+            widths += fill
+            val data = PayloadBits().apply {
+                put(1, 4); put(count, 10)
+                repeat(count / 3) { put(0, 10) }
+                if (count % 3 != 0) put(0, if (count % 3 == 1) 4 else 7)
+                put(0, 4); put(0, fill); byteSegment("aligned")
+            }.finish(80)
+            val original = data.copyOf()
+            val report = analyze(data)
+            val parsed = interpretations(report).first { it.groups.firstOrNull()?.text == "aligned" }
+            assertEquals(after + fill, parsed.groups.first().startBit)
+            assertEquals(after + fill, parsed.boundaries.first().startBit)
+            assertEquals(after, parsed.boundaries.first().afterTerminatorBit)
+            assertArrayEquals(original, data)
+            assertFalse(StrictQrPayloadValidator.isValid(data, 1))
+        }
+        assertEquals((0..7).toSet(), widths)
+    }
+
+    @Test fun skipsKnownZeroModesFromByteBoundaryWithoutConsumingPayloadLeadingZeros() {
+        for (zeros in listOf(1, 2, 20)) for (mode in listOf(1, 2, 4)) {
+            val data = PayloadBits().apply {
+                put(2, 4); put(1, 9); put(10, 6); put(0, 4); put(0, 1)
+                repeat(zeros) { put(0, 4) }
+                when (mode) {
+                    1 -> { put(1, 4); put(3, 10); put(123, 10) }
+                    2 -> { put(2, 4); put(1, 9); put(11, 6) }
+                    4 -> byteSegment("B")
+                }
+            }.finish(40)
+            val original = data.copyOf()
+            val expected = if (mode == 1) "123" else "B"
+            val report = interpretations(analyze(data)).first { it.groups.singleOrNull()?.text == expected }
+            assertEquals(24 + 4 * zeros, report.groups.single().startBit)
+            assertEquals(PostTerminatorAnalysis.Boundary(23, 24 + 4 * zeros, PostTerminatorAnalysis.StartKind.BYTE_ALIGNED),
+                report.boundaries.single())
+            assertTrue(report.tail.startsWith("0".repeat(1 + 4 * zeros)))
+            assertArrayEquals(original, data)
+        }
+    }
+
+    @Test fun identicalStartsAfterZeroSkippingProduceOnlyOneInterpretation() {
+        val data = PayloadBits().apply {
+            put(2, 4); put(2, 9); put(461, 11); put(0, 4)
+            put(0, 4); put(0, 4); byteSegment("C")
+        }.finish()
+        val report = analyze(data)
+        assertEquals("C", report.groups.single().text)
+        assertEquals(36, report.groups.single().startBit)
+        assertTrue(report.alternatives.isEmpty())
+    }
+
+    @Test fun alignedZeroSkippingStopsAtUnknownModeBitsAndReportsTheirOriginalPosition() {
+        val data = PayloadBits().apply {
+            put(2, 4); put(1, 9); put(10, 6); put(0, 4); put(0, 1)
+            put(0, 4); put(0, 4); byteSegment("B")
+        }.finish()
+        val unknown = IntArray(data.size).apply { this[3] = 1 }
+        val report = interpretations(analyze(data, unknown = unknown)).single {
+            it.boundaries.single().kind == PostTerminatorAnalysis.StartKind.BYTE_ALIGNED
+        }
+        assertEquals(28, report.remainingStartBit)
+        assertEquals(28, report.stop?.bit)
+        assertEquals("000?", report.stop?.modeBits)
+        assertEquals(PostTerminatorAnalysis.StopReason.UNKNOWN_MODE_BITS, report.stop?.reason)
+        assertTrue(report.groups.isEmpty())
+        assertTrue('?' in report.tail)
+    }
+
+    @Test fun alignedZeroSkippingKeepsUnsupportedDataAndDoesNotInventPayloadFromZeros() {
+        val data = PayloadBits().apply {
+            put(2, 4); put(1, 9); put(10, 6); put(0, 4); put(0, 1)
+            put(0, 4); put(0, 4); put(12, 4); put(0x55, 8)
+        }.finish()
+        val report = interpretations(analyze(data)).single {
+            it.boundaries.single().kind == PostTerminatorAnalysis.StartKind.BYTE_ALIGNED
+        }
+        assertEquals(32, report.stop?.bit)
+        assertEquals("1100", report.stop?.modeBits)
+        assertEquals(PostTerminatorAnalysis.StopReason.UNSUPPORTED_MODE, report.stop?.reason)
+        assertTrue(report.groups.isEmpty())
+        val zeros = data.copyOf().apply { fill(0, 3) }
+        assertTrue(interpretations(analyze(zeros)).all { it.groups.isEmpty() && it.combinedContent == null })
+    }
+
+    @Test fun retainsBothValidInterpretationsWithoutCombiningTheirPayloads() {
+        val data = PayloadBits().apply {
+            put(2, 4); put(1, 9); put(10, 6)
+            put(0, 4); put(0, 1); byteSegment("A@")
+        }.finish()
+        val report = analyze(data)
+        assertEquals("BR", report.groups.single().text)
+        assertEquals("ABR", report.combinedContent?.text)
+        val aligned = report.alternatives.single()
+        assertEquals("A@", aligned.groups.single().text)
+        assertNull(aligned.combinedContent)
+        assertEquals(PostTerminatorAnalysis.StartKind.BYTE_ALIGNED, aligned.boundaries.single().kind)
+    }
+
+    @Test fun neverSkipsUnknownOrNonzeroAlignmentBits() {
+        val data = PayloadBits().apply {
+            put(2, 4); put(1, 9); put(10, 6)
+            put(0, 4); put(0, 1); byteSegment("A@")
+        }.finish()
+        val unknown = IntArray(data.size).apply { this[2] = 1 }
+        val unreadable = analyze(data, unknown = unknown)
+        assertTrue(unreadable.alternatives.isEmpty())
+        assertEquals(PostTerminatorAnalysis.StopReason.UNKNOWN_MODE_BITS, unreadable.stop?.reason)
+        assertTrue('?' in unreadable.tail)
+        val nonzero = data.copyOf().apply { this[2] = (this[2].toInt() or 1).toByte() }
+        assertTrue(analyze(nonzero).alternatives.isEmpty())
+    }
+
+    @Test fun reportsUnsupportedModeAtAlignedStartAndKeepsOpaqueSuffix() {
+        val data = PayloadBits().apply {
+            put(1, 4); put(7, 10); put(123, 10); put(456, 10); put(7, 4)
+            put(0, 4); put(0, 6)
+            put(12, 4); put(0x55, 8); put(0xA6, 8)
+        }.finish()
+        val report = analyze(data)
+        val aligned = report.alternatives.single()
+        assertEquals(48, aligned.remainingStartBit)
+        assertEquals(48, aligned.stop?.bit)
+        assertEquals("1100", aligned.stop?.modeBits)
+        assertEquals(PostTerminatorAnalysis.StopReason.UNSUPPORTED_MODE, aligned.stop?.reason)
+        assertEquals(PostTerminatorAnalysis.Boundary(42, 48, PostTerminatorAnalysis.StartKind.BYTE_ALIGNED),
+            aligned.boundaries.single())
+        assertEquals(72, aligned.paddingCandidateStartBit)
+        assertEquals((data.size * 8 - 42), aligned.tail.length)
+        assertEquals(report.tail, aligned.tail)
+        assertTrue(aligned.groups.isEmpty())
+        assertNull(aligned.combinedContent)
+    }
+
+    @Test fun stopReasonIdentifiesALaterUnsupportedSegment() {
+        val data = PayloadBits().apply { byteSegment("A"); put(0, 4); byteSegment("B"); put(6, 4) }.finish()
+        val report = analyze(data)
+        assertEquals(24, report.remainingStartBit)
+        assertEquals(44, report.stop?.bit)
+        assertEquals("0110", report.stop?.modeBits)
+        assertEquals(PostTerminatorAnalysis.StopReason.UNSUPPORTED_MODE, report.stop?.reason)
+    }
+
+    @Test fun paddingLikeBytesInsideOpaqueDataArePreservedAndUnknownSuffixIsNotInferred() {
+        val data = PayloadBits().apply { byteSegment("A"); put(0, 4); put(12, 4); put(0, 4) }.finish()
+        data[4] = 0xEC.toByte(); data[5] = 0x11; data[6] = 0x42
+        val report = analyze(data)
+        assertTrue(requireNotNull(report.paddingCandidateStartBit) > 6 * 8)
+        assertEquals((data.size * 8 - 24), report.tail.length)
+        val unknown = IntArray(data.size).apply { this[lastIndex] = 1 }
+        assertNull(analyze(data, unknown = unknown).paddingCandidateStartBit)
+    }
+
+    @Test fun boundsAmbiguousInterpretationsAndReportsUnexploredBranches() {
+        val data = PayloadBits().apply {
+            repeat(12) {
+                put(2, 4); put(1, 9); put(10, 6); put(0, 4); put(0, 1)
+                byteSegment("A@"); put(0, 4)
+            }
+        }.finish(100)
+        val report = analyze(data)
+        assertTrue(report.alternativesTruncated)
+        assertEquals(16, interpretations(report).size)
+        assertTrue(interpretations(report).all { it.groups.size <= 16 })
+    }
+
+    @Test fun laterAlignmentUsesOriginalOffsetsAndPreservesEciContext() {
+        val data = PayloadBits().apply {
+            put(7, 4); put(26, 8); byteSegment("A"); put(0, 4)
+            put(1, 4); put(7, 10); put(0, 10); put(0, 10); put(0, 4)
+            put(0, 4); put(0, 2); put(0, 4); put(0, 4); byteSegment("人間")
+        }.finish(40)
+        val report = interpretations(analyze(data)).first { it.groups.lastOrNull()?.text == "人間" }
+        assertEquals(listOf(36, 88), report.groups.map { it.startBit })
+        assertEquals(listOf("0000000", "人間"), report.groups.map { it.text })
+        assertEquals(PostTerminatorAnalysis.Boundary(78, 88, PostTerminatorAnalysis.StartKind.BYTE_ALIGNED),
+            report.boundaries.last())
+        assertNull(report.combinedContent)
+    }
+
     @Test fun combinesEverySupportedCommonModeInPayloadOrder() {
         for ((mode, expected) in listOf(1 to "123123123", 2 to "AAA", 4 to "AAA", 8 to "\u3000\u3000\u3000", 13 to "\u3000\u3000\u3000")) {
             val data = PayloadBits().apply {
