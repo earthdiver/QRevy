@@ -109,6 +109,7 @@ class QrResultInspectorView(context: Context) : View(context) {
         val dimensionChanged = this.after?.dimension != after.dimension
         require(dataMask == null || dataMask in 0..7)
         this.dataMask = dataMask
+        if (dataMask == null) unmasked = false
         this.before = before
         this.after = after
         this.traces = traces

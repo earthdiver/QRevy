@@ -984,15 +984,30 @@ class MainActivity : Activity() {
         var showCellCalculations = false
         var relatedCellsHighlighted = false
         var revealEvidence: () -> Unit = {}
-        val view = QrResultInspectorView(this).apply {
-            setDocument(before, after, recoveryState.traces, dataMask = recoveryState.selectedRecovery?.dataMask)
-            setComparisonEnabled(false)
-        }
+        val view = QrResultInspectorView(this).apply { setComparisonEnabled(false) }
         val unmask = CheckBox(this).apply {
             text = ui("マスク解除", "Unmask")
-            isEnabled = recoveryState.selectedRecovery != null
             setOnCheckedChangeListener { _, checked -> view.setUnmasked(checked) }
         }
+        val maskDescription = TextView(this).apply {
+            textSize = 12f
+            setPadding(dp(12), 0, dp(12), dp(4))
+        }
+        fun refreshInspectorDocument(keepViewport: Boolean = false) {
+            val candidate = recoveryState.selectedRecovery
+            val mask = (candidate?.dataMask ?: recoveryState.failure?.dataMask)?.takeIf { it in 0..7 }
+            view.setDocument(before, after, recoveryState.traces, keepViewport = keepViewport, dataMask = mask)
+            unmask.isEnabled = mask != null
+            if (mask == null) unmask.isChecked = false
+            view.setUnmasked(unmask.isChecked)
+            maskDescription.text = when {
+                mask == null -> ui("マスク番号が取得できないため、マスク解除は使用できません。",
+                    "Unmask is unavailable because no mask number is available.")
+                candidate != null -> ui("使用マスク: $mask（選択候補）", "Display mask: $mask (selected candidate)")
+                else -> ui("使用マスク: $mask（失敗した試行・未検証）", "Display mask: $mask (failed attempt; unverified)")
+            }
+        }
+        refreshInspectorDocument()
         fun refreshCellEvidence() {
             val coord = selectedCoord
             val found = coord?.let { findCodewordAt(it.x, it.y) }
@@ -1046,9 +1061,7 @@ class MainActivity : Activity() {
                         before = nextBefore
                         after = nextAfter
                         displayedGeometry = recoveryState.geometry
-                        view.setDocument(before, after, recoveryState.traces, keepViewport = keepPosition,
-                            dataMask = recoveryState.selectedRecovery?.dataMask)
-                        unmask.isEnabled = recoveryState.selectedRecovery != null
+                        refreshInspectorDocument(keepViewport = keepPosition)
                         view.clearHighlightedCodeword()
                         if (!keepPosition) {
                             selectedCoord = null
@@ -1132,6 +1145,7 @@ class MainActivity : Activity() {
                     addView(unmask)
                 })
             })
+            addView(maskDescription)
             addView(view, LinearLayout.LayoutParams(-1, 0, 1f))
             addView(TextView(this@MainActivity).apply {
                 text = ui("左右の移動・拡大は連動します。セルをタップすると修復理由を表示します。", "Both sides pan and zoom together. Tap a cell for its repair reason.")

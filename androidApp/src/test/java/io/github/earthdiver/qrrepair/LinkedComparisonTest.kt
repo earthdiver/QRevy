@@ -86,6 +86,82 @@ class LinkedComparisonTest {
         }
     }
 
+    @Test fun failedAttemptsCanBeUnmaskedWithoutRsOrPayloadSuccessInBothLanguagesAndStyles() {
+        for (style in AppStyle.entries) for (language in listOf(AppLanguage.ENGLISH, AppLanguage.JAPANESE)) {
+            val app = RuntimeEnvironment.getApplication()
+            AppStylePreferences.save(app, style)
+            AppLanguageManager.save(app, language)
+            val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+            try {
+                val activity = controller.get()
+                (ShadowDialog.getLatestDialog() as? AlertDialog)?.dismiss()
+                val state = MainActivity::class.java.getDeclaredField("recoveryState").apply { isAccessible = true }
+                    .get(activity) as RecoveryUiState
+                for ((mask, stage) in listOf(0 to RecoveryFailureStage.REED_SOLOMON, 3 to RecoveryFailureStage.PAYLOAD_VALIDATION)) {
+                    val matrix = QrMatrix(21)
+                    for (y in 0 until 21) for (x in 0 until 21)
+                        matrix.set(x, y, ModuleValue.ZERO, 1f, ModuleSource.USER)
+                    matrix.set(11, 10, ModuleValue.ERASED, 0f, ModuleSource.USER)
+                    val failure = RecoveryFailure(com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.L,
+                        mask, 0, 0, 0, stage)
+                    state.showAttempt(0, GridGeometry(1, FinderRole.TOP_LEFT, 10.0, 10.0, 2.0, 0.0),
+                        matrix, emptyList(), failure, -1)
+                    MainActivity::class.java.getDeclaredMethod("showZoomableResult").apply { isAccessible = true }.invoke(activity)
+                    val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+                    val decor = dialog.window!!.decorView
+                    layout(decor)
+                    val view = children(decor).filterIsInstance<QrResultInspectorView>().single()
+                    val checkbox = children(decor).filterIsInstance<android.widget.CheckBox>().single()
+                    assertTrue(checkbox.isEnabled)
+                    assertFalse(checkbox.isChecked)
+                    assertTrue(children(decor).filterIsInstance<TextView>().any {
+                        it.text.toString() == if (language == AppLanguage.JAPANESE)
+                            "使用マスク: $mask（失敗した試行・未検証）" else "Display mask: $mask (failed attempt; unverified)"
+                    })
+                    val modes = children(children(decor).filterIsInstance<android.widget.RadioGroup>().last())
+                        .filterIsInstance<android.widget.RadioButton>()
+                    for (mode in modes) {
+                        mode.performClick()
+                        val masked = render(view, 400, 300)
+                        checkbox.performClick()
+                        val unmasked = render(view, 400, 300)
+                        assertFalse("$style/$language/$stage/${mode.text}", masked.sameAs(unmasked))
+                        checkbox.performClick()
+                        val restored = render(view, 400, 300)
+                        assertTrue(masked.sameAs(restored))
+                        listOf(masked, unmasked, restored).forEach(Bitmap::recycle)
+                    }
+                    assertNull(state.selectedRecovery)
+                    assertSame(failure, state.failure)
+                    for (y in 0 until 21) for (x in 0 until 21) {
+                        assertEquals(matrix[x, y], state.sourceMatrix!![x, y])
+                        assertEquals(matrix[x, y], state.workingMatrix!![x, y])
+                    }
+                    dialog.dismiss()
+                }
+            } finally { controller.pause().stop().destroy() }
+        }
+    }
+
+    @Test fun missingMaskClearsTheDisplayToggleBeforeAnotherDocumentIsLoaded() {
+        val matrix = QrMatrix(21)
+        for (y in 0 until 21) for (x in 0 until 21)
+            matrix.set(x, y, ModuleValue.ZERO, 1f, ModuleSource.IMAGE)
+        val view = QrResultInspectorView(RuntimeEnvironment.getApplication())
+        view.setDocument(matrix, matrix, emptyMap(), dataMask = 0)
+        val masked = render(view)
+        view.setUnmasked(true)
+        val unmasked = render(view)
+        assertFalse(masked.sameAs(unmasked))
+        view.setDocument(matrix, matrix, emptyMap())
+        val withoutMask = render(view)
+        assertTrue(masked.sameAs(withoutMask))
+        view.setDocument(matrix, matrix, emptyMap(), dataMask = 0)
+        val next = render(view)
+        assertTrue("Unmask must stay off after an unavailable mask", masked.sameAs(next))
+        listOf(masked, unmasked, withoutMask, next).forEach(Bitmap::recycle)
+    }
+
     @Test fun checkboxControlsSingleAndPairedViewsAndFollowsCandidateSelection() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         try {
@@ -108,6 +184,8 @@ class LinkedComparisonTest {
             state.workingMatrix = fixtures.first().first.copy()
             state.recoveries = fixtures.map { it.second }
             state.selectRecovery(0)
+            state.failure = RecoveryFailure(com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.M,
+                7, 0, 0, 0, RecoveryFailureStage.PAYLOAD_VALIDATION)
             MainActivity::class.java.getDeclaredMethod("showZoomableResult").apply { isAccessible = true }.invoke(activity)
             val dialog = ShadowDialog.getLatestDialog() as AlertDialog
             val decor = dialog.window!!.decorView
@@ -118,6 +196,10 @@ class LinkedComparisonTest {
             val modes = children(radios.last()).filterIsInstance<android.widget.RadioButton>()
             assertTrue(checkbox.isEnabled)
             assertFalse(checkbox.isChecked)
+            fun displaysCandidateMask(mask: Int) = children(decor).filterIsInstance<TextView>().any {
+                it.text.toString() in listOf("使用マスク: $mask（選択候補）", "Display mask: $mask (selected candidate)")
+            }
+            assertTrue("The selected candidate takes precedence over the failure mask", displaysCandidateMask(0))
             assertTrue(checkbox.left >= radios.last().right)
             for (mode in modes) {
                 mode.performClick()
@@ -134,6 +216,8 @@ class LinkedComparisonTest {
             children(radios.first()).filterIsInstance<android.widget.RadioButton>()[1].performClick()
             assertTrue(checkbox.isChecked)
             assertEquals(2, state.selectedRecovery!!.dataMask)
+            assertTrue(displaysCandidateMask(2))
+            assertFalse(displaysCandidateMask(0))
             val expected = QrResultInspectorView(activity).apply {
                 setDocument(state.sourceMatrix!!, state.inspectorMatrix ?: state.workingMatrix!!, state.traces, dataMask = 2)
                 setUnmasked(true)
@@ -253,7 +337,13 @@ class LinkedComparisonTest {
                 val inspector = children(decor).filterIsInstance<QrResultInspectorView>().single()
                 val unmask = children(decor).filterIsInstance<android.widget.CheckBox>().single()
                 assertEquals(if (language == AppLanguage.JAPANESE) "マスク解除" else "Unmask", unmask.text.toString())
-                assertFalse("No selected candidate means no known mask", unmask.isEnabled)
+                assertFalse("Neither a selected candidate nor a failed attempt provides a mask", unmask.isEnabled)
+                assertFalse(unmask.isChecked)
+                assertTrue(children(decor).filterIsInstance<TextView>().any {
+                    it.text.toString() == if (language == AppLanguage.JAPANESE)
+                        "マスク番号が取得できないため、マスク解除は使用できません。"
+                    else "Unmask is unavailable because no mask number is available."
+                })
                 children(decor).filterIsInstance<TextView>().first { it.text.toString() == if (language == AppLanguage.JAPANESE) "左右で比較" else "Compare" }.performClick()
                 inspector.onCellSelected?.invoke(10, 10)
                 layout(decor)

@@ -133,7 +133,7 @@ On the recovery result screen, **Analyze additional segments after terminator** 
 
 This analysis assumes additional QR segments after a terminator. It does not establish overall QR validity or make a rejected candidate valid, and any displayed content still requires independent verification.
 
-In the enlarged repair result, enabling **Unmask** displays both the before and after cells with the selected candidate’s QR mask removed. Function patterns and unknown cells stay unchanged. This only changes the display: saved cell values, manual edits, and fixed constraints are preserved. Clear the checkbox to restore the masked display. The checkbox is disabled when no recovery candidate is selected; scroll the controls horizontally on narrow screens.
+In the enlarged repair result, enabling **Unmask** displays both the before and after cells with the selected candidate’s QR mask removed. When no candidate is selected, it uses the displayed failed attempt’s mask, even if RS correction or payload validation failed. The mask number and its source are shown; a failed attempt’s mask is unverified. Candidate changes update the display mask. Function patterns and unknown cells stay unchanged. This only changes the display: saved cell values, manual edits, and fixed constraints are preserved. Clear the checkbox to restore the masked display. When neither a candidate nor an attempt provides a mask number, the checkbox is cleared and disabled with an explanation. Scroll the controls horizontally on narrow screens.
 
 ## 7. Save, resume, and export
 
