@@ -80,7 +80,7 @@
     <string name="reset_rotation">回転リセット</string>
     <string name="thresholding">白黒判定</string>
     <string name="geometry_search_note">ONでは0.6モジュールの位置・大きさ・一隅のずれを試します。Finder役割が1点だけ指定されている場合は、その隅を支点とする時計回り・反時計回りも試します。</string>
-    <string name="payload_header_trust_note">数字・英数字・バイト・漢字のいずれか1種類の単一セグメントにのみ使用できます。先頭の種類と文字数／バイト数が既知、または * の試行で仮定できる場合に選択できます。ヘッダーに未確定の ? が残る場合は対象外です。ECI、FNC1、構造的連接、Hanziには対応していません。複数セグメントのQRには使用しないでください。\n終端・バイト境界・埋め草の領域は、読み取りまたは試行で仮定した種類と文字数／バイト数に基づいて補正します。画像から読み取った0/1も変更されます。手動0/1の扱いは下の設定に従います。修復後も種類・文字数と後続構造を守り、この条件を外した再探索は行いません。適用できない場合はONを維持して理由を表示します。</string>
+    <string name="payload_header_trust_note">数字・英数字・バイト・漢字のいずれか1種類の単一セグメントにのみ使用できます。先頭の種類と文字数／バイト数が既知、または * の試行で仮定できる場合に選択できます。ヘッダーに未確定の ? が残る場合は対象外です。ECI、FNC1、構造的連接、Hanziには対応していません。複数セグメントのQRには使用しないでください。\n終端・バイト境界・埋め草の領域は、読み取りまたは試行で仮定した種類と文字数／バイト数に基づいて補正します。</string>
     <string name="format_mismatch_limit">形式情報の誤り上限</string>
     <string name="format_mismatch_limit_unlimited">制限なし</string>
     <string name="format_mismatch_limit_exact">0bit（完全一致）</string>
