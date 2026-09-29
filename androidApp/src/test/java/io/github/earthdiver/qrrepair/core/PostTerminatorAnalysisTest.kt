@@ -184,7 +184,9 @@ class PostTerminatorAnalysisTest {
     @Test fun stopReasonIdentifiesALaterUnsupportedSegment() {
         val data = PayloadBits().apply { byteSegment("A"); put(0, 4); byteSegment("B"); put(6, 4) }.finish()
         val report = analyze(data)
-        assertEquals(24, report.remainingStartBit)
+        assertEquals(44, report.remainingStartBit)
+        assertEquals("B", report.groups.single().text)
+        assertEquals("AB", report.combinedContent?.text)
         assertEquals(44, report.stop?.bit)
         assertEquals("0110", report.stop?.modeBits)
         assertEquals(PostTerminatorAnalysis.StopReason.UNSUPPORTED_MODE, report.stop?.reason)

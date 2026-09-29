@@ -1,7 +1,6 @@
 package io.github.earthdiver.qrrepair.core
 
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
-import com.google.zxing.qrcode.decoder.ZxingPayloadBridge
 
 /** Diagnostic parsing only: no result here is accepted as a repaired QR. */
 internal object PostTerminatorAnalysis {
@@ -25,6 +24,7 @@ internal object PostTerminatorAnalysis {
         val paddingCandidateStartBit: Int? = null,
         val alternatives: List<Report> = emptyList(),
         val alternativesTruncated: Boolean = false,
+        val trace: List<PayloadSegmentDiagnostics.Entry> = emptyList(),
     )
     data class View(
         val source: Source,
@@ -83,8 +83,8 @@ internal object PostTerminatorAnalysis {
         val original = data.indices.flatMap { i -> (7 downTo 0).map { bit ->
             if (unknownMasks[i] and (1 shl bit) != 0) null else (data[i].toInt() ushr bit) and 1
         } }
-        fun scan(bits: List<Int?>, failure: ((Int) -> Unit)? = null): StrictQrPayloadValidator.Prefix? =
-            StrictQrPayloadValidator.inspectPrefix(pack(bits), version, masks(bits), bits.size, failure)
+        fun scan(bits: List<Int?>): StrictQrPayloadValidator.Prefix? =
+            StrictQrPayloadValidator.inspectPrefix(pack(bits), version, masks(bits), bits.size)
         val main = scan(original) ?: return Report(Status.UNREADABLE_PREFIX)
         val firstTerminator = main.terminatorBit ?: return Report(Status.NO_TERMINATOR)
         val tail = original.drop(firstTerminator + 4).joinToString("") { it?.toString() ?: "?" }
@@ -96,26 +96,29 @@ internal object PostTerminatorAnalysis {
         }
         val results = mutableListOf<Report>()
         var truncated = false
-        // Bound branching as well as group depth. Keep the existing interpretation first.
+        // Bound branching as well as continuation depth. Keep the existing interpretation first.
         fun walk(working: List<Int?>, prefix: StrictQrPayloadValidator.Prefix, removed: Int,
-            groups: List<Group>, boundaries: List<Boundary>, parsedText: String?) {
+            groups: List<Group>, boundaries: List<Boundary>, parsedText: String?,
+            trace: List<PayloadSegmentDiagnostics.Entry>) {
             if (results.size >= 16) { truncated = true; return }
             fun report(status: Status, remaining: Int? = null, stop: Stop? = null,
-                starts: List<Boundary> = boundaries) {
-                val commonMode = prefix.modes.distinct().singleOrNull()
-                val combined = if (main.modes.isNotEmpty() && groups.isNotEmpty() && commonMode != null) {
-                    val bytes = if (commonMode == 4) prefix.byteSegments.flatMap { it.second.asList() }.toByteArray() else null
-                    CombinedContent(commonMode, parsedText, bytes)
+                starts: List<Boundary> = boundaries, entries: List<PayloadSegmentDiagnostics.Entry> = trace,
+                parsedGroups: List<Group> = groups, parsedPrefix: StrictQrPayloadValidator.Prefix = prefix,
+                text: String? = parsedText) {
+                val commonMode = parsedPrefix.modes.distinct().singleOrNull()
+                val combined = if (main.modes.isNotEmpty() && parsedGroups.isNotEmpty() && commonMode != null) {
+                    val bytes = if (commonMode == 4) parsedPrefix.byteSegments.flatMap { it.second.asList() }.toByteArray() else null
+                    CombinedContent(commonMode, text, bytes)
                 } else null
-                results += Report(status, firstTerminator, tail, groups, remaining, combined, starts, stop)
+                results += Report(status, firstTerminator, tail, parsedGroups, remaining, combined, starts, stop, trace = entries)
             }
             val terminator = prefix.terminatorBit ?: run { report(Status.ADDITIONAL_SEGMENTS); return }
             val after = terminator + removed + 4
             if (canonicalFiller(original, after)) {
-                report(if (groups.isEmpty()) Status.STANDARD_PADDING else Status.ADDITIONAL_SEGMENTS)
+                report(if (trace.isEmpty()) Status.STANDARD_PADDING else Status.ADDITIONAL_SEGMENTS)
                 return
             }
-            if (groups.size >= 16) { report(Status.LIMIT, after); return }
+            if (boundaries.size >= 16) { report(Status.LIMIT, after); return }
             val direct = skipZeroModes(after)
             val choices = mutableListOf(Boundary(after, direct,
                 if (direct == after) StartKind.IMMEDIATE else StartKind.ZERO_MODES))
@@ -126,37 +129,50 @@ internal object PostTerminatorAnalysis {
                 val alignedStart = skipZeroModes(aligned)
                 if (alignedStart != direct) choices += Boundary(after, alignedStart, StartKind.BYTE_ALIGNED)
             }
-            val beforeText = decode(working.take(terminator), version, ecLevel)
             for (boundary in choices) {
                 if (results.size >= 16) { truncated = true; break }
                 val start = boundary.startBit
                 val resume = start - removed
                 val nextWorking = working.take(terminator) + working.drop(resume)
                 val nextRemoved = removed + resume - terminator
-                var failureBit = terminator
-                val next = scan(nextWorking) { failureBit = it }
+                val inspection = StrictQrPayloadValidator.inspectSegments(pack(nextWorking), version,
+                    masks(nextWorking), nextWorking.size)
+                val next = inspection.prefix
+                val interpreted = PayloadSegmentDiagnostics.interpret(nextWorking, version, ecLevel, inspection.segments)
+                val additional = interpreted.filter { it.structure.startBit >= terminator && it.structure.mode != 0 &&
+                    (it.structure.mode != null || it.structure.issue != null) }
+                val entries = trace + additional.map { it.shifted(nextRemoved) }
                 val starts = boundaries + boundary
-                if (next == null || next.modes.size == prefix.modes.size) {
-                    val failed = if (next == null) (failureBit + nextRemoved).coerceAtLeast(start) else start
+                val completed = additional.filter { it.structure.issue == null && it.structure.mode in listOf(1, 2, 4, 8, 13) }
+                fun textOf(items: List<PayloadSegmentDiagnostics.Entry>): String? =
+                    if (items.any { it.text == null }) null else items.joinToString("") { it.text!! }
+                val combinedText = textOf(interpreted.filter {
+                    it.structure.issue == null && it.structure.mode in listOf(1, 2, 4, 8, 13)
+                })
+                val parsedGroups = if (completed.isEmpty()) groups else groups + Group(start,
+                    next.endBit + nextRemoved, completed.map { it.structure.mode!! }, textOf(completed))
+                if (!inspection.valid) {
+                    val failure = additional.lastOrNull { it.structure.issue != null }?.structure
+                    val failed = (failure?.startBit?.plus(nextRemoved) ?: start).coerceAtLeast(start)
                     val modeBits = original.drop(failed).take(4).joinToString("") { it?.toString() ?: "?" }
                     val reason = when {
-                        next != null -> StopReason.NO_PAYLOAD
                         '?' in modeBits -> StopReason.UNKNOWN_MODE_BITS
-                        modeBits.length == 4 && modeBits.toInt(2) !in setOf(0, 1, 2, 3, 4, 5, 7, 8, 9, 13) -> StopReason.UNSUPPORTED_MODE
+                        failure?.issue == StrictQrPayloadValidator.Issue.UNSUPPORTED_MODE -> StopReason.UNSUPPORTED_MODE
                         else -> StopReason.INVALID_OR_INCOMPLETE_SEGMENT
                     }
-                    report(Status.UNPARSED_TAIL, start, Stop(failed, modeBits, reason), starts)
+                    report(Status.UNPARSED_TAIL, failed, Stop(failed, modeBits, reason), starts, entries,
+                        parsedGroups, next, combinedText)
                     continue
                 }
-                val end = next.endBit
-                val combinedText = decode(nextWorking.take(end), version, ecLevel)
-                val text = if (beforeText != null && combinedText?.startsWith(beforeText) == true)
-                    combinedText.substring(beforeText.length) else null
-                val group = Group(start, end + nextRemoved, next.modes.drop(prefix.modes.size), text)
-                walk(nextWorking, next, nextRemoved, groups + group, starts, combinedText)
+                if (additional.isEmpty()) {
+                    report(Status.UNPARSED_TAIL, start, Stop(start, "", StopReason.NO_PAYLOAD), starts, entries)
+                    continue
+                }
+                // Control-only and zero-length payloads still have meaningful diagnostic boundaries.
+                walk(nextWorking, next, nextRemoved, parsedGroups, starts, combinedText, entries)
             }
         }
-        walk(original, main, 0, emptyList(), emptyList(), null)
+        walk(original, main, 0, emptyList(), emptyList(), null, emptyList())
         // A matching suffix is evidence only; it is never removed from the raw tail.
         var suffix = original.size
         var expected: Int? = null
@@ -183,13 +199,6 @@ internal object PostTerminatorAnalysis {
             expected = expected xor 0xFD
         }
         return true
-    }
-
-    private fun decode(bits: List<Int?>, version: Int, ecLevel: ErrorCorrectionLevel): String? {
-        if (bits.any { it == null }) return null
-        return try { ZxingPayloadBridge.decodeData(pack(bits + listOf(0, 0, 0, 0)), version, ecLevel, null).text }
-        catch (_: com.google.zxing.FormatException) { null }
-        catch (_: IllegalArgumentException) { null }
     }
 
     private fun pack(bits: List<Int?>): ByteArray = ByteArray((bits.size + 7) / 8) { index ->

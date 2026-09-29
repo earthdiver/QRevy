@@ -44,74 +44,153 @@ internal object StrictQrPayloadValidator {
         }
     }
 
+    enum class Issue { INVALID_CONTEXT, INVALID_VALUE, INVALID_ECI, UNSUPPORTED_MODE, INCOMPLETE, UNKNOWN_BITS }
+    /** All offsets are half-open and refer to the supplied bit stream. */
+    data class SegmentTrace(
+        val startBit: Int, val endBit: Int, val mode: Int?, val count: Int? = null,
+        val eci: Int? = null, val requiredBits: Int? = null, val availableBits: Int? = null,
+        val issue: Issue? = null, val problemStartBit: Int? = null, val problemEndBit: Int? = null,
+    )
+    data class Inspection(val prefix: Prefix, val segments: List<SegmentTrace>, val valid: Boolean)
+
+    /** Retains completed segments and the failing field without relaxing ordinary validation. */
+    fun inspectSegments(data: ByteArray, version: Int, unknownMasks: IntArray, bitLength: Int): Inspection {
+        require(version in 1..40 && unknownMasks.size == data.size && bitLength in 0..data.size * 8)
+        val trace = Trace()
+        val modes = mutableListOf<Int>()
+        val bytes = mutableListOf<Pair<Int, ByteArray>>()
+        var terminator: Int? = null
+        var end = 0
+        val valid = validate(data, version, false, modes, bytes, unknownMasks, bitLength,
+            onTerminator = { terminator = it }, onPayloadEnd = { end = it }, trace = trace)
+        val completed = trace.segments.filter { it.issue == null && it.mode in listOf(1, 2, 4, 8, 13) }
+        return Inspection(Prefix(terminator, if (valid) end else trace.segments.lastOrNull { it.issue == null }?.endBit ?: 0,
+            completed.map { it.mode!! }, bytes), trace.segments, valid)
+    }
+
+    private class Trace {
+        val segments = mutableListOf<SegmentTrace>()
+        var current: SegmentTrace? = null
+        var readStart = 0
+        var readEnd = 0
+        fun begin(position: Int) { current = SegmentTrace(position, position, null) }
+        fun finish(position: Int, success: Boolean) {
+            current?.let {
+                segments += it.copy(endBit = position, issue = if (success) null else it.issue ?: Issue.INVALID_VALUE,
+                    problemStartBit = if (success) null else readStart,
+                    problemEndBit = if (success) null else readEnd)
+            }
+            current = null
+        }
+        fun issue(value: Issue) { current = current?.copy(issue = value) }
+        fun count(value: Int, mode: Int, available: Int): Int {
+            val required = when (mode) {
+                1 -> value / 3 * 10 + intArrayOf(0, 4, 7)[value % 3]
+                2 -> value / 2 * 11 + value % 2 * 6
+                4 -> value * 8
+                else -> value * 13
+            }
+            current = current?.copy(count = value, requiredBits = required, availableBits = available)
+            return value
+        }
+    }
+
     private fun validate(data: ByteArray, version: Int, allowIncomplete: Boolean,
         modes: MutableList<Int>? = null, byteSegments: MutableList<Pair<Int, ByteArray>>? = null,
         unknownMasks: IntArray? = null, bitLength: Int = data.size * 8,
         onTerminator: ((Int) -> Unit)? = null, onPayloadEnd: ((Int) -> Unit)? = null, onMode: ((Int) -> Unit)? = null,
+        trace: Trace? = null,
     ): Boolean = try {
-        val bits = Bits(data, unknownMasks, bitLength)
+        val bits = Bits(data, unknownMasks, bitLength, trace)
         var structuredAppendSeen = false
         var fnc1Seen = false
         var modeSeenAfterStructuredAppend = false
         while (bits.available >= 4) {
             onMode?.invoke(bits.position)
-            val mode = bits.read(4)
-            if (mode == 1 || mode == 2 || mode == 4 || mode == 8 || mode == 13) modes?.add(mode)
-            when (mode) {
-                0 -> {
-                    if (onTerminator == null) return validateFiller(bits)
-                    onPayloadEnd?.invoke(bits.position - 4)
-                    onTerminator(bits.position - 4)
-                    return true
-                }
-                1 -> { modeSeenAfterStructuredAppend = true; validateNumeric(bits, bits.read(countBits(mode, version))) }
-                2 -> { modeSeenAfterStructuredAppend = true; validateAlphanumeric(bits, bits.read(countBits(mode, version))) }
-                3 -> {
-                    // Structured Append, when present, is the first mode and occurs only once.
-                    if (structuredAppendSeen || modeSeenAfterStructuredAppend || fnc1Seen) return false
-                    structuredAppendSeen = true
-                    val sequence = bits.read(8)
-                    val index = sequence ushr 4
-                    val totalMinusOne = sequence and 15
-                    if (totalMinusOne == 0 || index > totalMinusOne) return false
-                    bits.skip(8) // Parity belongs to the complete set; one symbol cannot verify it.
-                }
-                4 -> {
-                    modeSeenAfterStructuredAppend = true
-                    val count = bits.read(countBits(mode, version))
-                    if (byteSegments == null) bits.skip(count * 8)
-                    else {
-                        if (count > bits.available / 8) throw IncompletePayload
-                        byteSegments.add(modes!!.size to ByteArray(count) { bits.read(8).toByte() })
+            trace?.begin(bits.position)
+            var completed = false
+            try {
+                val mode = bits.read(4)
+                trace?.current = trace.current?.copy(mode = mode)
+                if (mode == 1 || mode == 2 || mode == 4 || mode == 8 || mode == 13) modes?.add(mode)
+                when (mode) {
+                    0 -> {
+                        if (onTerminator == null) return validateFiller(bits)
+                        onPayloadEnd?.invoke(bits.position - 4)
+                        onTerminator(bits.position - 4)
+                        completed = true
+                        return true
                     }
-                } // Byte
-                5 -> { // FNC1 first position
-                    if (fnc1Seen || modeSeenAfterStructuredAppend) return false
-                    fnc1Seen = true
-                    modeSeenAfterStructuredAppend = true
+                    1 -> { modeSeenAfterStructuredAppend = true; validateNumeric(bits, bits.readCount(mode, version)) }
+                    2 -> { modeSeenAfterStructuredAppend = true; validateAlphanumeric(bits, bits.readCount(mode, version)) }
+                    3 -> {
+                        // Structured Append, when present, is the first mode and occurs only once.
+                        if (structuredAppendSeen || modeSeenAfterStructuredAppend || fnc1Seen) {
+                            trace?.issue(Issue.INVALID_CONTEXT)
+                            return false
+                        }
+                        structuredAppendSeen = true
+                        val sequence = bits.read(8)
+                        val index = sequence ushr 4
+                        val totalMinusOne = sequence and 15
+                        if (totalMinusOne == 0 || index > totalMinusOne) return false
+                        bits.skip(8) // Parity belongs to the complete set; one symbol cannot verify it.
+                    }
+                    4 -> {
+                        modeSeenAfterStructuredAppend = true
+                        val count = bits.readCount(mode, version)
+                        if (byteSegments == null) bits.skip(count * 8)
+                        else {
+                            bits.requireAvailable(count * 8)
+                            byteSegments.add(modes!!.size to ByteArray(count) { bits.read(8).toByte() })
+                        }
+                    } // Byte
+                    5 -> { // FNC1 first position
+                        if (fnc1Seen || modeSeenAfterStructuredAppend) {
+                            trace?.issue(Issue.INVALID_CONTEXT)
+                            return false
+                        }
+                        fnc1Seen = true
+                        modeSeenAfterStructuredAppend = true
+                    }
+                    7 -> {
+                        modeSeenAfterStructuredAppend = true
+                        val eci = validateEci(bits)
+                        trace?.current = trace.current?.copy(eci = eci)
+                    }
+                    8 -> { modeSeenAfterStructuredAppend = true; validateCharacters(bits, bits.readCount(mode, version), kanjiValues) }
+                    9 -> { // FNC1 second position application indicator
+                        if (fnc1Seen || modeSeenAfterStructuredAppend) {
+                            trace?.issue(Issue.INVALID_CONTEXT)
+                            return false
+                        }
+                        fnc1Seen = true
+                        modeSeenAfterStructuredAppend = true
+                        bits.skip(8)
+                    }
+                    13 -> {
+                        modeSeenAfterStructuredAppend = true
+                        if (bits.read(4) != 1) return false // QR supports the GB2312 subset only.
+                        validateCharacters(bits, bits.readCount(mode, version), hanziValues)
+                    }
+                    else -> { trace?.issue(Issue.UNSUPPORTED_MODE); return false }
                 }
-                7 -> { modeSeenAfterStructuredAppend = true; validateEci(bits) }
-                8 -> { modeSeenAfterStructuredAppend = true; validateCharacters(bits, bits.read(countBits(mode, version)), kanjiValues) }
-                9 -> { // FNC1 second position application indicator
-                    if (fnc1Seen || modeSeenAfterStructuredAppend) return false
-                    fnc1Seen = true
-                    modeSeenAfterStructuredAppend = true
-                    bits.skip(8)
-                }
-                13 -> {
-                    modeSeenAfterStructuredAppend = true
-                    if (bits.read(4) != 1) return false // QR supports the GB2312 subset only.
-                    validateCharacters(bits, bits.read(countBits(mode, version)), hanziValues)
-                }
-                else -> return false
-            }
+                completed = true
+            } finally { trace?.finish(bits.position, completed) }
         }
         onPayloadEnd?.invoke(bits.position)
         // A prefix may end inside the next mode indicator. Only a complete stream must
         // interpret these remaining bits as a shortened terminator.
         if (!allowIncomplete) {
             if (bits.available > 0) onMode?.invoke(bits.position)
-            while (bits.available > 0) if (bits.read(1) != 0) return false
+            if (bits.available > 0) {
+                trace?.begin(bits.position)
+                var completed = false
+                try {
+                    while (bits.available > 0) if (bits.read(1) != 0) return false
+                    completed = true
+                } finally { trace?.finish(bits.position, completed) }
+            }
         }
         true
     } catch (_: IncompletePayload) {
@@ -176,13 +255,13 @@ internal object StrictQrPayloadValidator {
         if ((count and 1) != 0 && bits.read(6) >= 45) error("Invalid alphanumeric character")
     }
 
-    private fun validateEci(bits: Bits) {
+    private fun validateEci(bits: Bits): Int {
         val first = bits.read(8)
-        when {
-            (first and 0x80) == 0 -> Unit
-            (first and 0xC0) == 0x80 -> bits.skip(8)
-            (first and 0xE0) == 0xC0 -> bits.skip(16)
-            else -> error("Invalid ECI designator")
+        return when {
+            (first and 0x80) == 0 -> first
+            (first and 0xC0) == 0x80 -> ((first and 0x3F) shl 8) or bits.read(8)
+            (first and 0xE0) == 0xC0 -> ((first and 0x1F) shl 16) or bits.read(16)
+            else -> { bits.invalidEci(); error("Invalid ECI designator") }
         }
     }
 
@@ -208,19 +287,38 @@ internal object StrictQrPayloadValidator {
         }
     }
 
-    private class Bits(private val bytes: ByteArray, private val unknownMasks: IntArray?, private val bitLength: Int) {
+    private class Bits(private val bytes: ByteArray, private val unknownMasks: IntArray?, private val bitLength: Int, private val trace: Trace? = null) {
         var position = 0
             private set
         val available: Int get() = bitLength - position
         val bitOffset: Int get() = position and 7
 
+        fun readCount(mode: Int, version: Int): Int {
+            val count = read(countBits(mode, version))
+            return trace?.count(count, mode, available) ?: count
+        }
+        fun invalidEci() { trace?.issue(Issue.INVALID_ECI) }
+        fun requireAvailable(width: Int) {
+            if (width > available) {
+                trace?.readStart = position
+                trace?.readEnd = bitLength
+                trace?.issue(Issue.INCOMPLETE)
+                throw IncompletePayload
+            }
+        }
         fun read(width: Int): Int {
             require(width in 0..31)
-            if (width > available) throw IncompletePayload
+            trace?.readStart = position
+            trace?.readEnd = (position + width).coerceAtMost(bitLength)
+            requireAvailable(width)
             var value = 0
             repeat(width) {
-                if (unknownMasks != null && (unknownMasks[position / 8] and (1 shl (7 - position % 8))) != 0)
+                if (unknownMasks != null && (unknownMasks[position / 8] and (1 shl (7 - position % 8))) != 0) {
+                    trace?.readStart = position
+                    trace?.readEnd = position + 1
+                    trace?.issue(Issue.UNKNOWN_BITS)
                     error("Unknown input bit")
+                }
                 value = (value shl 1) or ((bytes[position / 8].toInt() ushr (7 - position % 8)) and 1)
                 position++
             }
@@ -229,7 +327,9 @@ internal object StrictQrPayloadValidator {
 
         fun skip(width: Int) {
             require(width >= 0)
-            if (width > available) throw IncompletePayload
+            trace?.readStart = position
+            trace?.readEnd = (position + width).coerceAtMost(bitLength)
+            requireAvailable(width)
             if (unknownMasks == null) position += width
             else repeat(width) { read(1) }
         }

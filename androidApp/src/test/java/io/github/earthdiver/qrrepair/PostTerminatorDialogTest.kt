@@ -32,6 +32,54 @@ class PostTerminatorDialogTest {
     private fun refresh(activity: MainActivity) = MainActivity::class.java.getDeclaredMethod("updateContentPreview")
         .apply { isAccessible = true }.invoke(activity)
 
+    @Test fun traceExplainsUnsupportedEciBeforeTheSeparateSyntaxStopInBothLanguages() {
+        val data = PayloadBits().apply {
+            byteSegment("A".repeat(43)); put(0, 4); put(7, 4); put(51, 8); put(3, 4)
+        }.finish(55)
+        val report = PostTerminatorAnalysis.analyze(data, 3, ErrorCorrectionLevel.L)
+        for (language in listOf(AppLanguage.ENGLISH, AppLanguage.JAPANESE)) {
+            AppLanguageManager.save(RuntimeEnvironment.getApplication(), language)
+            AppLanguageManager.wrap(RuntimeEnvironment.getApplication())
+            val controller = Robolectric.buildActivity(android.app.Activity::class.java).setup()
+            try {
+                val dialog = showPostTerminatorDialog(controller.get(), PostTerminatorAnalysis.Attempt(listOf(
+                    PostTerminatorAnalysis.View(PostTerminatorAnalysis.Source.OBSERVED, report)), false), 3, "L", 0)
+                val text = descendants(dialog.window!!.decorView).filterIsInstance<TextView>().joinToString("\n") { it.text }
+                val japanese = language == AppLanguage.JAPANESE
+                assertTrue(text.contains(if (japanese) "追加のQRセグメントと仮定" else "assumes additional QR segments"))
+                assertTrue(text.contains(if (japanese) "最初の未対応指定: bit 360" else "First unsupported designation: bit 360"))
+                assertTrue(text.contains("bit 360–371 / ECI / 0111"))
+                assertTrue(text.contains(if (japanese) "指定値 51" else "assignment 51"))
+                assertTrue(text.contains(if (japanese) "構文解析の停止位置（項目の先頭）: bit 372" else "Syntax parsing stopped at item starting at bit 372"))
+                assertTrue(text.contains(if (japanese) "この位置では使用できない制御指定" else "Control header is not allowed in this context"))
+                assertTrue(text.contains("bit 372–375 / Structured Append / 0011"))
+                assertFalse(text.contains(if (japanese) "読み取れなかったセグメントの開始位置" else "Unreadable segment starts"))
+                dialog.dismiss()
+            } finally { controller.pause().stop().destroy() }
+        }
+    }
+
+    @Test fun partiallyDecodedGroupKeepsIndividualTextAndRawBytesSelectable() {
+        AppLanguageManager.save(RuntimeEnvironment.getApplication(), AppLanguage.ENGLISH)
+        AppLanguageManager.wrap(RuntimeEnvironment.getApplication())
+        val data = PayloadBits().apply {
+            byteSegment("A"); put(0, 4); put(7, 4); put(51, 8); byteSegment("B")
+            put(7, 4); put(26, 8); byteSegment("人間")
+        }.finish(40)
+        val report = PostTerminatorAnalysis.analyze(data, 1, ErrorCorrectionLevel.L)
+        val controller = Robolectric.buildActivity(android.app.Activity::class.java).setup()
+        try {
+            val dialog = showPostTerminatorDialog(controller.get(), PostTerminatorAnalysis.Attempt(listOf(
+                PostTerminatorAnalysis.View(PostTerminatorAnalysis.Source.OBSERVED, report)), false), 1, "L", 0)
+            val texts = descendants(dialog.window!!.decorView).filterIsInstance<TextView>()
+            assertTrue(texts.single { it.text.toString() == "人間" }.isTextSelectable)
+            assertTrue(texts.single { it.text.toString() == "HEX: 42" }.isTextSelectable)
+            assertFalse(texts.any { it.text.toString() == "B人間" || it.text.toString() == "AB人間" })
+            assertTrue(texts.any { it.text.contains("unsupported ECI is active") })
+            dialog.dismiss()
+        } finally { controller.pause().stop().destroy() }
+    }
+
     @Test fun resultActionShowsHiddenTextForFailedAttemptsInBothStylesAndLanguages() {
         val secret = "tail\u0000text"
         val data = PayloadBits().apply { byteSegment("A"); put(0, 4); byteSegment(secret) }.finish()
