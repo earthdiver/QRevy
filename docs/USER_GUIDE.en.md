@@ -85,6 +85,8 @@ Changing orientation rechecks existing `*` positions, removes only ineligible ma
 
 ## 5. Choose advanced settings
 
+**Treat input image as mirrored** is OFF by default and is saved per session. Enable it for a mirrored QR image. The image display stays unchanged; the top-right and bottom-left Finder roles and grid axes exchange. Manual cell values, fixed/tentative status, and Undo/Redo history follow the same image cells. Priority marks outside data/ECC after the change are removed with an explanation; their unknown values remain. Turning it off exchanges the axes again. Explicit Version, ECC, and mask selections remain enforced.
+
 | Setting | Consider it when | Main risk or limit |
 | --- | --- | --- |
 | Partial-bit search / dimension limit | Extend partial-bit enumeration or enumerate more remaining RS degrees of freedom | Choose 12, 13, or 14 bits (default 12), per RS block; each extra bit doubles the maximum enumeration count |
@@ -138,7 +140,7 @@ In this guide, **Saved work** is called **Recent work** in Classic.
 
 Import automatically saves the source image and a session before you press Save or Repair. **Saved work** retains at most 20 sessions; new imports also count toward this limit. When it is exceeded, the least recently saved work and its source image are automatically deleted. The limit also applies on startup. Touch and hold an entry to delete that work, or use **Delete all**.
 
-Resume saved sessions from **Saved work**. **Operation history** shows the current edit history. QRR sessions and saved source images stay in app-private no-backup storage, but they are not encrypted files. Saved work uses QRR schema 24. Schema 23 sessions can also be opened, using a partial-bit search / dimension limit of 12 bits; other schema versions cannot be opened.
+Resume saved sessions from **Saved work**. **Operation history** shows the current edit history. QRR sessions and saved source images stay in app-private no-backup storage, but they are not encrypted files. Saved work uses QRR schema 25. Schemas 23 and 24 can also be opened with mirrored input OFF; schema 23 uses a partial-bit search / dimension limit of 12 bits. Other schema versions cannot be opened.
 
 Each session has at most 40 history checkpoints. Memory or storage limits can reduce that number. Trimming history to fit these limits removes older checkpoints while preserving the currently selected checkpoint and the latest one.
 

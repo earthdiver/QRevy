@@ -38,6 +38,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
     /** A periodicity estimate is sufficient for threshold preview, even before QR corner roles are confirmed. */
     private var gridPreviewAvailable = false
     private var logicalGridAssigned = false
+    private var mirroredInput = false
     private val corners = MutableList(4) { PointD(0.0, 0.0) }
     private val finders = linkedMapOf<FinderRole, PointD>()
     private val autoDetectedFinders = mutableSetOf<FinderRole>()
@@ -112,8 +113,35 @@ class PreprocessOverlayView(context: Context) : View(context) {
         corners[1] = PointD(value.width * .92, value.height * .08)
         corners[2] = PointD(value.width * .92, value.height * .92)
         corners[3] = PointD(value.width * .08, value.height * .92)
+        if (mirroredInput) {
+            val right = corners[1]; corners[1] = corners[3]; corners[3] = right
+        }
         gridPreviewAvailable = false
         logicalGridAssigned = false
+        invalidate()
+    }
+
+    /** Changes logical handedness while retaining image positions and Finder evidence. */
+    fun setMirroredInput(value: Boolean) {
+        if (mirroredInput == value) return
+        mirroredInput = value
+        val right = corners[1]; corners[1] = corners[3]; corners[3] = right
+        val points = finders.mapKeys { it.key.transposed() }
+        finders.clear(); finders.putAll(points)
+        val evidence = confirmedFinderEvidence.mapKeys { it.key.transposed() }
+        confirmedFinderEvidence.clear(); confirmedFinderEvidence.putAll(evidence)
+        val confirmed = confirmedFinderRoles.map { it.transposed() }
+        confirmedFinderRoles.clear(); confirmedFinderRoles.addAll(confirmed)
+        val automatic = autoDetectedFinders.map { it.transposed() }
+        autoDetectedFinders.clear(); autoDetectedFinders.addAll(automatic)
+        finderPlacementRole = null
+        finderRemovalEnabled = false
+        clearCornerSelection()
+        editCell = editCell?.let { Coord(it.y, it.x) }
+        editSelection = editSelection.mapTo(linkedSetOf()) { Coord(it.y, it.x) }
+        editRangeStart = editRangeStart?.let { Coord(it.y, it.x) }
+        editRangeEnd = editRangeEnd?.let { Coord(it.y, it.x) }
+        editStroke.clear()
         invalidate()
     }
 
@@ -167,7 +195,8 @@ class PreprocessOverlayView(context: Context) : View(context) {
     /** Uses only direct finder evidence; it deliberately moves one corner and leaves the rest alone. */
     fun applyProvisionalFinder(candidate: FinderCandidate): ProvisionalFinderAdjustment? {
         val source = bitmap ?: return null
-        val role = provisionalFinderRole(candidate, source.width, source.height) ?: return null
+        val physicalRole = provisionalFinderRole(candidate, source.width, source.height) ?: return null
+        val role = if (mirroredInput) physicalRole.transposed() else physicalRole
         val point = PointD(candidate.centerX, candidate.centerY)
         val aligned = runCatching { alignQuadCornerToFinder(imageQuad(), version, role, point) }.getOrNull() ?: return null
         aligned.asList().forEachIndexed { index, p -> corners[index] = p }

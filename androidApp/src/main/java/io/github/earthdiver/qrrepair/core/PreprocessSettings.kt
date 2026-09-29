@@ -31,6 +31,8 @@ data class PreprocessSettings(
     val imageAdjustment: ImageAdjustment = ImageAdjustment(),
     /** Rotation applied reproducibly to the persisted source image before sampling. */
     val rotationDegrees: Float = 0f,
+    /** Logical axes are transposed in manualQuad and edits; source pixels are unchanged. */
+    val mirroredInput: Boolean = false,
     val polarity: PolarityMode = PolarityMode.AUTO,
     val blackMax: Int = 96,
     val whiteMin: Int = 160,
@@ -191,6 +193,7 @@ internal fun PreprocessSettings.searchSummary(): String {
     }
     return "$polarityLabel / " +
         localizedText("表示中のQR格子 / V$version", "displayed QR grid / Version $version") +
+        (if (mirroredInput) localizedText(" / 鏡像補正あり", " / mirrored input") else "") +
         formatConstraint?.let {
             val ec = it.ecLevel?.toString() ?: localizedText("自動", "auto")
             val mask = it.dataMask?.toString() ?: localizedText("自動", "auto")

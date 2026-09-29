@@ -29,6 +29,7 @@ internal class PreRecoveryDetailedSettingsPage(
     actions: DetailedSettingsPageActions,
     prioritySearchControl: View? = null,
     partialBitSearchControl: View? = null,
+    mirroredInput: CheckBox? = null,
 ) {
     val view: View = ScrollView(context).apply {
         addView(LinearLayout(context).apply {
@@ -44,6 +45,10 @@ internal class PreRecoveryDetailedSettingsPage(
                 buttonFactory(context.getString(R.string.rotate_right_90)) { actions.rotateBy(90f) },
                 buttonFactory(context.getString(R.string.reset_rotation), actions.resetRotation),
             )))
+            mirroredInput?.let {
+                addSettingsItem(it, 6)
+                addView(TextView(context).apply { setText(R.string.mirrored_input_note); textSize = 12f })
+            }
             addSettingsItem(TextView(context).apply { setText(R.string.thresholding) }, 6)
             addView(polarity)
             partialBitSearchControl?.let { addSettingsItem(it, 6) }

@@ -134,6 +134,7 @@ internal class PreprocessDialogController(
         var preEditSourceControl: CellSourceControl? = null
         var dedicatedSourceControl: CellSourceControl? = null
         var refreshSourceControls: () -> Unit = {}
+        var refreshSelectedCellStatus: (QrMatrix?) -> Unit = {}
         var refreshPriorityControl: () -> Unit = {}
         fun updatePreEditCountStatus() {
             refreshPriorityControl()
@@ -142,6 +143,7 @@ internal class PreprocessDialogController(
             refreshSourceControls()
         }
         val overlay = PreprocessOverlayView(this).apply {
+            setMirroredInput(preprocessSettings.mirroredInput)
             setBitmap(working.bitmap)
             setVersion(preprocessSettings.version)
             preprocessSettings.manualQuad?.let {
@@ -628,11 +630,29 @@ internal class PreprocessDialogController(
                     }
                 }.setNegativeButton(R.string.close, null).show()
         }
+        val mirroredInput = CheckBox(this).apply {
+            setText(R.string.mirrored_input)
+            isChecked = dialogState.mirroredInput
+            setOnCheckedChangeListener { _, checked ->
+                finderSearchGeneration.incrementAndGet()
+                dialogState.mirroredInput = checked
+                overlay.setMirroredInput(checked)
+                cellEditState.transposeCoordinates()
+                userGeometryEdited = true
+                revalidatePrioritySearch()
+                refreshLabels()
+                cellEditState.selectedCells.firstOrNull()?.let(overlay::selectEditCell)
+                overlay.setCellSelection(cellEditState.selectedCells)
+                refreshSelectedCellStatus(null)
+                noteDraftChange("mirrored-input", getString(R.string.mirrored_input), if (checked) "ON" else "OFF")
+            }
+        }
         val detailsPage = PreRecoveryDetailedSettingsPage(
             this,
             buttonFactory = ::button,
             scrollRow = { views -> scrollRow(*views) },
             polarity = polarity,
+            mirroredInput = mirroredInput,
             searchQuadNeighborhood = searchQuadNeighborhood,
             trustKnownPayloadCount = trustKnownPayloadCount,
             allowFixedCorrections = allowFixedCorrections,
@@ -725,12 +745,20 @@ internal class PreprocessDialogController(
                 dedicatedEditor?.setDocument(working.bitmap, geometry, matrix, keepViewport = true)
                 dedicatedEditor?.setSelected(x, y)
             }
-            val value = refreshed?.second?.get(x, y)?.value
-            val kind = cellRegionLabel(Coord(x, y))
-            val label = if (Coord(x, y) in cellEditState.prioritySearch) "*" else when (value) { ModuleValue.ZERO -> "0"; ModuleValue.ONE -> "1"; else -> "?" }
-            preEditStatus?.text = ui("選択: ($x,$y) / $kind / 値=$label", "Selected: ($x,$y) / $kind / value=$label")
-            dedicatedEditStatus?.text = preEditStatus?.text
+            refreshSelectedCellStatus(refreshed?.second)
             refreshSourceControls()
+        }
+        refreshSelectedCellStatus = { matrix ->
+            val coord = overlay.selectedEditCell()
+            if (coord != null) {
+                val (x, y) = coord
+                val value = (matrix ?: refreshPreRecoveryMatrix()?.second)?.get(x, y)?.value
+                val kind = cellRegionLabel(Coord(x, y))
+                val label = if (coord in cellEditState.prioritySearch) "*" else when (value) { ModuleValue.ZERO -> "0"; ModuleValue.ONE -> "1"; else -> "?" }
+                preEditStatus?.text = ui("選択: ($x,$y) / $kind / 値=$label", "Selected: ($x,$y) / $kind / value=$label")
+                dedicatedEditStatus?.text = preEditStatus?.text
+                dedicatedEditor?.setSelection(cellEditState.selectedCells)
+            }
         }
         overlay.onEditCellSelected = { x, y -> selectPreEditCell(x, y) }
         fun movePreEditCell(dx: Int, dy: Int) {
@@ -1129,7 +1157,8 @@ internal class PreprocessDialogController(
                         Toast.makeText(this, ui("台形補正は適用済みです。再適用する場合は画像を読み込み直してください。", "Perspective correction is already applied. Re-import the image to apply it again."), Toast.LENGTH_LONG).show()
                         return@applyPerspective
                     }
-                    val sourceQuad = overlay.imageQuad()
+                    // Rectification preserves image handedness; mirror interpretation stays in the grid.
+                    val sourceQuad = overlay.imageQuad().let { if (dialogState.mirroredInput) it.transposed() else it }
                     val rectified = runCatching {
                         val unadjusted = BitmapUtils.forSettings(source, imageSettings().copy(imageAdjustment = ImageAdjustment()))
                         try {
@@ -1153,7 +1182,7 @@ internal class PreprocessDialogController(
                     working = adjusted
                     releaseWorkingIfTemporary(previous, working)
                     overlay.setBitmap(working.bitmap)
-                    overlay.setImageQuad(rectified.qrQuad)
+                    overlay.setImageQuad(if (dialogState.mirroredInput) rectified.qrQuad.transposed() else rectified.qrQuad)
                     overlay.clearFinders()
                     userGeometryEdited = true
                     refreshLabels()

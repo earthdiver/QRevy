@@ -108,25 +108,32 @@ internal class PreRecoveryCellEditState(
             2 -> Coord(dimension - 1 - coord.x, dimension - 1 - coord.y)
             else -> Coord(dimension - 1 - coord.y, coord.x)
         }
-        fun <T> Map<Coord, T>.rotated(): Map<Coord, T> = entries.associate { rotate(it.key) to it.value }
+        transformCoordinates(::rotate)
+    }
 
-        val soft = mutableSoftEdits.mapTo(linkedSetOf(), ::rotate)
+    /** Preserves values, provenance, selection and both history stacks on the same image cells. */
+    fun transposeCoordinates() = transformCoordinates { Coord(it.y, it.x) }
+
+    private fun transformCoordinates(transform: (Coord) -> Coord) {
+        fun <T> Map<Coord, T>.transformed(): Map<Coord, T> = entries.associate { transform(it.key) to it.value }
+
+        val soft = mutableSoftEdits.mapTo(linkedSetOf(), transform)
         mutableSoftEdits.clear()
         mutableSoftEdits.addAll(soft)
-        val edits = mutableEdits.rotated()
+        val edits = mutableEdits.transformed()
         mutableEdits.clear()
         mutableEdits.putAll(edits)
-        val priority = mutablePrioritySearch.mapTo(linkedSetOf(), ::rotate)
+        val priority = mutablePrioritySearch.mapTo(linkedSetOf(), transform)
         mutablePrioritySearch.clear()
         mutablePrioritySearch.addAll(priority)
-        selectedCells = selectedCells.mapTo(linkedSetOf(), ::rotate)
+        selectedCells = selectedCells.mapTo(linkedSetOf(), transform)
 
-        val rotatedUndo = undo.map { it.rotated() }
+        val transformedUndo = undo.map { it.transformed() }
         undo.clear()
-        undo.addAll(rotatedUndo)
-        val rotatedRedo = redo.map { it.rotated() }
+        undo.addAll(transformedUndo)
+        val transformedRedo = redo.map { it.transformed() }
         redo.clear()
-        redo.addAll(rotatedRedo)
+        redo.addAll(transformedRedo)
     }
 
     fun applyValues(

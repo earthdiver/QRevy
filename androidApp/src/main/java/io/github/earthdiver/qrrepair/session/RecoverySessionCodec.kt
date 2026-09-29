@@ -12,7 +12,7 @@ import java.util.zip.GZIPOutputStream
 
 /** Android-independent, bounded and checksummed persistence codec for repair sessions. */
 object RecoverySessionCodec {
-    const val CURRENT_VERSION = 24
+    const val CURRENT_VERSION = 25
     const val MAX_HISTORY_ENTRIES = 40
     const val MAX_SESSION_PAYLOAD_BYTES = 16 * 1024 * 1024
     const val MAX_SESSION_FILE_BYTES = 20 * 1024 * 1024
@@ -374,6 +374,7 @@ object RecoverySessionCodec {
         out.writeBoolean(settings.imageAdjustment.inverted)
         out.writeInt(settings.prioritySearchLimit)
         out.writeInt(settings.partialBitSearchLimit)
+        out.writeBoolean(settings.mirroredInput)
     }
 
     private fun readPreprocessSettings(input: DataInputStream, formatVersion: Int): PreprocessSettings {
@@ -493,6 +494,11 @@ object RecoverySessionCodec {
                 imageAdjustment = adjustment,
                 prioritySearchLimit = input.readInt(),
                 partialBitSearchLimit = if (formatVersion >= 24) input.readInt() else PartialBitSearchLimit.DEFAULT,
+                mirroredInput = if (formatVersion >= 25) {
+                    val value = input.readUnsignedByte()
+                    requireCorrupt(value in 0..1, "invalid mirrored input flag")
+                    value == 1
+                } else false,
                 rotationDegrees = rotation,
                 polarity = polarity,
                 automaticThresholds = automaticThresholds,

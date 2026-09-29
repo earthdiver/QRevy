@@ -104,6 +104,88 @@ class PreprocessDialogLayoutTest {
         } finally { controller.pause().stop().destroy() }
     }
 
+    @Test fun mirroredInputCanBeToggledSavedAndReopenedWithoutMovingImageEdits() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        try {
+            val bitmap = Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.WHITE) }
+            val prepared = BitmapUtils.prepare(bitmap)
+            MainActivity::class.java.getDeclaredField("prepared").apply { isAccessible = true; set(activity, prepared) }
+            val settingsField = MainActivity::class.java.getDeclaredField("preprocessSettings").apply { isAccessible = true }
+            val quad = ImageQuad(PointD(20.0, 20.0), PointD(220.0, 20.0), PointD(220.0, 220.0), PointD(20.0, 220.0))
+            val initial = PreprocessSettings(manualQuad = quad,
+                manualFinders = mapOf(FinderRole.TOP_RIGHT to PointD(190.0, 50.0)),
+                preRecoveryEdits = mapOf(io.github.earthdiver.qrrepair.core.Coord(12, 9) to ModuleValue.ONE))
+            settingsField.set(activity, initial)
+            val open = MainActivity::class.java.getDeclaredMethod("showPreprocessDialog").apply { isAccessible = true }
+            open.invoke(activity)
+            shadowOf(Looper.getMainLooper()).idle()
+            val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+            val decor = dialog.window!!.decorView
+            findText(decor, "詳細設定")!!.performClick()
+            val mirror = findExactText(decor, "入力画像を鏡像として処理する") as CheckBox
+            assertFalse(mirror.isChecked)
+            mirror.performClick()
+            findExactText(decor, "保存")!!.performClick()
+            val saved = settingsField.get(activity) as PreprocessSettings
+            assertTrue(saved.mirroredInput)
+            assertEquals(quad.transposed(), saved.manualQuad)
+            assertEquals(mapOf(FinderRole.BOTTOM_LEFT to PointD(190.0, 50.0)), saved.manualFinders)
+            assertEquals(mapOf(io.github.earthdiver.qrrepair.core.Coord(9, 12) to ModuleValue.ONE), saved.fixedPreRecoveryEdits)
+            findExactText(decor, "キャンセル")!!.performClick()
+            open.invoke(activity)
+            shadowOf(Looper.getMainLooper()).idle()
+            val reopened = ShadowDialog.getLatestDialog() as AlertDialog
+            findText(reopened.window!!.decorView, "詳細設定")!!.performClick()
+            val restored = findExactText(reopened.window!!.decorView, "入力画像を鏡像として処理する") as CheckBox
+            assertTrue(restored.isChecked)
+            restored.performClick()
+            findExactText(reopened.window!!.decorView, "保存")!!.performClick()
+            val normal = settingsField.get(activity) as PreprocessSettings
+            assertFalse(normal.mirroredInput)
+            assertEquals(initial.manualQuad, normal.manualQuad)
+            assertEquals(initial.manualFinders, normal.manualFinders)
+            assertEquals(initial.fixedPreRecoveryEdits, normal.fixedPreRecoveryEdits)
+            assertEquals(Color.WHITE, prepared.bitmap.getPixel(0, 0))
+            reopened.dismiss()
+        } finally { controller.pause().stop().destroy() }
+    }
+
+    @Test fun perspectiveCorrectionKeepsMirrorInTheGridAndPreservesFixedEdits() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        try {
+            val bitmap = Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.WHITE) }
+            for (y in 0 until 80) for (x in 160 until 240) bitmap.setPixel(x, y, Color.RED)
+            assertEquals(Color.RED, bitmap.getPixel(190, 40))
+            val prepared = BitmapUtils.prepare(bitmap)
+            MainActivity::class.java.getDeclaredField("prepared").apply { isAccessible = true; set(activity, prepared) }
+            val settingsField = MainActivity::class.java.getDeclaredField("preprocessSettings").apply { isAccessible = true }
+            val physical = ImageQuad(PointD(20.0, 20.0), PointD(220.0, 20.0), PointD(220.0, 220.0), PointD(20.0, 220.0))
+            val edits = mapOf(io.github.earthdiver.qrrepair.core.Coord(2, 17) to ModuleValue.ONE)
+            settingsField.set(activity, PreprocessSettings(mirroredInput = true,
+                manualQuad = physical.transposed(), preRecoveryEdits = edits))
+            MainActivity::class.java.getDeclaredMethod("showPreprocessDialog").apply { isAccessible = true }.invoke(activity)
+            shadowOf(Looper.getMainLooper()).idle()
+            val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+            findText(dialog.window!!.decorView, "選択範囲を正方形に射影補正")!!.performClick()
+            findExactText(dialog.window!!.decorView, "保存")!!.performClick()
+            val saved = settingsField.get(activity) as PreprocessSettings
+            assertTrue(saved.mirroredInput)
+            assertEquals(physical, saved.perspectiveCorrectionQuad)
+            assertEquals(edits, saved.fixedPreRecoveryEdits)
+            val quad = saved.manualQuad!!
+            assertTrue(quad.topRight.y > quad.topLeft.y)
+            assertTrue(quad.bottomLeft.x > quad.topLeft.x)
+            val restored = BitmapUtils.forSettings(prepared, saved)
+            val geometry = GridGeometry(1, FinderRole.TOP_LEFT, 0.0, 0.0, 10.0, 0.0, quad)
+            val point = geometry.moduleToImage(2.0, 17.0)
+            assertEquals(Color.RED, restored.bitmap.getPixel(point.x.toInt(), point.y.toInt()))
+            if (restored.bitmap !== prepared.bitmap) restored.bitmap.recycle()
+            dialog.dismiss()
+        } finally { controller.pause().stop().destroy() }
+    }
+
     @Test
     fun subsequentFinderTapFarFromItsExpectedPositionIsRejected() {
         val context = org.robolectric.RuntimeEnvironment.getApplication()

@@ -331,7 +331,7 @@ Both controls offer Default, Exact match (0 bits), Strict, Relaxed, Manual, and 
 
 The conditions share generated source symbols and are not independent real photographs. Results depend on damage distribution, seed, scoring weights, and finite search/retention budgets. There was no fresh holdout after selecting 10%, and limits cannot reject alternatives that require zero changes to known bits. Reusable evaluation and enumeration commands are in the [study tools](../tools/detector-study/README.md#synthetic-dataecc-error-limit-study); detailed run archives are local research artifacts, not required product documentation.
 
-QRR schema 24 persists each limit mode separately from its remembered manual value. Exact match stays at zero across versions. Explicit ECC/mask selections and fixed-cell protection retain their separate rules.
+QRR schema 25 persists each limit mode separately from its remembered manual value. Exact match stays at zero across versions. Explicit ECC/mask selections and fixed-cell protection retain their separate rules.
 
 ## 5. Candidate validation and ranking
 
@@ -383,7 +383,7 @@ The Android app derives separate result, current-trial, and solver allowances fr
 
 Candidate agreement and candidate-based check guidance compare distinct candidates decoded as text from the same input matrix as the selected candidate. A full QR matrix is generated for each compared candidate, so the comparison uses at most the top 16 to bound memory and computation. If the selected decoded candidate is outside that range, it replaces the last entry. The compared count and the retained decoded-candidate count for that input are explicit; sample agreement is not treated as agreement among all candidates. Candidates that pass QR structure validation without decoding as text can be selected and exported but are excluded from this comparison.
 
-History in QRR schema 24 stores the selected QR’s version, ECC level, mask, corrected codewords, and actual sampling polarity. Recalculation restores selection by QR identity rather than list position; if no candidate matches, selection remains empty. Actual polarity is recorded separately from the user’s automatic/normal/inverted search preference. User-facing history count and size limits are described in the [User Guide](USER_GUIDE.en.md#7-save-resume-and-export).
+History in QRR schema 25 stores the selected QR’s version, ECC level, mask, corrected codewords, and actual sampling polarity. Recalculation restores selection by QR identity rather than list position; if no candidate matches, selection remains empty. Actual polarity is recorded separately from the user’s automatic/normal/inverted search preference. User-facing history count and size limits are described in the [User Guide](USER_GUIDE.en.md#7-save-resume-and-export).
 
 When conflicts with fixed values are not allowed, data/ECC pin conflicts reject the candidate and retain conflicting coordinates, input values, and required candidate values. Otherwise equivalent generic payload failures do not overwrite actionable diagnostics. Temporary priority assignments are not manual input pins.
 

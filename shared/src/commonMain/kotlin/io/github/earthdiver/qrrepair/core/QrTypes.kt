@@ -82,7 +82,13 @@ fun FinderCandidate.reliabilityScore(): Double =
         FinderEvidence.MANUAL_HINT -> -.20
     }
 
-enum class FinderRole { TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT }
+enum class FinderRole { TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT;
+    fun transposed(): FinderRole = when (this) {
+        TOP_LEFT -> TOP_LEFT
+        TOP_RIGHT -> BOTTOM_LEFT
+        BOTTOM_LEFT -> TOP_RIGHT
+    }
+}
 enum class GeometryModel { SIMILARITY, TWO_FINDER, AFFINE, PROJECTIVE, MANUAL_PROJECTIVE }
 
 data class PointD(val x: Double, val y: Double) {
@@ -93,6 +99,8 @@ data class PointD(val x: Double, val y: Double) {
 }
 
 data class ImageQuad(val topLeft: PointD, val topRight: PointD, val bottomRight: PointD, val bottomLeft: PointD) {
+    /** Exchanges logical axes without moving any image point. */
+    fun transposed(): ImageQuad = ImageQuad(topLeft, bottomLeft, bottomRight, topRight)
     fun asList(): List<PointD> = listOf(topLeft, topRight, bottomRight, bottomLeft)
     fun withCorner(index: Int, point: PointD): ImageQuad = when (index) {
         0 -> copy(topLeft = point)
@@ -103,7 +111,7 @@ data class ImageQuad(val topLeft: PointD, val topRight: PointD, val bottomRight:
     }
 }
 
-/** Assigns logical QR corner names to an already clockwise physical boundary. */
+/** Assigns logical QR corner names while preserving the boundary winding, including mirrored grids. */
 fun ImageQuad.assignedFromFinder(point: PointD, role: FinderRole): ImageQuad {
     val physical = asList()
     val physicalIndex = physical.indices.minBy { physical[it].distanceTo(point) }

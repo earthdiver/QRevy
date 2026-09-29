@@ -37,7 +37,7 @@ class ImageAdjustmentSessionCodecTest {
     @Test fun invalidPriorityLimitsAreRejected() {
         val encoded = RecoverySessionCodec.encode(payload(PreprocessSettings(prioritySearchLimit = 14)))
         for (limit in listOf(-1, 3, 15, Int.MAX_VALUE)) {
-            val changed = rewrite(encoded) { raw -> ByteBuffer.wrap(raw).putInt(raw.size - 10, limit); raw }
+            val changed = rewrite(encoded) { raw -> ByteBuffer.wrap(raw).putInt(raw.size - 11, limit); raw }
             assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(changed) }
         }
     }
@@ -56,7 +56,7 @@ class ImageAdjustmentSessionCodecTest {
         val encoded = RecoverySessionCodec.encode(payload(PreprocessSettings()))
         for (limit in listOf(-1, 0, 11, 15, 31, Int.MAX_VALUE)) {
             assertThrows(IllegalArgumentException::class.java) { PreprocessSettings(partialBitSearchLimit = limit) }
-            val changed = rewrite(encoded) { raw -> ByteBuffer.wrap(raw).putInt(raw.size - 6, limit); raw }
+            val changed = rewrite(encoded) { raw -> ByteBuffer.wrap(raw).putInt(raw.size - 7, limit); raw }
             assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(changed) }
         }
     }
@@ -66,9 +66,9 @@ class ImageAdjustmentSessionCodecTest {
             imageAdjustment = ImageAdjustment(25, -10, true), lockManualBits = true,
             preRecoveryEdits = mapOf(Coord(12, 12) to ModuleValue.ONE)))
         val current = RecoverySessionCodec.encode(original)
-        // Schema 23 has the same settings layout without the final partial-bit limit integer.
+        // Schema 23 omits the partial-bit limit and mirror flag.
         val legacy = rewrite(current, version = 23) { raw ->
-            raw.copyOfRange(0, raw.size - 6) + raw.copyOfRange(raw.size - 2, raw.size)
+            raw.copyOfRange(0, raw.size - 7) + raw.copyOfRange(raw.size - 2, raw.size)
         }
         assertEquals(original, RecoverySessionCodec.decode(legacy))
         val malformedLegacy = rewrite(legacy, version = 23) { raw ->
@@ -83,6 +83,25 @@ class ImageAdjustmentSessionCodecTest {
         assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) {
             RecoverySessionCodec.decode(missingCurrentField)
         }
+    }
+
+    @Test fun schema24DefaultsMirrorOffAndPreservesPartialBitLimit() {
+        val original = payload(PreprocessSettings(partialBitSearchLimit = 14))
+        val legacy = rewrite(RecoverySessionCodec.encode(original), version = 24) { raw ->
+            raw.copyOfRange(0, raw.size - 3) + raw.copyOfRange(raw.size - 2, raw.size)
+        }
+        assertEquals(original, RecoverySessionCodec.decode(legacy))
+    }
+
+    @Test fun mirrorFlagRoundTripsWithLogicalGeometryAndFixedEdits() {
+        val settings = PreprocessSettings(mirroredInput = true,
+            manualQuad = ImageQuad(PointD(0.0, 0.0), PointD(0.0, 20.0), PointD(20.0, 20.0), PointD(20.0, 0.0)),
+            manualFinders = mapOf(FinderRole.TOP_RIGHT to PointD(3.0, 17.0)),
+            preRecoveryEdits = mapOf(Coord(9, 12) to ModuleValue.ONE), lockManualBits = true)
+        val original = payload(settings)
+        assertEquals(original, RecoverySessionCodec.decode(RecoverySessionCodec.encode(original)))
+        val invalid = rewrite(RecoverySessionCodec.encode(original)) { it[it.size - 3] = 2; it }
+        assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(invalid) }
     }
 
     private fun payload(settings: PreprocessSettings) = RecoverySessionCodec.Payload("image-tones", 1L, UiMode.ANALYSIS,
@@ -104,13 +123,13 @@ class ImageAdjustmentSessionCodecTest {
 
     @Test fun checksummedInvalidTonesAndBooleanAreRejected() {
         val encoded = RecoverySessionCodec.encode(payload(PreprocessSettings()))
-        for (offset in listOf(19, 15)) for (invalid in listOf(-101, 101, Int.MAX_VALUE)) {
+        for (offset in listOf(20, 16)) for (invalid in listOf(-101, 101, Int.MAX_VALUE)) {
             val changed = rewrite(encoded) { raw -> ByteBuffer.wrap(raw).putInt(raw.size - offset, invalid); raw }
             assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(changed) }
         }
-        val invalidBoolean = rewrite(encoded) { it[it.size - 11] = 2; it }
+        val invalidBoolean = rewrite(encoded) { it[it.size - 12] = 2; it }
         assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(invalidBoolean) }
-        val missing = rewrite(encoded) { it.copyOfRange(0, it.size - 19) + it.copyOfRange(it.size - 6, it.size) }
+        val missing = rewrite(encoded) { it.copyOfRange(0, it.size - 20) + it.copyOfRange(it.size - 7, it.size) }
         assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(missing) }
     }
 

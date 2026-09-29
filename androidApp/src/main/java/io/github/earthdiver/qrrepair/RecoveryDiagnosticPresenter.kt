@@ -205,7 +205,12 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
             FinderRole.TOP_RIGHT -> ui("右上基準", "top-right reference")
             FinderRole.BOTTOM_LEFT -> ui("左下基準", "bottom-left reference")
         }
-        return ui("QRの位置・向き: $model / V${geometry.version} / $role", "QR position/orientation: $model / V${geometry.version} / $role")
+        val quad = geometry.moduleCenterQuad()
+        val xAxis = quad.topRight - quad.topLeft
+        val yAxis = quad.bottomLeft - quad.topLeft
+        val mirrored = xAxis.x * yAxis.y - xAxis.y * yAxis.x < 0.0
+        return ui("QRの位置・向き: $model / V${geometry.version} / $role", "QR position/orientation: $model / V${geometry.version} / $role") +
+            if (mirrored) ui(" / 鏡像補正あり", " / mirrored input") else ""
     }
 
     private fun ui(japanese: String, english: String): String = if (this.japanese) japanese else english

@@ -45,6 +45,7 @@ internal class PreprocessDialogState(private val initial: PreprocessSettings) {
         provisionalWhiteMin = estimate?.whiteMin ?: 160
     }
 
+    var mirroredInput = initial.mirroredInput
     var imageAdjustment = initial.imageAdjustment
 
     var rotationDegrees: Float = initial.rotationDegrees
@@ -70,6 +71,7 @@ internal class PreprocessDialogState(private val initial: PreprocessSettings) {
         val (blackMax, whiteMin) = normalizedThresholds(controls)
         return PreprocessSettings(
             imageAdjustment = imageAdjustment,
+            mirroredInput = mirroredInput,
             polarity = controls.polarity,
             automaticThresholds = controls.automaticThresholds,
             provisionalBlackMax = provisionalBlackMax,

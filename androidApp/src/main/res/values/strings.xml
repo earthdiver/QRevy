@@ -208,4 +208,6 @@
     <string name="partial_bit_search_limit_title">Partial-bit search / dimension limit</string>
     <string name="partial_bit_search_limit_choice" tools:ignore="PluralsCandidate">%1$d bits</string>
     <string name="partial_bit_search_limit_note">Shared limit per RS block for partial-bit search and the remaining degrees of freedom after solving RS constraints. Default: 12 bits. Each extra bit doubles the maximum enumeration count; combining this with * search increases the workload further. Memory limits may stop the search before this limit is reached.</string>
+    <string name="mirrored_input">Treat input image as mirrored</string>
+    <string name="mirrored_input_note">Exchanges the top-right and bottom-left Finder roles and grid axes. The image stays unchanged; cell edits stay on the same image cells.</string>
 </resources>

@@ -204,4 +204,6 @@
     <string name="partial_bit_search_limit_title">部分bit探索・自由度の上限</string>
     <string name="partial_bit_search_limit_choice">%1$dbit</string>
     <string name="partial_bit_search_limit_note">部分bit探索と、RS制約を解いた後に残る自由度に共通する、RSブロックごとの上限です。既定値は12bit。1bit増やすと最大列挙数は2倍になり、*探索との併用では処理量がさらに増えます。メモリ制限により、上限まで探索できない場合があります。</string>
+    <string name="mirrored_input">入力画像を鏡像として処理する</string>
+    <string name="mirrored_input_note">右上と左下のFinder役割と格子の軸を入れ替えます。画像表示は変わらず、セル編集は同じ画像上のセルに保持されます。</string>
 </resources>

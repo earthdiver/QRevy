@@ -19,6 +19,33 @@ class PreRecoveryCellEditStateTest {
         assertEquals(PriorityEditResult.LIMIT_EXCEEDED, copy.setPrioritySearch(listOf(Coord(14, 12))))
     }
 
+    @Test fun mirrorTogglePreservesValuesSourcesSelectionAndUndoRedoOnImageCells() {
+        val fixed = Coord(12, 9)
+        val tentative = Coord(13, 10)
+        val priority = Coord(15, 11)
+        val state = PreRecoveryCellEditState(mapOf(fixed to ModuleValue.ONE, tentative to ModuleValue.ZERO),
+            emptySet(), initialSoftEdits = setOf(tentative))
+        state.setPrioritySearch(listOf(priority))
+        state.undo()
+        state.select(listOf(fixed, tentative))
+        state.transposeCoordinates()
+        assertEquals(mapOf(Coord(9, 12) to ModuleValue.ONE, Coord(10, 13) to ModuleValue.ZERO), state.edits)
+        assertEquals(CellEditSource.FIXED, state.sourceAt(Coord(9, 12)))
+        assertEquals(CellEditSource.TENTATIVE, state.sourceAt(Coord(10, 13)))
+        assertEquals(setOf(Coord(9, 12), Coord(10, 13)), state.selectedCells)
+        state.redo()
+        assertEquals(setOf(Coord(11, 15)), state.prioritySearch)
+        assertEquals(ModuleValue.ERASED, state.edits[Coord(11, 15)])
+        state.transposeCoordinates()
+        assertEquals(setOf(priority), state.prioritySearch)
+        state.undo()
+        state.undo()
+        assertTrue(state.edits.isEmpty())
+        state.redo()
+        assertEquals(mapOf(fixed to ModuleValue.ONE, tentative to ModuleValue.ZERO), state.edits)
+        assertEquals(setOf(tentative), state.softEdits)
+    }
+
     private val a = Coord(2, 3)
     private val b = Coord(4, 5)
 
