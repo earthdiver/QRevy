@@ -121,6 +121,24 @@ class PreprocessOverlayView(context: Context) : View(context) {
         invalidate()
     }
 
+    /** Repositions observations when rectification changes only its margin and uniform scale. */
+    fun remapRectifiedImage(value: Bitmap, before: ImageQuad, after: ImageQuad) {
+        val scale = after.topLeft.distanceTo(after.topRight) / before.topLeft.distanceTo(before.topRight)
+        require(scale.isFinite() && scale > 0.0)
+        fun mapped(point: PointD) = after.topLeft + (point - before.topLeft) * scale
+        bitmap = value
+        corners.indices.forEach { corners[it] = mapped(corners[it]) }
+        finders.entries.forEach { it.setValue(mapped(it.value)) }
+        confirmedFinderEvidence.entries.forEach { entry ->
+            val evidence = entry.value
+            val center = mapped(PointD(evidence.centerX, evidence.centerY))
+            entry.setValue(evidence.copy(centerX = center.x, centerY = center.y,
+                moduleSize = evidence.moduleSize * scale))
+        }
+        clearCornerSelection()
+        invalidate()
+    }
+
     /** Changes logical handedness while retaining image positions and Finder evidence. */
     fun setMirroredInput(value: Boolean) {
         if (mirroredInput == value) return

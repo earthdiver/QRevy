@@ -299,12 +299,32 @@ internal class PreprocessDialogController(
         }
         black.setOnSeekBarChangeListener(listener); white.setOnSeekBarChangeListener(listener)
         fun commitVersion(requested: Int) {
+            val nextVersion = requested.coerceIn(1, 40)
+            val perspectiveQuad = dialogState.perspectiveCorrectionQuad
+            // Build before changing the draft so allocation/transform failure cannot leave
+            // settings pointing to an image prepared for a different Version.
+            val nextWorking = perspectiveQuad?.let {
+                BitmapUtils.forSettings(source, preprocessSettings.copy(
+                    rotationDegrees = dialogState.rotationDegrees,
+                    perspectiveCorrectionQuad = it,
+                    imageAdjustment = dialogState.imageAdjustment,
+                    version = nextVersion,
+                ))
+            }
+            if (nextWorking != null) {
+                val before = BitmapUtils.rectifiedGrid(perspectiveQuad, committedVersion)
+                val after = BitmapUtils.rectifiedGrid(perspectiveQuad, nextVersion)
+                overlay.remapRectifiedImage(nextWorking.bitmap, before, after)
+                val previous = working
+                working = nextWorking
+                releaseWorkingIfTemporary(previous, working)
+            }
             // Even an empty edit map can have Undo/Redo entries in the old coordinates.
             cellEditState.clearAll()
             overlay.clearCellEditing()
             updatePreEditCountStatus()
             invalidateSamplingPreview()
-            committedVersion = requested.coerceIn(1, 40)
+            committedVersion = nextVersion
             version.progress = committedVersion - 1
             overlay.setVersion(committedVersion)
             revalidatePrioritySearch()

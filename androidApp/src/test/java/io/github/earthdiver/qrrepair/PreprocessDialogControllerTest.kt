@@ -50,10 +50,10 @@ class PreprocessDialogControllerTest {
         views(dialog.window!!.decorView).filterIsInstance<CheckBox>()
             .single { it.text.toString() == "閾値を自動設定" }
 
-    private fun withDialog(settings: PreprocessSettings? = null, style: AppStyle = AppStyle.CLASSIC, block: (AlertDialog, Host, BitmapUtils.Prepared, BitmapUtils.Prepared) -> Unit) {
+    private fun withDialog(settings: PreprocessSettings? = null, style: AppStyle = AppStyle.CLASSIC, sourceBitmap: Bitmap? = null, block: (AlertDialog, Host, BitmapUtils.Prepared, BitmapUtils.Prepared) -> Unit) {
         val activity = Robolectric.buildActivity(Activity::class.java).setup()
         activity.get().setTheme(style.theme)
-        val source = BitmapUtils.prepare(Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888).apply {
+        val source = BitmapUtils.prepare(sourceBitmap ?: Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888).apply {
             eraseColor(Color.WHITE)
         })
         val working = BitmapUtils.forSettings(source, settings ?: PreprocessSettings(rotationDegrees = 15f))
@@ -124,6 +124,98 @@ class PreprocessDialogControllerTest {
                 assertEquals(rectified.topLeft.distanceTo(rectified.topRight),
                     rectified.topLeft.distanceTo(rectified.bottomLeft), .001)
             }
+        }
+    }
+
+    @Test fun rectifiedVersionChangesKeepThePreviewAndSavedGridAligned() {
+        for (mirrored in listOf(false, true)) for (assigned in listOf(false, true)) {
+            checkRectifiedVersionChange(mirrored, assigned)
+        }
+    }
+
+    private fun checkRectifiedVersionChange(mirrored: Boolean, assigned: Boolean) {
+        val sourceSize = 240
+        val physicalQuad = ImageQuad(PointD(20.0, 20.0), PointD(sourceSize - 20.0, 20.0),
+            PointD(sourceSize - 20.0, sourceSize - 20.0), PointD(20.0, sourceSize - 20.0))
+        val initial = PreprocessSettings(rotationDegrees = 15f, mirroredInput = mirrored,
+            imageAdjustment = ImageAdjustment(20, -10, false),
+            manualQuad = if (mirrored) physicalQuad.transposed() else physicalQuad)
+        fun sourceBitmap() = Bitmap.createBitmap(IntArray(sourceSize * sourceSize) { i ->
+            Color.rgb((i % sourceSize) * 255 / sourceSize, (i / sourceSize) * 255 / sourceSize,
+                (i % sourceSize + i / sourceSize) % 256)
+        }, sourceSize, sourceSize, Bitmap.Config.ARGB_8888)
+        lateinit var savedSettings: PreprocessSettings
+        lateinit var savedPixels: IntArray
+        withDialog(initial, sourceBitmap = sourceBitmap()) { dialog, host, source, _ ->
+            val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
+            click(dialog, "選択範囲を正方形に射影補正")
+            val reference = overlay.imageQuad().let { if (mirrored) it.transposed() else it }
+            // Preserve a user's corner adjustment as well as logical corner ordering.
+            val adjusted = overlay.imageQuad().let { it.copy(bottomRight = it.bottomRight + PointD(2.0, -1.0)) }
+            overlay.setPhysicalImageQuad(adjusted)
+            if (assigned) {
+                for ((role, polarity) in listOf(FinderRole.TOP_LEFT to FinderPolarity.NORMAL,
+                    FinderRole.TOP_RIGHT to FinderPolarity.INVERTED)) {
+                    val point = overlay.expectedFinderCenter(role)
+                    overlay.setVerifiedFinder(role, FinderCandidate(point.x, point.y, 10.0, 0.0, 1.0, 5,
+                        polarity = polarity))
+                }
+            }
+            val originalQuad = overlay.imageQuad()
+            val originalFinders = overlay.finderPoints()
+            val unadjusted = BitmapUtils.forSettings(source, initial.copy(imageAdjustment = ImageAdjustment()))
+            try {
+                var currentVersion = 1
+                for (requestedVersion in listOf(2, 10, 1)) {
+                    val dimension = 17 + 4 * currentVersion
+                    click(dialog, "QRバージョン: $currentVersion / ${dimension}×${dimension}セル")
+                    (ShadowDialog.getLatestDialog() as AlertDialog).listView.performItemClick(null,
+                        requestedVersion - 1, (requestedVersion - 1).toLong())
+                    click(dialog, "保存")
+                    val saved = host.saves.last()
+                    savedSettings = saved.settings
+                    assertEquals(requestedVersion, savedSettings.version)
+                    assertEquals(assigned, savedSettings.logicalGridAssigned)
+                    assertEquals(initial.mirroredInput, savedSettings.mirroredInput)
+                    assertEquals(initial.imageAdjustment, savedSettings.imageAdjustment)
+                    val rebuilt = BitmapUtils.forSettings(source, savedSettings)
+                    val rectified = BitmapUtils.rectify(unadjusted.bitmap, physicalQuad, requestedVersion, quietModules = 1.0)
+                    try {
+                        assertEquals(rebuilt.bitmap.width, saved.image.bitmap.width)
+                        assertTrue(rebuilt.bitmap.sameAs(saved.image.bitmap))
+                        assertArrayEquals(rebuilt.luma.pixels, saved.image.luma.pixels)
+                        val mapping = Homography.fromCorrespondences(reference.asList(), rectified.qrQuad.asList())
+                        fun assertMapped(before: PointD, after: PointD) {
+                            assertTrue(mapping.map(before.x, before.y).distanceTo(after) < 1e-6)
+                        }
+                        originalQuad.asList().zip(savedSettings.manualQuad!!.asList()).forEach { (before, after) ->
+                            assertMapped(before, after)
+                        }
+                        assertEquals(originalFinders.keys, savedSettings.manualFinders.keys)
+                        originalFinders.forEach { (role, point) -> assertMapped(point, savedSettings.manualFinders.getValue(role)) }
+                    } finally {
+                        rebuilt.bitmap.recycle()
+                        rectified.prepared.bitmap.recycle()
+                    }
+                    currentVersion = requestedVersion
+                }
+                savedPixels = host.saves.last().image.luma.pixels.copyOf()
+                if (assigned) {
+                    // Conflicting evidence must survive remapping independently for each role.
+                    assertEquals(FinderPolarity.UNKNOWN, overlay.confirmedFinderPolarity())
+                    assertTrue(overlay.removeConfirmedFinder(FinderRole.TOP_LEFT))
+                    assertEquals(FinderPolarity.INVERTED, overlay.confirmedFinderPolarity())
+                }
+            } finally {
+                if (unadjusted.bitmap !== source.bitmap) unadjusted.bitmap.recycle()
+            }
+        }
+        withDialog(savedSettings, sourceBitmap = sourceBitmap()) { dialog, _, _, working ->
+            val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
+            assertEquals(savedSettings.manualQuad, overlay.imageQuad())
+            assertEquals(savedSettings.manualFinders, overlay.finderPoints())
+            assertEquals(assigned, overlay.isLogicalGridAssigned())
+            assertArrayEquals(savedPixels, working.luma.pixels)
         }
     }
 

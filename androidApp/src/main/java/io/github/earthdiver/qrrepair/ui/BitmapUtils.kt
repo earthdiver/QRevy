@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
 import io.github.earthdiver.qrrepair.core.Homography
+import io.github.earthdiver.qrrepair.core.ImageQuad
 import io.github.earthdiver.qrrepair.core.PointD
 import io.github.earthdiver.qrrepair.core.LumaImage
 import io.github.earthdiver.qrrepair.core.ModuleValue
@@ -49,6 +50,7 @@ object BitmapUtils {
         }
     }
 
+    private const val MAX_PREPARED_DIMENSION = 1_800
     private const val MAX_TRANSFORM_DIMENSION = 2_600
     data class Prepared(val bitmap: Bitmap, val luma: LumaImage)
     data class Rectified(val prepared: Prepared, val qrQuad: io.github.earthdiver.qrrepair.core.ImageQuad)
@@ -75,7 +77,7 @@ object BitmapUtils {
         }
     }
 
-    fun prepare(source: Bitmap, maxDimension: Int = 1800): Prepared {
+    fun prepare(source: Bitmap, maxDimension: Int = MAX_PREPARED_DIMENSION): Prepared {
         val longest = max(source.width, source.height)
         val bitmap = if (longest > maxDimension) {
             val scale = maxDimension.toDouble() / longest
@@ -128,13 +130,26 @@ object BitmapUtils {
         }
     }
 
-    /** Rectifies [quad] and retains source pixels for [quietModules] beyond every QR edge. */
-    fun rectify(
-        source: Bitmap,
-        quad: io.github.earthdiver.qrrepair.core.ImageQuad,
-        version: Int,
-        quietModules: Double = 6.0,
-    ): Rectified {
+    private data class RectificationLayout(val outputSize: Int, val qrQuad: ImageQuad) {
+        fun quadAtSize(width: Int, height: Int): ImageQuad {
+            if (width == outputSize && height == outputSize) return qrQuad
+            val scaleX = width.toDouble() / outputSize
+            val scaleY = height.toDouble() / outputSize
+            // Coordinates denote pixel centers, while bitmap resizing scales pixel edges.
+            fun scaled(point: PointD) = PointD((point.x + .5) * scaleX - .5, (point.y + .5) * scaleY - .5)
+            return ImageQuad(scaled(qrQuad.topLeft), scaled(qrQuad.topRight),
+                scaled(qrQuad.bottomRight), scaled(qrQuad.bottomLeft))
+        }
+    }
+
+    /** Canonical physical grid in the prepared image, without allocating another bitmap. */
+    internal fun rectifiedGrid(quad: ImageQuad, version: Int, quietModules: Double = 1.0): ImageQuad {
+        val layout = rectificationLayout(quad, version, quietModules)
+        val size = minOf(layout.outputSize, MAX_PREPARED_DIMENSION)
+        return layout.quadAtSize(size, size)
+    }
+
+    private fun rectificationLayout(quad: ImageQuad, version: Int, quietModules: Double): RectificationLayout {
         require(version in 1..40 && quietModules >= 0.0)
         val top = hypot(quad.topRight.x - quad.topLeft.x, quad.topRight.y - quad.topLeft.y)
         val bottom = hypot(quad.bottomRight.x - quad.bottomLeft.x, quad.bottomRight.y - quad.bottomLeft.y)
@@ -152,12 +167,25 @@ object BitmapUtils {
         }
         val outputSize = side + margin * 2
         require(outputSize in 1..MAX_TRANSFORM_DIMENSION) { "Rectified image is too large" }
-        val qrQuad = io.github.earthdiver.qrrepair.core.ImageQuad(
+        val qrQuad = ImageQuad(
             PointD(margin.toDouble(), margin.toDouble()),
             PointD((margin + side - 1).toDouble(), margin.toDouble()),
             PointD((margin + side - 1).toDouble(), (margin + side - 1).toDouble()),
             PointD(margin.toDouble(), (margin + side - 1).toDouble()),
         )
+        return RectificationLayout(outputSize, qrQuad)
+    }
+
+    /** Rectifies [quad] and retains source pixels for [quietModules] beyond every QR edge. */
+    fun rectify(
+        source: Bitmap,
+        quad: io.github.earthdiver.qrrepair.core.ImageQuad,
+        version: Int,
+        quietModules: Double = 6.0,
+    ): Rectified {
+        val layout = rectificationLayout(quad, version, quietModules)
+        val outputSize = layout.outputSize
+        val qrQuad = layout.qrQuad
         val destination = listOf(
             qrQuad.topLeft, qrQuad.topRight, qrQuad.bottomRight, qrQuad.bottomLeft,
         )
@@ -177,16 +205,7 @@ object BitmapUtils {
         out.setPixels(outputPixels, 0, outputSize, 0, 0, outputSize, outputSize)
         return try {
             val prepared = prepare(out)
-            val preparedQuad = if (prepared.bitmap === out) qrQuad else {
-                val scaleX = prepared.bitmap.width.toDouble() / out.width
-                val scaleY = prepared.bitmap.height.toDouble() / out.height
-                // Coordinates denote pixel centers, while bitmap resizing scales pixel edges.
-                fun scaled(point: PointD) = PointD((point.x + .5) * scaleX - .5, (point.y + .5) * scaleY - .5)
-                io.github.earthdiver.qrrepair.core.ImageQuad(
-                    scaled(qrQuad.topLeft), scaled(qrQuad.topRight),
-                    scaled(qrQuad.bottomRight), scaled(qrQuad.bottomLeft),
-                )
-            }
+            val preparedQuad = layout.quadAtSize(prepared.bitmap.width, prepared.bitmap.height)
             if (prepared.bitmap !== out) out.recycle()
             Rectified(prepared, preparedQuad)
         } catch (error: Throwable) {

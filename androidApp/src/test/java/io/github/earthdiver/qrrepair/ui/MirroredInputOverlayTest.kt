@@ -44,6 +44,39 @@ class MirroredInputOverlayTest {
         assertEquals(mapOf(FinderRole.TOP_RIGHT to PointD(190.0, 50.0)), overlay.finderPoints())
     }
 
+    @Test fun resizedRectificationRemapsFinderEvidenceWithoutChangingLogicalOrientation() {
+        val sourceQuad = ImageQuad(PointD(20.0, 20.0), PointD(1780.0, 20.0),
+            PointD(1780.0, 1780.0), PointD(20.0, 1780.0))
+        val before = BitmapUtils.rectifiedGrid(sourceQuad, 1)
+        val after = BitmapUtils.rectifiedGrid(sourceQuad, 10)
+        assertNotEquals(before.topLeft.distanceTo(before.topRight), after.topLeft.distanceTo(after.topRight), .001)
+        val bitmap = Bitmap.createBitmap(1_800, 1_800, Bitmap.Config.ARGB_8888)
+        try {
+            val overlay = PreprocessOverlayView(RuntimeEnvironment.getApplication()).apply {
+                setMirroredInput(true)
+                setBitmap(bitmap)
+                setImageQuad(before.transposed())
+            }
+            val span = before.topRight.x - before.topLeft.x
+            val point = before.topLeft + PointD(span * .25, span * .75)
+            overlay.setVerifiedFinder(FinderRole.TOP_RIGHT,
+                FinderCandidate(point.x, point.y, span / 20, 0.0, 1.0, 5, polarity = FinderPolarity.INVERTED))
+            overlay.remapRectifiedImage(bitmap, before, after)
+            assertTrue(overlay.isLogicalGridAssigned())
+            after.transposed().asList().zip(overlay.imageQuad().asList()).forEach { (expected, actual) ->
+                assertTrue(expected.distanceTo(actual) < 1e-6)
+            }
+            val expected = after.topLeft + PointD((after.topRight.x - after.topLeft.x) * .25,
+                (after.bottomLeft.y - after.topLeft.y) * .75)
+            assertTrue(expected.distanceTo(overlay.finderPoints().getValue(FinderRole.TOP_RIGHT)) < 1e-6)
+            assertEquals(FinderPolarity.INVERTED, overlay.confirmedFinderPolarity())
+            assertTrue(overlay.removeConfirmedFinder(FinderRole.TOP_RIGHT))
+            assertFalse(overlay.isLogicalGridAssigned())
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
     @Test fun roleReassignmentAndImageResetKeepMirroredHandedness() {
         val overlay = overlay()
         overlay.setFinderPoint(FinderRole.TOP_RIGHT, PointD(190.0, 50.0))
