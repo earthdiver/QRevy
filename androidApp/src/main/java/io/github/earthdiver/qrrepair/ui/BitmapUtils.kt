@@ -176,9 +176,19 @@ object BitmapUtils {
         val out = Bitmap.createBitmap(outputSize, outputSize, Bitmap.Config.ARGB_8888)
         out.setPixels(outputPixels, 0, outputSize, 0, 0, outputSize, outputSize)
         return try {
-            Rectified(prepare(out).also { prepared ->
-                if (prepared.bitmap !== out) out.recycle()
-            }, qrQuad)
+            val prepared = prepare(out)
+            val preparedQuad = if (prepared.bitmap === out) qrQuad else {
+                val scaleX = prepared.bitmap.width.toDouble() / out.width
+                val scaleY = prepared.bitmap.height.toDouble() / out.height
+                // Coordinates denote pixel centers, while bitmap resizing scales pixel edges.
+                fun scaled(point: PointD) = PointD((point.x + .5) * scaleX - .5, (point.y + .5) * scaleY - .5)
+                io.github.earthdiver.qrrepair.core.ImageQuad(
+                    scaled(qrQuad.topLeft), scaled(qrQuad.topRight),
+                    scaled(qrQuad.bottomRight), scaled(qrQuad.bottomLeft),
+                )
+            }
+            if (prepared.bitmap !== out) out.recycle()
+            Rectified(prepared, preparedQuad)
         } catch (error: Throwable) {
             out.recycle()
             throw error

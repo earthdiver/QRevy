@@ -2,6 +2,10 @@ package io.github.earthdiver.qrrepair.ui
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import com.google.zxing.EncodeHintType
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
+import com.google.zxing.qrcode.encoder.Encoder
+import io.github.earthdiver.qrrepair.core.Homography
 import io.github.earthdiver.qrrepair.core.ImageQuad
 import io.github.earthdiver.qrrepair.core.PointD
 import org.junit.Assert.assertEquals
@@ -64,7 +68,41 @@ class BitmapUtilsTest {
 
         assertTrue(corrected.prepared.bitmap.width <= 1_800)
         assertTrue(corrected.prepared.bitmap.height <= 1_800)
-        assertTrue(corrected.qrQuad.bottomRight.x <= 2_600.0)
+        for (corner in corrected.qrQuad.asList()) {
+            assertTrue(corner.x in 0.0..(corrected.prepared.bitmap.width - 1).toDouble())
+            assertTrue(corner.y in 0.0..(corrected.prepared.bitmap.height - 1).toDouble())
+        }
+    }
+
+    @Test fun resizedRectificationSamplesTheOriginalQrModules() {
+        val modules = Encoder.encode("RESIZED GRID", ErrorCorrectionLevel.M,
+            mapOf(EncodeHintType.QR_VERSION to 1)).matrix
+        val pitch = 84
+        val width = modules.width * pitch
+        val pixels = IntArray(width * width) { i ->
+            if (modules[(i % width) / pitch, (i / width) / pitch].toInt() == 1) Color.BLACK else Color.WHITE
+        }
+        val source = Bitmap.createBitmap(pixels, width, width, Bitmap.Config.ARGB_8888)
+        val first = (pitch - 1) / 2.0
+        val last = first + (modules.width - 1) * pitch
+        val corrected = BitmapUtils.rectify(source,
+            ImageQuad(PointD(first, first), PointD(last, first), PointD(last, last), PointD(first, last)),
+            version = 1, quietModules = 1.0)
+        try {
+            assertEquals(1_800, corrected.prepared.bitmap.width)
+            val edge = (modules.width - 1).toDouble()
+            val mapping = Homography.fromCorrespondences(
+                listOf(PointD(0.0, 0.0), PointD(edge, 0.0), PointD(edge, edge), PointD(0.0, edge)),
+                corrected.qrQuad.asList())
+            for (y in 0 until modules.height) for (x in 0 until modules.width) {
+                val point = mapping.map(x.toDouble(), y.toDouble())
+                val luma = requireNotNull(corrected.prepared.luma.sampleMean(point.x, point.y, 0.0))
+                assertEquals("module ($x, $y)", modules[x, y].toInt(), if (luma < 128) 1 else 0)
+            }
+        } finally {
+            corrected.prepared.bitmap.recycle()
+            source.recycle()
+        }
     }
 
     @Test fun rotateRecyclesOversizedIntermediateAfterPrepareScalesIt() {
