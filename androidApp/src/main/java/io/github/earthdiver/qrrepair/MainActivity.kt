@@ -2308,13 +2308,8 @@ class MainActivity : Activity() {
                         blackMax = initialEstimate?.blackMax ?: 96,
                         whiteMin = initialEstimate?.whiteMin ?: 160,
                         unknownColorClusters = originalEstimate?.unknownColorClusters.orEmpty(),
-                        version = initialGrid?.version ?: 1,
                         lockCorners = true,
-                        logicalGridAssigned = initialGrid == null || initialGrid.autoAssignedFinders.isNotEmpty(),
-                        manualFinders = initialGrid?.autoAssignedFinders.orEmpty(),
-                        confirmedFinderPolarity = initialGrid?.confirmedPolarity ?: io.github.earthdiver.qrrepair.core.FinderPolarity.UNKNOWN,
-                        manualQuad = initialGrid?.moduleCenterQuad,
-                    ).withInitialErrorLimits()
+                    ).withInitialGrid(initialGrid).withInitialErrorLimits()
                     sessionId = sessionStore.newId()
                     sessionHistory.clear()
                     val newSessionId = sessionId!!

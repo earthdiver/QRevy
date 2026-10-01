@@ -38,7 +38,7 @@ When the app can determine whether black and white are reversed from the square 
 
 Automatic estimates are starting values, not proof of the correct symbol. Align corners with the centers of the outer modules and confirm that the selected version agrees with the number of cells along one side.
 
-For a newly imported image, initial corners and version are tried in this order: ZXing-C++, grid periodicity, then a two-Finder fallback. The last route covers version 2 and later symbols. Two diagonal Finders can be assigned as top-right and bottom-left when both timing axes provide sufficient evidence, even without an alignment pattern. Otherwise, a verified lower-right alignment pattern may still support provisional corners without role assignment. Strong perspective distortion is not supported. If every route fails, adjust the default geometry manually.
+For a newly imported image, initial corners and version are tried in this order: ZXing-C++, grid periodicity, then a two-Finder fallback. The last route covers version 2 and later symbols. Two diagonal Finders can be assigned as top-right and bottom-left when both timing axes provide sufficient evidence, even without an alignment pattern. Otherwise, a verified lower-right alignment pattern may still support provisional corners without role assignment. Strong perspective distortion is not supported. If every route fails, adjust the default geometry manually. Without automatically assigned Finder roles, assign at least one role before repair. Rectifying the selection preserves the corrected corner positions but clears Finder roles and grid orientation; assign a role again before repair.
 
 ## 3. Review and assign Finder roles
 
@@ -48,7 +48,7 @@ To remove an incorrect assignment, press **Clear** in the Finder section and tap
 
 When roles were not assigned automatically, or orientation needs changing, manually assign logical roles to visible Finders. The app looks for the square pattern near the selected point to refine its center and determine whether black and white are reversed. A hidden Finder need not be assigned as though it were observed.
 
-With exactly one assigned role and **Automatically fine-tune sampling position** enabled, small rotations around that logical corner are also evaluated. An incorrect role can prevent the correct recovery, so compare results without an assignment when its evidence is weak.
+With exactly one assigned role and **Automatically fine-tune sampling position** enabled, small rotations around that logical corner are also evaluated. An incorrect role can prevent the correct recovery. If an assignment is uncertain, clear it and review the roles; after clearing all assignments, assign at least one role again before repair.
 
 ## 4. Edit cells
 

@@ -1182,7 +1182,7 @@ internal class PreprocessDialogController(
                     working = adjusted
                     releaseWorkingIfTemporary(previous, working)
                     overlay.setBitmap(working.bitmap)
-                    overlay.setImageQuad(if (dialogState.mirroredInput) rectified.qrQuad.transposed() else rectified.qrQuad)
+                    overlay.setPhysicalImageQuad(if (dialogState.mirroredInput) rectified.qrQuad.transposed() else rectified.qrQuad)
                     overlay.clearFinders()
                     userGeometryEdited = true
                     refreshLabels()

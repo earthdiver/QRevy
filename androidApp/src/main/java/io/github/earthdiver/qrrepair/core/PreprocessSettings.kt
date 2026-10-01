@@ -96,6 +96,15 @@ data class PreprocessSettings(
         dataEccMismatchLimitMode = ErrorLimitMode.AUTOMATIC,
     )
 
+    /** An imported boundary has logical orientation only when Finder roles were assigned. */
+    fun withInitialGrid(estimate: InitialGridEstimate?) = copy(
+        version = estimate?.version ?: 1,
+        manualQuad = estimate?.moduleCenterQuad,
+        manualFinders = estimate?.autoAssignedFinders.orEmpty(),
+        logicalGridAssigned = estimate?.autoAssignedFinders?.isNotEmpty() == true,
+        confirmedFinderPolarity = estimate?.confirmedPolarity ?: FinderPolarity.UNKNOWN,
+    )
+
     val logicalQuad: ImageQuad? get() = manualQuad.takeIf { logicalGridAssigned }
 
     /** Detach collection inputs before submitting work to a background executor. */

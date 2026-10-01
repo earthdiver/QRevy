@@ -70,6 +70,105 @@ class PreprocessDialogControllerTest {
             activity.pause().stop().destroy()
             if (!working.bitmap.isRecycled) working.bitmap.recycle()
             if (!source.bitmap.isRecycled) source.bitmap.recycle()
+            host.saves.map { it.image.bitmap }.distinct().forEach { if (!it.isRecycled) it.recycle() }
+        }
+    }
+
+    @Test fun imageWithoutAnEstimatedGridRequiresAFinderRoleBeforeRepair() {
+        val image = LumaImage(240, 240, IntArray(240 * 240) { 255 })
+        val estimate = InitialGridEstimator.estimate(image, emptyList())
+        assertNull(estimate)
+        checkRequiresFinderAfterSaving(PreprocessSettings().withInitialGrid(estimate))
+    }
+
+    @Test fun importedProvisionalCornersRequireAFinderRoleBeforeRepair() {
+        val quad = ImageQuad(PointD(20.0, 20.0), PointD(220.0, 20.0),
+            PointD(220.0, 220.0), PointD(20.0, 220.0))
+        val estimate = InitialGridEstimate(1, quad, InitialGridSource.PERIODICITY)
+        checkRequiresFinderAfterSaving(PreprocessSettings().withInitialGrid(estimate))
+    }
+
+    @Test fun importedAutomaticFinderRolesAllowRepairWithoutManualAssignment() {
+        val quad = ImageQuad(PointD(20.0, 20.0), PointD(220.0, 20.0),
+            PointD(220.0, 220.0), PointD(20.0, 220.0))
+        val roles = mapOf(FinderRole.TOP_LEFT to PointD(50.0, 50.0),
+            FinderRole.TOP_RIGHT to PointD(190.0, 50.0), FinderRole.BOTTOM_LEFT to PointD(50.0, 190.0))
+        val estimate = InitialGridEstimate(1, quad, InitialGridSource.ZXING_CPP, roles, FinderPolarity.NORMAL)
+        withDialog(PreprocessSettings().withInitialGrid(estimate)) { dialog, host, _, _ ->
+            click(dialog, "設定を保存して修復")
+            val saved = host.saves.single()
+            assertEquals(quad, saved.settings.logicalQuad)
+            assertEquals(roles, saved.settings.manualFinders)
+            assertEquals(FinderPolarity.NORMAL, saved.settings.confirmedFinderPolarity)
+            assertTrue(recover(saved).attemptedGeometries > 0)
+        }
+    }
+
+    @Test fun rectificationKeepsPhysicalCornersButRequiresFinderReassignment() {
+        for (mirrored in listOf(false, true)) for (style in AppStyle.entries) {
+            val physicalQuad = ImageQuad(PointD(30.0, 20.0), PointD(210.0, 30.0),
+                PointD(220.0, 220.0), PointD(20.0, 210.0))
+            val initial = PreprocessSettings(mirroredInput = mirrored,
+                manualQuad = if (mirrored) physicalQuad.transposed() else physicalQuad,
+                manualFinders = mapOf(FinderRole.TOP_LEFT to PointD(55.0, 50.0)),
+                confirmedFinderPolarity = FinderPolarity.NORMAL,
+                preRecoveryEdits = mapOf(Coord(10, 12) to ModuleValue.ONE),
+                searchQuadNeighborhood = false)
+            checkRequiresFinderAfterSaving(initial, style) { dialog, overlay ->
+                assertTrue(overlay.isLogicalGridAssigned())
+                click(dialog, "選択範囲を正方形に射影補正")
+                assertNotEquals(initial.manualQuad, overlay.imageQuad())
+                val rectified = overlay.imageQuad().let { if (mirrored) it.transposed() else it }
+                assertEquals(rectified.topLeft.y, rectified.topRight.y, .001)
+                assertEquals(rectified.topLeft.x, rectified.bottomLeft.x, .001)
+                assertEquals(rectified.topLeft.distanceTo(rectified.topRight),
+                    rectified.topLeft.distanceTo(rectified.bottomLeft), .001)
+            }
+        }
+    }
+
+    private fun recover(saved: PreprocessSave) = RecoveryWorkflow(RecoveryEngine()).run(
+        saved.image.luma, saved.settings, RecoveryRetentionBudget())
+
+    private fun checkRequiresFinderAfterSaving(
+        initial: PreprocessSettings,
+        style: AppStyle = AppStyle.CLASSIC,
+        prepare: (AlertDialog, PreprocessOverlayView) -> Unit = { _, _ -> },
+    ) {
+        lateinit var savedSettings: PreprocessSettings
+        lateinit var physicalQuad: ImageQuad
+        val repairLabel = if (style == AppStyle.CLASSIC) "設定を保存して修復" else "修復"
+        withDialog(initial, style) { dialog, host, _, _ ->
+            val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
+            prepare(dialog, overlay)
+            assertFalse(overlay.isLogicalGridAssigned())
+            assertTrue(overlay.finderPoints().isEmpty())
+            physicalQuad = overlay.imageQuad()
+            click(dialog, repairLabel)
+            assertEquals(listOf("save", "repair"), host.effects)
+            val saved = host.saves.single()
+            savedSettings = saved.settings
+            assertEquals(physicalQuad, savedSettings.manualQuad)
+            assertEquals(initial.preRecoveryEdits, savedSettings.preRecoveryEdits)
+            assertNull(savedSettings.logicalQuad)
+            assertEquals(FinderPolarity.UNKNOWN, savedSettings.confirmedFinderPolarity)
+            val result = recover(saved)
+            assertEquals(0, result.attemptedGeometries)
+            assertTrue(result.attempts.isEmpty())
+            assertTrue(result.finders.isEmpty())
+        }
+        withDialog(savedSettings, style) { dialog, host, _, _ ->
+            val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
+            assertEquals(physicalQuad, overlay.imageQuad())
+            assertFalse(overlay.isLogicalGridAssigned())
+            assertTrue(overlay.finderPoints().isEmpty())
+            overlay.setFinderPoint(FinderRole.TOP_LEFT, overlay.expectedFinderCenter(FinderRole.TOP_LEFT))
+            click(dialog, repairLabel)
+            val saved = host.saves.single()
+            assertEquals(setOf(FinderRole.TOP_LEFT), saved.settings.manualFinders.keys)
+            assertNotNull(saved.settings.logicalQuad)
+            assertEquals(initial.preRecoveryEdits, saved.settings.preRecoveryEdits)
+            assertTrue(recover(saved).attemptedGeometries > 0)
         }
     }
 
