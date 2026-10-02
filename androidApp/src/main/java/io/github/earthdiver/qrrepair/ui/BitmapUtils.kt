@@ -55,6 +55,25 @@ object BitmapUtils {
     data class Prepared(val bitmap: Bitmap, val luma: LumaImage)
     data class Rectified(val prepared: Prepared, val qrQuad: io.github.earthdiver.qrrepair.core.ImageQuad)
 
+    /** Composites transparency before tones. The caller owns any returned copy and the source. */
+    internal fun onWhiteBackground(source: Bitmap): Bitmap {
+        if (!source.hasAlpha()) return source
+        val pixels = IntArray(source.width * source.height)
+        source.getPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
+        if (pixels.all { Color.alpha(it) == 255 }) return source
+        for (i in pixels.indices) {
+            val pixel = pixels[i]
+            val alpha = Color.alpha(pixel)
+            val white = 255 * (255 - alpha)
+            pixels[i] = Color.rgb(
+                (Color.red(pixel) * alpha + white + 127) / 255,
+                (Color.green(pixel) * alpha + white + 127) / 255,
+                (Color.blue(pixel) * alpha + white + 127) / 255,
+            )
+        }
+        return Bitmap.createBitmap(pixels, source.width, source.height, Bitmap.Config.ARGB_8888)
+    }
+
     /** Creates a lossless sampling source for a matrix imported without an original image. */
     fun renderTextMatrixSource(matrix: QrMatrix, moduleSize: Int = 8, quietModules: Int = 4): Bitmap {
         require(moduleSize >= 2 && quietModules >= 0)
@@ -79,7 +98,7 @@ object BitmapUtils {
 
     fun prepare(source: Bitmap, maxDimension: Int = MAX_PREPARED_DIMENSION): Prepared {
         val longest = max(source.width, source.height)
-        val bitmap = if (longest > maxDimension) {
+        val scaled = if (longest > maxDimension) {
             val scale = maxDimension.toDouble() / longest
             Bitmap.createScaledBitmap(
                 source,
@@ -89,19 +108,31 @@ object BitmapUtils {
             )
         } else source
 
-        val argb = IntArray(bitmap.width * bitmap.height)
-        bitmap.getPixels(argb, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-        val luma = IntArray(argb.size)
-        val rgb = IntArray(argb.size)
-        for (i in argb.indices) {
-            val c = argb[i]
-            val r = (c ushr 16) and 0xFF
-            val g = (c ushr 8) and 0xFF
-            val b = c and 0xFF
-            rgb[i] = c and 0xFFFFFF
-            luma[i] = (299 * r + 587 * g + 114 * b + 500) / 1000
+        val bitmap = try {
+            onWhiteBackground(scaled)
+        } catch (error: Throwable) {
+            if (scaled !== source) scaled.recycle()
+            throw error
         }
-        return Prepared(bitmap, LumaImage(bitmap.width, bitmap.height, luma, rgb))
+        if (scaled !== source && scaled !== bitmap) scaled.recycle()
+        try {
+            val argb = IntArray(bitmap.width * bitmap.height)
+            bitmap.getPixels(argb, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+            val luma = IntArray(argb.size)
+            val rgb = IntArray(argb.size)
+            for (i in argb.indices) {
+                val c = argb[i]
+                val r = (c ushr 16) and 0xFF
+                val g = (c ushr 8) and 0xFF
+                val b = c and 0xFF
+                rgb[i] = c and 0xFFFFFF
+                luma[i] = (299 * r + 587 * g + 114 * b + 500) / 1000
+            }
+            return Prepared(bitmap, LumaImage(bitmap.width, bitmap.height, luma, rgb))
+        } catch (error: Throwable) {
+            if (bitmap !== source) bitmap.recycle()
+            throw error
+        }
     }
 
     /** Rotates pixels into a new white-backed bitmap; every downstream coordinate uses this image. */

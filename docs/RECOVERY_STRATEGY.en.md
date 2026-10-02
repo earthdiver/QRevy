@@ -73,6 +73,8 @@ Even if the last line in the example is RS-consistent, it is not accepted on tha
 
 Image files have their EXIF orientation applied, while camera captures pass through an explicit crop step. The user can rotate by 90°, 1°, or 0.1°.
 
+Transparency is composited onto white before tone adjustments. Display, luminance sampling, color-marker classification, and immediate decoding use the same opaque pixels. New sessions store the unadjusted white-backed source; verified transparent sources from saved sessions are composited when prepared for analysis.
+
 The working image is converted to luminance values that represent each pixel’s brightness. If it is not known whether black and white are reversed, both normal and inverted interpretations can be tried. Once a confirmed Finder pattern establishes which interpretation to use, reading follows that result. When quiet-zone correction is enabled, the image used to find these patterns receives a margin representing QR white (0).
 
 Contrast and brightness are bounded integer settings from −100 to 100. Each RGB channel uses gain `2^(contrast/50)` about 127.5 and an offset of `2.55 * brightness`, followed by optional inversion and clamping to 0–255. Geometry is applied to the unadjusted source before tones; display pixels and sampled luminance share this transform. Color-marker classification retains the corresponding original RGB values. Decoder polarity describes the adjusted image, so importing an inverted image does not also force inverted decoding. QRR stores the original image and adjustment parameters separately.

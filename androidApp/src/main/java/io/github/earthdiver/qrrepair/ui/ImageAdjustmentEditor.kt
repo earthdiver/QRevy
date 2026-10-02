@@ -20,7 +20,7 @@ import io.github.earthdiver.qrrepair.core.ImageAdjustment
 import io.github.earthdiver.qrrepair.createIndependentCrop
 
 /** One shared crop/tone editor for camera imports, file imports, and later tone changes.
- * The caller owns [original]; this view owns only temporary rotations. */
+ * The caller owns [original]; this view owns composites and temporary rotations. */
 class ImageAdjustmentEditor(
     context: Context,
     private val original: Bitmap,
@@ -31,12 +31,13 @@ class ImageAdjustmentEditor(
     private val onCancel: () -> Unit,
     private val onApply: (ImageAdjustment) -> Unit,
 ) : LinearLayout(context) {
-    val preview = CropOverlayView(context).apply { cropEnabled = allowCrop; setBitmap(original) }
+    private val whiteSource = BitmapUtils.onWhiteBackground(original)
+    val preview = CropOverlayView(context).apply { cropEnabled = allowCrop; setBitmap(whiteSource) }
     var adjustment: ImageAdjustment = initial
         private set
     var showingBefore: Boolean = false
         private set
-    private var rotated: Bitmap = original
+    private var rotated: Bitmap = whiteSource
     private var rotation = 0f
     private var editing = false
     private var contrastSelected = true
@@ -268,8 +269,8 @@ class ImageAdjustmentEditor(
 
     private fun rotateTo(degrees: Float) {
         val normalized = ((degrees + 180f) % 360f + 360f) % 360f - 180f
-        val next = if (normalized == 0f) original else BitmapUtils.rotate(original, normalized).bitmap
-        if (rotated !== original && rotated !== next) rotated.recycle()
+        val next = if (normalized == 0f) whiteSource else BitmapUtils.rotate(whiteSource, normalized).bitmap
+        if (rotated !== whiteSource && rotated !== next) rotated.recycle()
         rotated = next
         rotation = normalized
         preview.setBitmap(next)
@@ -319,7 +320,8 @@ class ImageAdjustmentEditor(
     }
 
     fun dispose() {
-        if (rotated !== original && !rotated.isRecycled) rotated.recycle()
+        if (rotated !== whiteSource && !rotated.isRecycled) rotated.recycle()
+        if (whiteSource !== original && !whiteSource.isRecycled) whiteSource.recycle()
     }
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()

@@ -1880,6 +1880,7 @@ class MainActivity : Activity() {
                     statusText.text = ui("セッションを読み込めませんでした。", "Could not load the session.")
                     return@runOnUiThread
                 }
+                bitmap?.takeIf { it !== p?.bitmap && !it.isRecycled }?.recycle()
                 applyStoredSession(stored, p)
             }
         }

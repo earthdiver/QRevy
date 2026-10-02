@@ -18,6 +18,8 @@ Ready-to-edit [matrix templates for versions 1–40](../templates/text-matrices/
 
 Prefer an image containing the complete QR and, when possible, its surrounding quiet zone, with module centers that are not completely blurred. Never attach a sensitive real QR image to a public issue.
 
+Transparent images use a white background for both display and analysis. Partially transparent colors are blended with white before brightness, contrast, or inversion is applied.
+
 ## 2. Adjust image and geometry
 
 1. Rotate in 90°, 1°, or 0.1° increments when needed.
