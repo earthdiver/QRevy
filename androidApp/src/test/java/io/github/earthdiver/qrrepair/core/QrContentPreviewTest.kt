@@ -117,6 +117,38 @@ class QrContentPreviewTest {
     }
 
     @Test
+    fun whitespacePayloadsAreDisplayedAndHighlightedWithoutChangingTheirContents() {
+        val payloads = listOf("   ", "\n\t", " \r\n\t ", "  text\n\t")
+
+        payloads.forEach { payload ->
+            val preview = QrContentPreviewParser.parse(candidate(payload))!!
+            val ranges = mutableListOf<IntRange>()
+            val result = preview.resultContentText(payload) { start, end -> ranges += start until end }
+
+            assertEquals(QrContentKind.TEXT, preview.kind)
+            assertEquals(payload, preview.recoveredText)
+            assertEquals(1, ranges.size)
+            val range = ranges.single()
+            assertEquals(payload, result.substring(range.first, range.last + 1))
+            val characterCount = preview.fields.single()
+            assertTrue(preview.toDisplayText().contains("\n$payload\n${characterCount.label}: ${payload.length}"))
+        }
+    }
+
+    @Test
+    fun emptyTextDoesNotAddAPayloadLineOrHighlight() {
+        val preview = QrContentPreviewParser.parse(candidate(""))!!
+        val ranges = mutableListOf<IntRange>()
+        val result = preview.resultContentText("") { start, end -> ranges += start until end }
+
+        assertTrue(ranges.isEmpty())
+        assertEquals("", preview.recoveredText)
+        assertTrue(!result.contains("\n\n"))
+        val characterCount = preview.fields.single()
+        assertTrue(preview.toDisplayText().contains("${characterCount.label}: 0"))
+    }
+
+    @Test
     fun longTextIsNotSilentlyTruncatedInDiagnostics() {
         val payload = "long diagnostic text: " + "0123456789".repeat(22)
 

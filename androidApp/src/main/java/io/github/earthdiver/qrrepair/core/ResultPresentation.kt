@@ -12,9 +12,9 @@ fun QrContentPreview.resultContentText(fullText: String?, onRecoveredText: ((Int
     val rawText = recoveredText ?: fullText
     append(localizedText("読み取れた内容", "Read content")).append(" — ").append(title)
     if (!qrStructureValid) append(localizedText("\nQRのデータ構造を確認できませんでした。", "\nThe QR data structure could not be verified."))
-    if (summary.isNotBlank()) {
+    val value = if (kind == QrContentKind.TEXT) rawText ?: summary else summary
+    if (if (kind == QrContentKind.TEXT) value.isNotEmpty() else value.isNotBlank()) {
         append('\n')
-        val value = if (kind == QrContentKind.TEXT) rawText ?: summary else summary
         if (rawText != null && value == rawText) appendRecovered(value) else append(value)
     }
     fields.filter { kind != QrContentKind.TEXT }.forEach { field ->

@@ -66,7 +66,9 @@ data class QrContentPreview(
             append(localizedText("FNC1アプリケーション識別子: ", "FNC1 application indicator: "))
                 .append(it).append('\n')
         }
-        if (summary.isNotBlank()) append(summary).append('\n')
+        if (if (kind == QrContentKind.TEXT) summary.isNotEmpty() else summary.isNotBlank()) {
+            append(summary).append('\n')
+        }
         for (field in fields) {
             val shown = field.value
             append(field.label).append(": ").append(shown).append('\n')
