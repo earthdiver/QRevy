@@ -3,11 +3,15 @@ package io.github.earthdiver.qrrepair.session
 import android.graphics.Bitmap
 import android.graphics.Color
 import io.github.earthdiver.qrrepair.core.HistoryEventKind
+import io.github.earthdiver.qrrepair.core.Coord
+import io.github.earthdiver.qrrepair.core.ModuleValue
+import io.github.earthdiver.qrrepair.core.PreprocessSettings
 import io.github.earthdiver.qrrepair.core.RecoveryHistoryEntry
 import io.github.earthdiver.qrrepair.core.RecoverySnapshot
 import io.github.earthdiver.qrrepair.core.UiMode
 import java.io.File
 import java.security.MessageDigest
+import java.util.concurrent.Executor
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -37,6 +41,51 @@ class RecoverySessionStorageTest {
     }
     private fun digest(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes)
         .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+
+    @Test fun queuedEditsRemainRestorableAfterAnotherSessionIsImported() {
+        val firstId = "pending-edits-first"
+        val secondId = "pending-edits-second"
+        val store = storeSession(firstId)
+        val firstImage = bitmap()
+        val secondImage = bitmap(Color.WHITE)
+        try {
+            store.saveSourceBitmap(firstId, firstImage)
+            val jobs = ArrayDeque<Runnable>()
+            val executor = Executor { jobs.addLast(it) }
+            val queue = SessionSaveQueue(executor,
+                save = { id, entries, cursor -> store.save(id, UiMode.SIMPLE, entries, cursor) },
+                onError = { throw AssertionError(it) })
+            val edits = PreprocessSettings(preRecoveryEdits = mapOf(Coord(10, 10) to ModuleValue.ONE))
+            val timeline = listOf(entry(), RecoveryHistoryEntry(
+                kind = HistoryEventKind.USER_EDIT, label = "Last fixed edit",
+                snapshot = RecoverySnapshot(null, null, null, -1, edits),
+            ))
+            queue.enqueue(firstId, timeline, 1)
+            executor.execute { store.saveSourceBitmap(secondId, secondImage) }
+            queue.enqueue(secondId, listOf(entry()), 0)
+            while (jobs.isNotEmpty()) jobs.removeFirst().run()
+
+            val first = store.load(firstId)!!
+            try {
+                assertEquals(1, first.historyCursor)
+                assertEquals(timeline, first.historyEntries)
+                assertEquals(ModuleValue.ONE, first.historyEntries[1].snapshot.preprocessSettings!!
+                    .fixedPreRecoveryEdits[Coord(10, 10)])
+                assertNotNull(first.sourceBitmap)
+            } finally { first.sourceBitmap?.recycle() }
+            val second = store.load(secondId)!!
+            try {
+                assertEquals(0, second.historyCursor)
+                assertNotNull(second.sourceBitmap)
+                assertEquals(Color.WHITE, second.sourceBitmap!!.getPixel(0, 0))
+            } finally { second.sourceBitmap?.recycle() }
+        } finally {
+            firstImage.recycle()
+            secondImage.recycle()
+            store.delete(firstId)
+            store.delete(secondId)
+        }
+    }
 
     @Test fun sourceRoundTripAndReplacementUseTheVerifiedPointer() {
         val id = "source-roundtrip"

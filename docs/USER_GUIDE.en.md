@@ -143,6 +143,8 @@ In this guide, **Saved work** is called **Recent work** in Classic.
 
 Import automatically saves the source image and a session before you press Save or Repair. **Saved work** retains at most 20 sessions; new imports also count toward this limit. When it is exceeded, the least recently saved work and its source image are automatically deleted. The limit also applies on startup. Touch and hold an entry to delete that work, or use **Delete all**.
 
+Starting another import preserves pending saves for the previous work. Repeated save requests for the same work retain its latest requested history and selected checkpoint.
+
 Resume saved sessions from **Saved work**. **Operation history** shows the current edit history. QRR sessions and saved source images stay in app-private no-backup storage, but they are not encrypted files. Saved work uses QRR schema 25. Schemas 23 and 24 can also be opened with mirrored input OFF; schema 23 uses a partial-bit search / dimension limit of 12 bits. Other schema versions cannot be opened.
 
 Each session has at most 40 history checkpoints. Memory or storage limits can reduce that number. Trimming history to fit these limits removes older checkpoints while preserving the currently selected checkpoint and the latest one.
