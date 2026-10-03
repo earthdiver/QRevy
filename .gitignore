@@ -7,3 +7,6 @@ local.properties
 *.iml
 .DS_Store
 .codex/
+
+# Locally collected external QR evaluation samples
+/samples/
