@@ -96,12 +96,12 @@ class SingleSegmentProcessingTest {
                 val report = RecoveryDiagnosticPresenter(language == AppLanguage.JAPANESE).failureReport(failure, null,
                     RecoveryDiagnosticContext(0, outcome.searchDiagnostic.unsearched, false, outcome.searchDiagnostic, null))
                 val processing = report.sections.single { it.stage == DiagnosticStage.PROCESSING }.summary
-                assertTrue(processing.contains(status.description()))
+                assertTrue(processing.contains(status.trialDescription()))
                 assertTrue(processing.contains("ON"))
                 val off = RecoveryDiagnosticPresenter(language == AppLanguage.JAPANESE).failureReport(
                     failure.copy(displayConditions = failure.displayConditions!!.copy(trustSingleSegment = false)), null,
                     RecoveryDiagnosticContext(0, true, false, outcome.searchDiagnostic, null))
-                assertFalse(off.sections[2].summary.contains(status.description()))
+                assertFalse(off.sections[2].summary.contains(status.trialDescription()))
             }
         }
     }
@@ -136,7 +136,7 @@ class SingleSegmentProcessingTest {
         assertNotNull(rejected.failure)
         assertTrue(rejected.searchDiagnostic.singleSegmentStatuses.contains(SingleSegmentStatus.APPLIED_WITH_PRIORITY_HEADER))
         assertEquals(2, rejected.searchDiagnostic.priorityHeaderHypotheses.size)
-        assertFalse(rejected.searchDiagnostic.singleSegmentProcessingText().contains(SingleSegmentStatus.INCOMPLETE_HEADER.description()))
+        assertFalse(rejected.searchDiagnostic.singleSegmentProcessingText().contains(SingleSegmentStatus.INCOMPLETE_HEADER.trialDescription()))
         // Ordinary '?' in the header must still prevent enabling the option.
         setBit(input, 4, null)
         assertFalse(engine.hasTrustablePayloadHeader(input, format))
@@ -150,6 +150,33 @@ class SingleSegmentProcessingTest {
         for (language in AppLanguage.entries) {
             AppLanguageManager.applyTo(RuntimeEnvironment.getApplication(), language)
             assertTrue(candidate.usedMethodsText().contains(if (language == AppLanguage.JAPANESE) "補完・変更は0bit" else "0 bits filled/changed"))
+        }
+    }
+
+    @Test fun mixedTrialOutcomesDoNotDescribeTheOriginalQrModeAsUnsupported() {
+        for (language in AppLanguage.entries) {
+            AppLanguageManager.applyTo(RuntimeEnvironment.getApplication(), language)
+            val ja = language == AppLanguage.JAPANESE
+            val mixedSummary = if (ja) "適用できた試行と、適用できなかった試行" else "applicable in some trials and unavailable in others"
+            for (unavailable in listOf(
+                setOf(SingleSegmentStatus.UNSUPPORTED_MODE, SingleSegmentStatus.COUNT_EXCEEDS_CAPACITY),
+                setOf(SingleSegmentStatus.INCOMPLETE_HEADER),
+            )) {
+                val statuses = unavailable + SingleSegmentStatus.APPLIED
+                val text = RecoverySearchDiagnostic(singleSegmentStatuses = statuses).singleSegmentProcessingText()
+                assertTrue(text.contains(if (ja) "各試行（ECC・マスク候補や * による仮定）" else "trial outcomes across ECC/mask candidates and * hypotheses"))
+                assertTrue(text.contains(if (ja) "元のQRコードの種類を確定する診断ではありません" else "does not establish the original QR code's mode"))
+                assertTrue(text.contains(mixedSummary))
+                assertTrue(text.indexOf(mixedSummary) < text.indexOf(SingleSegmentStatus.APPLIED.trialDescription()))
+                assertEquals(statuses.size, text.lineSequence().count { it.startsWith("• ") })
+                for (status in statuses) assertTrue(text.lines().contains("• ${status.trialDescription()}"))
+                assertFalse(text.contains(SingleSegmentStatus.UNSUPPORTED_MODE.description()))
+            }
+            for (status in SingleSegmentStatus.entries) {
+                val text = RecoverySearchDiagnostic(singleSegmentStatuses = setOf(status)).singleSegmentProcessingText()
+                assertFalse(text.contains(mixedSummary))
+                assertEquals(listOf("• ${status.trialDescription()}"), text.lines().filter { it.startsWith("• ") })
+            }
         }
     }
 
@@ -168,19 +195,21 @@ class SingleSegmentProcessingTest {
             val ja = language == AppLanguage.JAPANESE
             val failedText = failed.singleSegmentProcessingText()
             val appliedText = applied.singleSegmentProcessingText()
+            assertEquals(1, failedText.lineSequence().count { it.startsWith("• ") })
+            assertEquals(1, appliedText.lineSequence().count { it.startsWith("• ") })
             assertTrue(failedText.contains(if (ja) "調べた範囲では" else "checked range"))
             assertTrue(failedText.contains(if (ja) "組合せは見つかりませんでした" else "no combination"))
             assertFalse(failedText.contains(if (ja) "確認・適用しました" else "checked/applied"))
             assertTrue(appliedText.contains(if (ja) "適用可能な試行で" else "in applicable trials"))
             assertTrue(appliedText.contains(if (ja) "仮定した値は画像から読み取れた値ではありません" else "hypothesized values were not observed"))
             for (reason in reasons) {
-                assertFalse(failedText.contains(reason.description()))
-                assertFalse(appliedText.contains(reason.description()))
+                assertFalse(failedText.contains(reason.trialDescription()))
+                assertFalse(appliedText.contains(reason.trialDescription()))
             }
             val before = RecoverySearchDiagnostic(singleSegmentStatuses = reasons).singleSegmentProcessingText()
-            assertTrue(before.contains(SingleSegmentStatus.INCOMPLETE_HEADER.description()))
-            assertFalse(before.contains(SingleSegmentStatus.UNSUPPORTED_MODE.description()))
-            assertFalse(before.contains(SingleSegmentStatus.COUNT_EXCEEDS_CAPACITY.description()))
+            assertTrue(before.contains(SingleSegmentStatus.INCOMPLETE_HEADER.trialDescription()))
+            assertFalse(before.contains(SingleSegmentStatus.UNSUPPORTED_MODE.trialDescription()))
+            assertFalse(before.contains(SingleSegmentStatus.COUNT_EXCEEDS_CAPACITY.trialDescription()))
         }
     }
 
@@ -199,13 +228,13 @@ class SingleSegmentProcessingTest {
             outcome.searchDiagnostic.singleSegmentStatuses)
         val report = RecoveryDiagnosticPresenter(true).failureReport(requireNotNull(outcome.failure), null,
             RecoveryDiagnosticContext(0, true, false, outcome.searchDiagnostic, null))
-        assertFalse(report.sections[2].summary.contains(SingleSegmentStatus.COUNT_EXCEEDS_CAPACITY.description()))
+        assertFalse(report.sections[2].summary.contains(SingleSegmentStatus.COUNT_EXCEEDS_CAPACITY.trialDescription()))
         var stopped = false
         val interrupted = RecoveryEngine().recoverWithDiagnostics(input, trustKnownPayloadCount = true,
             formatConstraint = format, maxKnownDataEccMismatches = 0, stopRequested = { stopped },
             onPriorityProgress = { _, _ -> stopped = true })
         assertTrue(interrupted.searchDiagnostic.priorityHeaderHypotheses.isEmpty())
-        assertTrue(interrupted.searchDiagnostic.singleSegmentProcessingText().contains(SingleSegmentStatus.INCOMPLETE_HEADER.description()))
+        assertTrue(interrupted.searchDiagnostic.singleSegmentProcessingText().contains(SingleSegmentStatus.INCOMPLETE_HEADER.trialDescription()))
     }
 
     @Test fun bodyGuessesDoNotCountAsHeaderHypothesesAndCountWidthsFollowVersion() {

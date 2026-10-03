@@ -20,6 +20,22 @@ enum class SingleSegmentStatus {
         PLAN_LIMIT -> localizedText("構造の候補を調べる上限に達したため、単一セグメントの仮定による構造補完を適用できませんでした。",
             "Single-segment forcing could not be applied because the structure-plan search limit was reached.")
     }
+
+    /** Aggregate search evidence, rather than a statement about the selected candidate. */
+    fun trialDescription(): String = when (this) {
+        APPLIED -> localizedText("種類・文字数／バイト数に基づき、単一セグメントの構造補完を確認・適用した試行がありました。",
+            "Some trials checked/applied the single-segment structure using the mode and character/byte count.")
+        APPLIED_WITH_PRIORITY_HEADER -> localizedText("* により種類・文字数／バイト数を仮定し、単一セグメントの構造補完を確認・適用した試行がありました。仮定した値は画像から読み取れた値ではありません。",
+            "Some trials checked/applied the single-segment structure with a mode/count header assigned by *. The hypothesized values were not observed from the image.")
+        INCOMPLETE_HEADER -> localizedText("種類・文字数／バイト数に未確定のbitが残り、構造補完を適用できなかった試行がありました。",
+            "Some trials could not apply structure forcing because the mode/count header contained unresolved bits.")
+        UNSUPPORTED_MODE -> localizedText("先頭ビットを数字・英数字・バイト・漢字のいずれとしても解釈できず、構造補完を適用できなかった試行がありました。",
+            "Some trials could not apply structure forcing because the leading bits were not interpreted as Numeric, Alphanumeric, Byte or Kanji.")
+        COUNT_EXCEEDS_CAPACITY -> localizedText("解釈した文字数／バイト数が、その候補のデータ容量を超え、構造補完を適用できなかった試行がありました。",
+            "Some trials could not apply structure forcing because the interpreted character/byte count exceeded that candidate's data capacity.")
+        PLAN_LIMIT -> localizedText("構造の候補を調べる上限に達し、構造補完を適用できなかった試行がありました。",
+            "Some trials could not apply structure forcing because the structure-plan search limit was reached.")
+    }
 }
 
 /** Only explicit priority bits may stand in for an unresolved header during eligibility checks. */
@@ -74,10 +90,16 @@ internal fun priorityHeaderHypothesis(data: IntArray, unknown: IntArray, origina
 }
 
 fun RecoverySearchDiagnostic?.singleSegmentProcessingText(): String = buildString {
-    append(localizedText("単一セグメントの仮定はONです。今回の探索で記録した適用状況:",
-        "The single-segment assumption was ON. Recorded outcomes across this search:"))
+    append(localizedText("単一セグメントの仮定はONです。以下は、探索中の各試行（ECC・マスク候補や * による仮定）の判定を集約したものです。元のQRコードの種類を確定する診断ではありません。",
+        "The single-segment assumption was ON. The following summarizes trial outcomes across ECC/mask candidates and * hypotheses. It does not establish the original QR code's mode."))
     val diagnostic = this@singleSegmentProcessingText
     val statuses = diagnostic?.singleSegmentStatuses.orEmpty()
+    val applied = statuses.any { it == SingleSegmentStatus.APPLIED || it == SingleSegmentStatus.APPLIED_WITH_PRIORITY_HEADER }
+    val unavailable = statuses.any { it != SingleSegmentStatus.APPLIED && it != SingleSegmentStatus.APPLIED_WITH_PRIORITY_HEADER }
+    if (applied && unavailable) {
+        append('\n').append(localizedText("構造補完を適用できた試行と、適用できなかった試行がありました。",
+            "Structure forcing was applicable in some trials and unavailable in others."))
+    }
     val description = when {
         diagnostic != null && diagnostic.priorityHeaderHypotheses.size > 1 -> {
             if (SingleSegmentStatus.APPLIED_WITH_PRIORITY_HEADER in statuses) localizedText(
@@ -87,12 +109,13 @@ fun RecoverySearchDiagnostic?.singleSegmentProcessingText(): String = buildStrin
                 "* の試行で種類・文字数／バイト数を仮定しましたが、調べた範囲では単一セグメントの構造補完を適用できる組合せは見つかりませんでした。",
                 "Hypothesized the mode and character/byte count in * trials, but no combination allowing single-segment forcing was found in the checked range.")
         }
-        SingleSegmentStatus.APPLIED_WITH_PRIORITY_HEADER in statuses -> SingleSegmentStatus.APPLIED_WITH_PRIORITY_HEADER.description()
-        SingleSegmentStatus.INCOMPLETE_HEADER in statuses -> SingleSegmentStatus.INCOMPLETE_HEADER.description()
-        statuses.isNotEmpty() -> statuses.sortedBy { it.ordinal }.joinToString("\n") { it.description() }
+        SingleSegmentStatus.APPLIED_WITH_PRIORITY_HEADER in statuses -> SingleSegmentStatus.APPLIED_WITH_PRIORITY_HEADER.trialDescription()
+        SingleSegmentStatus.INCOMPLETE_HEADER in statuses && !applied -> SingleSegmentStatus.INCOMPLETE_HEADER.trialDescription()
+        statuses.isNotEmpty() -> statuses.sortedBy { it.ordinal }.joinToString("\n") { it.trialDescription() }
         diagnostic?.coverageComplete == true -> localizedText(
             "構造補完の適用判定には到達していません。", "Structure-forcing evaluation was not reached.")
         else -> localizedText("構造補完の適用状況の記録がありません。", "No structure-forcing evaluation was recorded.")
     }
-    append('\n').append(description)
+    append('\n').append(if (statuses.isEmpty()) description else
+        description.lineSequence().joinToString("\n") { "• $it" })
 }
