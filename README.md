@@ -77,13 +77,10 @@ The debug APK is written to `build/androidApp/outputs/apk/debug/androidApp-debug
 
 The permanent application ID is `io.github.earthdiver.qrrepair`. Release signing, store identifiers, and a public privacy-policy URL are not included. See the [release checklist](docs/RELEASE_CHECKLIST.md) before publication.
 
-See [limited Firebase distribution](docs/FIREBASE_DISTRIBUTION.md) for manual testing and the manually dispatched APK distribution workflow.
-
 ## Documentation
 
 - [Recovery strategy](docs/RECOVERY_STRATEGY.en.md)
 - [User guide](docs/USER_GUIDE.en.md)
-- [Detector library comparison (Japanese)](docs/DETECTOR_COMPARISON.ja.md)
 - [Initial grid estimation and automatic Finder assignment](docs/ZXING_CPP_INTEGRATION.en.md)
 - [Synthetic geometry-search comparison](docs/GEOMETRY_SEARCH_STUDY.en.md)
 - [Understanding recovery result fields](docs/RECOVERY_RESULT_FIELDS.en.md)
