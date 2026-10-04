@@ -8,6 +8,14 @@ Recovery does not guarantee correctness. Independently verify important recovere
 
 For compactness, the UI uses “Finder” for a finder pattern, “cell” for a module, and “Format” for format information.
 
+## Recovery example
+
+| [Before repair](docs/examples/bullet-holes/before.txt) | After repair | [Filled cells](docs/examples/bullet-holes/README.md) |
+| --- | --- | --- |
+| ![Synthetic QR with multiple bullet-like holes](docs/examples/bullet-holes/before.png) | ![Recovered QR](docs/examples/bullet-holes/after.png) | ![Filled cells highlighted in blue](docs/examples/bullet-holes/details.png) |
+
+Changes from defaults: single-segment assumption on, data/ECC bit mismatch limit 0, priority-search limit 5 cells. Five bits in the leading mode and character-count indicators are marked `*` for priority search.
+
 ## Current status
 
 | Area | Status |

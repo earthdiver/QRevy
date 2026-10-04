@@ -10,6 +10,14 @@ UIでは、位置検出パターンを「Finder」、モジュールを「セル
 
 文書の本文では「ビット」「モジュール」「コード語」「ECCレベル」「マスク」を使います。UI名・表示例・ソース識別子は原表記を維持します。UIの「セル」はモジュール、「Codeword」はコード語、「Finder」は位置検出パターンに対応します。
 
+## 修復例
+
+| [修復前](docs/examples/bullet-holes/before.txt) | 修復後 | [補完箇所](docs/examples/bullet-holes/README.ja.md) |
+| --- | --- | --- |
+| ![複数の貫通穴がある合成QR](docs/examples/bullet-holes/before.png) | ![修復後のQR](docs/examples/bullet-holes/after.png) | ![補完したセルを青色で表示](docs/examples/bullet-holes/details.png) |
+
+既定設定からの変更：単一セグメント仮定ON、データ・ECCのbit差異上限0、優先探索の上限5セル。冒頭のモード指示子、文字数指示子の5bitを `*` で優先探索。
+
 ## 現在の状態
 
 | 項目 | 状態 |
