@@ -2,6 +2,8 @@ package io.github.earthdiver.qrrepair.core
 
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.roundToInt
 
 class LumaImage(
@@ -58,10 +60,32 @@ class LumaImage(
 
     fun isBlack(x: Int, y: Int): Boolean = luma(x, y) <= threshold
 
+    /** One threshold inside a clockwise convex boundary; pixels outside it provide no evidence. */
+    internal fun thresholdInside(boundary: ImageQuad): Int? {
+        val points = boundary.asList()
+        if (points.any { !it.x.isFinite() || !it.y.isFinite() }) return null
+        val x0 = ceil(points.minOf { it.x }).coerceAtLeast(0.0).toInt()
+        val x1 = floor(points.maxOf { it.x }).coerceAtMost((width - 1).toDouble()).toInt()
+        val y0 = ceil(points.minOf { it.y }).coerceAtLeast(0.0).toInt()
+        val y1 = floor(points.maxOf { it.y }).coerceAtMost((height - 1).toDouble()).toInt()
+        val hist = IntArray(256)
+        for (y in y0..y1) for (x in x0..x1) {
+            if ((0..3).all { i ->
+                    val a = points[i]; val b = points[(i + 1) % 4]
+                    (b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x) >= 0.0
+                }) hist[luma(x, y).coerceIn(0, 255)]++
+        }
+        return if (hist.count { it > 0 } < 2) null else otsuThreshold(hist)
+    }
+
     private fun otsuThreshold(): Int {
         val hist = IntArray(256)
         pixels.forEach { hist[it.coerceIn(0, 255)]++ }
-        val total = pixels.size.toDouble()
+        return otsuThreshold(hist)
+    }
+
+    private fun otsuThreshold(hist: IntArray): Int {
+        val total = hist.sum().toDouble()
         var sum = 0.0
         for (i in hist.indices) sum += i * hist[i].toDouble()
         var sumB = 0.0

@@ -27,18 +27,27 @@ internal object GridThresholdEstimator {
         Array(geometry.dimension * geometry.dimension) { index ->
             val x = index % geometry.dimension
             val y = index / geometry.dimension
+            val center = geometry.moduleToImage(x.toDouble(), y.toDouble())
+            if (!image.inBounds(center.x, center.y)) return@Array null
             var central = 0.0
             var low = Double.POSITIVE_INFINITY
             var high = Double.NEGATIVE_INFINITY
             var valid = true
             for (sy in shifts) for (sx in shifts) {
                 var sum = 0.0
+                var count = 0
                 for (dy in offsets) for (dx in offsets) {
                     val p = geometry.moduleToImage(x + sx + dx, y + sy + dy)
                     val value = bilinear(image, p.x, p.y)
-                    if (value == null) valid = false else sum += if (inverted) 255.0 - value else value
+                    if (value != null) {
+                        sum += if (inverted) 255.0 - value else value
+                        count++
+                    }
                 }
-                val mean = sum / 9.0
+                // Every shifted window needs a majority of its nine observations.
+                // Missing samples contribute neither brightness nor weight to the mean.
+                if (count < 5) valid = false
+                val mean = if (count > 0) sum / count else 0.0
                 if (sx == 0.0 && sy == 0.0) central = mean
                 low = minOf(low, mean)
                 high = maxOf(high, mean)
@@ -48,7 +57,8 @@ internal object GridThresholdEstimator {
 
     private fun bilinear(image: LumaImage, x: Double, y: Double): Double? {
         // An observation outside the image has no evidence; do not invent edge pixels.
-        if (!x.isFinite() || !y.isFinite() || !image.inBounds(x, y)) return null
+        if (!x.isFinite() || !y.isFinite() || x < 0 || y < 0 ||
+            x > image.width - 1 || y > image.height - 1) return null
         val x0 = floor(x).toInt(); val y0 = floor(y).toInt()
         val x1 = minOf(x0 + 1, image.width - 1); val y1 = minOf(y0 + 1, image.height - 1)
         val fx = x - x0; val fy = y - y0

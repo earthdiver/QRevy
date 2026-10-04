@@ -29,7 +29,7 @@ Each boundary is checked with normal and inverted luminance. If both interpretat
 
 ## ZXing-C++ boundary validation
 
-Each single native boundary is tested against versions 1–40 and four logical rotations. Coordinates must be finite and inside the image, and the quadrilateral must be convex. Finder-pattern and timing-pattern mismatch rates must each be at most 20%. Candidate ranking weights these scores 0.55 and 0.45; a gap below 0.03 from the runner-up is treated as ambiguous.
+Each single native boundary is tested against versions 1–40 and four logical rotations. Boundary coordinates must be finite and the quadrilateral must be convex. The outer boundary may extend beyond the image, but all outermost module centers must remain inside it. A single Otsu luminance threshold is estimated from available pixels inside the quadrilateral, excluding its surrounding background; uniform or empty interiors are rejected. The same threshold is used for pattern validation and the stricter Finder-role checks, without regional thresholds. Finder-pattern and timing-pattern mismatch rates must each be at most 20%. Candidate ranking weights these scores 0.55 and 0.45; a gap below 0.03 from the runner-up is treated as ambiguous.
 
 Multiple boundaries are validated separately. They are merged only when every pair agrees on version and logical orientation and each corresponding corner lies within 0.25 module. The tolerance uses the smaller local module width of the pair. The representative prefers a boundary that passes automatic-role validation, then minimizes total corner distance. Coordinates are never averaged, and duplicate detections do not increase confidence.
 

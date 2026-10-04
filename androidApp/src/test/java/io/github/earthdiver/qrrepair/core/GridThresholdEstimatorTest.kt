@@ -26,6 +26,52 @@ class GridThresholdEstimatorTest {
         for (y in 0 until n) for (x in 0 until n) assertEquals("$x,$y", code[x, y].toInt(), matrix[x, y].value.bitOrNull())
     }
 
+    private fun edgeGeometry(x: Double, y: Double) =
+        GridGeometry(1, FinderRole.TOP_LEFT, x + 12.0, y + 12.0, 4.0, 0.0)
+
+    @Test fun partialEdgeWindowsAverageOnlyValidSamplesInBothPolarities() {
+        for (tone in listOf(0, 100, 255)) for (inverted in listOf(false, true)) {
+            val image = LumaImage(100, 100, IntArray(10000) { tone })
+            for ((x, y) in listOf(.5 to 10.0, 98.5 to 10.0, 10.0 to .5, 10.0 to 98.5)) {
+                val observation = GridThresholdEstimator.observe(image, edgeGeometry(x, y), inverted)[0]
+                assertNotNull("$x,$y", observation)
+                val expected = if (inverted) 255.0 - tone else tone.toDouble()
+                assertEquals(expected, observation!!.mean, 1e-9)
+                assertEquals(expected, observation.low, 1e-9)
+                assertEquals(expected, observation.high, 1e-9)
+            }
+        }
+    }
+
+    @Test fun partialWindowMeanDoesNotReplicateEdgePixels() {
+        val image = LumaImage(100, 100, IntArray(10000) { it % 100 })
+        val left = GridThresholdEstimator.observe(image, edgeGeometry(.5, 10.0), false)[0]!!
+        // The central x positions are -.14, .5, 1.14; only the latter two have image evidence.
+        assertEquals(.82, left.mean, 1e-9)
+        val right = GridThresholdEstimator.observe(image, edgeGeometry(98.5, 10.0), false)[0]!!
+        assertEquals(99 - .82, right.mean, 1e-9)
+    }
+
+    @Test fun outsideCentersAndInsufficientShiftedCoverageRemainUnknown() {
+        val image = LumaImage(100, 100, IntArray(10000) { 0 })
+        for ((x, y) in listOf(-.1 to 10.0, 100.0 to 10.0, 10.0 to -.1, 10.0 to 100.0,
+            .2 to 10.0, 98.8 to 10.0, .5 to .5, 98.5 to 98.5, 99.9 to 10.0)) {
+            assertNull("$x,$y", GridThresholdEstimator.observe(image, edgeGeometry(x, y), false)[0])
+        }
+    }
+
+    @Test fun partialCoverageSamplingPreservesUnknownBandAndMissingEvidence() {
+        for (automaticThresholds in listOf(false, true)) for (tone in listOf(0, 128, 255)) {
+            val image = LumaImage(100, 100, IntArray(10000) { tone })
+            val profile = SamplingProfile(PreprocessSettings(version = 1, blackMax = 96, whiteMin = 160,
+                automaticThresholds = automaticThresholds), false)
+            val sampler = MatrixSampler(image, profile)
+            val expected = when (tone) { 0 -> ModuleValue.ONE; 255 -> ModuleValue.ZERO; else -> ModuleValue.ERASED }
+            assertEquals(expected, sampler.sample(edgeGeometry(.5, 10.0)).first[0, 0].value)
+            assertEquals(ModuleValue.ERASED, sampler.sample(edgeGeometry(.2, 10.0)).first[0, 0].value)
+        }
+    }
+
     @Test fun finderRefinementUsesGridThresholdsWhenTheImageWidePairDoesNotSeparateTheFinder() {
         val source = image { _, _, black -> if (black) 111 else 123 }
         val inverse = LumaImage(source.width, source.height, source.pixels.map { 255 - it }.toIntArray())

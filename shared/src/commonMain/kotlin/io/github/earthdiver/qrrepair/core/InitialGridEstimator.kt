@@ -93,13 +93,14 @@ object InitialGridEstimator {
 
     private fun fromNormalizedBoundary(image: LumaImage, boundary: ImageQuad): InitialGridEstimate? {
         val points = boundary.asList()
-        if (points.any { !it.x.isFinite() || !it.y.isFinite() ||
-                it.x < -.5 || it.y < -.5 || it.x > image.width - .5 || it.y > image.height - .5 }) return null
+        if (points.any { !it.x.isFinite() || !it.y.isFinite() }) return null
         for (i in 0..3) {
             val a = points[(i + 1) % 4] - points[i]
             val b = points[(i + 2) % 4] - points[(i + 1) % 4]
-            if (a.x * b.y - a.y * b.x <= 0.0) return null
+            val cross = a.x * b.y - a.y * b.x
+            if (!cross.isFinite() || cross <= 0.0) return null
         }
+        val threshold = image.thresholdInside(boundary) ?: return null
         data class Choice(val version: Int, val quad: ImageQuad, val mismatch: Double,
             val worstFinderMismatch: Double, val timingMismatch: Double, val separatorMismatch: Double)
         val allScores = mutableListOf<Double>()
@@ -114,10 +115,14 @@ object InitialGridEstimator {
                             PointD(n.toDouble(), n.toDouble()), PointD(0.0, n.toDouble())),
                         List(4) { points[(it + rotation) % 4] },
                     )
+                    // Outer edges may be cropped, but the convex grid's extreme centers must be visible.
+                    val centers = listOf(h.map(.5, .5), h.map(n - .5, .5),
+                        h.map(n - .5, n - .5), h.map(.5, n - .5))
+                    if (centers.any { !it.x.isFinite() || !it.y.isFinite() || !image.inBounds(it.x, it.y) }) continue
                     fun mismatch(x: Int, y: Int, black: Boolean): Double {
                         val p = h.map(x + .5, y + .5)
                         val value = image.sampleMean(p.x, p.y, 0.0) ?: return 1.0
-                        return if ((value <= image.threshold) == black) 0.0 else 1.0
+                        return if ((value <= threshold) == black) 0.0 else 1.0
                     }
                     var finderMismatch = 0.0
                     var worstFinderMismatch = 0.0
@@ -150,8 +155,6 @@ object InitialGridEstimator {
                     allScores += score // Include rejected alternatives when measuring the assignment margin.
                     // Conservative structural gate; agreement is a heuristic, not a probability.
                     if (finderMismatch > .20 || timingMismatch > .20) continue
-                    val centers = listOf(h.map(.5, .5), h.map(n - .5, .5),
-                        h.map(n - .5, n - .5), h.map(.5, n - .5))
                     choices += Choice(version, ImageQuad(centers[0], centers[1], centers[2], centers[3]),
                         score, worstFinderMismatch, timingMismatch, separatorMismatch)
                 } catch (_: IllegalArgumentException) {
@@ -185,7 +188,7 @@ object InitialGridEstimator {
                         val p = h.map(sx + x + .5 + dx, sy + y + .5 + dy)
                         val value = image.sampleMean(p.x, p.y, 0.0)
                         val black = x == 0 || y == 0 || x == 6 || y == 6 || (x in 2..4 && y in 2..4)
-                        if (value == null || (value <= image.threshold) != black) errors++
+                        if (value == null || (value <= threshold) != black) errors++
                     }
                     errors <= 2
                 }

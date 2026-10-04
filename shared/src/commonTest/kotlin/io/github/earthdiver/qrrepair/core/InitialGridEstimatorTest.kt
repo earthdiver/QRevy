@@ -34,6 +34,60 @@ class InitialGridEstimatorTest {
     private val perspective = ImageQuad(PointD(55.0, 45.0), PointD(330.0, 65.0),
         PointD(305.0, 350.0), PointD(85.0, 305.0))
 
+    @Test fun boundaryValidationUsesOneThresholdInsideThePolygonRegardlessOfBackground() {
+        val rendered = render(3, perspective)
+        val points = perspective.asList()
+        val expected = assertNotNull(InitialGridEstimator.fromBoundary(rendered, perspective))
+        for (background in listOf(0, 255)) for (inverted in listOf(false, true)) {
+            val image = LumaImage(400, 400, IntArray(160000) { i ->
+                val x = i % 400; val y = i / 400
+                val inside = (0..3).all { k ->
+                    val a = points[k]; val b = points[(k + 1) % 4]
+                    (b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x) >= 0
+                }
+                val value = if (inside) { if (rendered.pixels[i] == 12) 110 else 130 } else background
+                if (inverted) 255 - value else value
+            })
+            assertTrue(image.threshold !in 110..129, "Whole-image threshold should not separate the QR tones")
+            assertEquals(if (inverted) 125 else 110, image.thresholdInside(perspective))
+            val result = assertNotNull(InitialGridEstimator.fromBoundary(image, perspective))
+            assertEquals(expected.version, result.version)
+            assertEquals(expected.moduleCenterQuad, result.moduleCenterQuad)
+            assertEquals(expected.autoAssignedFinders, result.autoAssignedFinders)
+            assertEquals(if (inverted) FinderPolarity.INVERTED else FinderPolarity.NORMAL, result.confirmedPolarity)
+        }
+    }
+
+    @Test fun croppedOuterEdgesAreAcceptedWhenAllModuleCentersRemainInside() {
+        val q = ImageQuad(PointD(-1.0, -1.0), PointD(83.0, -1.0),
+            PointD(83.0, 83.0), PointD(-1.0, 83.0))
+        val rendered = render(1, q, size = 82)
+        for (inverted in listOf(false, true)) {
+            val image = if (!inverted) rendered else LumaImage(82, 82, IntArray(82 * 82) { 255 - rendered.pixels[it] })
+            val result = assertNotNull(InitialGridEstimator.fromBoundary(image, q))
+            assertEquals(1, result.version)
+            for (p in result.moduleCenterQuad.asList()) assertTrue(image.inBounds(p.x, p.y))
+            assertTrue(result.moduleCenterQuad.topLeft.distanceTo(PointD(1.0, 1.0)) < 1e-8)
+        }
+    }
+
+    @Test fun croppedModuleCentersPreventBoundaryAcceptance() {
+        for (shift in listOf(-2.0, 2.0)) {
+            val q = ImageQuad(PointD(-1.0 + shift, -1.0), PointD(83.0 + shift, -1.0),
+                PointD(83.0 + shift, 83.0), PointD(-1.0 + shift, 83.0))
+            assertNull(InitialGridEstimator.fromBoundary(render(1, q, size = 82), q))
+        }
+    }
+
+    @Test fun contrastOutsideTheBoundaryCannotValidateAFlatInterior() {
+        val image = LumaImage(400, 400, IntArray(160000) { i -> if (i % 400 < 40) 0 else 130 })
+        assertNull(image.thresholdInside(perspective))
+        assertNull(InitialGridEstimator.fromBoundary(image, perspective))
+        val outside = shift(perspective, 500.0)
+        assertNull(image.thresholdInside(outside))
+        assertNull(InitialGridEstimator.fromBoundary(image, outside))
+    }
+
     @Test fun duplicateBoundaryWithUnknownPolarityKeepsVerifiedRolesButConflictingPolaritiesDoNotMerge() {
         val verified = assertNotNull(InitialGridEstimator.fromBoundary(render(3, perspective), perspective))
         val unassigned = verified.copy(autoAssignedFinders = emptyMap(), confirmedPolarity = FinderPolarity.UNKNOWN)
