@@ -1,4 +1,4 @@
-QR Repair v0.17.0
+QR Repair v0.17.1
 
 QR Repair helps recover damaged QR codes that ordinary readers cannot decode. Processing runs entirely offline on your Android device.
 
@@ -10,15 +10,15 @@ GETTING STARTED
 5. Tap Repair, then inspect the decoded content, alternative candidates, and explanations for repaired cells.
 
 WHAT'S NEW
-• Choose a per-block partial-bit search / dimension limit of 12, 13, or 14 bits (default 12). Each added bit doubles the maximum enumeration count; memory and combination limits still apply.
-• Configure priority (*) search for up to 14 cells (default 4), follow assignment progress, and interrupt recovery while retaining candidates already found.
-• Review candidate counts and search completion separately. Diagnostics distinguish unmet input conditions, rejected candidates, unfinished work, and omitted candidate details; completing a bounded search does not establish uniqueness.
-• Inspect input provenance and format-bit roles, highlight related ECC/mask/correction cells, and compare before/after QR cells with the mask removed.
-• Use priority assignments for a single-segment header hypothesis when appropriate. Diagnostics explain whether the single-segment assumption was applied.
-• Saved work now uses QRR schema 24. Only schemas 23 and 24 can be opened; schema 23 uses the default 12-bit partial-bit limit. Earlier schemas cannot be reopened, and sessions in the old storage location are not migrated.
-• Adjust brightness and contrast in the crop editor, enter numeric values, reset adjustments, and compare before/after views. Adjustments are preserved in saved work.
-• Improved inverted-QR detection, fallback corner estimation, settings navigation, and handling of cancelled or superseded recovery work.
-• Additional-segment diagnostics skip consecutive zero terminators while preserving ECI and FNC1 context. This analysis does not validate a rejected candidate.
+• Treat mirrored QR images as mirrored in Detailed settings. Finder roles and grid axes exchange while manual edits, fixed constraints, and Undo/Redo history follow the same image cells. This setting is saved per session and is OFF by default.
+• Additional-segment diagnostics compare possible starting positions after a terminator, including byte alignment across known zero bits. Inspect segment and control-header traces, ECI assignments, declared lengths, parsing failures, raw tail bits, and HEX. Completed segments remain visible when later parsing fails. This diagnostic analysis does not make a rejected candidate valid.
+• Unmask failed recovery attempts in the enlarged result view when an attempt provides a mask number. The mask source is shown; a failed attempt's mask is unverified.
+• Improved initial grid estimation and thresholds for low-contrast QR regions and partially cropped outer edges. Transparent image imports are composited onto white before analysis.
+• Corrected rectified previews and grid coordinates when changing QR versions or resizing images. After failed grid estimation or rectification, assign at least one Finder role before repair.
+• Pending saves are preserved when switching work or starting another import. Repeated saves retain the latest requested history and selected checkpoint.
+• Whitespace-only recovered text is preserved in result displays and comparisons, and single-segment trial diagnostics are clearer.
+• Saved work now uses QRR schema 25. Schemas 23 and 24 can also be opened with mirrored input OFF; schema 23 uses the default 12-bit partial-bit search limit. Other schemas cannot be opened, and sessions in the old storage location are not migrated.
+• The English and Japanese READMEs include an independently generated damaged-QR recovery example with reproducible inputs and results.
 
 USEFUL FEATURES
 • Undo/Redo, detailed cell diagnostics, and recovered-image export.
