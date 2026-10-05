@@ -25,6 +25,8 @@ internal class BoundedRecoveryCandidates(private val budget: RecoveryRetentionBu
 
     fun results(): List<RecoveryCandidate> = entries.values.sortedWith(recoveryCandidateComparator)
 
+    fun containsParsed(candidate: RecoveryCandidate): Boolean = entries[candidate.identity()]?.payloadParsed == true
+
     fun add(candidate: RecoveryCandidate) {
         val key = candidate.identity()
         val previous = entries[key]

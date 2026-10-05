@@ -1,6 +1,6 @@
 package io.github.earthdiver.qrrepair.core
 
-/** Adds complete decoder lists incrementally, validating combinations before the next bit trial. */
+/** Adds complete decoder lists incrementally; only a newly decoded QR ends further bit trials. */
 internal class ListDecodingQrSearch(private val rs: ReedSolomonErasures) {
     fun run(
         de: DeinterleavedQr,

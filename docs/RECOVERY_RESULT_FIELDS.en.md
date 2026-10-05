@@ -10,7 +10,7 @@ Invalid Kanji/Hanzi character codes are rejected by structure validation even wh
 
 ## Identify the outcome first
 
-List decoding can produce multiple candidates for errors beyond the correction range of conventional RS decoding. The app automatically selects Guruswami–Sudan (GS), Koetter–Vardy (KV), or Wu decoding according to the input and estimated computation. It is used as a fallback when ordinary search finds no decoded candidate.
+List decoding can produce multiple candidates for errors beyond the correction range of conventional RS decoding. The app automatically selects Guruswami–Sudan (GS), Koetter–Vardy (KV), or Wu decoding according to the input and estimated computation. It searches for additional candidates when ordinary search finds no decoded candidate or every decoded candidate depends on RS partial-bit constraints.
 
 | Outcome or warning | Meaning | Check first |
 | --- | --- | --- |

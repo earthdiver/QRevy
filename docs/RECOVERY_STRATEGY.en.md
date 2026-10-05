@@ -266,7 +266,7 @@ This option is selectable when an eligible format has a leading Numeric, Alphanu
 
 Conventional RS decoding corrects errors and erasures in each block over GF(256), with the capacity relation `2 × errors + erasures <= ECC symbols`. RS partial-bit constraints also use known bits inside partial codewords, as described below. Mathematical RS success alone does not make a candidate correct.
 
-List decoding can produce multiple candidates for errors beyond the correction range of conventional RS decoding. The app automatically selects Guruswami–Sudan (GS), Koetter–Vardy (KV), or Wu decoding according to the input and estimated computation. It is used as a fallback when ordinary search finds no decoded candidate (section 4.6).
+List decoding can produce multiple candidates for errors beyond the correction range of conventional RS decoding. The app automatically selects Guruswami–Sudan (GS), Koetter–Vardy (KV), or Wu decoding according to the input and estimated computation. It searches for additional candidates when ordinary search finds no decoded candidate or every decoded candidate depends on RS partial-bit constraints (section 4.6).
 
 ### 4.1 Data/ECC error limit and manual input values
 
@@ -345,17 +345,17 @@ QRR schema 25 persists each limit mode separately from its remembered manual val
 
 ### 4.6 Automatic list-decoding fallback
 
-For each sampled input, if conventional RS, RS partial-bit constraints, partial-bit search, and priority search find no decoded candidate, list decoding searches for additional candidates. It is skipped when the data/ECC error limit is zero.
+For each sampled input, list decoding searches for additional candidates when conventional RS, RS partial-bit constraints, partial-bit search, and priority search find no decoded candidate or every decoded candidate depends on RS partial-bit constraints. Existing candidates are retained while alternatives allowing errors in known bits are examined. It is skipped when the data/ECC error limit is zero.
 
 GS and Wu treat codewords with remaining unknown bits as erasures and target one more erroneous codeword than conventional RS can correct. Where the strict Johnson bound permits this radius, the app selects a method using estimated work and working memory. GS interpolates over non-erased positions and evaluates candidate polynomials at all original positions. Wu uses error-locator polynomials; at this radius, constant and linear coefficient searches suffice. The same radius is not searched again with the other method.
 
-Before enumerating unknown-bit assignments, KV uses the known bits within partial codewords. For codewords with one to four unknown bits, it distributes interpolation weights (multiplicities) equally among compatible values. More ambiguous codewords are omitted from interpolation. These weights are neither image confidence scores nor probabilities of correctness. KV is tried only when its candidate score conditions and estimated computation make it useful. If no decoded candidate results, partial-bit search continues.
+Before enumerating unknown-bit assignments, KV uses the known bits within partial codewords. For codewords with one to four unknown bits, it distributes interpolation weights (multiplicities) equally among compatible values. More ambiguous codewords are omitted from interpolation. These weights are neither image confidence scores nor probabilities of correctness. KV is tried only when its candidate score conditions and estimated computation make it useful. If no new decoded candidate results, partial-bit search continues.
 
 Partial-bit search follows section 4.3, assigning 0/1 only to originally unknown bits, then applying GS or Wu to each assignment. An input with too many erased codewords may become decodable through KV's use of partial information or assignments that reduce the erasure count. Every candidate must satisfy RS consistency and its method's radius or agreement-score condition. Decoding of a radius is skipped when, for example, a conventional RS result proves that no other candidate can lie within it.
 
 Known-bit mismatches are capped at **5% of all data/ECC bits in the QR, rounded up**, or the **Data/ECC error limit** if smaller. Comparisons use the original input before structure inference or temporary assignments, including known bits inside partially erased codewords. Filling unknown bits does not count. Mismatches are summed across block combinations, and candidates exceeding the cap are rejected before QR validation.
 
-Each trial's candidates are merged with conventional RS candidates, and QR structure and payload checks run as candidates are added. Alternatives are sought even for blocks that conventional RS decoded successfully. Input conditions, including fixed cells and priority assignments, are enforced, and multiple valid candidates are retained. Each format/structure pass allows at most 65,536 combinations and 65,536 expanded search nodes.
+Each trial's candidates are merged with conventional RS candidates, and QR structure and payload checks run as candidates are added. Alternatives are sought even for blocks that conventional RS decoded successfully. Rediscovering an existing decoded candidate does not end the additional search. Input conditions, including fixed cells and priority assignments, are enforced, and multiple valid candidates are retained. Each format/structure pass allows at most 65,536 combinations and 65,536 expanded search nodes.
 
 The three methods share **at most five cumulative minutes per repair operation**, excluding time spent in ordinary search. They share the ordinary search's working-memory limit. Computation can be interrupted; timeout, insufficient memory, or interruption retains validated candidates and reports why the search is unfinished.
 

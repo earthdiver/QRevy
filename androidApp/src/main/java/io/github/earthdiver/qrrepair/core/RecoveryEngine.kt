@@ -171,6 +171,8 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         val singleSegmentStatuses = linkedSetOf<SingleSegmentStatus>()
         val priorityHeaderHypotheses = linkedSetOf<String>()
         var acceptedCandidate = false
+        // Track validation before retention can omit candidates or their alternative routes.
+        var parsedWithoutBitConstraints = false
         var unresolvedCalculations = false
         var solverCompleteness = SearchCompleteness.COMPLETE
         var finished = false
@@ -348,7 +350,8 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
             recoverRun(run, matrix, maxFormatCandidates, trustKnownPayloadCount, formatConstraint,
                 maxKnownDataEccMismatches = maxKnownDataEccMismatches, maxFormatMismatches = maxFormatMismatches,
                 manualEdits = manualEdits, onPriorityProgress = onPriorityProgress)
-            if (run.candidates.results().none { it.payloadParsed } && run.earlyBlocker == null && maxKnownDataEccMismatches != 0) {
+            // An exact known-bit solution does not examine possible errors in those known bits.
+            if (!run.parsedWithoutBitConstraints && run.earlyBlocker == null && maxKnownDataEccMismatches != 0) {
                 val version = (matrix.dimension - 17) / 4
                 val cap = minOf(maxKnownDataEccMismatches ?: Int.MAX_VALUE,
                     ErrorLimitPolicy.listDecodingData(version))
@@ -705,8 +708,11 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                         is RecoveryCandidateEvaluation.Accepted -> {
                             if (evaluation.decoderFailed) run.incompleteReasons += SearchIncompleteReason.INTERNAL_ERROR
                             run.acceptedCandidate = true
+                            val alreadyParsed = run.candidates.containsParsed(evaluation.candidate)
                             run.candidates.add(evaluation.candidate)
-                            evaluation.candidate.payloadParsed
+                            // Rediscovering an existing exact candidate must not end additional
+                            // bit trials or priority assignments before another payload is tested.
+                            evaluation.candidate.payloadParsed && !alreadyParsed
                         }
                         is RecoveryCandidateEvaluation.Rejected -> {
                             run.candidateRejections += evaluation.reason
@@ -869,6 +875,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                         if (evaluation.candidate.payloadParsed) {
                             parsedCandidatesForFormat++
                             parsedFound = true
+                            if (combination.none { it.bitConstraintSolved }) run.parsedWithoutBitConstraints = true
                         }
                         run.candidates.add(evaluation.candidate)
                     }

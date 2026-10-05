@@ -122,7 +122,7 @@ Search completion covers the specified conditions and bounded search policy. It 
 
 A **validated candidate** has passed QR structure validation and the specified input constraints. A **decoded candidate** has also passed final decoding of QR data. QR data can contain text or binary data.
 
-If ordinary search finds no decoded candidate, list-decoding fallback automatically searches for additional candidates. The three methods share at most five cumulative minutes per repair operation, excluding time spent in ordinary search, and supports **Interrupt repair** throughout. Validated candidates remain available after timeout, insufficient memory, or interruption.
+If ordinary search finds no decoded candidate or every decoded candidate depends on RS partial-bit constraints, list decoding automatically searches for additional candidates while retaining existing ones. The three methods share at most five cumulative minutes per repair operation, excluding time spent in ordinary search, and support **Interrupt repair** throughout. Validated candidates remain available after timeout, insufficient memory, or interruption.
 
 Review results in this order:
 
