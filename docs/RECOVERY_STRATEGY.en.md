@@ -266,7 +266,7 @@ This option is selectable when an eligible format has a leading Numeric, Alphanu
 
 Conventional RS decoding corrects errors and erasures in each block over GF(256), with the capacity relation `2 × errors + erasures <= ECC symbols`. RS partial-bit constraints also use known bits inside partial codewords, as described below. Mathematical RS success alone does not make a candidate correct.
 
-Guruswami–Sudan (GS) is a list-decoding method that can produce multiple candidates for errors beyond the correction range of conventional RS decoding. It is used as a fallback when ordinary search finds no decoded candidate (section 4.6).
+List decoding can produce multiple candidates for errors beyond the correction range of conventional RS decoding. The app automatically selects Guruswami–Sudan (GS), Koetter–Vardy (KV), or Wu decoding according to the input and estimated computation. It is used as a fallback when ordinary search finds no decoded candidate (section 4.6).
 
 ### 4.1 Data/ECC error limit and manual input values
 
@@ -274,7 +274,7 @@ Enter an error limit directly and adjust it one bit at a time with −/＋. Form
 
 For every RS-corrected candidate, the final codewords are mapped back to QR modules with the selected mask reapplied and compared bit by bit against input `0 / 1` values known in data/ECC modules. Unknown (`?`) modules, format information, version information, function modules, and remainder bits are excluded from this comparison.
 
-When the data/ECC error limit is set, only candidates whose mismatch count is no greater than the limit are retained. `0 bits` requires an exact match against every comparable known data/ECC bit. With Unlimited, the ordinary routes use mismatch counts for ranking without a numeric rejection cap. GS fallback also applies a 5% cap (section 4.6). An image-derived known value replaced by forced payload structure is also counted as a mismatch.
+When the data/ECC error limit is set, only candidates whose mismatch count is no greater than the limit are retained. `0 bits` requires an exact match against every comparable known data/ECC bit. With Unlimited, the ordinary routes use mismatch counts for ranking without a numeric rejection cap. List-decoding fallback also applies a 5% cap (section 4.6). An image-derived known value replaced by forced payload structure is also counted as a mismatch.
 
 When conflicts with fixed values are not allowed, a candidate that contradicts a fixed value is rejected before applying the error-limit allowance. Such a conflict never consumes one bit of the allowance. For tentative cells and fixed cells with conflicting candidates allowed, a manually entered `0 / 1` is treated like an image-derived known bit: RS may change it, and any change counts toward the mismatch limit. A manually locked bit that agrees with the candidate is included in the known-bit denominator.
 
@@ -343,21 +343,23 @@ The conditions share generated source symbols and are not independent real photo
 
 QRR schema 25 persists each limit mode separately from its remembered manual value. Exact match stays at zero across versions. Explicit ECC/mask selections and fixed-cell protection retain their separate rules.
 
-### 4.6 GS errors-and-erasures fallback
+### 4.6 Automatic list-decoding fallback
 
-For each sampled input, if conventional RS, RS partial-bit constraints, partial-bit search, and priority search find no decoded candidate, GS fallback searches for additional candidates. GS is skipped when the data/ECC error limit is zero.
+For each sampled input, if conventional RS, RS partial-bit constraints, partial-bit search, and priority search find no decoded candidate, list decoding searches for additional candidates. It is skipped when the data/ECC error limit is zero.
 
-Partial-bit search follows the rules in section 4.3, assigning 0/1 only to originally unknown bits. A codeword with any remaining unknown bits is treated as an erasure. GS targets one more erroneous codeword than conventional RS can correct after these assignments, provided the strict Johnson bound permits it. Assignments can make a block eligible even when the original input has too many erasures.
+GS and Wu treat codewords with remaining unknown bits as erasures and target one more erroneous codeword than conventional RS can correct. Where the strict Johnson bound permits this radius, the app selects a method using estimated work and working memory. GS interpolates over non-erased positions and evaluates candidate polynomials at all original positions. Wu uses error-locator polynomials; at this radius, constant and linear coefficient searches suffice. The same radius is not searched again with the other method.
 
-GS interpolates using the non-erased positions, then evaluates candidate polynomials at every original position to restore erased values too. Each candidate is checked for RS consistency and distance within the target radius. Interpolation is skipped when, for example, the conventional RS result proves that no other candidate can lie within that radius.
+Before enumerating unknown-bit assignments, KV uses the known bits within partial codewords. For codewords with one to four unknown bits, it distributes interpolation weights (multiplicities) equally among compatible values. More ambiguous codewords are omitted from interpolation. These weights are neither image confidence scores nor probabilities of correctness. KV is tried only when its candidate score conditions and estimated computation make it useful. If no decoded candidate results, partial-bit search continues.
+
+Partial-bit search follows section 4.3, assigning 0/1 only to originally unknown bits, then applying GS or Wu to each assignment. An input with too many erased codewords may become decodable through KV's use of partial information or assignments that reduce the erasure count. Every candidate must satisfy RS consistency and its method's radius or agreement-score condition. Decoding of a radius is skipped when, for example, a conventional RS result proves that no other candidate can lie within it.
 
 Known-bit mismatches are capped at **5% of all data/ECC bits in the QR, rounded up**, or the **Data/ECC error limit** if smaller. Comparisons use the original input before structure inference or temporary assignments, including known bits inside partially erased codewords. Filling unknown bits does not count. Mismatches are summed across block combinations, and candidates exceeding the cap are rejected before QR validation.
 
-Each trial's GS candidates are merged with conventional RS candidates, and QR structure and payload checks run as candidates are added. Alternatives are sought even for blocks that conventional RS decoded successfully. Input conditions, including fixed cells and priority assignments, are enforced, and multiple valid candidates are retained. Each format/structure pass allows at most 65,536 combinations and 65,536 expanded search nodes.
+Each trial's candidates are merged with conventional RS candidates, and QR structure and payload checks run as candidates are added. Alternatives are sought even for blocks that conventional RS decoded successfully. Input conditions, including fixed cells and priority assignments, are enforced, and multiple valid candidates are retained. Each format/structure pass allows at most 65,536 combinations and 65,536 expanded search nodes.
 
-GS fallback runs for **at most five cumulative minutes per repair operation**, excluding time spent in ordinary search. It shares the ordinary search's working-memory limit. Computation can be interrupted; timeout, insufficient memory, or interruption retains validated candidates and reports why the search is unfinished.
+The three methods share **at most five cumulative minutes per repair operation**, excluding time spent in ordinary search. They share the ordinary search's working-memory limit. Computation can be interrupted; timeout, insufficient memory, or interruption retains validated candidates and reports why the search is unfinished.
 
-Algorithm references: [Guruswami–Sudan, errors and erasures](https://www.site.uottawa.ca/~zhcheng/list_dec.pdf), [Nielsen–Zeh, interpolation modules and root finding](https://arxiv.org/abs/1404.3022).
+Algorithm references: [Guruswami–Sudan, errors and erasures](https://www.site.uottawa.ca/~zhcheng/list_dec.pdf), [Nielsen–Zeh, interpolation modules and root finding](https://arxiv.org/abs/1404.3022), [Koetter–Ma–Vardy, interpolation](https://arxiv.org/abs/1005.5734), [Wu, list decoding through error-locator polynomials](https://arxiv.org/abs/cs/0703105).
 
 ## 5. Candidate validation and ranking
 
@@ -393,7 +395,7 @@ While combining RS blocks, a prefix can end inside the next mode indicator. An i
 
 QR combination-search diagnostics distinguish a window ending after success, the combination limit, and the expanded-node limit.
 
-Search completion means the specified conditions and bounded search policy have been processed. Skipping further search after conventional RS success, completing the selected partial-bit search (the selected 12, 13, or 14 bits / up to 4,096, 8,192, or 16,384 trials), symbolic analysis above the enumeration limit, and reaching combination/node/geometry limits are policy-defined endings. User interruption, the cumulative GS time limit, insufficient working memory, or an internal error that prevents required work leaves the search unfinished; insufficient execution records make completion unknown. Candidate and explanation retention omissions are reported separately. See [Understanding recovery result fields](RECOVERY_RESULT_FIELDS.en.md) for the messages and their interpretation.
+Search completion means the specified conditions and bounded search policy have been processed. Skipping further search after conventional RS success, completing the selected partial-bit search (the selected 12, 13, or 14 bits / up to 4,096, 8,192, or 16,384 trials), symbolic analysis above the enumeration limit, and reaching combination/node/geometry limits are policy-defined endings. User interruption, the cumulative list-decoding time limit, insufficient working memory, or an internal error that prevents required work leaves the search unfinished; insufficient execution records make completion unknown. Candidate and explanation retention omissions are reported separately. See [Understanding recovery result fields](RECOVERY_RESULT_FIELDS.en.md) for the messages and their interpretation.
 
 The eight-bit FNC1 second-position application indicator is retained separately from the body. Only the private decoding view sent to ZXing 3.5.4 omits that field; original codewords, RS consistency, structure validation and mismatch counts use the original stream. This also applies after a Structured Append header.
 

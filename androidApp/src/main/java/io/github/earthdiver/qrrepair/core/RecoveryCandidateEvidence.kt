@@ -59,7 +59,7 @@ internal object RecoveryCandidateEvidence {
             partialEnumerated = loc.localIndex in selectedRoutes[loc.blockIndex].guessedPositions,
             constraintKindsByBit = perBit,
             bitConstraintSolved = selectedRoutes[loc.blockIndex].bitConstraintSolved,
-            gs = selectedRoutes[loc.blockIndex].gs,
+            listDecoding = selectedRoutes[loc.blockIndex].listDecoding,
             constraintValuesByBit = buildMap {
                 for (bit in 0 until 8) constraintValues[raw to bit]?.let { put(bit, it) }
             },

@@ -12,14 +12,14 @@ class GuruswamiSudanDecoder(val length: Int, val dataLength: Int) {
     data class Parameters(val points: Int, val radius: Int, val multiplicity: Int, val listDegree: Int,
         val degreeBound: Int, val workingBytes: Long)
 
-    private val points = IntArray(length) { Field.power(2, length - 1 - it) }
+    private val points by lazy { IntArray(length) { Field.power(2, length - 1 - it) } }
     // For H[j,i] = a_i^j, c_i = f(a_i) / product_{h != i}(a_i - a_h).
     // Keep these ORIGINAL coordinates and multipliers when puncturing erased positions.
-    private val denominators = IntArray(length) { i ->
+    private val denominators by lazy { IntArray(length) { i ->
         var product = 1
         for (j in points.indices) if (i != j) product = Field.multiply(product, points[i] xor points[j])
         product
-    }
+    } }
 
     /** Targets exactly one symbol beyond ordinary errors+erasures decoding. */
     fun parameters(erasures: Int, workingLimitBytes: Long, check: () -> Unit = {}): Parameters? {
@@ -43,7 +43,7 @@ class GuruswamiSudanDecoder(val length: Int, val dataLength: Int) {
                 if (coefficients <= constraints) continue
                 val degree = maxOf(m * n, m * (n - 1) + (ell - m) * weight)
                 val bytes = workspaceBytes(m, ell, degree)
-                if (bytes > workingLimitBytes) throw GsWorkingMemoryException()
+                if (bytes > workingLimitBytes) throw ListDecodingWorkingMemoryException()
                 return Parameters(n, radius, m, ell, degree, bytes)
             }
         }
@@ -66,7 +66,7 @@ class GuruswamiSudanDecoder(val length: Int, val dataLength: Int) {
         require(erased.distinct().size == erased.size && erased.all { it in received.indices })
         require(parameters.points == length - erased.size)
         require(parameters == parameters(erased.size, Long.MAX_VALUE, check))
-        if (parameters.workingBytes > workingLimitBytes) throw GsWorkingMemoryException()
+        if (parameters.workingBytes > workingLimitBytes) throw ListDecodingWorkingMemoryException()
         check()
         val omitted = BooleanArray(length).also { flags -> erased.forEach { flags[it] = true } }
         val indices = received.indices.filterNot { omitted[it] }
@@ -74,47 +74,13 @@ class GuruswamiSudanDecoder(val length: Int, val dataLength: Int) {
         val ys = IntArray(indices.size) { Field.multiply(received[indices[it]], denominators[indices[it]]) }
         val q = interpolate(xs, ys, parameters, check)
         val result = mutableListOf<IntArray>()
-        val coefficients = IntArray(dataLength)
-        fun visit(polynomial: Array<IntArray>, depth: Int) {
-            check()
-            if (depth == dataLength) {
-                val corrected = IntArray(length) { Field.divide(evaluate(coefficients, points[it]), denominators[it]) }
-                if (indices.count { corrected[it] != received[it] } <= parameters.radius) {
-                    check(ReedSolomonErasures().calcSyndromes(corrected, length - dataLength).all { it == 0 })
-                    if (result.none { it.contentEquals(corrected) }) result += corrected
-                }
-                return
-            }
-            // Remove a common X power before evaluating Q(0,Y).
-            val shift = polynomial.minOf { p -> p.indexOfFirst { it != 0 }.let { if (it < 0) Int.MAX_VALUE else it } }
-            check(shift != Int.MAX_VALUE)
-            val atZero = IntArray(polynomial.size) { polynomial[it].getOrElse(shift) { 0 } }
-            for (root in 0..255) {
-                check()
-                if (evaluate(atZero, root) != 0) continue
-                coefficients[depth] = root
-                val nextSize = polynomial.maxOf { it.size }.coerceAtLeast(shift + 1) - shift + polynomial.size - 1
-                val next = Array(polynomial.size) { IntArray(nextSize) }
-                val powers = IntArray(polynomial.size).also {
-                    it[0] = 1
-                    for (j in 1 until it.size) it[j] = Field.multiply(it[j - 1], root)
-                }
-                for (j in polynomial.indices) {
-                    check()
-                    // Binomial(j,t) is odd exactly when t's set bits are a subset of j's.
-                    for (t in 0..j) if ((t and j) == t) {
-                        val scale = powers[j - t]
-                        if (scale == 0) continue
-                        for (x in shift until polynomial[j].size) {
-                            val value = polynomial[j][x]
-                            if (value != 0) next[t][x - shift + t] = next[t][x - shift + t] xor Field.multiply(value, scale)
-                        }
-                    }
-                }
-                visit(next, depth + 1)
+        listDecodingRoots(q, dataLength, check) { coefficients ->
+            val corrected = IntArray(length) { Field.divide(evaluate(coefficients, points[it]), denominators[it]) }
+            if (indices.count { corrected[it] != received[it] } <= parameters.radius) {
+                check(ReedSolomonErasures().calcSyndromes(corrected, length - dataLength).all { it == 0 })
+                if (result.none { it.contentEquals(corrected) }) result += corrected
             }
         }
-        visit(q, 0)
         return result
     }
 

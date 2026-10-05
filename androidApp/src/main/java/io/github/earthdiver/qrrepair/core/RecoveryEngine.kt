@@ -14,7 +14,7 @@ data class CodewordRepairInfo(
     /** bit index is 0=MSB .. 7=LSB */
     val constraintKindsByBit: Map<Int, PayloadConstraintSolver.ConstraintKind> = emptyMap(),
     val bitConstraintSolved: Boolean = false,
-    val gs: GsDerivation? = null,
+    val listDecoding: ListDecodingDerivation? = null,
     /** Unmasked values assigned by structure constraints, before any later RS correction. */
     val constraintValuesByBit: Map<Int, Int> = emptyMap(),
 )
@@ -63,7 +63,7 @@ data class RecoveryCandidate(
     val actualBlockMethods: List<RecoveryBlockMethod> = emptyList(),
     val searchDiagnostic: RecoverySearchDiagnostic? = null,
     val derivationsOmitted: Boolean = false,
-    val gsMismatchLimit: Int? = null,
+    val listDecodingMismatchLimit: Int? = null,
 ) {
     val priorityGuessedBits: Int get() = priorityAssignments.size
     val payloadParsed: Boolean get() = text != null
@@ -150,12 +150,12 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
     private val bitSolver = RsBitConstraintSolver(rs)
     /** Mutable search evidence belongs to exactly one invocation, including its fallback trials. */
     private class RecoveryRunState(val diagnosticInput: QrMatrix, val retentionBudget: RecoveryRetentionBudget,
-        baseCancellation: RecoveryCancellation, val partialBitSearchLimit: Int, val gsBudget: GsSearchBudget) {
-        var gsPhase = false
-        var gsSummary: GsSearchSummary? = null
+        baseCancellation: RecoveryCancellation, val partialBitSearchLimit: Int, val listDecodingBudget: ListDecodingBudget) {
+        var listDecodingPhase = false
+        var listDecodingSummary: ListDecodingSummary? = null
         val cancellation = RecoveryCancellation {
             baseCancellation.check()
-            if (gsPhase) gsBudget.check()
+            if (listDecodingPhase) listDecodingBudget.check()
             false
         }
         var ignoredFormatCoords: Set<Coord> = emptySet()
@@ -185,7 +185,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
             return RecoverySearchDiagnostic(
                 inputBlocker = earlyBlocker ?: blockers.singleOrNull()?.takeIf { allInputsChecked },
                 candidateRejections = candidateRejections.toSet(),
-                gs = gsSummary,
+                listDecoding = listDecodingSummary,
                 singleSegmentStatuses = singleSegmentStatuses.toSet(),
                 priorityHeaderHypotheses = priorityHeaderHypotheses.toSet(),
                 acceptedCandidate = acceptedCandidate,
@@ -280,11 +280,11 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
         displayLockManualBits: Boolean? = null,
         partialBitSearchLimit: Int = PartialBitSearchLimit.DEFAULT,
-        gsBudget: GsSearchBudget = GsSearchBudget(),
+        listDecodingBudget: ListDecodingBudget = ListDecodingBudget(),
         onPriorityProgress: ((done: Int, total: Int) -> Unit)? = null,
     ): List<RecoveryCandidate> = recoverWithDiagnostics(
         matrix, maxFormatCandidates, trustKnownPayloadCount, formatConstraint, maxFormatMismatches,
-        maxKnownDataEccMismatches, manualEdits, retentionBudget, cancellation, displayLockManualBits, partialBitSearchLimit = partialBitSearchLimit, gsBudget = gsBudget, onPriorityProgress = onPriorityProgress,
+        maxKnownDataEccMismatches, manualEdits, retentionBudget, cancellation, displayLockManualBits, partialBitSearchLimit = partialBitSearchLimit, listDecodingBudget = listDecodingBudget, onPriorityProgress = onPriorityProgress,
     ).candidates
 
     /** Returns the candidates and diagnostic evidence from this invocation as one value. */
@@ -301,7 +301,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         displayLockManualBits: Boolean? = null,
         stopRequested: () -> Boolean = { false },
         partialBitSearchLimit: Int = PartialBitSearchLimit.DEFAULT,
-        gsBudget: GsSearchBudget = GsSearchBudget(),
+        listDecodingBudget: ListDecodingBudget = ListDecodingBudget(),
         onPriorityProgress: ((done: Int, total: Int) -> Unit)? = null,
     ): RecoveryOutcome {
         require(partialBitSearchLimit in PartialBitSearchLimit.supported)
@@ -317,7 +317,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         val run = RecoveryRunState(matrix, retentionBudget, RecoveryCancellation {
             cancellation.check()
             stopRequested()
-        }, partialBitSearchLimit, gsBudget)
+        }, partialBitSearchLimit, listDecodingBudget)
         val conditions = RecoveryDisplayConditions(trustKnownPayloadCount, displayLockManualBits,
             formatConstraint, maxFormatMismatches, maxKnownDataEccMismatches, partialBitSearchLimit)
         val manual = FormatEditPolicy.manualValues(matrix) + manualEdits
@@ -351,21 +351,21 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
             if (run.candidates.results().none { it.payloadParsed } && run.earlyBlocker == null && maxKnownDataEccMismatches != 0) {
                 val version = (matrix.dimension - 17) / 4
                 val cap = minOf(maxKnownDataEccMismatches ?: Int.MAX_VALUE,
-                    ErrorLimitPolicy.gsData(version))
-                val before = gsBudget.elapsedMillis
-                run.gsSummary = GsSearchSummary(mismatchLimits = setOf(cap))
-                run.gsPhase = true
+                    ErrorLimitPolicy.listDecodingData(version))
+                val before = listDecodingBudget.elapsedMillis
+                run.listDecodingSummary = ListDecodingSummary(mismatchLimits = setOf(cap))
+                run.listDecodingPhase = true
                 try {
-                    gsBudget.measure {
+                    listDecodingBudget.measure {
                         recoverRun(run, matrix, maxFormatCandidates, trustKnownPayloadCount, formatConstraint,
                             maxKnownDataEccMismatches = maxKnownDataEccMismatches, maxFormatMismatches = maxFormatMismatches,
                             manualEdits = manualEdits, onPriorityProgress = onPriorityProgress)
                     }
-                } catch (_: GsTimeLimitException) {
-                    run.incompleteReasons += SearchIncompleteReason.GS_TIME_LIMIT
+                } catch (_: ListDecodingTimeLimitException) {
+                    run.incompleteReasons += SearchIncompleteReason.LIST_DECODING_TIME_LIMIT
                 } finally {
-                    run.gsPhase = false
-                    run.gsSummary = run.gsSummary?.copy(elapsedMillis = gsBudget.elapsedMillis - before)
+                    run.listDecodingPhase = false
+                    run.listDecodingSummary = run.listDecodingSummary?.copy(elapsedMillis = listDecodingBudget.elapsedMillis - before)
                 }
             }
             run.finished = true
@@ -648,8 +648,8 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
             val constrainedErasures = de.blocks.sumOf { block -> block.unknownMasks.count { it != 0 } }
             val rsShortfallBits = minimumRsShortfallBits(de.blocks, de.ecSymbolsPerBlock)
 
-            val gsLimit = if (run.gsPhase) minOf(maxKnownDataEccMismatches ?: Int.MAX_VALUE,
-                ErrorLimitPolicy.gsData(version)) else null
+            val listDecodingLimit = if (run.listDecodingPhase) minOf(maxKnownDataEccMismatches ?: Int.MAX_VALUE,
+                ErrorLimitPolicy.listDecodingData(version)) else null
             val evaluator = RecoveryCandidateEvaluator(
                 version = version,
                 format = format,
@@ -668,12 +668,12 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 originalErasures = originalErasures,
                 constrainedErasures = constrainedErasures,
                 rsShortfallBits = rsShortfallBits,
-                maxKnownDataEccMismatches = gsLimit ?: maxKnownDataEccMismatches,
+                maxKnownDataEccMismatches = listDecodingLimit ?: maxKnownDataEccMismatches,
                 maxAlternativeDerivations = run.retentionBudget.maxAlternativeDerivations,
-                gsMismatchLimit = gsLimit,
+                listDecodingMismatchLimit = listDecodingLimit,
             )
 
-            if (run.gsPhase) {
+            if (run.listDecodingPhase) {
                 val original = QrBlockInterleaver.deinterleave(evidenceExtraction, version, format.ecLevel)
                 val nonEnumerable = de.blocks.indices.map { blockIndex ->
                     priorityRawIndices.mapNotNullTo(hashSetOf()) { raw ->
@@ -682,18 +682,23 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 }
                 val trialCounts = IntArray(de.blocks.size)
                 val interpolationCounts = IntArray(de.blocks.size)
-                val foundGs = GsQrSearch(rs).run(de, original, matrix, extraction, priorityAssignments.keys, version, requireNotNull(gsLimit),
+                val methodCounts = Array(de.blocks.size) { IntArray(ListDecoderMethod.entries.size) }
+                val foundListDecoded = ListDecodingQrSearch(rs).run(de, original, matrix, extraction, priorityAssignments.keys, version, requireNotNull(listDecodingLimit),
                     allowBitEnumeration, nonEnumerable, run.partialBitSearchLimit, run.retentionBudget.workingLimitBytes,
                     run.cancellation, onRejection = { run.candidateRejections += it },
                     onProgress = { index, search ->
-                        val previous = requireNotNull(run.gsSummary)
-                        run.gsSummary = previous.copy(
+                        val previous = requireNotNull(run.listDecodingSummary)
+                        run.listDecodingSummary = previous.copy(
                             trials = previous.trials + search.trials - trialCounts[index],
                             interpolations = previous.interpolations + search.interpolations - interpolationCounts[index],
                             skipReasons = previous.skipReasons + search.skipReasons,
+                            methodTrials = ListDecoderMethod.entries.associateWith { method ->
+                                (previous.methodTrials[method] ?: 0) + (search.methodTrials[method] ?: 0) - methodCounts[index][method.ordinal]
+                            }.filterValues { it > 0 },
                         )
                         trialCounts[index] = search.trials
                         interpolationCounts[index] = search.interpolations
+                        ListDecoderMethod.entries.forEach { method -> methodCounts[index][method.ordinal] = search.methodTrials[method] ?: 0 }
                     }, onStops = { run.combinationSearch = run.combinationSearch.afterPass(it) },
                 ) { combination ->
                     when (val evaluation = evaluator.evaluate(combination)) {
@@ -714,7 +719,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                         }
                     }
                 }
-                parsedFound = foundGs || parsedFound
+                parsedFound = foundListDecoded || parsedFound
                 if (!trustKnownPayloadCount && shouldRetryWithoutPayloadConstraints(allowPayloadConstraints, constraints.filledBits)) {
                     parsedFound = recoverInternal(run, matrix, 1, listOf(format), allowBitEnumeration,
                         false, false, maxFormatMismatches, maxKnownDataEccMismatches, formatRoute,

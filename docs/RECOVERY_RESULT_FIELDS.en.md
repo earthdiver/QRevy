@@ -10,7 +10,7 @@ Invalid Kanji/Hanzi character codes are rejected by structure validation even wh
 
 ## Identify the outcome first
 
-Guruswami–Sudan (GS) is a list-decoding method that can produce multiple candidates for errors beyond the correction range of conventional RS decoding. It is used as a fallback when ordinary search finds no decoded candidate.
+List decoding can produce multiple candidates for errors beyond the correction range of conventional RS decoding. The app automatically selects Guruswami–Sudan (GS), Koetter–Vardy (KV), or Wu decoding according to the input and estimated computation. It is used as a fallback when ordinary search finds no decoded candidate.
 
 | Outcome or warning | Meaning | Check first |
 | --- | --- | --- |
@@ -19,7 +19,7 @@ Guruswami–Sudan (GS) is a list-decoding method that can produce multiple candi
 | No recovery candidate was found in the checked range. | No selectable candidate was retained; this can include RS-consistent values rejected by later checks | Input conditions, reference diagnosis, rejection reasons, and search completion |
 | Combination/node limit | The specified search policy reached its normal boundary | Completion does not prove uniqueness |
 | Candidates omitted (retention limit) | Only some of the candidates found are displayed | Omitted candidates are not included in the displayed count and cannot be selected |
-| GS time limit | The cumulative five-minute allowance for GS fallback was reached | Validated candidates remain available; some GS trials remain unchecked |
+| List-decoding time limit | The cumulative five-minute allowance for list-decoding fallback was reached | Validated candidates remain available; some list-decoding trials remain unchecked |
 | Working-memory limit | Search stopped at the memory limit for calculation | Some combinations remain unchecked |
 
 ### Short reading example
@@ -63,7 +63,7 @@ The format-information error limit applies even when explicit ECC and mask selec
 
 Data/ECC comparisons exclude `?`, temporary priority `*` assignments, function modules, and remainder bits. The data/ECC error limit retains candidates at or below the limit; zero requires exact agreement. “Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)” defaults to OFF: candidates that conflict with fixed cells are rejected separately. ON allows their values to be corrected while retaining their fixed designation and input values. Tentative cells are correctable in either setting. Corrections remain subject to the format and data/ECC error limits; explicit ECC/mask/version selections and conflicts between fixed cells and explicit selections remain enforced.
 
-GS fallback caps known-bit mismatches at 5% of all data/ECC bits in the QR, rounded up, or the **Data/ECC error limit** if smaller. A zero limit disables GS.
+List-decoding fallback caps known-bit mismatches at 5% of all data/ECC bits in the QR, rounded up, or the **Data/ECC error limit** if smaller. A zero limit disables list decoding.
 
 ## Diagnostic details
 
@@ -71,16 +71,16 @@ Diagnostics separate execution settings, the initial input, processing, and veri
 
 The initial-input section identifies the version, ECC, mask, and geometry used for its reference diagnosis. Conventional RS is evaluated separately before structure filling or bit search, including when the data/ECC limit is zero. Block results distinguish a correction result, correction skipped because codewords containing unknown bits outnumber ECC symbols, and correction attempted without a result. A missing diagnostic is reported as unrecorded, not unexecuted. RS results alone do not establish a correct QR payload.
 
-In “3. Processing in this run,” “Methods used to obtain this candidate” identifies the methods used for the selected candidate. GS fallback also shows the effective known-bit mismatch limit and the trial count and elapsed time for the whole search. Interpolation counts and reasons for skipping interpolation in some trials appear under “Filling and correction calculations.”
+In “3. Processing in this run,” “Methods used to obtain this candidate” identifies the methods used for the selected candidate. List-decoding fallback also shows the effective known-bit mismatch limit and the trial count and elapsed time for the whole search. Trial counts by method, interpolation counts, and reasons for skipping decoding in some trials appear under “Filling and correction calculations.”
 
-GS fallback has a limit of five cumulative minutes per repair operation, excluding time spent in ordinary search. Validated candidates remain available after timeout, insufficient memory, or interruption, and “4. Verification results” reports why the search is unfinished.
+The three list-decoding methods share a limit of five cumulative minutes per repair operation, excluding time spent in ordinary search. Validated candidates remain available after timeout, insufficient memory, or interruption, and “4. Verification results” reports why the search is unfinished.
 
 Search completion distinguishes three states within the specified conditions and search policy.
 
 | Message | Meaning |
 | --- | --- |
 | Search completed within the specified conditions and search policy. | The bounded policy finished; this does not mean every mathematical solution was enumerated or establish uniqueness |
-| Some combinations remain unchecked. | Interruption, the GS time limit, insufficient working memory, or an internal error prevented required work |
+| Some combinations remain unchecked. | Interruption, the list-decoding time limit, insufficient working memory, or an internal error prevented required work |
 | Search completion could not be determined. | Execution records are insufficient to determine completion |
 
 Reasons for unfinished work are collected across all attempts and shown with the completion status. Internal-error messages distinguish some work performed, no work performed, and unavailable execution information. For search-policy limits versus candidate retention limits, see “Results and counts” above and [Recovery Strategy](RECOVERY_STRATEGY.en.md).
@@ -106,7 +106,7 @@ Equivalent conventional erasure/enumeration routes and partial-bit constraint ro
 
 The conventional RS margin is the minimum block value of `ECC symbols − erasures passed to RS − 2 × unknown-position errors`. It uses the erasure count after conventional partial-bit enumeration; zero is the conventional RS capacity boundary. If any block uses RS partial-bit constraints, the main diagnosis describes solving unknown bits using known bits and error-correction constraints instead of displaying a conventional margin. A partial-bit derivation lists its conventional margin as “not applicable.” Binary matrix rank and degrees of freedom are not symbol correction margins.
 
-For blocks repaired using GS, “Filling and correction calculations” shows the decoding radius, erasures remaining after partial-bit search, multiplicity, and Y degree. The decoding radius is the maximum number of targeted erroneous codewords. A conventional RS margin is not applicable to a GS candidate.
+“Filling and correction calculations” shows the radius and remaining erasures for GS/Wu, the agreement score and required score for KV, and interpolation multiplicity and Y degree where applicable. The radius is the maximum number of targeted erroneous codewords; the score uses interpolation weights. A conventional RS margin is not applicable to a list-decoded candidate.
 
 ### Structure filling and observed suffix matches
 

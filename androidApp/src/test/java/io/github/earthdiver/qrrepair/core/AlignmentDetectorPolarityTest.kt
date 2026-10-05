@@ -74,11 +74,11 @@ class AlignmentDetectorPolarityTest {
 
         val autoProfile = profile.copy(settings = profile.settings.copy(manualQuad = base.moduleCenterQuad()))
         // This alignment-only image checks geometry enumeration, not payload list decoding.
-        val auto = AutoRecoveryEngine().run(image, maxGeometryAttempts = 2, profile = autoProfile, gsBudget = GsSearchBudget(0))
+        val auto = AutoRecoveryEngine().run(image, maxGeometryAttempts = 2, profile = autoProfile, listDecodingBudget = ListDecodingBudget(0))
         assertEquals(1, auto.attemptedGeometries)
         assertTrue(auto.testedHypotheses.all { it.alignment == null })
         val enabled = AutoRecoveryEngine().run(image, maxGeometryAttempts = 72,
-            profile = autoProfile.copy(settings = autoProfile.settings.copy(searchQuadNeighborhood = true)), gsBudget = GsSearchBudget(0))
+            profile = autoProfile.copy(settings = autoProfile.settings.copy(searchQuadNeighborhood = true)), listDecodingBudget = ListDecodingBudget(0))
         assertTrue(enabled.testedHypotheses.any { it.alignment != null })
         assertTrue(enabled.testedHypotheses.any { it.alignment == null })
     }

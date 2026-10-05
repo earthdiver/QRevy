@@ -67,5 +67,5 @@ data class RecoveryBlockMethod(
     val bitConstraintSolved: Boolean,
     val rsMargin: Int?,
     val guessedBits: Int,
-    val gs: GsDerivation? = null,
+    val listDecoding: ListDecodingDerivation? = null,
 )

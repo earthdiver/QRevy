@@ -11,7 +11,7 @@ class PartialCodewordSolver(private val rs: ReedSolomonErasures) {
         val rsMargin: Int,
         val searchPenalty: Int,
         val bitConstraintSolved: Boolean,
-        val gs: GsDerivation? = null,
+        val listDecoding: ListDecodingDerivation? = null,
     )
 
     data class Result(
@@ -29,12 +29,12 @@ class PartialCodewordSolver(private val rs: ReedSolomonErasures) {
         val alternativeDerivations: List<Derivation> = emptyList(),
         /** Lowest traversal penalty across all retained routes; not a property of the representative route. */
         val orderingPenalty: Int = searchPenalty,
-        val gs: GsDerivation? = null,
-        /** Original pre-inference observation; populated by the GS integration. */
+        val listDecoding: ListDecodingDerivation? = null,
+        /** Original pre-inference observation; populated by the list-decoding integration. */
         val originalKnownMismatches: Int? = null,
     ) {
         fun derivation() = Derivation(errataPositions.toList(), guessedBits, guessedBytes,
-            guessedPositions.toList(), rsMargin, searchPenalty, bitConstraintSolved, gs)
+            guessedPositions.toList(), rsMargin, searchPenalty, bitConstraintSolved, listDecoding)
     }
 
     /** Supplement, never replace, errors+erasures decoding when observed-bit errors are allowed. */
@@ -217,7 +217,7 @@ internal class BlockCandidateAccumulator {
     private val entries = linkedMapOf<Key, Entry>()
     // Conventional margins remain preferred over the binary route's non-applicable placeholder.
     // Within conventional routes follow QR result ranking: margin, search bits, target symbols.
-    private val representativeOrder = compareBy<PartialCodewordSolver.Result> { it.gs != null }
+    private val representativeOrder = compareBy<PartialCodewordSolver.Result> { it.listDecoding != null }
         .thenBy { it.bitConstraintSolved }
         .thenByDescending { it.rsMargin }
         .thenBy { it.guessedBits }
@@ -230,7 +230,7 @@ internal class BlockCandidateAccumulator {
     val size: Int get() = entries.size
     fun isEmpty(): Boolean = entries.isEmpty()
 
-    /** Conservative added charge, checked before retaining new GS values or explanations. */
+    /** Conservative added charge, checked before retaining new list-decoded values or explanations. */
     fun additionalBytes(result: PartialCodewordSolver.Result): Long {
         val entry = entries[Key(result.corrected)]
         val routes = (listOf(result.derivation()) + result.alternativeDerivations).distinct()

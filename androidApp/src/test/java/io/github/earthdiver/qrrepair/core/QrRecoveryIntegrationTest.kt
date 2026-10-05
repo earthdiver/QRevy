@@ -187,7 +187,7 @@ class QrRecoveryIntegrationTest {
         assertTrue(recovered.isEmpty())
         // Ordinary recovery and GS revisit the trusted format; neither expands to other formats.
         assertEquals(2, outcome.formatAttempts)
-        assertTrue(outcome.searchDiagnostic.gs != null)
+        assertTrue(outcome.searchDiagnostic.listDecoding != null)
         assertEquals(ErrorCorrectionLevel.L, outcome.failure?.ecLevel)
         assertEquals(encoded.maskPattern, outcome.failure?.dataMask)
     }

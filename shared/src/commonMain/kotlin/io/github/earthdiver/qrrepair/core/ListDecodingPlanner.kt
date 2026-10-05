@@ -1,0 +1,22 @@
+package io.github.earthdiver.qrrepair.core
+
+/** Chooses between algorithms covering the same hard-decision ball; costs are ordering heuristics. */
+internal object ListDecodingPlanner {
+    data class HardPlan(val method: ListDecoderMethod, val parameters: GuruswamiSudanDecoder.Parameters,
+        val workingBytes: Long, val estimatedWork: Long)
+
+    fun hard(length: Int, dataLength: Int, erasures: Int, availableBytes: Long, check: () -> Unit): HardPlan? {
+        val parameters = GuruswamiSudanDecoder(length, dataLength).parameters(erasures, Long.MAX_VALUE, check) ?: return null
+        val width = parameters.listDegree + 1L
+        // Triangular row-update estimate. Low-multiplicity GS can be cheaper than Wu's
+        // field scan; the estimate orders equivalent searches and is not a time guarantee.
+        val gsWork = listDecodingWork(width, width, parameters.degreeBound + 1L, parameters.degreeBound + 1L) / 2
+        val wu = WuDecoder(length, dataLength)
+        val wuWork = wu.estimatedWork(erasures)
+        if (wu.workingBytes <= availableBytes && (parameters.workingBytes > availableBytes || wuWork < gsWork)) {
+            return HardPlan(ListDecoderMethod.WU, parameters, wu.workingBytes, wuWork)
+        }
+        if (parameters.workingBytes <= availableBytes) return HardPlan(ListDecoderMethod.GURUSWAMI_SUDAN, parameters, parameters.workingBytes, gsWork)
+        throw ListDecodingWorkingMemoryException()
+    }
+}

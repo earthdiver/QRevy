@@ -61,10 +61,10 @@ class GuruswamiSudanDecoderTest {
 
     @Test fun memoryAndCancellationAreCheckedBeforeAndDuringAlgebra() {
         val decoder = GuruswamiSudanDecoder(26, 19)
-        assertFailsWith<GsWorkingMemoryException> { decoder.parameters(0, 0) }
+        assertFailsWith<ListDecodingWorkingMemoryException> { decoder.parameters(0, 0) }
         val params = assertNotNull(decoder.parameters(0, memory))
         val word = rs.encode(IntArray(19), 7)
-        assertFailsWith<GsWorkingMemoryException> { decoder.decode(word, intArrayOf(), params, 0) }
+        assertFailsWith<ListDecodingWorkingMemoryException> { decoder.decode(word, intArrayOf(), params, 0) }
         var checks = 0
         assertFailsWith<RecoveryCancelledException> {
             decoder.decode(word, intArrayOf(), params, memory) {

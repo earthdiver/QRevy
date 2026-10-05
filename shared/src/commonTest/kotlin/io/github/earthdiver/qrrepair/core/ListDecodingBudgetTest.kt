@@ -2,10 +2,10 @@ package io.github.earthdiver.qrrepair.core
 
 import kotlin.test.*
 
-class GsSearchBudgetTest {
+class ListDecodingBudgetTest {
     @Test fun sharesElapsedTimeAcrossPassesWithoutChargingOrdinaryWork() {
         var clock = 100L
-        val budget = GsSearchBudget(300) { clock }
+        val budget = ListDecodingBudget(300) { clock }
         budget.measure { clock += 80; budget.check() }
         clock += 10_000
         assertEquals(80, budget.elapsedMillis)
@@ -14,14 +14,14 @@ class GsSearchBudgetTest {
             budget.measure { clock += 100; budget.check() }
         }
         assertEquals(280, budget.elapsedMillis)
-        assertFailsWith<GsTimeLimitException> { budget.measure { clock += 20; budget.check() } }
+        assertFailsWith<ListDecodingTimeLimitException> { budget.measure { clock += 20; budget.check() } }
         assertEquals(300, budget.elapsedMillis)
-        assertFailsWith<GsTimeLimitException> { budget.measure { fail("Exhausted budget must not restart") } }
+        assertFailsWith<ListDecodingTimeLimitException> { budget.measure { fail("Exhausted budget must not restart") } }
     }
 
     @Test fun completionDoesNotWaitForDeadlineAndCancellationEscapes() {
         var clock = 0L
-        val budget = GsSearchBudget { clock }
+        val budget = ListDecodingBudget { clock }
         assertEquals(42, budget.measure { clock += 1; 42 })
         assertFalse(budget.exhausted)
         assertFailsWith<RecoveryCancelledException> { budget.measure { clock += 2; throw RecoveryCancelledException() } }
@@ -31,7 +31,7 @@ class GsSearchBudgetTest {
 
     @Test fun aProgressCallbackCannotLeaveTheClockRunningAfterCancellation() {
         var clock = 0L
-        val budget = GsSearchBudget(onProgress = { _, _ ->
+        val budget = ListDecodingBudget(onProgress = { _, _ ->
             clock += 3
             throw RecoveryCancelledException()
         }, clockMillis = { clock })

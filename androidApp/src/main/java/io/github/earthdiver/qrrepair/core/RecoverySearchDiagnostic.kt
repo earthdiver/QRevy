@@ -5,9 +5,9 @@ import io.github.earthdiver.qrrepair.localizedText
 /** Proven input restrictions, checked across every permitted format before making a run-wide claim. */
 enum class RecoveryInputBlocker { FORMAT_SELECTION, FORMAT_LIMIT, STRUCTURAL_FIXED_CELLS, ZERO_MISMATCH }
 
-enum class RecoveryCandidateRejection { FIXED_CELLS, MISMATCH_LIMIT, QR_STRUCTURE, SINGLE_SEGMENT_STRUCTURE, GS_MISMATCH_LIMIT }
+enum class RecoveryCandidateRejection { FIXED_CELLS, MISMATCH_LIMIT, QR_STRUCTURE, SINGLE_SEGMENT_STRUCTURE, LIST_DECODING_MISMATCH_LIMIT }
 
-enum class SearchIncompleteReason { USER_INTERRUPTED, WORKING_MEMORY_LIMIT, GS_TIME_LIMIT, INTERNAL_ERROR }
+enum class SearchIncompleteReason { USER_INTERRUPTED, WORKING_MEMORY_LIMIT, LIST_DECODING_TIME_LIMIT, INTERNAL_ERROR }
 
 /** Evidence from the whole search, independent of the representative candidate or failure. */
 data class RecoverySearchDiagnostic(
@@ -30,7 +30,7 @@ data class RecoverySearchDiagnostic(
     val singleSegmentStatuses: Set<SingleSegmentStatus> = emptySet(),
     /** At most two distinct mode/count bit patterns, to distinguish multiple hypotheses. */
     val priorityHeaderHypotheses: Set<String> = emptySet(),
-    val gs: GsSearchSummary? = null,
+    val listDecoding: ListDecodingSummary? = null,
 ) {
     val completeness: SearchCompleteness get() = when {
         unsearched || incompleteReasons.isNotEmpty() -> SearchCompleteness.UNSEARCHED
@@ -47,9 +47,9 @@ data class RecoverySearchDiagnostic(
             SearchIncompleteReason.WORKING_MEMORY_LIMIT -> localizedText(
                 "計算用メモリの上限により、一部または全部の探索を実行できませんでした。",
                 "The working-memory limit prevented some or all of the search from running.")
-            SearchIncompleteReason.GS_TIME_LIMIT -> localizedText(
-                "GS法による追加探索は時間切れで終了しました。未探索の組合せが残っています。",
-                "GS fallback ended at the time limit. Some combinations remain unchecked.")
+            SearchIncompleteReason.LIST_DECODING_TIME_LIMIT -> localizedText(
+                "リスト復号による追加探索は時間切れで終了しました。未探索の組合せが残っています。",
+                "List-decoding fallback ended at the time limit. Some combinations remain unchecked.")
             SearchIncompleteReason.INTERNAL_ERROR -> if (!coverageComplete) localizedText(
                 "内部エラーにより、探索の完了状況を確認できません。",
                 "An internal error prevented determining search completion.") else if (completedSteps > 0) localizedText(
@@ -75,7 +75,7 @@ data class RecoverySearchDiagnostic(
                 inputBlocker = known.first().inputBlocker?.takeIf { blocker ->
                     parts.all { it?.inputBlocker == blocker && it.coverageComplete }
                 },
-                gs = GsSearchSummary.combine(known.mapNotNull { it.gs }),
+                listDecoding = ListDecodingSummary.combine(known.mapNotNull { it.listDecoding }),
                 candidateRejections = known.flatMapTo(linkedSetOf()) { it.candidateRejections },
                 singleSegmentStatuses = known.flatMapTo(linkedSetOf()) { it.singleSegmentStatuses },
                 priorityHeaderHypotheses = known.asSequence().flatMap { it.priorityHeaderHypotheses }.distinct().take(2).toSet(),
@@ -126,9 +126,9 @@ data class RecoverySearchDiagnostic(
             setOf(RecoveryCandidateRejection.SINGLE_SEGMENT_STRUCTURE) -> localizedText(
                 "得られた候補はすべて、強制した種類・文字数または終端後の構造と一致しないため、採用できませんでした。",
                 "All candidates obtained conflicted with the forced mode/count or following structure and could not be accepted.")
-            setOf(RecoveryCandidateRejection.GS_MISMATCH_LIMIT) -> localizedText(
-                "GSで得られた候補は、元の既知bitとの不一致がGSの上限を超えたため、採用できませんでした。",
-                "GS candidates exceeded the GS mismatch cap against the original known bits.")
+            setOf(RecoveryCandidateRejection.LIST_DECODING_MISMATCH_LIMIT) -> localizedText(
+                "リスト復号で得られた候補は、元の既知ビットとの不一致が上限を超えたため、採用できませんでした。",
+                "List-decoded candidates exceeded the mismatch cap against the original known bits.")
             setOf(RecoveryCandidateRejection.QR_STRUCTURE) -> localizedText(
                 "RSの条件を満たす候補は得られましたが、QRのデータ構造を満たす修復候補は見つかりませんでした。",
                 "RS-consistent candidates were obtained, but no recovery candidate satisfied the QR data structure.")

@@ -247,7 +247,7 @@ class GeometryNeighborhoodExpandedRegressionTest {
         ).reanchored()
         val matrix = MatrixSampler(prepared.image, prepared.profile).sample(geometry).first
         // Hold decoding capacity fixed while comparing geometry families and search widths.
-        return RecoveryEngine().recover(matrix, maxFormatCandidates = 1, gsBudget = GsSearchBudget(0))
+        return RecoveryEngine().recover(matrix, maxFormatCandidates = 1, listDecodingBudget = ListDecodingBudget(0))
             .any { it.text == prepared.fixture.text }
     }
 

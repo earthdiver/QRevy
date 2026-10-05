@@ -2,8 +2,8 @@ package io.github.earthdiver.qrrepair.core
 
 import kotlin.time.TimeSource
 
-/** One repair's cumulative GS time. Ordinary recovery between GS passes does not consume it. */
-class GsSearchBudget(
+/** One repair's cumulative list-decoding time. Ordinary recovery between passes does not consume it. */
+class ListDecodingBudget(
     val limitMillis: Long = 300_000,
     private val onProgress: ((elapsedMillis: Long, limitMillis: Long) -> Unit)? = null,
     private val clockMillis: () -> Long = monotonicClock(),
@@ -21,7 +21,7 @@ class GsSearchBudget(
             lastReported = elapsed
             onProgress?.invoke(elapsed, limitMillis)
         }
-        if (elapsed >= limitMillis) throw GsTimeLimitException()
+        if (elapsed >= limitMillis) throw ListDecodingTimeLimitException()
     }
 
     fun <T> measure(action: () -> T): T {
@@ -46,15 +46,20 @@ class GsSearchBudget(
 }
 
 /** These resource stops must never be reported as an invalid RS or QR hypothesis. */
-class GsTimeLimitException : RuntimeException("GS time allowance exhausted")
-class GsWorkingMemoryException : RuntimeException("GS working-memory allowance exhausted")
+class ListDecodingTimeLimitException : RuntimeException("List-decoding time allowance exhausted")
+class ListDecodingWorkingMemoryException : RuntimeException("List-decoding working-memory allowance exhausted")
 
 /** Parameters and trial evidence for one list-decoded block, independent of original observations. */
-data class GsDerivation(
+data class ListDecodingDerivation(
     val radius: Int,
     val multiplicity: Int,
     val listDegree: Int,
     val remainingErasures: Int,
     val symbolErrors: Int,
     val assignment: Int,
+    val method: ListDecoderMethod = ListDecoderMethod.GURUSWAMI_SUDAN,
+    val score: Int? = null,
+    val scoreThreshold: Int? = null,
 )
+
+enum class ListDecoderMethod { GURUSWAMI_SUDAN, KOETTER_VARDY, WU }

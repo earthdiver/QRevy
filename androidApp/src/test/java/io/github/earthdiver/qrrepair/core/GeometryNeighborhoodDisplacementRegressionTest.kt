@@ -86,7 +86,7 @@ class GeometryNeighborhoodDisplacementRegressionTest {
         val matrix = MatrixSampler(image, profile).sample(geometry).first
         // Compare geometry using the ordinary decoder; the timed list-decoding extension
         // must not change this displacement sweep's recovery threshold.
-        return RecoveryEngine().recover(matrix, maxFormatCandidates = 1, gsBudget = GsSearchBudget(0)).any { it.text == text }
+        return RecoveryEngine().recover(matrix, maxFormatCandidates = 1, listDecodingBudget = ListDecodingBudget(0)).any { it.text == text }
     }
 
     private fun perturb(quad: ImageQuad, modules: Double, kind: Perturbation): ImageQuad {

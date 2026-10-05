@@ -110,7 +110,7 @@ For new imports, the format-information limit starts at **6 bits** across both c
 
 Default follows that version rule. An explicitly selected Strict or Relaxed preset keeps its selected policy and recalculates its bit count when version changes; Manual and Unlimited remain explicit. Stored manual numbers are retained while using a preset. The format limit also applies when both ECC and mask are explicitly selected. If the limits remove a correct candidate, select a higher manual limit or Unlimited and retry.
 
-Guruswami–Sudan (GS) is a list-decoding method that can produce multiple candidates for errors beyond the correction range of conventional RS decoding. This fallback caps known-bit mismatches at 5% of all data/ECC bits in the QR, rounded up, or the **Data/ECC error limit** if smaller. A zero limit disables GS.
+List decoding can produce multiple candidates for errors beyond the correction range of conventional RS decoding. The app automatically selects Guruswami–Sudan (GS), Koetter–Vardy (KV), or Wu decoding according to the input and estimated computation. This fallback caps known-bit mismatches at 5% of all data/ECC bits in the QR, rounded up, or the **Data/ECC error limit** if smaller. A zero limit disables list decoding.
 
 See [Recovery Strategy](RECOVERY_STRATEGY.en.md) for exact interactions and bounds.
 
@@ -122,7 +122,7 @@ Search completion covers the specified conditions and bounded search policy. It 
 
 A **validated candidate** has passed QR structure validation and the specified input constraints. A **decoded candidate** has also passed final decoding of QR data. QR data can contain text or binary data.
 
-If ordinary search finds no decoded candidate, GS fallback automatically searches for additional candidates. It runs for at most five cumulative minutes per repair operation, excluding time spent in ordinary search, and supports **Interrupt repair** throughout. Validated candidates remain available after timeout, insufficient memory, or interruption.
+If ordinary search finds no decoded candidate, list-decoding fallback automatically searches for additional candidates. The three methods share at most five cumulative minutes per repair operation, excluding time spent in ordinary search, and supports **Interrupt repair** throughout. Validated candidates remain available after timeout, insufficient memory, or interruption.
 
 Review results in this order:
 

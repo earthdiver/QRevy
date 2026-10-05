@@ -1,7 +1,7 @@
 package io.github.earthdiver.qrrepair.core
 
-/** Adds complete GS root lists incrementally, validating combinations before the next bit trial. */
-internal class GsQrSearch(private val rs: ReedSolomonErasures) {
+/** Adds complete decoder lists incrementally, validating combinations before the next bit trial. */
+internal class ListDecodingQrSearch(private val rs: ReedSolomonErasures) {
     fun run(
         de: DeinterleavedQr,
         original: DeinterleavedQr,
@@ -16,11 +16,11 @@ internal class GsQrSearch(private val rs: ReedSolomonErasures) {
         workingLimitBytes: Long,
         cancellation: RecoveryCancellation,
         onRejection: (RecoveryCandidateRejection) -> Unit,
-        onProgress: (Int, GsBlockSearch) -> Unit,
+        onProgress: (Int, ListDecodingBlockSearch) -> Unit,
         onStops: (Set<CombinationSearchStop>) -> Unit,
         evaluate: (List<PartialCodewordSolver.Result>) -> Boolean,
     ): Boolean {
-        val searches = mutableListOf<GsBlockSearch>()
+        val searches = mutableListOf<ListDecodingBlockSearch>()
         val stops = linkedSetOf<CombinationSearchStop>()
         var expanded = 0
         var combinations = 0
@@ -51,18 +51,27 @@ internal class GsQrSearch(private val rs: ReedSolomonErasures) {
             for ((index, block) in de.blocks.withIndex()) {
                 cancellation.check()
                 val space = bits.analyze(block, de.ecSymbolsPerBlock, cancellation)
-                val required = blockCandidateWorkingBytes(block, space?.dimension, allowEnumeration,
-                    nonEnumerable[index], false, de.ecSymbolsPerBlock, partialBitSearchLimit = partialBitLimit)
+                val dimensionLimit = if (allowEnumeration && nonEnumerable[index].isEmpty()) partialBitLimit else 0
+                val exactCount = space?.dimension?.takeIf { it in 0..dimensionLimit }?.let { 1L shl it } ?: 0L
+                // Only exact-space values and one ordinary result are eager. Include their
+                // temporary lists and accumulator records; bit trials allocate incrementally.
+                val required = (exactCount + 1L) * (2048L + block.codewords.size * 128L)
                 if (required + 8192L + block.codewords.size * 64L > workingLimitBytes - used()) {
                     stops += CombinationSearchStop.WORKING_MEMORY_LIMIT
                     return false
                 }
-                val initial = try {
-                    solver.decodeWithBitConstraints(block, de.ecSymbolsPerBlock, space, false,
+                // Keep exact bit-constraint routes, but defer repeated conventional bit enumeration
+                // until after the cheaper base list and optional KV pass have been validated.
+                val exact = try {
+                    solver.decodeWithBitConstraints(block, de.ecSymbolsPerBlock, space, true,
                         allowBitEnumeration = allowEnumeration, nonEnumerablePositions = nonEnumerable[index],
                         cancellation = cancellation, maxEnumeratedBits = partialBitLimit)
                 } catch (_: ReedSolomonErasures.DecodeException) { emptyList() }
-                searches += GsBlockSearch(block, original.blocks[index], initial, partialBitLimit,
+                val conventional = try {
+                    solver.decodeCandidates(block, de.ecSymbolsPerBlock, allowBitEnumeration = false, cancellation = cancellation)
+                } catch (_: ReedSolomonErasures.DecodeException) { emptyList() }
+                val initial = exact + conventional
+                searches += ListDecodingBlockSearch(block, original.blocks[index], initial, partialBitLimit,
                     allowEnumeration, nonEnumerable[index], mismatchLimit, accepts = { values ->
                         val valid = values.indices.all { (values[it] xor pinValues[index][it]) and pinMasks[index][it] == 0 }
                         if (!valid && values.indices.any { (values[it] xor pinValues[index][it]) and fixedMasks[index][it] != 0 }) {
@@ -84,7 +93,7 @@ internal class GsQrSearch(private val rs: ReedSolomonErasures) {
                     finally {
                         onProgress(index, search)
                         if (search.memoryLimited) stops += CombinationSearchStop.WORKING_MEMORY_LIMIT
-                        if (search.mismatchRejections > 0) onRejection(RecoveryCandidateRejection.GS_MISMATCH_LIMIT)
+                        if (search.mismatchRejections > 0) onRejection(RecoveryCandidateRejection.LIST_DECODING_MISMATCH_LIMIT)
                     }
                     if (!search.hasNext && search.candidates.isEmpty()) return false
                 }
@@ -104,7 +113,7 @@ internal class GsQrSearch(private val rs: ReedSolomonErasures) {
                     cancellation.check()
                     expanded++
                     if (prefix.sumOf { requireNotNull(it.originalKnownMismatches) } > mismatchLimit) {
-                        onRejection(RecoveryCandidateRejection.GS_MISMATCH_LIMIT)
+                        onRejection(RecoveryCandidateRejection.LIST_DECODING_MISMATCH_LIMIT)
                         false
                     } else {
                         val data = prefix.flatMapIndexed { index, result ->

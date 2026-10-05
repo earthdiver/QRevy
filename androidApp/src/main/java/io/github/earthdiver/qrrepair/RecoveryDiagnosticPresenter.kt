@@ -28,7 +28,7 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
 
     fun candidateReport(candidate: RecoveryCandidate, geometry: GridGeometry?, context: RecoveryDiagnosticContext): RecoveryDiagnosticReport {
         val preview = QrContentPreviewParser.parse(candidate)
-        val gs = (context.searchDiagnostic ?: candidate.searchDiagnostic)?.gs
+        val listDecoding = (context.searchDiagnostic ?: candidate.searchDiagnostic)?.listDecoding
         val input = initialDiagnosticSection(candidate.version, candidate.ecLevel, candidate.dataMask,
             geometry?.let(::geometryDiagnosticText).orEmpty(), candidate.rsBitDiagnostic,
             candidate.extraction.codewords.takeIf { it.isNotEmpty() }?.sumOf { (it.unknownBits and 255).countOneBits() },
@@ -43,13 +43,13 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
             append(searchResultDescription(context))
         }
         val processing = listOf(candidate.displayConditions.candidateCalculationPolicyText(), candidate.usedMethodsText(),
-            gs?.description(), gs?.mismatchLimitDescription()?.takeIf { candidate.gsMismatchLimit == null },
+            listDecoding?.description(), listDecoding?.mismatchLimitDescription()?.takeIf { candidate.listDecodingMismatchLimit == null },
             candidate.combinationSearch.copy(stops = candidate.combinationSearch.stops.filterTo(linkedSetOf()) {
             it != CombinationSearchStop.USER_INTERRUPTED && it != CombinationSearchStop.WORKING_MEMORY_LIMIT
         }).stopReasonsText()
             .takeIf { it.isNotBlank() }?.let { ui("この探索経路の終了理由\n", "Stop reasons for this search route\n") + it })
             .filterNotNull().filter(String::isNotBlank).joinToString("\n\n")
-        val processingDetails = listOfNotNull(candidateProcessingText(candidate, context.selectedEntry), gs?.calculationDetails())
+        val processingDetails = listOfNotNull(candidateProcessingText(candidate, context.selectedEntry), listDecoding?.calculationDetails())
             .filter(String::isNotBlank).joinToString("\n\n")
         return RecoveryDiagnosticReport(ui("選択中の候補の診断", "Diagnostics for the selected candidate"), listOf(
             DiagnosticSection(DiagnosticStage.SETTINGS, candidate.displayConditions.runSettingsText()),
@@ -60,14 +60,14 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
     }
 
     fun failureReport(failure: RecoveryFailure, geometry: GridGeometry?, context: RecoveryDiagnosticContext): RecoveryDiagnosticReport {
-        val gs = (context.searchDiagnostic ?: failure.searchDiagnostic)?.gs
+        val listDecoding = (context.searchDiagnostic ?: failure.searchDiagnostic)?.listDecoding
         val input = initialDiagnosticSection(geometry?.version, failure.ecLevel, failure.dataMask,
             geometry?.let(::geometryDiagnosticText).orEmpty(), failure.rsBitDiagnostic, null,
             failure.originalErasedCodewords.takeIf { failure.rsBitDiagnostic != null || failure.failedBlockIndex != null || it > 0 },
             failure.conventionalRsDiagnostic, conditions = failure.displayConditions)
         val processing = buildString {
             append(failure.displayConditions.candidateCalculationPolicyText())
-            gs?.let {
+            listDecoding?.let {
                 if (isNotEmpty()) append("\n\n")
                 append(it.description())
                 it.mismatchLimitDescription().takeIf(String::isNotBlank)?.let { limit -> append('\n').append(limit) }
@@ -95,7 +95,7 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
                 ui("参考：補完・探索後の計算記録（", "Reference: calculation after filling/search (") +
                     (geometry?.version?.let { version -> "V$version / " }.orEmpty()) +
                     "ECC ${failure.ecLevel} / " + ui("マスク${failure.dataMask}）\n", "mask ${failure.dataMask})\n") + it
-            }, gs?.calculationDetails(),
+            }, listDecoding?.calculationDetails(),
         ).joinToString("\n\n")
         return RecoveryDiagnosticReport(ui("修復結果の診断", "Recovery result diagnostics"), listOf(
             DiagnosticSection(DiagnosticStage.SETTINGS, failure.displayConditions.runSettingsText()),
@@ -124,7 +124,7 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
             append(ui("\n補完・訂正の対象コード語数: ", "\nCodewords targeted for filling/correction: ")).append(candidate.correctedErrataSymbols)
             if (candidate.repairInfo.any { it.bitConstraintSolved }) {
                 append(ui("\n補完方法: 既知bitと誤り訂正の条件から不明部分を計算", "\nMethod: solve unknown bits using known bits and error-correction constraints"))
-            } else if (candidate.actualBlockMethods.none { it.gs != null }) {
+            } else if (candidate.actualBlockMethods.none { it.listDecoding != null }) {
                 append(ui("\n通常RSの計算値 ECC−消失数−2×誤りコード語数（ブロック最小）: ",
                     "\nConventional RS calculation, ECC−erasures−2×errors (minimum across blocks): ")).append(candidate.minRsMargin)
                 append(ui("（この補完方法での値。元入力の残り訂正能力や正しさを示しません）",
@@ -134,7 +134,7 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
                 append(ui("\nこの候補のブロック別処理", "\nBlock methods for this candidate"))
                 candidate.actualBlockMethods.forEach { method ->
                     append('\n').append(method.searchDescription())
-                    if (!method.bitConstraintSolved && method.gs == null) append(ui("／この計算の余裕: ${method.rsMargin ?: "—"}",
+                    if (!method.bitConstraintSolved && method.listDecoding == null) append(ui("／この計算の余裕: ${method.rsMargin ?: "—"}",
                         " / margin for this calculation: ${method.rsMargin ?: "—"}"))
                 }
             }

@@ -18,7 +18,7 @@ internal class RecoveryWorkflow(private val engine: RecoveryEngine) {
         cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
         stopRequested: () -> Boolean = { false },
         onPriorityProgress: (Int, Int) -> Unit = { _, _ -> },
-        gsBudget: GsSearchBudget = GsSearchBudget(),
+        listDecodingBudget: ListDecodingBudget = ListDecodingBudget(),
         onProgress: (RecoveryProgress) -> Unit = {},
     ): AutoRecoveryResult {
         require(settings.preRecoveryPrioritySearch.size <= settings.prioritySearchLimit) { "Priority marks exceed the configured limit" }
@@ -37,7 +37,7 @@ internal class RecoveryWorkflow(private val engine: RecoveryEngine) {
                     cancellation = cancellation,
                     stopRequested = stopRequested,
                     onPriorityProgress = onPriorityProgress,
-                    gsBudget = gsBudget,
+                    listDecodingBudget = listDecodingBudget,
                     onProgress = { done, total, message ->
                         onProgress(RecoveryProgress(profile, index, variants.size, done, total, message))
                     },
