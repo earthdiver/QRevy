@@ -115,6 +115,7 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
         resultAccumulator: RecoveryResultAccumulator = RecoveryResultAccumulator(retentionBudget),
         stopRequested: () -> Boolean = { false },
         onPriorityProgress: ((done: Int, total: Int) -> Unit)? = null,
+        gsBudget: GsSearchBudget = GsSearchBudget(),
         onProgress: ((done: Int, total: Int, message: String) -> Unit)? = null,
     ): AutoRecoveryResult {
         cancellation.check()
@@ -191,6 +192,7 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
                     retentionBudget = retentionBudget.fresh(),
                     cancellation = cancellation,
                     stopRequested = stopRequested,
+                    gsBudget = gsBudget,
                 ) { done, total ->
                     onPriorityProgress?.invoke(done, total)
                 }

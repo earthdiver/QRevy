@@ -25,7 +25,8 @@ class TrustedStructureEnforcementTest {
         val forced = RecoveryEngine().recoverWithDiagnostics(matrix, formatConstraint = format,
             trustKnownPayloadCount = true)
         assertTrue(forced.candidates.isEmpty())
-        assertEquals(1, forced.formatAttempts)
+        assertEquals(2, forced.formatAttempts) // Ordinary and GS passes obey the same forced structure.
+        assertNotNull(forced.searchDiagnostic.gs)
         assertTrue(RecoveryCandidateRejection.SINGLE_SEGMENT_STRUCTURE in forced.searchDiagnostic.candidateRejections)
         val ordinary = RecoveryEngine().recover(matrix, formatConstraint = format)
         assertTrue(ordinary.any { it.text == "abc" })

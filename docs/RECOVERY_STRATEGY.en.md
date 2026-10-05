@@ -14,15 +14,17 @@ QR Repair does not guess one answer from an image and immediately declare it cor
 | --- | --- | --- |
 | RS-consistent | The RS equations hold under the selected version, format, and known bits | The original QR content, correct geometry, or correct format |
 | Validated candidate | QR payload structure and the specified input constraints passed in addition to RS | The real-world author's intended content or a unique solution |
-| Text-decoded candidate | Final ZXing decoding also produced text | That the text matches the original content |
+| Decoded candidate | Final decoding of QR data also succeeded | That the decoded data matches the original content |
 | Multiple candidates | Distinct solutions passed validation | Which candidate was the original content |
 | No candidate | No validated candidate was found within the finite search performed | That no correct solution exists |
-| Candidate agreement | The cell agrees across the text-decoded candidates selected for comparison | Mathematical uniqueness across unretained or unexplored solutions |
+| Candidate agreement | The cell agrees across the decoded candidates selected for comparison | Mathematical uniqueness across unretained or unexplored solutions |
 | Confidence | An explanatory comparison of image evidence and provenance | A statistical probability of correctness |
 
 Recovery checks described as requiring fixed-value agreement in this document apply when **Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)** is OFF. ON allows correction while retaining fixed designations. Consistency with explicit ECC/mask selections remains enforced (section 3.1).
 
 ## 1. Principles
+
+Recovery is the overall process of repairing a QR code; decoding interprets its data. QR data can contain text or binary data.
 
 A conventional reader is fast when it can obtain reliable geometry and a binary image. QR Repair targets cases where that assumption fails, so every module is retained as one of three values:
 
@@ -52,7 +54,7 @@ One possible candidate:  1 0 0 1 1 0 0 1
 | User enters `0` or `1` | `0` or `1` | Retain the input value and its fixed or tentative designation |
 | User applies `*` | `?` | Prioritizes bounded 0/1 enumeration for that cell if the ordinary route fails |
 
-Even if the last line in the example is RS-consistent, it is not accepted on that basis alone. It becomes a validated candidate only after format, manual constraints, error limits, and QR payload structure also pass. Final decoding separately determines whether it can be displayed as text.
+Even if the last line in the example is RS-consistent, it is not accepted on that basis alone. It becomes a validated candidate only after format, manual constraints, error limits, and QR payload structure also pass. Final decoding then checks whether the QR data can be interpreted.
 
 ## 2. Pipeline
 
@@ -156,9 +158,9 @@ Seeing one Finder-like shape does not trigger this route automatically. Role ass
 #### Example B: gray damage covers several cells
 
 1. Black/unknown/white thresholds preserve the gray region as `?` instead of forcing an unreliable known value.
-2. Codewords containing `?` can enter ordinary erasure decoding, bounded partial-bit search, and partial-bit RS constraints.
+2. Codewords containing `?` can enter ordinary erasure decoding, bounded partial-bit search, and RS partial-bit constraints.
 3. Even a unique RS solution is conditional on the format and known bits. QR payload structure and final decoding still run.
-4. If the solution space remains ambiguous, the app may recommend a cell whose visual confirmation reduces RS freedom by one bit.
+4. If the solution space remains ambiguous, the app may recommend a cell whose visual confirmation reduces RS degrees of freedom by one bit.
 
 #### Example C: a manual pin was wrong
 
@@ -184,9 +186,9 @@ Even when neither rule applies, the engine creates a **provisional candidate** i
 
 Agreement or complementary reconstruction of the five information bits is not treated as BCH correction and does not confirm the format.
 
-A BCH-trusted candidate becomes the confirmed format for that geometry when it satisfies the manual-value consistency conditions in section 3.2. Failure of RS recovery or final payload validation does not cause a fallback to the other 31 formats. A provisional candidate is not confirmed: it stops the search only after a candidate passes final text decoding; otherwise the engine falls back to the remaining candidate set, at most 31 formats after excluding the attempted one.
+A BCH-trusted candidate becomes the confirmed format for that geometry when it satisfies the manual-value consistency conditions in section 3.2. Failure of RS recovery or final payload validation does not cause a fallback to the other 31 formats. A provisional candidate is not confirmed: it stops the search only after a decoded candidate is found; otherwise the engine falls back to the remaining candidate set, at most 31 formats after excluding the attempted one.
 
-The BCH-confirmed and provisional single-format fast paths apply when both ECC and mask are automatic. With either selection explicit, recovery tries the permitted set in rank order: at most eight formats for ECC only, four for mask only, and one for both. A partial explicit selection does not narrow the set to a BCH-trusted format alone. Format-error limits and manual pins further restrict the attempted set.
+The BCH-confirmed and provisional single-format fast paths apply when both ECC and mask are automatic. With either selection explicit, recovery tries the permitted set in rank order: at most eight formats for ECC only, four for mask only, and one for both. A partial explicit selection does not narrow the set to a BCH-trusted format alone. Format-information error limits and manual pins further restrict the attempted set.
 
 ### 3.1 Manual format edits and ECC/mask selections
 
@@ -232,9 +234,9 @@ A position determined by **explicit ECC/mask selections alone** has the same val
 | `?` | Cannot be Fixed | Fill from the candidate format; exclude from comparison |
 | `*` | Not permitted | Same as left |
 
-A format error limit of zero requires exact agreement at compared known positions. When **both** ECC and mask are explicit, the selected format must also satisfy this limit. Fixed-value conflicts are still rejected by the consistency check. Format cells never count toward the data/ECC error limit.
+A format-information error limit of zero requires exact agreement at compared known positions. When **both** ECC and mask are explicit, the selected format must also satisfy this limit. Fixed-value conflicts are still rejected by the consistency check. Format cells never count toward the data/ECC error limit.
 
-When ECC and mask are automatic and conflicts with fixed values are not allowed, a BCH-correctable candidate is checked against fixed 0/1 values in format, version, function, and remainder modules before confirmation. A conflict prevents confirmation and leaves other compatible formats eligible. Tentative values do not create this veto, but format-error limits still apply.
+When ECC and mask are automatic and conflicts with fixed values are not allowed, a BCH-correctable candidate is checked against fixed 0/1 values in format, version, function, and remainder modules before confirmation. A conflict prevents confirmation and leaves other compatible formats eligible. Tentative values do not create this veto, but format-information error limits still apply.
 
 When conflicts with fixed values are not allowed, fixed data/ECC values are checked against corrected candidates, rather than during format confirmation. Once a format is confirmed, RS or final payload failure does not reopen format search. Explicit ECC/mask selections are enforced for every candidate.
 
@@ -258,11 +260,13 @@ Ordinary structure propagation enumerates single-segment Numeric, Alphanumeric, 
 
 **Single-segment assumption** applies to QR content consisting of exactly one Numeric, Alphanumeric, Byte, or Kanji segment. It forces the area immediately after that segment to the terminator, byte-alignment, and padding values, replacing conflicting known image-derived 0/1 values as well. Fixed 0/1 edits may be corrected only when **Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)** is ON; tentative edits may be corrected.
 
-The conventional route decodes each block as GF(256) errors plus erasures, with the capacity relation `2 × errors + erasures <= ECC symbols`. A complementary binary constraint route also uses known bits inside partial codewords, as described below. Mathematical RS success alone does not make a candidate correct.
-
 Trust applies to the mode and character/byte count. An observed numeric or alphanumeric body outside its valid range does not disable suffix forcing; RS correction and final validation still handle the body itself.
 
 This option is selectable when an eligible format has a leading Numeric, Alphanumeric, Byte, or Kanji mode/count header that is known or can be completed by explicit `*` assignments. Ordinary `?` bits cannot complete this eligibility check. Each priority assignment is evaluated separately before suffix forcing; assigned header values remain hypotheses in the repair evidence. Automatic BCH confirmation restricts this check to the confirmed format. General diagnostics may recognize ECI, FNC1, structured-append prefixes, or Hanzi, but those do not qualify for suffix forcing. If an enabled condition becomes inapplicable, it remains ON and reports the reason; no candidate is accepted by silently relaxing it. Absence of another segment in an unknown region cannot be established automatically; the user must still confirm the single-segment assumption.
+
+Conventional RS decoding corrects errors and erasures in each block over GF(256), with the capacity relation `2 × errors + erasures <= ECC symbols`. RS partial-bit constraints also use known bits inside partial codewords, as described below. Mathematical RS success alone does not make a candidate correct.
+
+Guruswami–Sudan (GS) is a list-decoding method that can produce multiple candidates for errors beyond the correction range of conventional RS decoding. It is used as a fallback when ordinary search finds no decoded candidate (section 4.6).
 
 ### 4.1 Data/ECC error limit and manual input values
 
@@ -270,11 +274,11 @@ Enter an error limit directly and adjust it one bit at a time with −/＋. Form
 
 For every RS-corrected candidate, the final codewords are mapped back to QR modules with the selected mask reapplied and compared bit by bit against input `0 / 1` values known in data/ECC modules. Unknown (`?`) modules, format information, version information, function modules, and remainder bits are excluded from this comparison.
 
-When the known data/ECC bit error limit is set, only candidates whose mismatch count is no greater than the limit are retained. `0 bits` requires an exact match against every comparable known data/ECC bit. With Unlimited, the mismatch count still affects candidate ranking but does not by itself reject a candidate. An image-derived known value replaced by forced payload structure is also counted as a mismatch.
+When the data/ECC error limit is set, only candidates whose mismatch count is no greater than the limit are retained. `0 bits` requires an exact match against every comparable known data/ECC bit. With Unlimited, the ordinary routes use mismatch counts for ranking without a numeric rejection cap. GS fallback also applies a 5% cap (section 4.6). An image-derived known value replaced by forced payload structure is also counted as a mismatch.
 
 When conflicts with fixed values are not allowed, a candidate that contradicts a fixed value is rejected before applying the error-limit allowance. Such a conflict never consumes one bit of the allowance. For tentative cells and fixed cells with conflicting candidates allowed, a manually entered `0 / 1` is treated like an image-derived known bit: RS may change it, and any change counts toward the mismatch limit. A manually locked bit that agrees with the candidate is included in the known-bit denominator.
 
-If no candidate remains within the limit, the app distinguishes this from ordinary RS failure. For the best limit-exceeded attempt, it reports the actual mismatch count, known-bit count, and configured limit. With a zero limit, an inconsistent exact-bit system is reported directly as no exact known-bit solution; an error count is not invented.
+If no candidate remains within the limit, the app distinguishes this from conventional RS failure. For the best limit-exceeded attempt, it reports the actual mismatch count, known-bit count, and configured limit. With a zero limit, an inconsistent exact-bit system is reported directly as no exact known-bit solution; an error count is not invented.
 
 The following table distinguishes cell regions. Format cells also follow the selection consistency and comparison exclusions in sections 3.1–3.2.
 
@@ -288,7 +292,7 @@ The following table distinguishes cell regions. Format cells also follow the sel
 | Manual version/function/remainder 0/1 | Reject candidates whose structure/selected format conflicts | Allow replacement from structure/selected format | Excluded |
 | Image-derived version/function/remainder 0/1 / `?` | Repair/fill from structure/selected format | Same as left | Excluded |
 
-Version information, other function modules, and remainder bits also stay outside the format error limit. Conflicting locked manual values in these regions produce a separate diagnostic with coordinates, manual values, and expected values. A positive or unlimited data/ECC limit never permits overriding locked manual values. At limit zero, all compared known data/ECC bits must agree even for tentative cells.
+Version information, other function modules, and remainder bits also stay outside the format-information error limit. Conflicting locked manual values in these regions produce a separate diagnostic with coordinates, manual values, and expected values. A positive or unlimited data/ECC limit never permits overriding locked manual values. At limit zero, all compared known data/ECC bits must agree even for tentative cells.
 
 ### 4.2 Priority `*` search
 
@@ -314,7 +318,7 @@ When erasure decoding fails, or when the combined error/erasure correction margi
 
 These are per-block limits. Only codewords with one to four unknown bits are eligible for conventional enumeration. They are selected by increasing unknown-bit count, preserving local codeword order on ties. Codewords with five to eight unknown bits remain erasures on this route; the separate binary-constraint route may still use them.
 
-### 4.4 Partial-bit RS constraints (automatic, shared enumeration limit)
+### 4.4 RS partial-bit constraints
 
 For each format interpretation and RS block, expand the GF(256) zero-syndrome equations into GF(2) equations on individual unknown bits. All known data and ECC bits are constants. Row reduction produces either an inconsistent system or an affine space with dimension `d = unknown bits − rank`. The solver computes bits fixed across every solution and a set of independent measurement bits without enumerating that space.
 
@@ -339,9 +343,25 @@ The conditions share generated source symbols and are not independent real photo
 
 QRR schema 25 persists each limit mode separately from its remembered manual value. Exact match stays at zero across versions. Explicit ECC/mask selections and fixed-cell protection retain their separate rules.
 
+### 4.6 GS errors-and-erasures fallback
+
+For each sampled input, if conventional RS, RS partial-bit constraints, partial-bit search, and priority search find no decoded candidate, GS fallback searches for additional candidates. GS is skipped when the data/ECC error limit is zero.
+
+Partial-bit search follows the rules in section 4.3, assigning 0/1 only to originally unknown bits. A codeword with any remaining unknown bits is treated as an erasure. GS targets one more erroneous codeword than conventional RS can correct after these assignments, provided the strict Johnson bound permits it. Assignments can make a block eligible even when the original input has too many erasures.
+
+GS interpolates using the non-erased positions, then evaluates candidate polynomials at every original position to restore erased values too. Each candidate is checked for RS consistency and distance within the target radius. Interpolation is skipped when, for example, the conventional RS result proves that no other candidate can lie within that radius.
+
+Known-bit mismatches are capped at **5% of all data/ECC bits in the QR, rounded up**, or the **Data/ECC error limit** if smaller. Comparisons use the original input before structure inference or temporary assignments, including known bits inside partially erased codewords. Filling unknown bits does not count. Mismatches are summed across block combinations, and candidates exceeding the cap are rejected before QR validation.
+
+Each trial's GS candidates are merged with conventional RS candidates, and QR structure and payload checks run as candidates are added. Alternatives are sought even for blocks that conventional RS decoded successfully. Input conditions, including fixed cells and priority assignments, are enforced, and multiple valid candidates are retained. Each format/structure pass allows at most 65,536 combinations and 65,536 expanded search nodes.
+
+GS fallback runs for **at most five cumulative minutes per repair operation**, excluding time spent in ordinary search. It shares the ordinary search's working-memory limit. Computation can be interrupted; timeout, insufficient memory, or interruption retains validated candidates and reports why the search is unfinished.
+
+Algorithm references: [Guruswami–Sudan, errors and erasures](https://www.site.uottawa.ca/~zhcheng/list_dec.pdf), [Nielsen–Zeh, interpolation modules and root finding](https://arxiv.org/abs/1404.3022).
+
 ## 5. Candidate validation and ranking
 
-Candidates are rejected for violating fixed values when conflicts are not allowed, contradicting fixed structures outside codewords, exceeding configured error limits, or failing QR structure validation. RS consistency alone is insufficient for retaining a candidate. Final decoding separately determines whether a validated candidate can be displayed as text.
+Candidates are rejected for violating fixed values when conflicts are not allowed, contradicting fixed structures outside codewords, exceeding configured error limits, or failing QR structure validation. RS consistency alone is insufficient for retaining a candidate. Final decoding then checks whether the QR data in a validated candidate can be interpreted.
 
 The retained-candidate comparator uses this order:
 
@@ -363,7 +383,7 @@ Equivalent block solutions also retain distinct conventional erasure/enumeration
 
 Final payload validation has the highest priority. Among candidates without a valid payload, format disagreement is a stronger ranking condition than mathematical RS success. Thus an RS-consistent solution that substantially contradicts format information is not considered diagnostically better than a format-consistent attempt with a small erasure-capacity shortfall. Candidates that overturn substantial known evidence, violate manual locks, or break structural rules are rejected or ranked lower.
 
-When multiple RS blocks have alternatives, combinations are examined in an initial ranked window of 4096, doubling to 8192, 16,384, 32,768, and 65,536 while no decoded payload has been found. A candidate that has valid QR bitstream structure but cannot be decoded by ZXing does not stop this search. Reaching the bound without a decoded payload is reported as a combination-search limit.
+When multiple RS blocks have alternatives, combinations are examined in an initial ranked window of 4096, doubling to 8192, 16,384, 32,768, and 65,536 while no decoded candidate has been found. A candidate that has valid QR bitstream structure but cannot be decoded by ZXing does not stop this search. Reaching the bound without a decoded candidate is reported as a combination-search limit.
 
 The best-first prefix traversal uses lazy siblings rather than a visited Cartesian grid. Each format/structure pass also has a 65,536 expanded-prefix-node limit, including prefixes rejected by QR validation. This bounds work and frontier memory even if almost no complete combination is valid. Reaching either fixed bound completes the specified policy; it does not prove that no valid payload exists outside that policy.
 
@@ -373,7 +393,7 @@ While combining RS blocks, a prefix can end inside the next mode indicator. An i
 
 QR combination-search diagnostics distinguish a window ending after success, the combination limit, and the expanded-node limit.
 
-Search completion means the specified conditions and bounded search policy have been processed. Skipping further search after ordinary RS success, completing the selected partial-bit search (the selected 12, 13, or 14 bits / up to 4,096, 8,192, or 16,384 trials), symbolic analysis above the enumeration limit, and reaching combination/node/geometry limits are policy-defined endings. User interruption, insufficient working memory, or an internal error that prevents required work leaves the search unfinished; insufficient execution records make completion unknown. Candidate and explanation retention omissions are reported separately. See [Recovery Result Fields](RECOVERY_RESULT_FIELDS.en.md) for the messages and their interpretation.
+Search completion means the specified conditions and bounded search policy have been processed. Skipping further search after conventional RS success, completing the selected partial-bit search (the selected 12, 13, or 14 bits / up to 4,096, 8,192, or 16,384 trials), symbolic analysis above the enumeration limit, and reaching combination/node/geometry limits are policy-defined endings. User interruption, the cumulative GS time limit, insufficient working memory, or an internal error that prevents required work leaves the search unfinished; insufficient execution records make completion unknown. Candidate and explanation retention omissions are reported separately. See [Understanding recovery result fields](RECOVERY_RESULT_FIELDS.en.md) for the messages and their interpretation.
 
 The eight-bit FNC1 second-position application indicator is retained separately from the body. Only the private decoding view sent to ZXing 3.5.4 omits that field; original codewords, RS consistency, structure validation and mismatch counts use the original stream. This also applies after a Structured Append header.
 
@@ -387,7 +407,7 @@ Recovery retains at most the best-ranked 256 distinct QR candidates throughout e
 
 The Android app derives separate result, current-trial, and solver allowances from available Java heap, reserving additional room for display and runtime allocations. These are conservative accounting estimates, not a measurement or hard cap of the whole Android process. Solver working-memory limits are checked before materializing block-candidate lists and expanding the combination frontier. A working-memory stop reports unchecked combinations. Failed trials retain only the best reference matrix, while compact search diagnostics and attempted-geometry metadata cover the full search.
 
-Candidate agreement and candidate-based check guidance compare distinct candidates decoded as text from the same input matrix as the selected candidate. A full QR matrix is generated for each compared candidate, so the comparison uses at most the top 16 to bound memory and computation. If the selected decoded candidate is outside that range, it replaces the last entry. The compared count and the retained decoded-candidate count for that input are explicit; sample agreement is not treated as agreement among all candidates. Candidates that pass QR structure validation without decoding as text can be selected and exported but are excluded from this comparison.
+Candidate agreement and candidate-based check guidance compare distinct decoded candidates from the same input matrix as the selected candidate. A full QR matrix is generated for each compared candidate, so the comparison uses at most the top 16 to bound memory and computation. If the selected decoded candidate is outside that range, it replaces the last entry. The compared count and the retained decoded-candidate count for that input are explicit; sample agreement is not treated as agreement among all candidates. Candidates that pass QR structure validation without successful final decoding can be selected and exported but are excluded from this comparison.
 
 History in QRR schema 25 stores the selected QR’s version, ECC level, mask, corrected codewords, and actual sampling polarity. Recalculation restores selection by QR identity rather than list position; if no candidate matches, selection remains empty. Actual polarity is recorded separately from the user’s automatic/normal/inverted search preference. User-facing history count and size limits are described in the [User Guide](USER_GUIDE.en.md#7-save-resume-and-export).
 
@@ -397,7 +417,7 @@ The result matrix retains a repair reason for each changed module. Tapping a cel
 
 Cells uniquely determined after recovery are rendered as 0 or 1. Modules that are irrelevant to decoding, such as QR remainder positions, are distinguished from genuinely unresolved `?` values.
 
-When no concrete recovery candidate exists but a nonempty ambiguous exact RS space does, a conditional additional-check cell can still be shown. Only unknown data/ECC coordinates are eligible, never Finder/function/remainder cells. Every nonconstant coordinate halves an affine space; independent coordinates ensure successive measurements remain useful. Ties prefer higher source-image confidence, which is only a readability heuristic. The UI shows a one-bit reduction in RS freedom and explicitly states the exact-known-bit/format assumption; these are not counts of validated QR candidates or a guarantee for all error-allowing solutions. An inconsistent or zero-dimensional space supplies no such recommendation.
+When no concrete recovery candidate exists but a nonempty ambiguous exact RS space does, a conditional additional-check cell can still be shown. Only unknown data/ECC coordinates are eligible, never Finder/function/remainder cells. Every nonconstant coordinate halves an affine space; independent coordinates ensure successive measurements remain useful. Ties prefer higher source-image confidence, which is only a readability heuristic. The UI shows a one-bit reduction in RS degrees of freedom and explicitly states the exact-known-bit/format assumption; these are not counts of validated QR candidates or a guarantee for all error-allowing solutions. An inconsistent or zero-dimensional space supplies no such recommendation.
 
 ## 7. Termination and limitations
 
@@ -425,5 +445,6 @@ The main primitives for finder detection, geometry, tri-state matrices, GF(256) 
 | Geometry hypothesis | One mapping from logical module centers to sampling positions in the image |
 | Provenance | The route that supplied a value: image, user, fixed structure, constraint, RS, and so on |
 | RS consistency | Satisfaction of Reed–Solomon equations; not synonymous with correct QR content |
-| Validated candidate | A candidate that passed QR structure and the specified input constraints; text decoding and uniqueness are separate |
-| Degrees of freedom | Unknown bits that remain independently selectable in a partial-bit RS solution space |
+| Validated candidate | A candidate that passed QR structure and the specified input constraints; final decoding and uniqueness are separate |
+| Decoded candidate | A validated candidate for which final decoding of QR data succeeded |
+| Degrees of freedom | Unknown bits that remain independently selectable in an RS partial-bit constraint solution space |

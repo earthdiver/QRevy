@@ -246,7 +246,9 @@ class GeometryNeighborhoodExpandedRegressionTest {
             GeometryModel.MANUAL_PROJECTIVE,
         ).reanchored()
         val matrix = MatrixSampler(prepared.image, prepared.profile).sample(geometry).first
-        return RecoveryEngine().recover(matrix, maxFormatCandidates = 1).any { it.text == prepared.fixture.text }
+        // Hold decoding capacity fixed while comparing geometry families and search widths.
+        return RecoveryEngine().recover(matrix, maxFormatCandidates = 1, gsBudget = GsSearchBudget(0))
+            .any { it.text == prepared.fixture.text }
     }
 
     private fun renderCenterEvidence(matrix: ByteMatrix): LumaImage {

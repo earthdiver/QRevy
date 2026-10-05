@@ -185,7 +185,9 @@ class QrRecoveryIntegrationTest {
         val recovered = outcome.candidates
 
         assertTrue(recovered.isEmpty())
-        assertEquals(1, outcome.formatAttempts)
+        // Ordinary recovery and GS revisit the trusted format; neither expands to other formats.
+        assertEquals(2, outcome.formatAttempts)
+        assertTrue(outcome.searchDiagnostic.gs != null)
         assertEquals(ErrorCorrectionLevel.L, outcome.failure?.ecLevel)
         assertEquals(encoded.maskPattern, outcome.failure?.dataMask)
     }

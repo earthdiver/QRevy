@@ -13,6 +13,10 @@ object ErrorLimitPolicy {
     fun relaxedData(version: Int): Int =
         (Version.getVersionForNumber(version).totalCodewords * 8 + 9) / 10
 
+    /** Additional list-decoding candidates may change at most 5% of all data/ECC bits. */
+    fun gsData(version: Int): Int =
+        (Version.getVersionForNumber(version).totalCodewords * 8 + 19) / 20
+
     fun format(mode: ErrorLimitMode, manual: Int?): Int? = when (mode) {
         ErrorLimitMode.AUTOMATIC, ErrorLimitMode.STRICT -> STRICT_FORMAT
         ErrorLimitMode.RELAXED -> RELAXED_FORMAT

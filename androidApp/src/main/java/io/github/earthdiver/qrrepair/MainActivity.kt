@@ -14,6 +14,7 @@ import io.github.earthdiver.qrrepair.core.RecoveryInputBlocker
 import io.github.earthdiver.qrrepair.core.identity
 import io.github.earthdiver.qrrepair.core.isSelectableRecovery
 import io.github.earthdiver.qrrepair.core.RecoveryMemoryPolicy
+import io.github.earthdiver.qrrepair.core.GsSearchBudget
 import io.github.earthdiver.qrrepair.core.RecoveryRetentionBudget
 import io.github.earthdiver.qrrepair.core.RecoverySelectionIdentity
 import io.github.earthdiver.qrrepair.core.SamplingProfile
@@ -1730,6 +1731,7 @@ class MainActivity : Activity() {
                     },
                     cancellation = cancellation,
                     stopRequested = { progressDialog.stopped.get() },
+                    gsBudget = GsSearchBudget(onProgress = progressDialog::gsProgress),
                     onPriorityProgress = progressDialog::priorityProgress,
                 )
             },
@@ -2499,6 +2501,7 @@ class MainActivity : Activity() {
                         workingLimitBytes = memoryPolicy.workingBytes),
                     cancellation = cancellation,
                     stopRequested = { progressDialog.stopped.get() },
+                    gsBudget = GsSearchBudget(onProgress = progressDialog::gsProgress),
                     onPriorityProgress = progressDialog::priorityProgress,
                     onProgress = { progress ->
                         progressDialog.phase("${progress.profile.label}: ${progress.message} (${progress.done}/${progress.total})")

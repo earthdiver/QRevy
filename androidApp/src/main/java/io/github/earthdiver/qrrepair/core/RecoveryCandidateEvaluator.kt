@@ -31,6 +31,7 @@ internal class RecoveryCandidateEvaluator(
     private val rsShortfallBits: Int,
     private val maxKnownDataEccMismatches: Int?,
     private val maxAlternativeDerivations: Int,
+    private val gsMismatchLimit: Int? = null,
 ) {
     private val originalUnknownByRaw = IntArray(evidenceExtraction.codewords.size) { raw ->
         evidenceExtraction.codewords[raw].unknownBits and 0xFF
@@ -77,7 +78,7 @@ internal class RecoveryCandidateEvaluator(
         }
         val errata = combination.sumOf { it.errataPositions.size }
         val partialBits = combination.sumOf { it.guessedBits }
-        val minMargin = combination.minOfOrNull { it.rsMargin } ?: 0
+        val minMargin = if (combination.any { it.gs != null }) 0 else combination.minOfOrNull { it.rsMargin } ?: 0
 
         // Retain only the selected route's explanation, not the solver's corrected block
         // arrays and every equivalent block derivation through a closure.
@@ -103,7 +104,7 @@ internal class RecoveryCandidateEvaluator(
         }
         val (knownBitsCompared, knownMismatches) = RecoveryCandidateEvidence.countKnownBitMismatches(diagnosticInput, evidenceExtraction, correctedRaw, format.dataMask)
         if (maxKnownDataEccMismatches != null && knownMismatches > maxKnownDataEccMismatches) {
-            return RecoveryCandidateEvaluation.Rejected(RecoveryCandidateRejection.MISMATCH_LIMIT,
+            return RecoveryCandidateEvaluation.Rejected(if (gsMismatchLimit != null) RecoveryCandidateRejection.GS_MISMATCH_LIMIT else RecoveryCandidateRejection.MISMATCH_LIMIT,
                 failure(RecoveryFailureReason.KNOWN_DATA_ECC_MISMATCH_LIMIT,
                     partialGuessedBits = partialBits, knownBitMismatches = knownMismatches,
                     knownBitsCompared = knownBitsCompared, knownBitMismatchLimit = maxKnownDataEccMismatches))
@@ -151,7 +152,7 @@ internal class RecoveryCandidateEvaluator(
             conventionalRsDiagnostic = conventionalDiagnostic,
             actualBlockMethods = combination.mapIndexed { blockIndex, result ->
                 RecoveryBlockMethod(blockIndex, result.bitConstraintSolved,
-                    result.rsMargin.takeUnless { result.bitConstraintSolved }, result.guessedBits)
+                    result.rsMargin.takeUnless { result.bitConstraintSolved || result.gs != null }, result.guessedBits, result.gs)
             },
             blockDerivations = combination.withIndex().filter { it.value.alternativeDerivations.isNotEmpty() }
                 .associate { (block, result) -> block to (listOf(selectedRoutes[block]) +
@@ -160,6 +161,7 @@ internal class RecoveryCandidateEvaluator(
             priorityAssignments = priorityAssignments,
             repairInfo = repairInfo,
             rsBitDiagnostic = bitDiagnostic,
+            gsMismatchLimit = gsMismatchLimit,
         ), decoderFailed)
     }
 

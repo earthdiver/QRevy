@@ -89,6 +89,8 @@ Changing orientation rechecks existing `*` positions, removes only ineligible ma
 
 **Treat input image as mirrored** is OFF by default and is saved per session. Enable it for a mirrored QR image. The image display stays unchanged; the top-right and bottom-left Finder roles and grid axes exchange. Manual cell values, fixed/tentative status, and Undo/Redo history follow the same image cells. Priority marks outside data/ECC after the change are removed with an explanation; their unknown values remain. Turning it off exchanges the axes again. Explicit Version, ECC, and mask selections remain enforced.
 
+QR error correction uses Reed–Solomon (RS) codes.
+
 | Setting | Consider it when | Main risk or limit |
 | --- | --- | --- |
 | Partial-bit search / dimension limit | Extend partial-bit enumeration or enumerate more remaining RS degrees of freedom | Choose 12, 13, or 14 bits (default 12), per RS block; each extra bit doubles the maximum enumeration count |
@@ -108,17 +110,23 @@ For new imports, the format-information limit starts at **6 bits** across both c
 
 Default follows that version rule. An explicitly selected Strict or Relaxed preset keeps its selected policy and recalculates its bit count when version changes; Manual and Unlimited remain explicit. Stored manual numbers are retained while using a preset. The format limit also applies when both ECC and mask are explicitly selected. If the limits remove a correct candidate, select a higher manual limit or Unlimited and retry.
 
+Guruswami–Sudan (GS) is a list-decoding method that can produce multiple candidates for errors beyond the correction range of conventional RS decoding. This fallback caps known-bit mismatches at 5% of all data/ECC bits in the QR, rounded up, or the **Data/ECC error limit** if smaller. A zero limit disables GS.
+
 See [Recovery Strategy](RECOVERY_STRATEGY.en.md) for exact interactions and bounds.
 
-Search completion covers the specified conditions and bounded search policy. It is separate from candidate or explanation retention omissions and does not guarantee correctness or uniqueness. See [Recovery Result Fields](RECOVERY_RESULT_FIELDS.en.md) for the messages and reasons for unfinished work.
+Search completion covers the specified conditions and bounded search policy. It is separate from candidate or explanation retention omissions and does not guarantee correctness or uniqueness. See [Understanding recovery result fields](RECOVERY_RESULT_FIELDS.en.md) for the messages and reasons for unfinished work.
 
 ## 6. Recover and inspect results
 
 **Repair** saves the current work and then runs recovery. **Save** stores the current work without running recovery.
 
+A **validated candidate** has passed QR structure validation and the specified input constraints. A **decoded candidate** has also passed final decoding of QR data. QR data can contain text or binary data.
+
+If ordinary search finds no decoded candidate, GS fallback automatically searches for additional candidates. It runs for at most five cumulative minutes per repair operation, excluding time spent in ordinary search, and supports **Interrupt repair** throughout. Validated candidates remain available after timeout, insufficient memory, or interruption.
+
 Review results in this order:
 
-1. Whether any recovery candidates meeting the specified conditions were found, and whether the selected candidate can be displayed as text.
+1. Whether any validated candidates were found, and whether the selected candidate is also decoded.
 2. The number of validated candidates and distinct contents.
 3. ECC level, mask, format mismatches, and data/ECC mismatches.
 4. Search completion, unchecked combinations, and omitted-candidate notices.

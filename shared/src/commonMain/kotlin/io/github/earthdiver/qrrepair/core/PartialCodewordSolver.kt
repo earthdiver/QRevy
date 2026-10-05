@@ -11,6 +11,7 @@ class PartialCodewordSolver(private val rs: ReedSolomonErasures) {
         val rsMargin: Int,
         val searchPenalty: Int,
         val bitConstraintSolved: Boolean,
+        val gs: GsDerivation? = null,
     )
 
     data class Result(
@@ -28,9 +29,12 @@ class PartialCodewordSolver(private val rs: ReedSolomonErasures) {
         val alternativeDerivations: List<Derivation> = emptyList(),
         /** Lowest traversal penalty across all retained routes; not a property of the representative route. */
         val orderingPenalty: Int = searchPenalty,
+        val gs: GsDerivation? = null,
+        /** Original pre-inference observation; populated by the GS integration. */
+        val originalKnownMismatches: Int? = null,
     ) {
         fun derivation() = Derivation(errataPositions.toList(), guessedBits, guessedBytes,
-            guessedPositions.toList(), rsMargin, searchPenalty, bitConstraintSolved)
+            guessedPositions.toList(), rsMargin, searchPenalty, bitConstraintSolved, gs)
     }
 
     /** Supplement, never replace, errors+erasures decoding when observed-bit errors are allowed. */
@@ -132,55 +136,25 @@ class PartialCodewordSolver(private val rs: ReedSolomonErasures) {
             throw ReedSolomonErasures.DecodeException("Too many erasure bytes without partial-bit search")
         }
 
-        val selectable = erasedPositions
-            .map { it to block.unknownMasks[it].countOneBits() }
-            .filter { it.first !in nonEnumerablePositions }
-            .filter { it.second in 1..maxUnknownBitsPerByte }
-            .sortedBy { it.second }
+        val plan = PartialBitTrialPlan(block, maxEnumeratedBits, maxUnknownBitsPerByte, nonEnumerablePositions)
+        val selected = plan.selected
+        val totalBits = plan.bitCount
         val requiredBytes = erasedPositions.size - nsym
-        val targetRemainingErasures = (nsym - 2).coerceAtLeast(0)
-        val minimumDesiredBytes = maxOf(requiredBytes, erasedPositions.size - targetRemainingErasures)
-        // A failed or low-margin erasure-only decode can need room for more than one unknown-position
-        // error. Within the existing bit/trial bounds, converting additional partial erasures to
-        // exact guesses can only increase the RS correction budget; final QR validation still
-        // decides which of the resulting codewords is usable.
-        val broadenForUnknownErrors = erasureOnlyResult == null || erasureOnlyResult.rsMargin < 2
-        val selected = mutableListOf<Pair<Int, Int>>()
-        var totalBits = 0
-        for (entry in selectable) {
-            if (!broadenForUnknownErrors && selected.size >= minimumDesiredBytes) break
-            if (totalBits + entry.second > maxEnumeratedBits) continue
-            selected += entry; totalBits += entry.second
-        }
         if (selected.size < requiredBytes || totalBits > maxEnumeratedBits) {
             if (erasureOnlyResult != null) return@reportingCompletion listOf(erasureOnlyResult)
             throw ReedSolomonErasures.DecodeException("Too many erasure bytes for bounded partial-bit solver")
         }
 
-        val selectedSet = selected.map { it.first }.toSet()
-        val remainingErase = erasedPositions.filterNot { it in selectedSet }.toIntArray()
+        val remainingErase = plan.remainingErasures
         val trials = minOf(1 shl totalBits, maxTrials)
         val candidates = BlockCandidateAccumulator()
         erasureOnlyResult?.let(candidates::add)
         for (assignment in 0 until trials) {
             cancellation.check()
-            val guessed = block.codewords.copyOf()
-            var cursor = 0
-            for ((pos, _) in selected) {
-                val unknownMask = block.unknownMasks[pos]
-                var value = guessed[pos]
-                for (bit in 0 until 8) {
-                    val mask = 1 shl bit
-                    if ((unknownMask and mask) == 0) continue
-                    val v = (assignment shr cursor) and 1
-                    value = if (v == 1) value or mask else value and mask.inv()
-                    cursor++
-                }
-                guessed[pos] = value and 0xFF
-            }
+            val guessed = plan.assignment(assignment)
             val r = try { rs.decode(guessed, nsym, remainingErase) } catch (_: ReedSolomonErasures.DecodeException) { continue }
             var guessMismatch = 0
-            for ((pos, _) in selected) if (r.corrected[pos] != guessed[pos]) guessMismatch++
+            for (pos in selected) if (r.corrected[pos] != guessed[pos]) guessMismatch++
             var knownBitMismatch = 0
             for (pos in block.codewords.indices) {
                 val knownMask = block.unknownMasks[pos].inv() and 0xFF
@@ -193,7 +167,7 @@ class PartialCodewordSolver(private val rs: ReedSolomonErasures) {
                 r.errataPositions,
                 totalBits,
                 selected.size,
-                selected.map { it.first }.toIntArray(),
+                selected,
                 margin,
                 penalty,
             )
@@ -243,15 +217,31 @@ internal class BlockCandidateAccumulator {
     private val entries = linkedMapOf<Key, Entry>()
     // Conventional margins remain preferred over the binary route's non-applicable placeholder.
     // Within conventional routes follow QR result ranking: margin, search bits, target symbols.
-    private val representativeOrder = compareBy<PartialCodewordSolver.Result> { it.bitConstraintSolved }
+    private val representativeOrder = compareBy<PartialCodewordSolver.Result> { it.gs != null }
+        .thenBy { it.bitConstraintSolved }
         .thenByDescending { it.rsMargin }
         .thenBy { it.guessedBits }
         .thenBy { it.errataPositions.size }
         .thenBy { it.searchPenalty }
 
+    var workingBytes: Long = 0
+        private set
+
+    val size: Int get() = entries.size
     fun isEmpty(): Boolean = entries.isEmpty()
 
+    /** Conservative added charge, checked before retaining new GS values or explanations. */
+    fun additionalBytes(result: PartialCodewordSolver.Result): Long {
+        val entry = entries[Key(result.corrected)]
+        val routes = (listOf(result.derivation()) + result.alternativeDerivations).distinct()
+        return (if (entry == null) 512L + result.corrected.size * 16L else 0L) +
+            routes.filter { entry == null || it !in entry.routes }.sumOf {
+                256L + (it.errataPositions.size + it.guessedPositions.size) * 24L
+            }
+    }
+
     fun add(result: PartialCodewordSolver.Result) {
+        workingBytes += additionalBytes(result)
         val entry = entries.getOrPut(Key(result.corrected)) { Entry(result) }
         entry.routes += result.derivation()
         entry.routes += result.alternativeDerivations

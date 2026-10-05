@@ -1,0 +1,36 @@
+[
+{
+  "file": "errors-only.txt",
+  "payload": "GS RECOVERY",
+  "version": 1, "dimension": 21, "ecc": "L", "mask": 0,
+  "data_ecc_limit_preset": "Relaxed", "data_ecc_limit_bits": 21, "gs_limit_bits": 11,
+  "partial_bit_search_limit": 12, "single_segment_assumption": false, "geometry_neighborhood": false,
+  "known_bit_errors": 4, "unknown_bits": 0, "initial_erasure_codewords": 0,
+  "changed_cells_xy_zero_based": [[19, 9], [17, 12], [17, 16], [17, 20]],
+  "erroneous_codewords_zero_based": [2, 3, 4, 5],
+  "partial_erasure_codewords_zero_based": [],
+  "full_erasure_codewords_zero_based": [],
+  "ordinary_candidates": 0, "ordinary_candidates_with_forced_suffix": 0,
+  "gs_candidates": 1, "restored_original_codewords": true,
+  "gs_unknown_bits_enumerated": 0, "gs_remaining_erasures": 0,
+  "gs_symbol_errors": 4, "gs_radius": 4,
+  "validation": "Strict TEXT parser, synthetic-image sampling, full ordinary recovery, GS recovery and final QR payload validation"
+},
+{
+  "file": "unknown-bit-search.txt",
+  "payload": "GS RECOVERY",
+  "version": 1, "dimension": 21, "ecc": "L", "mask": 0,
+  "data_ecc_limit_preset": "Relaxed", "data_ecc_limit_bits": 21, "gs_limit_bits": 11,
+  "partial_bit_search_limit": 12, "single_segment_assumption": false, "geometry_neighborhood": false,
+  "known_bit_errors": 3, "unknown_bits": 23, "initial_erasure_codewords": 9,
+  "changed_cells_xy_zero_based": [[20, 9], [18, 12], [18, 16]],
+  "erroneous_codewords_zero_based": [2, 3, 4],
+  "partial_erasure_codewords_zero_based": [5, 6, 7, 8, 19, 20, 21],
+  "full_erasure_codewords_zero_based": [24, 25],
+  "ordinary_candidates": 0, "ordinary_candidates_with_forced_suffix": 0,
+  "gs_candidates": 1, "restored_original_codewords": true,
+  "gs_unknown_bits_enumerated": 7, "gs_remaining_erasures": 2,
+  "gs_symbol_errors": 3, "gs_radius": 3,
+  "validation": "Strict TEXT parser, synthetic-image sampling, full ordinary recovery, GS recovery and final QR payload validation"
+}
+]

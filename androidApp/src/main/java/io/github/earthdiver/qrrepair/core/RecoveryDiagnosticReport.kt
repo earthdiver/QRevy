@@ -185,6 +185,7 @@ fun RecoveryCandidate.compactUsedMethodsText(): String = localizedText("使用�
         if (priorityGuessedBits > 0) add(localizedText("優先セルのbit探索", "priority-cell bit search"))
         if (partialGuessedBits > 0) add(localizedText("bit探索", "bit search"))
         if (usesConventionalRs()) add(localizedText("通常RS", "conventional RS"))
+        if (actualBlockMethods.any { it.gs != null }) add(localizedText("消失対応GS", "GS errors+erasures"))
         if (usesBitConstraints()) add(localizedText("部分bit制約", "partial-bit constraints"))
     }.joinToString(localizedText("・", ", "))
 
@@ -192,10 +193,10 @@ private fun RecoveryCandidate.usesBitConstraints(): Boolean = if (actualBlockMet
     actualBlockMethods.any { it.bitConstraintSolved } else repairInfo.any { it.bitConstraintSolved }
 
 private fun RecoveryCandidate.usesConventionalRs(): Boolean = if (actualBlockMethods.isNotEmpty())
-    actualBlockMethods.any { !it.bitConstraintSolved } else repairInfo.isEmpty() || repairInfo.any { !it.bitConstraintSolved }
+    actualBlockMethods.any { !it.bitConstraintSolved && it.gs == null } else repairInfo.isEmpty() || repairInfo.any { !it.bitConstraintSolved && it.gs == null }
 
 fun RecoveryCandidate.usedMethodsText(): String = buildString {
-    append(localizedText("表示中の修復根拠に使った方法", "Methods recorded for the displayed repair evidence"))
+    append(localizedText("この候補を得た方法", "Methods used to obtain this candidate"))
     // The records identify methods, not the complete chronological order of nested trials.
     if (constraintFilledBits > 0) append(if (constraintForcedByUserSetting)
         localizedText("\n指定した仮定に基づく構造補完・変更: ${constraintFilledBits}bit",
@@ -205,7 +206,9 @@ fun RecoveryCandidate.usedMethodsText(): String = buildString {
     if (priorityGuessedBits > 0) append(localizedText(
         "\n優先指定セルの白黒を仮置き: ${priorityGuessedBits}bit",
         "\nTentative values for prioritized cells: $priorityGuessedBits bits"))
-    actualBlockMethods.forEach { append('\n').append(it.searchDescription()) }
+    actualBlockMethods.forEach { append('\n').append(it.searchDescription(includeCalculationDetails = false)) }
+    gsMismatchLimit?.let { append(localizedText("\nこの追加探索の既知ビットの不一致上限: ${it}ビット",
+        "\nKnown-bit mismatch limit for this fallback: $it bits")) }
     if (usesBitConstraints()) append(localizedText(
         "\n部分bit制約で、不明なbitの組合せを計算しました。",
         "\nPartial-bit constraints calculated combinations of unknown bits."))
@@ -245,8 +248,13 @@ fun ConventionalRsDiagnostic.comparisonText(raw: IntArray): String = when (match
     null -> localizedText("\n選択中の候補との比較結果はありません。", "\nNo comparison result is available for the selected candidate.")
 }
 
-fun RecoveryBlockMethod.searchDescription(): String = localizedText("ブロック${blockIndex + 1}: ", "Block ${blockIndex + 1}: ") +
-    if (bitConstraintSolved) localizedText(
+fun RecoveryBlockMethod.searchDescription(includeCalculationDetails: Boolean = true): String = localizedText("ブロック${blockIndex + 1}: ", "Block ${blockIndex + 1}: ") +
+    if (gs != null && !includeCalculationDetails) localizedText(
+        "Guruswami–Sudan（GS）法によるリスト復号", "Guruswami–Sudan (GS) list decoding")
+    else if (gs != null) localizedText(
+        "消失対応GS／訂正半径: ${gs.radius}byte、残存消失: ${gs.remainingErasures}byte、多重度: ${gs.multiplicity}、Y次数: ${gs.listDegree}／仮置きした不明bit: $guessedBits",
+        "GS errors+erasures / radius: ${gs.radius} bytes, erasures: ${gs.remainingErasures}, multiplicity: ${gs.multiplicity}, Y degree: ${gs.listDegree} / assigned unknown bits: $guessedBits")
+    else if (bitConstraintSolved) localizedText(
         "部分bit制約／この計算段階の自由度: $guessedBits",
         "Partial-bit constraints / degrees of freedom at this calculation stage: $guessedBits")
     else localizedText("通常RS／計算前に仮置きした不明bit: $guessedBits",

@@ -78,7 +78,7 @@ class DiagnosticOrderTest {
                 val input = report.sections.single { it.stage == DiagnosticStage.INPUT }.summary
                 val processing = report.sections.single { it.stage == DiagnosticStage.PROCESSING }.summary
                 assertTrue(input.contains(if (language == AppLanguage.JAPANESE) "同じデータ・ECCコード語" else "same data/ECC codewords"))
-                assertTrue(processing.contains(if (language == AppLanguage.JAPANESE) "表示中の修復根拠" else "displayed repair evidence"))
+                assertTrue(processing.contains(if (language == AppLanguage.JAPANESE) "この候補を得た方法" else "Methods used to obtain this candidate"))
                 assertTrue(processing.contains(if (language == AppLanguage.JAPANESE) "部分bit制約" else "Partial-bit constraints"))
                 assertTrue(processing.contains(if (language == AppLanguage.JAPANESE) "不一致上限が0bit" else "mismatch limit is zero"))
                 assertTrue(input.contains(if (language == AppLanguage.JAPANESE) "参考診断" else "Reference diagnostic"))

@@ -57,6 +57,7 @@ data class ModuleRepairTrace(
     /** Confidence stored on the input cell, including manual edits; never a correction-assigned value. */
     val originalConfidence: Float = 0f,
     val bitConstraintSolved: Boolean = false,
+    val gs: GsDerivation? = null,
     /** Present only for this coordinate when an explicit priority trial assigned it. */
     val priorityAssignment: ModuleValue? = null,
     /** A trial constraint overturned by RS, not evidence supporting the final bit. */
@@ -131,6 +132,9 @@ data class ModuleRepairTrace(
                 originalUnknownMask ?: 0, correctedCodewordValue, rsBlockIndex, rsLocalIndex, false))
         }
         if (rsErrata) append(localizedText("\nRS処理でこのコード語を訂正対象としました。", "\nRS processing treated this codeword as a repair target."))
+        gs?.let { append(localizedText(
+            "\n消失対応GSでこのブロックを復号しました（訂正半径${it.radius}byte、残存消失${it.remainingErasures}byte）。",
+            "\nThis block used GS errors+erasures decoding (radius ${it.radius} bytes, ${it.remainingErasures} erasures).")) }
         if (bitConstraintSolved) append(localizedText(
             "\n入力済みのbitを保つ条件で、RS部分bit制約を使用しました。",
             "\nUsed RS partial-bit constraints while preserving the entered bits.",
@@ -284,6 +288,7 @@ object RepairTraceBuilder {
                 partialEnumerated = info?.partialEnumerated == true,
                 originalConfidence = original.confidence,
                 bitConstraintSolved = info?.bitConstraintSolved == true,
+                gs = info?.gs,
                 priorityAssignment = priorityAssignment,
                 overturnedConstraint = attemptedConstraint?.takeIf { overturned }?.toReasonKind(),
                 overturnedConstraintValue = attemptedValue.takeIf { overturned },
