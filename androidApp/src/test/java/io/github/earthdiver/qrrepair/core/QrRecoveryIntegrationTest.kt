@@ -174,7 +174,8 @@ class QrRecoveryIntegrationTest {
         val encoded = Encoder.encode(text, ErrorCorrectionLevel.L, mapOf(EncodeHintType.QR_VERSION to 2))
         val matrix = toTriState(encoded.matrix)
         val extraction = CodewordExtractor.extract(matrix, 2, encoded.maskPattern)
-        extraction.codewords.forEach { codeword ->
+        // Retain the header so unresolved payload bits exceed the enumeration limit.
+        extraction.codewords.drop(2).forEach { codeword ->
             codeword.coordinates.forEach { c ->
                 matrix.set(c.x, c.y, ModuleValue.ERASED, 0f, ModuleSource.IMAGE)
             }
@@ -185,7 +186,7 @@ class QrRecoveryIntegrationTest {
         val recovered = outcome.candidates
 
         assertTrue(recovered.isEmpty())
-        // Ordinary recovery and GS revisit the trusted format; neither expands to other formats.
+        // Ordinary recovery and list decoding revisit the trusted format; neither expands to other formats.
         assertEquals(2, outcome.formatAttempts)
         assertTrue(outcome.searchDiagnostic.listDecoding != null)
         assertEquals(ErrorCorrectionLevel.L, outcome.failure?.ecLevel)

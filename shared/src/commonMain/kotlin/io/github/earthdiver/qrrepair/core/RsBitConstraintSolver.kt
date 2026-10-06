@@ -15,6 +15,9 @@ class RsBitConstraintSolver(private val rs: ReedSolomonErasures = ReedSolomonEra
         private val free: IntArray,
     ) {
         val dimension: Int get() = free.size
+        /** Conservative live storage estimate, including binary rows and coordinate metadata. */
+        val workingBytes: Long get() = 1024L + base.size * 8L + unknownBits.size * 64L +
+            rows.sumOf { 32L + it.size * 8L } + rhs.size * 8L + free.size * 8L
         private val pivotRow = IntArray(unknownBits.size) { -1 }.also { index ->
             pivots.forEachIndexed { row, column -> index[column] = row }
         }
@@ -27,6 +30,103 @@ class RsBitConstraintSolver(private val rs: ReedSolomonErasures = ReedSolomonEra
                 if (f == column || (row >= 0 && rows[row].has(f))) result.set(i)
             }
             return result
+        }
+
+        /** Reuses this RS elimination; branch conditions operate only on its free variables. */
+        fun restriction(): Restriction = Restriction()
+
+        val restrictionWorkingBytes: Long get() = workingBytes + base.size * 32L +
+            (dimension + unknownBits.size) * (48L + ((dimension + 63) / 64) * 8L)
+
+        inner class Restriction internal constructor() {
+            private val columns = IntArray(base.size * 8) { -1 }.also { lookup ->
+                unknownBits.forEachIndexed { column, bit -> lookup[bit.codeword * 8 + bit.bit] = column }
+            }
+            private val expressions = arrayOfNulls<LongArray>(unknownBits.size)
+            private val equations = arrayOfNulls<LongArray>(dimension)
+            private val constants = BooleanArray(dimension)
+            private val added = mutableListOf<Int>()
+            val remaining: Int get() = dimension - added.size
+            val checkpoint: Int get() = added.size
+
+            fun restore(checkpoint: Int) {
+                require(checkpoint in 0..added.size)
+                while (added.size > checkpoint) equations[added.removeAt(added.lastIndex)] = null
+            }
+
+            private fun equation(bit: Bit): Pair<LongArray, Boolean> {
+                require(bit.codeword in base.indices && bit.bit in 0..7)
+                val column = columns[bit.codeword * 8 + bit.bit]
+                if (column < 0) return LongArray((dimension + 63) / 64) to (base[bit.codeword] and (1 shl bit.bit) != 0)
+                val vector = (expressions[column] ?: expression(column).also { expressions[column] = it }).copyOf()
+                var constant = pivotRow[column].let { it >= 0 && rhs[it] }
+                for (i in equations.indices) if (vector.has(i)) {
+                    val row = equations[i] ?: continue
+                    vector.xorWith(row)
+                    constant = constant xor constants[i]
+                }
+                return vector to constant
+            }
+
+            fun value(bit: Bit): Int? {
+                val (vector, constant) = equation(bit)
+                return if (vector.all { it == 0L }) if (constant) 1 else 0 else null
+            }
+
+            /** False is a contradiction in this exact branch, not evidence against error correction. */
+            fun constrain(bit: Bit, value: Int): Boolean {
+                require(value in 0..1)
+                val (vector, constant) = equation(bit)
+                val pivot = (0 until dimension).firstOrNull { vector.has(it) }
+                    ?: return constant == (value == 1)
+                equations[pivot] = vector
+                constants[pivot] = constant xor (value == 1)
+                added += pivot
+                return true
+            }
+
+            fun assignments(maxDimension: Int, cancellation: RecoveryCancellation = RecoveryCancellation.NONE): Sequence<IntArray> = sequence {
+                require(maxDimension in 0..20)
+                if (remaining > maxDimension) return@sequence
+                val independent = equations.indices.filter { equations[it] == null }
+                fun wordFor(selected: Int?): IntArray {
+                    cancellation.check()
+                    val variables = LongArray((dimension + 63) / 64)
+                    if (selected != null) variables.set(selected)
+                    for (i in equations.indices.reversed()) {
+                        if (i % 64 == 0) cancellation.check()
+                        val row = equations[i] ?: continue
+                        var value = constants[i]
+                        for (j in row.indices) if ((row[j] and variables[j]).countOneBits() and 1 != 0) value = !value
+                        if (value) variables.set(i)
+                    }
+                    val values = LongArray((unknownBits.size + 63) / 64)
+                    free.forEachIndexed { i, column -> if (variables.has(i)) values.set(column) }
+                    pivots.forEachIndexed { row, column ->
+                        if (row % 64 == 0) cancellation.check()
+                        var value = rhs[row]
+                        for (j in rows[row].indices) if ((rows[row][j] and values[j]).countOneBits() and 1 != 0) value = !value
+                        if (value) values.set(column)
+                    }
+                    val word = base.copyOf()
+                    unknownBits.forEachIndexed { i, bit -> if (values.has(i)) word[bit.codeword] = word[bit.codeword] or (1 shl bit.bit) }
+                    return word
+                }
+                val current = wordFor(null)
+                // Reduce once per surviving branch, then change only one basis vector per
+                // assignment (Gray order). Large original RS spaces are not re-solved per QR.
+                val deltas = independent.map { variable -> wordFor(variable).also { word ->
+                    for (i in word.indices) word[i] = word[i] xor current[i]
+                } }
+                for (assignment in 0 until (1 shl remaining)) {
+                    cancellation.check()
+                    if (assignment != 0) {
+                        val delta = deltas[assignment.countTrailingZeroBits()]
+                        for (i in current.indices) current[i] = current[i] xor delta[i]
+                    }
+                    yield(current.copyOf())
+                }
+            }
         }
 
         val fixedBits: Map<Bit, Int> by lazy {

@@ -52,7 +52,8 @@ class DiagnosticOrderTest {
             run("rs", listOf(8, 9), extraction.codewords[5].coordinates.take(3)),
             // Version 1-M has 16 data codewords and 10 ECC codewords. The last two data words are padding.
             run("structure", (14..25).toList(), trust = true),
-            run("insufficient", (0..25).toList()),
+            // Keep the mode/count so this fixture requires more payload bits than the search limit.
+            run("insufficient", (2..25).toList()),
         )
     }
 
@@ -116,7 +117,7 @@ class DiagnosticOrderTest {
             set(cell.x, cell.y, if (input[cell.x, cell.y].value == ModuleValue.ONE) ModuleValue.ZERO else ModuleValue.ONE,
                 1f, ModuleSource.IMAGE)
         }
-        val unknown = input.copy().apply { extraction.codewords.flatMap { it.coordinates }.forEach {
+        val unknown = input.copy().apply { extraction.codewords.drop(2).flatMap { it.coordinates }.forEach {
             set(it.x, it.y, ModuleValue.ERASED, 0f, ModuleSource.IMAGE)
         } }
         val engine = RecoveryEngine()
@@ -190,7 +191,7 @@ class DiagnosticOrderTest {
                         assertTrue(input.summary.contains("96"))
                     }
                     if (fixture.name == "insufficient") {
-                        assertTrue(input.summary.contains("208"))
+                        assertTrue(input.summary.contains("192"))
                         assertTrue(verification.summary.contains(if (language == AppLanguage.JAPANESE) "見つかりませんでした" else "was found"))
                         assertFalse(report.fullText().contains(if (language == AppLanguage.JAPANESE) "この試行" else "this attempt"))
                         assertFalse(verification.summary.contains(if (language == AppLanguage.JAPANESE) "データ・ECC領域: 比較対象" else "Data/ECC region: 0 mismatching"))

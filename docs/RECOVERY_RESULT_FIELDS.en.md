@@ -71,7 +71,7 @@ Diagnostics separate execution settings, the initial input, processing, and veri
 
 The initial-input section identifies the version, ECC, mask, and geometry used for its reference diagnosis. Conventional RS is evaluated separately before structure filling or bit search, including when the data/ECC limit is zero. Block results distinguish a correction result, correction skipped because codewords containing unknown bits outnumber ECC symbols, and correction attempted without a result. A missing diagnostic is reported as unrecorded, not unexecuted. RS results alone do not establish a correct QR payload.
 
-In “3. Processing in this run,” “Methods used to obtain this candidate” identifies the methods used for the selected candidate. List-decoding fallback also shows the effective known-bit mismatch limit and the trial count and elapsed time for the whole search. Trial counts by method, interpolation counts, and reasons for skipping decoding in some trials appear under “Filling and correction calculations.”
+In “3. Processing in this run,” “Methods used to obtain this candidate” identifies the methods used for the selected candidate. List-decoding trial counts and elapsed time cover the whole search, including the trial that produced the candidate. Durations below one second are shown as “less than 1s.” Known-bit mismatch limits, block-decoding trial counts by method, reasons for skipping decoding in some trials, and stop reasons for QR candidate combination search appear under “Filling and correction calculations.”
 
 The three list-decoding methods share a limit of five cumulative minutes per repair operation, excluding time spent in ordinary search. Validated candidates remain available after timeout, insufficient memory, or interruption, and “4. Verification results” reports why the search is unfinished.
 
@@ -120,7 +120,12 @@ This document uses **Single-segment assumption**, the diagnostic label, for the 
 
 “Search with tentative values for prioritized unknown cells” counts explicitly enumerated `*` cells that were unknown in the input. Success using only the ordinary route does not record priority enumeration.
 
-The partial-bit search count sums enumerated unknown bits for conventional partial-codeword enumeration, or enumerated free variables for RS partial-bit constraints, across blocks. It is neither restored cells nor trial count. The two routes also have different cell-provenance descriptions.
+The partial-bit search count is the sum of the following values across RS blocks.
+
+- Conventional partial-bit search counts the unknown bits selected for enumeration.
+- RS partial-bit constraints count the degrees of freedom remaining after mode and character/byte count, terminator, and padding conditions are applied.
+
+The diagnostic dimension describes the input, so it may differ from the partial-bit search count.
 
 ### RS partial-bit constraints
 

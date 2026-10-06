@@ -42,14 +42,16 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
             append(ui("\n\n今回の探索全体\n", "\n\nSearch-wide results\n"))
             append(searchResultDescription(context))
         }
-        val processing = listOf(candidate.displayConditions.candidateCalculationPolicyText(), candidate.usedMethodsText(),
-            listDecoding?.description(), listDecoding?.mismatchLimitDescription()?.takeIf { candidate.listDecodingMismatchLimit == null },
-            candidate.combinationSearch.copy(stops = candidate.combinationSearch.stops.filterTo(linkedSetOf()) {
+        val processing = listOfNotNull(candidate.displayConditions.candidateCalculationPolicyText(),
+            candidate.usedMethodsText(), listDecoding?.description())
+            .filter(String::isNotBlank).joinToString("\n\n")
+        val stopReasons = candidate.combinationSearch.copy(stops = candidate.combinationSearch.stops.filterTo(linkedSetOf()) {
             it != CombinationSearchStop.USER_INTERRUPTED && it != CombinationSearchStop.WORKING_MEMORY_LIMIT
-        }).stopReasonsText()
-            .takeIf { it.isNotBlank() }?.let { ui("この探索経路の終了理由\n", "Stop reasons for this search route\n") + it })
-            .filterNotNull().filter(String::isNotBlank).joinToString("\n\n")
-        val processingDetails = listOfNotNull(candidateProcessingText(candidate, context.selectedEntry), listDecoding?.calculationDetails())
+        }).stopReasonsText().takeIf(String::isNotBlank)?.let {
+            ui("QR候補の組合せ探索の終了理由\n", "Stop reasons for QR candidate combination search\n") + it
+        }
+        val processingDetails = listOfNotNull(candidateProcessingText(candidate, context.selectedEntry),
+            listDecoding?.calculationDetails(), stopReasons)
             .filter(String::isNotBlank).joinToString("\n\n")
         return RecoveryDiagnosticReport(ui("選択中の候補の診断", "Diagnostics for the selected candidate"), listOf(
             DiagnosticSection(DiagnosticStage.SETTINGS, candidate.displayConditions.runSettingsText()),
@@ -67,11 +69,6 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
             failure.conventionalRsDiagnostic, conditions = failure.displayConditions)
         val processing = buildString {
             append(failure.displayConditions.candidateCalculationPolicyText())
-            listDecoding?.let {
-                if (isNotEmpty()) append("\n\n")
-                append(it.description())
-                it.mismatchLimitDescription().takeIf(String::isNotBlank)?.let { limit -> append('\n').append(limit) }
-            }
             context.searchDiagnostic?.failureExplanation(failure.displayConditions)?.takeIf(String::isNotBlank)?.let {
                 if (isNotEmpty()) append("\n\n")
                 append(it)
@@ -79,6 +76,10 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
             if (isEmpty()) append(ui("指定条件のもとで修復候補を探索しました。", "Recovery candidates were searched under the specified conditions."))
             if (failure.displayConditions?.trustSingleSegment == true) {
                 append("\n\n").append((context.searchDiagnostic ?: failure.searchDiagnostic).singleSegmentProcessingText())
+            }
+            listDecoding?.let {
+                if (isNotEmpty()) append("\n\n")
+                append(it.description())
             }
         }
         val verification = buildString {
@@ -107,6 +108,10 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
 
     private fun candidateProcessingText(candidate: RecoveryCandidate, entry: RecoveryResultEntry?): String {
         val processing = buildString {
+            candidate.listDecodingMismatchLimit?.let {
+                append(ui("この候補のリスト復号の既知ビットの不一致上限: ${it}ビット",
+                    "Known-bit mismatch limit for this candidate's list decoding: $it bits"))
+            }
             if (candidate.constraintFilledBits > 0) {
                 append(if (candidate.constraintForcedByUserSetting) ui("\n指定した仮定に基づく補完・変更: ", "\nFilling/changes under the specified assumption: ")
                     else ui("\nQRの構造に基づく補完・変更: ", "\nFilling/changes using QR structure: "))

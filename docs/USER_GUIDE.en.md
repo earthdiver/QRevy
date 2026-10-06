@@ -102,7 +102,11 @@ QR error correction uses Reed–Solomon (RS) codes.
 
 Below, the last setting in the table is called **Single-segment assumption**, matching the diagnostic label. When ON, “3. Processing in this run” reports its application. When `*` trials hypothesize multiple mode/count headers, the report summarizes whether any applicable trial was found.
 
-**Partial-bit search / dimension limit** is above the priority-search limit. It controls both enumeration routes, with up to 4,096, 8,192, or 16,384 assignments respectively. It is not a limit on the total unknown cells in the QR. Combining it with `*` search increases work multiplicatively. Working-memory and QR-combination limits remain in effect, so raising it may stop a route before candidate generation; it does not guarantee more recovered candidates. The chosen value is saved with the session.
+**Partial-bit search / dimension limit** controls how many assignments can be enumerated. Choosing 12, 13, or 14 allows up to 4,096, 8,192, or 16,384 assignments, respectively.
+
+This limit applies per RS block. When the mode or character/byte count remains undetermined and several hypotheses are tried, each block is checked against the limit for each hypothesis. The total number of candidates may therefore exceed the enumeration counts above.
+
+Raising the limit increases work, and combining it with `*` search increases work further. Working-memory and search limits also apply, so a higher setting does not guarantee more recovered candidates.
 
 Both error-limit controls offer **Default**, **Exact match (0 bits)**, **Strict**, **Relaxed**, **Manual**, and **Unlimited**, with the effective bit count shown. Editing the number or using ± selects Manual.
 

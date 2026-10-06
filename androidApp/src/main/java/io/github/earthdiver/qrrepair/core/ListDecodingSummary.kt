@@ -12,8 +12,8 @@ data class ListDecodingSummary(
     val methodTrials: Map<ListDecoderMethod, Int> = emptyMap(),
 ) {
     fun description(): String = localizedText(
-        "リスト復号による追加探索（探索全体）: ${trials}試行、${elapsedMillis / 1000}秒",
-        "List-decoding fallback (whole search): $trials trials, ${elapsedMillis / 1000}s",
+        "リスト復号の試行回数（探索全体）: ${trials}回、所要時間: ${if (elapsedMillis < 1000) "1秒未満" else "${elapsedMillis / 1000}秒"}",
+        "List-decoding trials (whole search): $trials, elapsed time: ${if (elapsedMillis < 1000) "less than 1s" else "${elapsedMillis / 1000}s"}",
     )
 
     fun mismatchLimitDescription(): String = if (mismatchLimits.isEmpty()) "" else localizedText(
@@ -22,10 +22,10 @@ data class ListDecodingSummary(
     )
 
     fun calculationDetails(): String = localizedText(
-        "リスト復号による追加探索（探索全体）\n補間: ${interpolations}回",
-        "List-decoding fallback (whole search)\nInterpolations: $interpolations",
-    ) + methodTrials.entries.sortedBy { it.key.ordinal }.joinToString("") { (method, count) ->
-        localizedText("\n${method.displayName()}: ${count}試行", "\n${method.displayName()}: $count trials")
+        "リスト復号の計算（探索全体）",
+        "List-decoding calculations (whole search)",
+    ) + mismatchLimitDescription().takeIf { it.isNotBlank() }?.let { "\n$it" }.orEmpty() + methodTrials.entries.sortedBy { it.key.ordinal }.joinToString("") { (method, count) ->
+        localizedText("\n${method.displayName()}によるブロック復号: ${count}試行", "\nBlock decoding with ${method.displayName()}: $count trials")
     } + if (skipReasons.isEmpty()) "" else localizedText("\n一部試行の復号計算を省略: ", "\nDecoding skipped for some trials: ") +
             skipReasons.sortedBy { it.ordinal }.joinToString("; ") { reason -> when (reason) {
                 ListDecodingTrialSkip.TOO_MANY_ERASURES -> localizedText("割当て後も消失が多すぎる", "too many erasures after assignment")

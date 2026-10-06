@@ -20,8 +20,9 @@ class RecoverySearchDiagnosticTest {
     private fun eccError() = matrix().apply {
         flip(this, CodewordExtractor.extract(this, 1, qr.maskPattern).codewords.last().coordinates.first())
     }
+    // Preserve the header so the unresolved payload exceeds the enumeration limit.
     private fun unknownData() = matrix().apply {
-        CodewordExtractor.extract(this, 1, qr.maskPattern).codewords.flatMap { it.coordinates }.forEach {
+        CodewordExtractor.extract(this, 1, qr.maskPattern).codewords.drop(2).flatMap { it.coordinates }.forEach {
             set(it.x, it.y, ModuleValue.ERASED, 0f, ModuleSource.IMAGE)
         }
     }

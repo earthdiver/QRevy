@@ -21,6 +21,7 @@ internal class ListDecodingQrSearch(private val rs: ReedSolomonErasures) {
         evaluate: (List<PartialCodewordSolver.Result>) -> Boolean,
     ): Boolean {
         val searches = mutableListOf<ListDecodingBlockSearch>()
+        val spaces = mutableListOf<RsBitConstraintSolver.Space?>()
         val stops = linkedSetOf<CombinationSearchStop>()
         var expanded = 0
         var combinations = 0
@@ -46,14 +47,19 @@ internal class ListDecodingQrSearch(private val rs: ReedSolomonErasures) {
             }
             pinValues[location.blockIndex][location.localIndex] = word.value
         }
-        fun used() = searches.sumOf { it.workingBytes } + de.blocks.sumOf { 256L + it.codewords.size * 28L }
+        fun used() = searches.sumOf { it.workingBytes } + spaces.sumOf { it?.restrictionWorkingBytes ?: 0L } +
+            de.blocks.sumOf { 256L + it.codewords.size * 28L } +
+            if (spaces.any { it != null }) 16_384L + de.blocks.sumOf {
+                2048L + it.codewords.size * 64L + it.numDataCodewords * 4096L
+            } else 0L
         try {
             for ((index, block) in de.blocks.withIndex()) {
                 cancellation.check()
                 val space = bits.analyze(block, de.ecSymbolsPerBlock, cancellation)
                 val dimensionLimit = if (allowEnumeration && nonEnumerable[index].isEmpty()) partialBitLimit else 0
-                val exactCount = space?.dimension?.takeIf { it in 0..dimensionLimit }?.let { 1L shl it } ?: 0L
-                // Only exact-space values and one ordinary result are eager. Include their
+                spaces += space?.takeIf { it.dimension > 0 && dimensionLimit > 0 }
+                val exactCount = if (space?.dimension == 0) 1L else 0L
+                // Only zero-dimensional exact solutions and one ordinary result are eager. Include their
                 // temporary lists and accumulator records; bit trials allocate incrementally.
                 val required = (exactCount + 1L) * (2048L + block.codewords.size * 128L)
                 if (required + 8192L + block.codewords.size * 64L > workingLimitBytes - used()) {
@@ -63,7 +69,7 @@ internal class ListDecodingQrSearch(private val rs: ReedSolomonErasures) {
                 // Keep exact bit-constraint routes, but defer repeated conventional bit enumeration
                 // until after the cheaper base list and optional KV pass have been validated.
                 val exact = try {
-                    solver.decodeWithBitConstraints(block, de.ecSymbolsPerBlock, space, true,
+                    solver.decodeWithBitConstraints(block, de.ecSymbolsPerBlock, space?.takeIf { it.dimension == 0 }, true,
                         allowBitEnumeration = allowEnumeration, nonEnumerablePositions = nonEnumerable[index],
                         cancellation = cancellation, maxEnumeratedBits = partialBitLimit)
                 } catch (_: ReedSolomonErasures.DecodeException) { emptyList() }
@@ -95,11 +101,11 @@ internal class ListDecodingQrSearch(private val rs: ReedSolomonErasures) {
                         if (search.memoryLimited) stops += CombinationSearchStop.WORKING_MEMORY_LIMIT
                         if (search.mismatchRejections > 0) onRejection(RecoveryCandidateRejection.LIST_DECODING_MISMATCH_LIMIT)
                     }
-                    if (!search.hasNext && search.candidates.isEmpty()) return false
+                    if (!search.hasNext && search.candidates.isEmpty() && spaces[index] == null) return false
                 }
                 if (!changed) continue
                 val groups = searches.map { it.candidates }
-                if (groups.any { it.isEmpty() }) continue
+                if (groups.indices.any { groups[it].isEmpty() && spaces[it] == null }) continue
                 val affordable = ((workingLimitBytes - used()) / (256L + groups.size * 16L))
                     .coerceIn(0L, (maximum - expanded).toLong()).toInt()
                 if (affordable == 0) {
@@ -107,12 +113,13 @@ internal class ListDecodingQrSearch(private val rs: ReedSolomonErasures) {
                     return false
                 }
                 var parsed = false
-                val products = bestFirstCartesianProductSequence(groups, { it.orderingPenalty }, affordable,
-                    onLimitReached = { stops += if (expanded >= maximum) CombinationSearchStop.NODE_LIMIT else CombinationSearchStop.WORKING_MEMORY_LIMIT },
-                ) { prefix ->
+                val symbolic = spaces.any { it != null }
+                val acceptPrefix: (List<PartialCodewordSolver.Result>) -> Boolean = { prefix ->
                     cancellation.check()
-                    expanded++
-                    if (prefix.sumOf { requireNotNull(it.originalKnownMismatches) } > mismatchLimit) {
+                    if (!symbolic) expanded++
+                    if (prefix.withIndex().sumOf { (index, result) -> result.originalKnownMismatches ?: result.corrected.indices.sumOf {
+                            ((result.corrected[it] xor original.blocks[index].codewords[it]) and original.blocks[index].unknownMasks[it].inv() and 255).countOneBits()
+                        } } > mismatchLimit) {
                         onRejection(RecoveryCandidateRejection.LIST_DECODING_MISMATCH_LIMIT)
                         false
                     } else {
@@ -124,11 +131,20 @@ internal class ListDecodingQrSearch(private val rs: ReedSolomonErasures) {
                         }
                     }
                 }
+                val traversal = if (symbolic) RsPayloadTraversal(groups.indices.map {
+                    RsCandidateSource(de.blocks[it], groups[it], spaces[it], partialBitLimit)
+                }, version, maximum - expanded, cancellation) else null
+                val products = traversal?.combinations(acceptPrefix) ?: bestFirstCartesianProductSequence(groups,
+                    { it.orderingPenalty }, affordable,
+                    onLimitReached = { stops += if (expanded >= maximum) CombinationSearchStop.NODE_LIMIT else CombinationSearchStop.WORKING_MEMORY_LIMIT },
+                    canExtend = acceptPrefix)
                 for (combination in products) {
                     cancellation.check()
                     parsed = evaluate(combination) || parsed
                     if (++combinations >= maximum) { stops += CombinationSearchStop.COMBINATION_LIMIT; break }
                 }
+                expanded += traversal?.nodes ?: 0
+                if (traversal?.limited == true) stops += CombinationSearchStop.NODE_LIMIT
                 if (parsed) { stops += CombinationSearchStop.SUCCESS_WINDOW; return true }
                 if (expanded >= maximum) stops += CombinationSearchStop.NODE_LIMIT
                 if (stops.any { it != CombinationSearchStop.WORKING_MEMORY_LIMIT }) return false

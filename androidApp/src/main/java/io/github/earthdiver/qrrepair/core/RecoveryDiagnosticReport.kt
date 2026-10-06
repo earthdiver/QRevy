@@ -207,8 +207,6 @@ fun RecoveryCandidate.usedMethodsText(): String = buildString {
         "\n優先指定セルの白黒を仮置き: ${priorityGuessedBits}bit",
         "\nTentative values for prioritized cells: $priorityGuessedBits bits"))
     actualBlockMethods.forEach { append('\n').append(it.searchDescription(includeCalculationDetails = false)) }
-    listDecodingMismatchLimit?.let { append(localizedText("\nこの追加探索の既知ビットの不一致上限: ${it}ビット",
-        "\nKnown-bit mismatch limit for this fallback: $it bits")) }
     if (usesBitConstraints()) append(localizedText(
         "\n部分bit制約で、不明なbitの組合せを計算しました。",
         "\nPartial-bit constraints calculated combinations of unknown bits."))

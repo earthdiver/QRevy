@@ -51,31 +51,42 @@ class RsBitRecoveryIntegrationTest {
     @Test fun symbolicSpaceOffersConditionalNonFinderCellEvenWithoutDecodedCandidates() {
         val matrix = matrix()
         val extraction = CodewordExtractor.extract(matrix, 1, encoded.maskPattern)
-        erase(matrix, extraction.codewords.flatMap { it.coordinates })
+        // Retain mode/count; the remaining payload stays above the dimension limit.
+        erase(matrix, extraction.codewords.drop(2).flatMap { it.coordinates })
         val engine = RecoveryEngine()
         val outcome = engine.recoverWithDiagnostics(matrix, maxKnownDataEccMismatches = 0)
         assertTrue(outcome.candidates.isEmpty())
         val diagnostic = outcome.failure!!.rsBitDiagnostic!!
-        assertEquals(152, diagnostic.dimension)
-        assertEquals(152, diagnostic.independentCells.size)
+        assertEquals(136, diagnostic.dimension)
+        assertEquals(136, diagnostic.independentCells.size)
         val rec = RepairGuidance.recommendFromBitSpace(matrix, diagnostic)!!
         assertFalse(QrFunctionMask.isFunction(1, rec.coord.x, rec.coord.y))
-        assertEquals(152, rec.exactSpaceDimension)
+        assertEquals(136, rec.exactSpaceDimension)
         assertEquals(0, rec.totalCandidates) // Never pretend these are validated payloads.
         assertTrue(rec.reasonJa.contains("仮定"))
         assertTrue(rec.reasonEn.contains("assuming"))
     }
 
+    @Test fun unknownHeadersCanYieldMultipleConditionalPayloadsWithoutChangingTheObservation() {
+        val matrix = matrix()
+        val extraction = CodewordExtractor.extract(matrix, 1, encoded.maskPattern)
+        erase(matrix, extraction.codewords.flatMap { it.coordinates })
+        val candidates = RecoveryEngine().recover(matrix, maxKnownDataEccMismatches = 0)
+        assertTrue(candidates.map { it.dataBytes.toList() }.distinct().size > 1)
+        assertTrue(candidates.all { it.payloadParsed && it.rsBitDiagnostic?.dimension == 152 })
+        assertTrue(extraction.codewords.flatMap { it.coordinates }.all { matrix[it.x, it.y].value == ModuleValue.ERASED })
+    }
+
     @Test fun reusedEngineDoesNotRetainFailureOrBitDiagnosticsFromPreviousInput() {
         val damaged = matrix()
         val extraction = CodewordExtractor.extract(damaged, 1, encoded.maskPattern)
-        erase(damaged, extraction.codewords.flatMap { it.coordinates })
+        erase(damaged, extraction.codewords.drop(2).flatMap { it.coordinates })
         val engine = RecoveryEngine()
         val firstOutcome = engine.recoverWithDiagnostics(damaged, maxKnownDataEccMismatches = 0)
         assertTrue(firstOutcome.candidates.isEmpty())
         val expectedFailure = requireNotNull(firstOutcome.failure)
         val expectedAttempts = firstOutcome.formatAttempts
-        assertEquals(208, expectedFailure.rsBitDiagnostic?.unknownBits)
+        assertEquals(192, expectedFailure.rsBitDiagnostic?.unknownBits)
 
         val secondOutcome = engine.recoverWithDiagnostics(matrix(), maxKnownDataEccMismatches = 0)
         val recovered = secondOutcome.candidates.first { it.text == text }

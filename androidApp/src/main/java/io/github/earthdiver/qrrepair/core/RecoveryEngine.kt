@@ -734,6 +734,60 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 continue
             }
 
+            val trialSpaces = if (constraints.filledBits == 0) originalSpaces else
+                de.blocks.map { bitSolver.analyze(it, de.ecSymbolsPerBlock, run.cancellation) }
+            if (trialSpaces.any { (it?.dimension ?: 0) > 0 }) {
+                val nonEnumerable = de.blocks.indices.map { index ->
+                    priorityRawIndices.mapNotNullTo(hashSetOf()) { raw ->
+                        de.rawLocations.getOrNull(raw)?.takeIf { it.blockIndex == index }?.localIndex
+                    }
+                }
+                val streamed = StreamingQrSearch(rs).run(de, trialSpaces, version, maxKnownDataEccMismatches == 0,
+                    allowBitEnumeration, nonEnumerable, run.partialBitSearchLimit, run.retentionBudget.workingLimitBytes,
+                    run.cancellation, onStops = { run.combinationSearch = run.combinationSearch.afterPass(it) },
+                    onSearch = { run.solverCompleteness = run.solverCompleteness.combine(it) },
+                ) { combination ->
+                    run.candidateCalculations++
+                    when (val evaluation = evaluator.evaluate(combination)) {
+                        is RecoveryCandidateEvaluation.Accepted -> {
+                            if (evaluation.decoderFailed) run.incompleteReasons += SearchIncompleteReason.INTERNAL_ERROR
+                            run.acceptedCandidate = true
+                            if (evaluation.candidate.payloadParsed && combination.none { it.bitConstraintSolved })
+                                run.parsedWithoutBitConstraints = true
+                            run.candidates.add(evaluation.candidate)
+                            evaluation.candidate.payloadParsed
+                        }
+                        is RecoveryCandidateEvaluation.Rejected -> {
+                            run.candidateRejections += evaluation.reason
+                            evaluation.failure?.let { considerFailure(run, it) }
+                            false
+                        }
+                        RecoveryCandidateEvaluation.UnresolvedPriorityAssignment -> {
+                            run.unresolvedCalculations = true
+                            false
+                        }
+                    }
+                }
+                parsedFound = streamed.parsed || parsedFound
+                if (streamed.candidates == 0) {
+                    run.unresolvedCalculations = true
+                    considerFailure(run, format, if (streamed.failure == null) RecoveryFailureStage.PAYLOAD_VALIDATION
+                        else RecoveryFailureStage.REED_SOLOMON, originalErasedCodewords = originalErasures,
+                        erasedCodewords = constrainedErasures, rsShortfallBits = rsShortfallBits,
+                        constraintFilledBits = constraints.filledBits,
+                        reason = streamed.failure?.let { classifyRsFailure(it, rsShortfallBits) },
+                        failedBlockIndex = streamed.failedBlock, rsBlockCount = de.blocks.size,
+                        failedBlockErasures = streamed.failedBlock?.let { de.blocks[it].unknownMasks.count { mask -> mask != 0 } },
+                        ecSymbolsPerBlock = de.ecSymbolsPerBlock, rsBitDiagnostic = bitDiagnostic)
+                }
+                if (!trustKnownPayloadCount && shouldRetryWithoutPayloadConstraints(allowPayloadConstraints, constraints.filledBits)) {
+                    parsedFound = recoverInternal(run, matrix, 1, listOf(format), allowBitEnumeration,
+                        false, false, maxFormatMismatches, maxKnownDataEccMismatches, formatRoute,
+                        priorityAssignments) || parsedFound
+                }
+                continue
+            }
+
             val blockCandidateResults = ArrayList<List<PartialCodewordSolver.Result>>(de.blocks.size)
             var blockWorkingBytes = 0L
             var failed = false
