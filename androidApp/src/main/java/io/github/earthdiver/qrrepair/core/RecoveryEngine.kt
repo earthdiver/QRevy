@@ -144,61 +144,6 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
 
     private val partialSolver = PartialCodewordSolver(rs)
     private val bitSolver = RsBitConstraintSolver(rs)
-    /** Mutable search evidence belongs to exactly one invocation, including its fallback trials. */
-    private class RecoveryRunState(val diagnosticInput: QrMatrix, val retentionBudget: RecoveryRetentionBudget,
-        baseCancellation: RecoveryCancellation, val partialBitSearchLimit: Int, val listDecodingBudget: ListDecodingBudget) {
-        var listDecodingPhase = false
-        var listDecodingSummary: ListDecodingSummary? = null
-        val cancellation = RecoveryCancellation {
-            baseCancellation.check()
-            if (listDecodingPhase) listDecodingBudget.check()
-            false
-        }
-        var ignoredFormatCoords: Set<Coord> = emptySet()
-        val bitDiagnostics = mutableMapOf<Pair<ErrorCorrectionLevel, Int>, RsBitDiagnostic>()
-        val conventionalDiagnostics = mutableMapOf<Pair<ErrorCorrectionLevel, Int>, ConventionalRsDiagnostic>()
-        var failure: RecoveryFailure? = null
-        var formatAttempts: Int = 0
-        var combinationSearch = CombinationSearchSummary()
-        var expectedFormats: Set<Pair<ErrorCorrectionLevel, Int>> = emptySet()
-        val inputBlockers = mutableMapOf<Pair<ErrorCorrectionLevel, Int>, RecoveryInputBlocker?>()
-        var earlyBlocker: RecoveryInputBlocker? = null
-        val candidateRejections = linkedSetOf<RecoveryCandidateRejection>()
-        val singleSegmentStatuses = linkedSetOf<SingleSegmentStatus>()
-        val priorityHeaderHypotheses = linkedSetOf<String>()
-        var acceptedCandidate = false
-        // Track validation before retention can omit candidates or their alternative routes.
-        var parsedWithoutBitConstraints = false
-        var unresolvedCalculations = false
-        var solverCompleteness = SearchCompleteness.COMPLETE
-        var finished = false
-        var completedSteps = 0
-        val incompleteReasons = linkedSetOf<SearchIncompleteReason>()
-        var candidateCalculations = 0
-        val candidates = BoundedRecoveryCandidates(retentionBudget)
-
-        fun searchDiagnostic(): RecoverySearchDiagnostic {
-            val allInputsChecked = expectedFormats.isNotEmpty() && expectedFormats.all(inputBlockers::containsKey)
-            val blockers = expectedFormats.map { inputBlockers[it] }.toSet()
-            return RecoverySearchDiagnostic(
-                inputBlocker = earlyBlocker ?: blockers.singleOrNull()?.takeIf { allInputsChecked },
-                candidateRejections = candidateRejections.toSet(),
-                listDecoding = listDecodingSummary,
-                singleSegmentStatuses = singleSegmentStatuses.toSet(),
-                priorityHeaderHypotheses = priorityHeaderHypotheses.toSet(),
-                acceptedCandidate = acceptedCandidate,
-                unresolvedCalculations = unresolvedCalculations,
-                unsearched = incompleteReasons.isNotEmpty() || combinationSearch.unsearched,
-                incompleteReasons = incompleteReasons + combinationSearch.incompleteReasons,
-                completedSteps = completedSteps,
-                candidateCalculations = candidateCalculations,
-                coverageComplete = finished || incompleteReasons.isNotEmpty() || combinationSearch.unsearched,
-                solverCompleteness = solverCompleteness,
-                candidatesOmitted = candidates.candidatesOmitted,
-                derivationsOmitted = candidates.derivationsOmitted,
-            )
-        }
-    }
 
     /** General diagnostic recognition includes control prefixes and Hanzi. */
     fun hasCompletePayloadHeader(
@@ -700,26 +645,9 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                         ListDecoderMethod.entries.forEach { method -> methodCounts[index][method.ordinal] = search.methodTrials[method] ?: 0 }
                     }, onStops = { run.combinationSearch = run.combinationSearch.afterPass(it) },
                 ) { combination ->
-                    when (val evaluation = evaluator.evaluate(combination)) {
-                        is RecoveryCandidateEvaluation.Accepted -> {
-                            if (evaluation.decoderFailed) run.incompleteReasons += SearchIncompleteReason.INTERNAL_ERROR
-                            run.acceptedCandidate = true
-                            val alreadyParsed = run.candidates.containsParsed(evaluation.candidate)
-                            run.candidates.add(evaluation.candidate)
-                            // Rediscovering an existing exact candidate must not end additional
-                            // bit trials or priority assignments before another payload is tested.
-                            evaluation.candidate.payloadParsed && !alreadyParsed
-                        }
-                        is RecoveryCandidateEvaluation.Rejected -> {
-                            run.candidateRejections += evaluation.reason
-                            evaluation.failure?.let { considerFailure(run, it) }
-                            false
-                        }
-                        RecoveryCandidateEvaluation.UnresolvedPriorityAssignment -> {
-                            run.unresolvedCalculations = true
-                            false
-                        }
-                    }
+                    // Rediscovering an existing exact candidate must not end additional
+                    // bit trials or priority assignments before another payload is tested.
+                    run.recordEvaluation(evaluator.evaluate(combination)) == RecordedRecoveryCandidate.NEWLY_PARSED
                 }
                 parsedFound = foundListDecoded || parsedFound
                 if (!trustKnownPayloadCount && shouldRetryWithoutPayloadConstraints(allowPayloadConstraints, constraints.filledBits)) {
@@ -744,25 +672,10 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                     onSearch = { run.solverCompleteness = run.solverCompleteness.combine(it) },
                 ) { combination ->
                     run.candidateCalculations++
-                    when (val evaluation = evaluator.evaluate(combination)) {
-                        is RecoveryCandidateEvaluation.Accepted -> {
-                            if (evaluation.decoderFailed) run.incompleteReasons += SearchIncompleteReason.INTERNAL_ERROR
-                            run.acceptedCandidate = true
-                            if (evaluation.candidate.payloadParsed && combination.none { it.bitConstraintSolved })
-                                run.parsedWithoutBitConstraints = true
-                            run.candidates.add(evaluation.candidate)
-                            evaluation.candidate.payloadParsed
-                        }
-                        is RecoveryCandidateEvaluation.Rejected -> {
-                            run.candidateRejections += evaluation.reason
-                            evaluation.failure?.let { considerFailure(run, it) }
-                            false
-                        }
-                        RecoveryCandidateEvaluation.UnresolvedPriorityAssignment -> {
-                            run.unresolvedCalculations = true
-                            false
-                        }
-                    }
+                    val recorded = run.recordEvaluation(evaluator.evaluate(combination))
+                    if (recorded.parsed && combination.none { it.bitConstraintSolved })
+                        run.parsedWithoutBitConstraints = true
+                    recorded.parsed
                 }
                 parsedFound = streamed.parsed || parsedFound
                 if (streamed.candidates == 0) {
@@ -919,22 +832,11 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
             }
             for (combination in combinations) {
                 run.cancellation.check()
-                when (val evaluation = evaluator.evaluate(combination)) {
-                    is RecoveryCandidateEvaluation.Accepted -> {
-                        if (evaluation.decoderFailed) run.incompleteReasons += SearchIncompleteReason.INTERNAL_ERROR
-                        run.acceptedCandidate = true
-                        if (evaluation.candidate.payloadParsed) {
-                            parsedCandidatesForFormat++
-                            parsedFound = true
-                            if (combination.none { it.bitConstraintSolved }) run.parsedWithoutBitConstraints = true
-                        }
-                        run.candidates.add(evaluation.candidate)
-                    }
-                    is RecoveryCandidateEvaluation.Rejected -> {
-                        run.candidateRejections += evaluation.reason
-                        evaluation.failure?.let { considerFailure(run, it) }
-                    }
-                    RecoveryCandidateEvaluation.UnresolvedPriorityAssignment -> run.unresolvedCalculations = true
+                val recorded = run.recordEvaluation(evaluator.evaluate(combination))
+                if (recorded.parsed) {
+                    parsedCandidatesForFormat++
+                    parsedFound = true
+                    if (combination.none { it.bitConstraintSolved }) run.parsedWithoutBitConstraints = true
                 }
             }
             run.combinationSearch = run.combinationSearch.afterPass(combinationStops)
@@ -1022,23 +924,8 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
             manualConflicts = manualConflicts,
             conventionalRsDiagnostic = run.conventionalDiagnostics[format.ecLevel to format.dataMask],
         )
-        considerFailure(run, candidate)
+        run.considerFailure(candidate)
     }
-
-    private fun considerFailure(run: RecoveryRunState, candidate: RecoveryFailure) {
-        val current = run.failure
-        if (current == null || failureComparator.compare(candidate, current) <= 0) run.failure = candidate
-    }
-
-    private val failureComparator = compareBy<RecoveryFailure> { it.formatMismatches }
-        .thenByDescending { it.formatMatches }
-        .thenBy { it.rsShortfallBits ?: Int.MAX_VALUE }
-        .thenByDescending { it.stage.ordinal }
-        // Do not replace an actionable rejection with the generic end-of-format diagnostic.
-        .thenBy { if (it.reason == null) 1 else 0 }
-        .thenBy { it.knownBitMismatches ?: Int.MAX_VALUE }
-        .thenBy { it.erasedCodewords }
-        .thenBy { it.partialGuessedBits }
 
     fun applyCorrection(matrix: QrMatrix, candidate: RecoveryCandidate, overwriteKnownErrors: Boolean = false) {
         val codewordCoordinates = HashSet<Coord>()
