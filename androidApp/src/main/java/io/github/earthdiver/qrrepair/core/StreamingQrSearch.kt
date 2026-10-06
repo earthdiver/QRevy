@@ -2,7 +2,7 @@ package io.github.earthdiver.qrrepair.core
 
 /** Exact spaces stay symbolic; completed candidates use the same QR evaluator as ordinary RS. */
 internal class StreamingQrSearch(private val rs: ReedSolomonErasures) {
-    data class Outcome(val parsed: Boolean, val candidates: Int, val failedBlock: Int? = null, val failure: String? = null)
+    data class Outcome(val parsed: Boolean, val candidates: Int, val failedBlock: Int? = null, val failure: RsFailureReason? = null)
 
     fun run(
         de: DeinterleavedQr,
@@ -32,7 +32,7 @@ internal class StreamingQrSearch(private val rs: ReedSolomonErasures) {
                     allowEnumeration, nonEnumerable[index], false, de.ecSymbolsPerBlock, partialBitSearchLimit = partialBitLimit)
                 if (required > workingLimitBytes - working) {
                     stops += CombinationSearchStop.WORKING_MEMORY_LIMIT
-                    return Outcome(parsed, candidates, index, "Exact RS space exceeds working-memory allowance")
+                    return Outcome(parsed, candidates, index, RsFailureReason.BIT_SPACE_LIMIT)
                 }
                 working += required
                 val fixed = if (exactOnly) emptyList() else try {
@@ -40,12 +40,12 @@ internal class StreamingQrSearch(private val rs: ReedSolomonErasures) {
                         space?.takeIf { it.dimension == 0 }, false, allowEnumeration, nonEnumerable[index],
                         cancellation, partialBitLimit, onSearch)
                 } catch (error: ReedSolomonErasures.DecodeException) {
-                    if (space == null || (limit == 0 && space.dimension > 0)) return Outcome(parsed, candidates, index, error.message)
+                    if (space == null || (limit == 0 && space.dimension > 0)) return Outcome(parsed, candidates, index, error.reason)
                     emptyList()
                 }
                 if (fixed.isEmpty() && (space == null || (limit == 0 && space.dimension > 0)))
-                    return Outcome(parsed, candidates, index, if (space == null) "No exact known-bit RS-consistent assignment"
-                        else "Exact RS space exceeds bounded partial-bit solver dimension")
+                    return Outcome(parsed, candidates, index, if (space == null) RsFailureReason.KNOWN_BIT_CONSTRAINT_CONFLICT
+                        else RsFailureReason.BIT_SPACE_LIMIT)
                 sources += RsCandidateSource(block, fixed, space, limit)
             }
             val traversal = RsPayloadTraversal(sources, version, 65_536, cancellation)
@@ -65,7 +65,7 @@ internal class StreamingQrSearch(private val rs: ReedSolomonErasures) {
             if (traversal.limited) stops += CombinationSearchStop.NODE_LIMIT
             onSearch(SearchCompleteness.COMPLETE)
             return if (candidates == 0 && traversal.dimensionLimitedBlock != null)
-                Outcome(parsed, candidates, traversal.dimensionLimitedBlock, "Exact RS space exceeds bounded partial-bit solver dimension")
+                Outcome(parsed, candidates, traversal.dimensionLimitedBlock, RsFailureReason.BIT_SPACE_LIMIT)
             else Outcome(parsed, candidates)
         } finally { onStops(stops) }
     }

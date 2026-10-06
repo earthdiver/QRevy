@@ -14,7 +14,12 @@ class ReedSolomonErasures {
         val errataPositions: IntArray,
     )
 
-    class DecodeException(message: String) : Exception(message)
+    class DecodeException(
+        message: String,
+        val reason: RsFailureReason,
+    ) : Exception(message) {
+        constructor(message: String) : this(message, RsFailureReason.CORRECTION_FAILED)
+    }
 
     private object GF {
         private const val PRIMITIVE = 0x11D
@@ -65,7 +70,8 @@ class ReedSolomonErasures {
         val msg = IntArray(received.size) { received[it] and 0xFF }
         val erasures = erasePositions.distinct().sorted().toIntArray()
         if (erasures.any { it !in msg.indices }) throw DecodeException("Erasure position outside block")
-        if (erasures.size > ecSymbols) throw DecodeException("Too many erasures: ${erasures.size} > $ecSymbols")
+        if (erasures.size > ecSymbols) throw DecodeException("Too many erasures: ${erasures.size} > $ecSymbols",
+            RsFailureReason.ERASURE_CAPACITY_EXCEEDED)
         erasures.forEach { msg[it] = 0 }
 
         var synd = calcSyndromes(msg, ecSymbols)
@@ -77,7 +83,7 @@ class ReedSolomonErasures {
         val errata = (erasures.asList() + errorPositions.asList()).distinct().sorted().toIntArray()
 
         if ((errorPositions.size * 2) + erasures.size > ecSymbols) {
-            throw DecodeException("Error/erasure capacity exceeded")
+            throw DecodeException("Error/erasure capacity exceeded", RsFailureReason.ERROR_ERASURE_CAPACITY_EXCEEDED)
         }
 
         val corrected = correctErrata(msg, synd, errata)
@@ -165,7 +171,8 @@ class ReedSolomonErasures {
         errLoc = trimLeadingZeros(errLoc)
         val errors = errLoc.size - 1
         if (errors * 2 + eraseCount > nsym) {
-            throw DecodeException("Too many unknown errors: $errors with $eraseCount erasures for $nsym ECC symbols")
+            throw DecodeException("Too many unknown errors: $errors with $eraseCount erasures for $nsym ECC symbols",
+                RsFailureReason.ERROR_ERASURE_CAPACITY_EXCEEDED)
         }
         return errLoc
     }
@@ -179,7 +186,8 @@ class ReedSolomonErasures {
             }
         }
         if (positions.size != expected) {
-            throw DecodeException("Chien search found ${positions.size} errors, expected $expected")
+            throw DecodeException("Chien search found ${positions.size} errors, expected $expected",
+                RsFailureReason.NO_CONSISTENT_ASSIGNMENT)
         }
         return positions.toIntArray()
     }

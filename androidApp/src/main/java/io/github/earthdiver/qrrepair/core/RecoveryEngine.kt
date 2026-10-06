@@ -95,19 +95,15 @@ enum class RecoveryFailureReason {
     SINGLE_SEGMENT_CONDITION_UNAVAILABLE,
 }
 
-internal fun classifyRsFailure(message: String?, erasureShortfallBits: Int): RecoveryFailureReason = when {
-    message?.startsWith("No exact known-bit") == true -> RecoveryFailureReason.KNOWN_BIT_CONSTRAINT_CONFLICT
-    message?.startsWith("Exact RS space exceeds") == true -> RecoveryFailureReason.RS_BIT_SPACE_LIMIT
-    message?.contains("bounded partial-bit solver") == true ||
-        message?.contains("equally ranked RS-consistent") == true ->
-        RecoveryFailureReason.BOUNDED_BIT_SEARCH_LIMIT
-    message?.contains("RS-consistent assignment") == true || message?.contains("Chien search") == true ->
-        RecoveryFailureReason.NO_RS_CONSISTENT_ASSIGNMENT
-    message?.contains("unknown errors") == true || message?.contains("capacity exceeded") == true ->
-        RecoveryFailureReason.ERROR_ERASURE_CAPACITY_EXCEEDED
-    erasureShortfallBits > 0 || message?.startsWith("Too many erasure") == true ->
-        RecoveryFailureReason.ERASURE_CAPACITY_EXCEEDED
-    else -> RecoveryFailureReason.RS_CORRECTION_FAILED
+internal fun classifyRsFailure(reason: RsFailureReason?, erasureShortfallBits: Int): RecoveryFailureReason = when (reason) {
+    RsFailureReason.KNOWN_BIT_CONSTRAINT_CONFLICT -> RecoveryFailureReason.KNOWN_BIT_CONSTRAINT_CONFLICT
+    RsFailureReason.BIT_SPACE_LIMIT -> RecoveryFailureReason.RS_BIT_SPACE_LIMIT
+    RsFailureReason.BOUNDED_BIT_SEARCH_LIMIT -> RecoveryFailureReason.BOUNDED_BIT_SEARCH_LIMIT
+    RsFailureReason.NO_CONSISTENT_ASSIGNMENT -> RecoveryFailureReason.NO_RS_CONSISTENT_ASSIGNMENT
+    RsFailureReason.ERROR_ERASURE_CAPACITY_EXCEEDED -> RecoveryFailureReason.ERROR_ERASURE_CAPACITY_EXCEEDED
+    RsFailureReason.ERASURE_CAPACITY_EXCEEDED -> RecoveryFailureReason.ERASURE_CAPACITY_EXCEEDED
+    RsFailureReason.CORRECTION_FAILED, null -> if (erasureShortfallBits > 0)
+        RecoveryFailureReason.ERASURE_CAPACITY_EXCEEDED else RecoveryFailureReason.RS_CORRECTION_FAILED
 }
 
 /** Best diagnostic from attempts that did not produce an RS-consistent candidate. */
@@ -793,7 +789,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
             var failed = false
             var failedBlockIndex: Int? = null
             var failedBlockErasures: Int? = null
-            var failureMessage: String? = null
+            var blockFailure: RsFailureReason? = null
             for ((blockIndex, block) in de.blocks.withIndex()) {
                 run.candidateCalculations++
                 run.cancellation.check()
@@ -811,7 +807,8 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                         partialBitSearchLimit = run.partialBitSearchLimit)
                     if (requiredBytes > run.retentionBudget.workingLimitBytes - blockWorkingBytes) {
                         run.combinationSearch = run.combinationSearch.afterPass(setOf(CombinationSearchStop.WORKING_MEMORY_LIMIT))
-                        throw ReedSolomonErasures.DecodeException("Exact RS space exceeds working-memory allowance")
+                        throw ReedSolomonErasures.DecodeException("Exact RS space exceeds working-memory allowance",
+                            RsFailureReason.BIT_SPACE_LIMIT)
                     }
                     blockWorkingBytes += requiredBytes
                     partialSolver.decodeWithBitConstraints(
@@ -829,7 +826,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                     failed = true
                     failedBlockIndex = blockIndex
                     failedBlockErasures = blockErasures
-                    failureMessage = error.message
+                    blockFailure = error.reason
                     break
                 }
                 blockCandidateResults += results
@@ -846,7 +843,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                     rsShortfallBits = rsShortfallBits,
                     constraintFilledBits = constraints.filledBits,
                     partialGuessedBits = blockCandidateResults.sumOf { it.firstOrNull()?.guessedBits ?: 0 },
-                    reason = classifyRsFailure(failureMessage, rsShortfallBits),
+                    reason = classifyRsFailure(blockFailure, rsShortfallBits),
                     failedBlockIndex = failedBlockIndex,
                     rsBlockCount = de.blocks.size,
                     failedBlockErasures = failedBlockErasures,

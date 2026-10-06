@@ -60,7 +60,8 @@ class PartialCodewordSolver(private val rs: ReedSolomonErasures) {
             return@reportingCompletion exact.ifEmpty {
                 throw ReedSolomonErasures.DecodeException(
                     if (space == null) "No exact known-bit RS-consistent assignment"
-                    else "Exact RS space exceeds bounded partial-bit solver dimension")
+                    else "Exact RS space exceeds bounded partial-bit solver dimension",
+                    if (space == null) RsFailureReason.KNOWN_BIT_CONSTRAINT_CONFLICT else RsFailureReason.BIT_SPACE_LIMIT)
             }
         }
         val conventional = try {
@@ -133,7 +134,8 @@ class PartialCodewordSolver(private val rs: ReedSolomonErasures) {
             }
         }
         if (!allowBitEnumeration) {
-            throw ReedSolomonErasures.DecodeException("Too many erasure bytes without partial-bit search")
+            throw ReedSolomonErasures.DecodeException("Too many erasure bytes without partial-bit search",
+                RsFailureReason.ERASURE_CAPACITY_EXCEEDED)
         }
 
         val plan = PartialBitTrialPlan(block, maxEnumeratedBits, maxUnknownBitsPerByte, nonEnumerablePositions)
@@ -142,7 +144,8 @@ class PartialCodewordSolver(private val rs: ReedSolomonErasures) {
         val requiredBytes = erasedPositions.size - nsym
         if (selected.size < requiredBytes || totalBits > maxEnumeratedBits) {
             if (erasureOnlyResult != null) return@reportingCompletion listOf(erasureOnlyResult)
-            throw ReedSolomonErasures.DecodeException("Too many erasure bytes for bounded partial-bit solver")
+            throw ReedSolomonErasures.DecodeException("Too many erasure bytes for bounded partial-bit solver",
+                RsFailureReason.BOUNDED_BIT_SEARCH_LIMIT)
         }
 
         val remainingErase = plan.remainingErasures
@@ -173,7 +176,8 @@ class PartialCodewordSolver(private val rs: ReedSolomonErasures) {
             )
             candidates.add(candidate)
         }
-        if (candidates.isEmpty()) throw ReedSolomonErasures.DecodeException("Partial-bit enumeration found no RS-consistent assignment")
+        if (candidates.isEmpty()) throw ReedSolomonErasures.DecodeException("Partial-bit enumeration found no RS-consistent assignment",
+            RsFailureReason.NO_CONSISTENT_ASSIGNMENT)
         // [trials] is the explicit resource bound. Preserve every distinct solution within that
         // fully enumerated assignment set; final QR payload parsing, not a per-block result cap,
         // decides which candidate is usable.
