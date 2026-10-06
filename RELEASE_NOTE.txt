@@ -1,4 +1,4 @@
-QR Repair v0.17.1
+QR Repair v0.18.0
 
 QR Repair helps recover damaged QR codes that ordinary readers cannot decode. Processing runs entirely offline on your Android device.
 
@@ -10,15 +10,12 @@ GETTING STARTED
 5. Tap Repair, then inspect the decoded content, alternative candidates, and explanations for repaired cells.
 
 WHAT'S NEW
-• Treat mirrored QR images as mirrored in Detailed settings. Finder roles and grid axes exchange while manual edits, fixed constraints, and Undo/Redo history follow the same image cells. This setting is saved per session and is OFF by default.
-• Additional-segment diagnostics compare possible starting positions after a terminator, including byte alignment across known zero bits. Inspect segment and control-header traces, ECI assignments, declared lengths, parsing failures, raw tail bits, and HEX. Completed segments remain visible when later parsing fails. This diagnostic analysis does not make a rejected candidate valid.
-• Unmask failed recovery attempts in the enlarged result view when an attempt provides a mask number. The mask source is shown; a failed attempt's mask is unverified.
-• Improved initial grid estimation and thresholds for low-contrast QR regions and partially cropped outer edges. Transparent image imports are composited onto white before analysis.
-• Corrected rectified previews and grid coordinates when changing QR versions or resizing images. After failed grid estimation or rectification, assign at least one Finder role before repair.
-• Pending saves are preserved when switching work or starting another import. Repeated saves retain the latest requested history and selected checkpoint.
-• Whitespace-only recovered text is preserved in result displays and comparisons, and single-segment trial diagnostics are clearer.
-• Saved work now uses QRR schema 25. Schemas 23 and 24 can also be opened with mirrored input OFF; schema 23 uses the default 12-bit partial-bit search limit. Other schemas cannot be opened, and sessions in the old storage location are not migrated.
-• The English and Japanese READMEs include an independently generated damaged-QR recovery example with reproducible inputs and results.
+• Added list decoding for damaged data beyond the correction range of conventional Reed-Solomon decoding. The app selects Guruswami–Sudan, Koetter–Vardy, or Wu decoding according to the input and estimated computation. Candidates still require QR structure validation, the selected input constraints, and final payload decoding before being reported as decoded.
+• List decoding also searches for alternatives when every ordinarily decoded candidate relies on partial-bit constraints, retaining candidates already found. It shares a five-minute cumulative limit per repair, supports interruption, and keeps validated candidates after timeout or insufficient memory. Known-bit mismatches are capped at 5% of all data/ECC bits, rounded up, or the selected Data/ECC error limit if smaller; a zero limit disables this fallback.
+• Reed-Solomon search now checks payload-structure constraints while streaming candidates. Diagnostics distinguish candidate recovery methods, search completion, and specific failure reasons, with calculation details available separately.
+• Text matrix imports automatically assign Finder roles and logical orientation when Finder, separator, and timing patterns clearly identify one rotation. Ambiguous or insufficient evidence leaves roles and orientation unassigned for manual review. Matrix dimensions, cell values, and eligible priority-search marks are preserved.
+• Added independently generated damaged-QR text examples demonstrating list decoding, with reproducible inputs and results.
+• Saved-work compatibility is unchanged: QRR schema 25 is used, schemas 23 and 24 can also be opened with mirrored input OFF, and schema 23 uses the default 12-bit partial-bit search limit. Other schemas cannot be opened, and sessions in the old storage location are not migrated.
 
 USEFUL FEATURES
 • Undo/Redo, detailed cell diagnostics, and recovered-image export.
