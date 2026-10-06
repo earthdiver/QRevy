@@ -167,7 +167,7 @@ class PreprocessDialogLayoutTest {
                 manualQuad = physical.transposed(), preRecoveryEdits = edits))
             MainActivity::class.java.getDeclaredMethod("showPreprocessDialog").apply { isAccessible = true }.invoke(activity)
             shadowOf(Looper.getMainLooper()).idle()
-            val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+            val dialog = preprocessDialog(activity)
             findText(dialog.window!!.decorView, "選択範囲を正方形に射影補正")!!.performClick()
             findExactText(dialog.window!!.decorView, "保存")!!.performClick()
             val saved = settingsField.get(activity) as PreprocessSettings
@@ -1168,7 +1168,7 @@ class PreprocessDialogLayoutTest {
         }
         shadowOf(Looper.getMainLooper()).idle()
 
-        val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+        val dialog = preprocessDialog(activity)
         val decor = dialog.window!!.decorView
         decor.measure(
             View.MeasureSpec.makeMeasureSpec(360, View.MeasureSpec.EXACTLY),
@@ -1242,6 +1242,46 @@ class PreprocessDialogLayoutTest {
         discardConfirm.getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
         assertTrue("破棄確認で戻った後に修復前設定が閉じています", dialog.isShowing)
     }
+
+    @Test
+    fun preprocessingDialogRemainsIdentifiableAfterAnotherDialogOpens() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        try {
+            val bitmap = Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888).apply {
+                eraseColor(Color.WHITE)
+            }
+            MainActivity::class.java.getDeclaredField("prepared").apply {
+                isAccessible = true
+                set(activity, BitmapUtils.prepare(bitmap))
+            }
+            MainActivity::class.java.getDeclaredMethod("showPreprocessDialog").apply {
+                isAccessible = true
+                invoke(activity)
+            }
+            shadowOf(Looper.getMainLooper()).idle()
+            val editor = preprocessDialog(activity)
+            val other = AlertDialog.Builder(activity).setMessage("Another dialog").create()
+            try {
+                other.show()
+                shadowOf(Looper.getMainLooper()).idle()
+                assertTrue(ShadowDialog.getLatestDialog() === other)
+                assertTrue(preprocessDialog(activity) === editor)
+            } finally {
+                other.dismiss()
+                editor.dismiss()
+            }
+        } finally {
+            controller.pause().stop().destroy()
+        }
+    }
+
+    private fun preprocessDialog(activity: MainActivity): AlertDialog =
+        ShadowDialog.getShownDialogs().filterIsInstance<AlertDialog>().single { dialog ->
+            dialog.isShowing && dialog.window?.decorView?.let { decor ->
+                findViews(decor, PreprocessOverlayView::class.java).any { it.context === activity }
+            } == true
+        }
 
     private fun findText(view: View, prefix: String): TextView? {
         if (view is TextView && view.text.toString().startsWith(prefix)) return view
