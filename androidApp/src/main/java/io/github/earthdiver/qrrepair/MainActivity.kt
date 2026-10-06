@@ -33,7 +33,6 @@ import android.text.format.DateFormat
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
-import android.widget.CheckBox
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.RadioButton
@@ -86,7 +85,6 @@ import io.github.earthdiver.qrrepair.ui.BitmapUtils
 import io.github.earthdiver.qrrepair.ui.RepairPreviewView
 import io.github.earthdiver.qrrepair.ui.ImageAdjustmentEditor
 import io.github.earthdiver.qrrepair.core.ImageAdjustment
-import io.github.earthdiver.qrrepair.ui.QrResultInspectorView
 import io.github.earthdiver.qrrepair.session.RecoverySessionStore
 import io.github.earthdiver.qrrepair.session.RecoverySessionCodec
 import io.github.earthdiver.qrrepair.session.SessionSaveQueue
@@ -975,209 +973,36 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun resultDocument(): RecoveryResultDocument? {
+        return RecoveryResultDocument(
+            before = recoveryState.sourceMatrix ?: return null,
+            after = recoveryState.inspectorMatrix ?: recoveryState.workingMatrix ?: return null,
+            geometry = recoveryState.geometry,
+            traces = recoveryState.traces,
+            candidate = recoveryState.selectedRecovery,
+            candidateIndex = recoveryState.recoveryIndex,
+            failureMask = recoveryState.failure?.dataMask,
+        )
+    }
+
     private fun showZoomableResult() {
-        var before = recoveryState.sourceMatrix ?: run { Toast.makeText(this, ui("表示できる結果がありません。", "No result is available."), Toast.LENGTH_SHORT).show(); return }
-        var displayedGeometry = recoveryState.geometry
-        var after = recoveryState.inspectorMatrix ?: recoveryState.workingMatrix ?: return
-        val detail = TextView(this).apply {
-            text = ui("セルをタップ：セルの修復理由を表示", "Tap a cell to view its repair reason")
-            textSize = 12f
-            setPadding(dp(12), dp(6), dp(12), dp(6))
-            setTextIsSelectable(true)
+        if (recoveryState.sourceMatrix == null) {
+            Toast.makeText(this, ui("表示できる結果がありません。", "No result is available."), Toast.LENGTH_SHORT).show()
+            return
         }
-        lateinit var relatedCellsButton: Button
-        var selectedCoord: Coord? = null
-        var showCellCalculations = false
-        var relatedCellsHighlighted = false
-        var revealEvidence: () -> Unit = {}
-        val view = QrResultInspectorView(this).apply { setComparisonEnabled(false) }
-        val unmask = CheckBox(this).apply {
-            text = ui("マスク解除", "Unmask")
-            setOnCheckedChangeListener { _, checked -> view.setUnmasked(checked) }
-        }
-        val maskDescription = TextView(this).apply {
-            textSize = 12f
-            setPadding(dp(12), 0, dp(12), dp(4))
-        }
-        fun refreshInspectorDocument(keepViewport: Boolean = false) {
-            val candidate = recoveryState.selectedRecovery
-            val mask = (candidate?.dataMask ?: recoveryState.failure?.dataMask)?.takeIf { it in 0..7 }
-            view.setDocument(before, after, recoveryState.traces, keepViewport = keepViewport, dataMask = mask)
-            unmask.isEnabled = mask != null
-            if (mask == null) unmask.isChecked = false
-            view.setUnmasked(unmask.isChecked)
-            maskDescription.text = when {
-                mask == null -> ui("マスク番号が取得できないため、マスク解除は使用できません。",
-                    "Unmask is unavailable because no mask number is available.")
-                candidate != null -> ui("使用マスク: $mask（選択候補）", "Display mask: $mask (selected candidate)")
-                else -> ui("使用マスク: $mask（失敗した試行・未検証）", "Display mask: $mask (failed attempt; unverified)")
-            }
-        }
-        refreshInspectorDocument()
-        fun refreshCellEvidence() {
-            val coord = selectedCoord
-            val found = coord?.let { findCodewordAt(it.x, it.y) }
-            val word = found?.let { recoveryState.selectedRecovery?.extraction?.codewords?.getOrNull(it.first) }
-            val formatGroup = coord?.let { FormatCellGroup.at(after.dimension, it.x, it.y) }
-            relatedCellsButton.text = formatGroup?.role?.buttonLabel() ?: ui("同じコード語を表示", "Show same codeword")
-            relatedCellsButton.isEnabled = formatGroup != null || word != null
-            relatedCellsButton.visibility = if (showCellCalculations) View.VISIBLE else View.GONE
-            view.clearHighlightedCodeword()
-            if (!showCellCalculations || (word == null && formatGroup == null)) relatedCellsHighlighted = false
-            if (coord == null) return
-            view.setSelected(coord.x, coord.y)
-            detail.text = buildString {
-                append(resultCellDetailText(coord.x, coord.y, after))
-                if (formatGroup != null && showCellCalculations) {
-                    if (relatedCellsHighlighted) view.setHighlightedCodeword(formatGroup.coordinates(after.dimension))
-                    append("\n\n").append(resultCellTechnicalText(coord.x, coord.y, after))
-                } else if (relatedCellsHighlighted && found != null && word != null) {
-                    view.setHighlightedCodeword(word.coordinates)
-                    append('\n').append(codewordDetailText(found.first, found.second))
-                } else if (showCellCalculations) {
-                    append("\n\n").append(resultCellTechnicalText(coord.x, coord.y, after))
-                }
-            }
-        }
-        view.onCellSelected = { x, y ->
-            selectedCoord = Coord(x, y)
-            relatedCellsHighlighted = false
-            revealEvidence()
-            refreshCellEvidence()
-        }
-        val displayedResults = displayedDecodedRecoveryEntries()
-        val candidateTabs = RadioGroup(this).apply {
-            orientation = RadioGroup.HORIZONTAL
-            displayedResults.forEachIndexed { resultIndex, (candidateIndex, _) ->
-                addView(RadioButton(this@MainActivity).apply {
-                    id = View.generateViewId()
-                    text = getString(
-                        R.string.result_tab,
-                        resultIndex + 1,
-                    )
-                    isChecked = candidateIndex == recoveryState.recoveryIndex
-                    setPadding(dp(10), 0, dp(10), 0)
-                    setOnClickListener {
-                        if (candidateIndex == recoveryState.recoveryIndex) return@setOnClickListener
-                        selectRecoveryCandidate(candidateIndex, recordSelection = true)
-                        val nextBefore = recoveryState.sourceMatrix ?: return@setOnClickListener
-                        val nextAfter = recoveryState.inspectorMatrix ?: recoveryState.workingMatrix ?: return@setOnClickListener
-                        val keepPosition = before === nextBefore && displayedGeometry == recoveryState.geometry &&
-                            after.dimension == nextAfter.dimension
-                        before = nextBefore
-                        after = nextAfter
-                        displayedGeometry = recoveryState.geometry
-                        refreshInspectorDocument(keepViewport = keepPosition)
-                        view.clearHighlightedCodeword()
-                        if (!keepPosition) {
-                            selectedCoord = null
-                            relatedCellsHighlighted = false
-                            detail.text = ui("表示位置をリセットしました。セルを選択してください。", "View reset. Select a cell.")
-                        }
-                        refreshCellEvidence()
-                    }
-                })
-            }
-        }
-        relatedCellsButton = button(ui("同じコード語を表示", "Show same codeword")) {
-            relatedCellsHighlighted = true
-            refreshCellEvidence()
-        }.apply { isEnabled = false; visibility = View.GONE }
-        val detailPanel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            if (modernStyle) {
-                PrecisionStyle.panel(this)
-                setPadding(dp(8), dp(8), dp(8), dp(8))
-                addView(TextView(this@MainActivity).apply {
-                    text = ui("セルの修復根拠", "Cell repair evidence")
-                    setTextColor(PrecisionStyle.ACCENT)
-                    textSize = 16f
-                    setPadding(dp(12), 0, dp(12), dp(4))
-                })
-                addView(detail)
-            } else {
-                setBackgroundColor(0xFFF4F4F4.toInt())
-                addView(detail)
-            }
-            addView(button(ui("計算の説明を表示／閉じる", "Show/hide calculation details")) {
-                showCellCalculations = !showCellCalculations
-                refreshCellEvidence()
-            })
-            addView(relatedCellsButton)
-        }
-        val evidenceScroll = ScrollView(this).apply {
-            isFillViewport = true
-            addView(detailPanel)
-            visibility = View.GONE
-        }
-        val evidenceToggle = button(getString(R.string.show_evidence)) {
-            evidenceScroll.visibility = if (evidenceScroll.visibility == View.VISIBLE) View.GONE else View.VISIBLE
-        }
-        revealEvidence = { evidenceScroll.visibility = View.VISIBLE }
-        val legend = TextView(this).apply {
-            text = ui(
-                "セル: 黒=1 / 白=0 / 灰色×=不明\n枠: 緑=QRの固定構造 / 黄土色=形式情報 / 橙=RS誤り訂正 / 紫=データ構造の条件 / 赤紫=ビット候補探索 / 青=手動指定",
-                "Cells: black=1 / white=0 / grey ×=unknown\nBorders: green=QR structure / ochre=format / orange=RS correction / purple=payload constraints / magenta=bit search / blue=manual entry")
-            textSize = 12f
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-            visibility = View.GONE
-        }
-        detailPanel.addView(legend)
-        val comparison = RadioGroup(this).apply {
-            orientation = RadioGroup.HORIZONTAL
-            for ((index, label) in listOf(ui("修復後", "After"), ui("修復前", "Before"), ui("左右で比較", "Compare")).withIndex()) {
-                addView(RadioButton(this@MainActivity).apply {
-                    id = View.generateViewId()
-                    text = label
-                    isChecked = index == 0
-                    setOnClickListener {
-                        view.setComparisonEnabled(index != 0)
-                        view.setBeforeFraction(if (index == 1) 1f else .5f)
-                    }
-                })
-            }
-        }
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            if (displayedResults.size > 1) addView(HorizontalScrollView(this@MainActivity).apply {
-                isHorizontalScrollBarEnabled = false
-                addView(candidateTabs)
-            })
-            addView(HorizontalScrollView(this@MainActivity).apply {
-                addView(LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    addView(comparison)
-                    addView(unmask)
-                })
-            })
-            addView(maskDescription)
-            addView(view, LinearLayout.LayoutParams(-1, 0, 1f))
-            addView(TextView(this@MainActivity).apply {
-                text = ui("左右の移動・拡大は連動します。セルをタップすると修復理由を表示します。", "Both sides pan and zoom together. Tap a cell for its repair reason.")
-                textSize = 13f
-                setPadding(dp(12), 0, dp(12), 0)
-            })
-            addView(evidenceToggle)
-            addView(evidenceScroll, LinearLayout.LayoutParams(-1, 0, .65f))
-            addView(button(ui("色と記号の説明", "Colors and symbols")) {
-                legend.visibility = if (legend.visibility == View.VISIBLE) View.GONE else View.VISIBLE
-                evidenceScroll.visibility = View.VISIBLE
-                if (legend.visibility == View.VISIBLE) evidenceScroll.post { evidenceScroll.smoothScrollTo(0, legend.top) }
-            })
-        }
-        val dialog = AlertDialog.Builder(this)
-            .setTitle(ui("修復結果（ピンチで拡大）", "Repair result (pinch to zoom)"))
-            .setView(content)
-            .setPositiveButton(R.string.close, null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.window?.setLayout(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                (resources.displayMetrics.heightPixels * .9f).toInt(),
-            )
-        }
-        dialog.show()
+        RecoveryResultDialog(
+            activity = this,
+            modernStyle = modernStyle,
+            initialDocument = resultDocument() ?: return,
+            candidateIndices = displayedDecodedRecoveryEntries().map { it.first },
+            selectCandidate = { index ->
+                selectRecoveryCandidate(index, recordSelection = true)
+                resultDocument()
+            },
+            cellDescription = ::resultCellDetailText,
+            cellTechnicalDescription = ::resultCellTechnicalText,
+            codewordDescription = ::codewordDetailText,
+        ).show()
     }
 
     private fun selectRecoveryCandidate(index: Int, recordSelection: Boolean) {
