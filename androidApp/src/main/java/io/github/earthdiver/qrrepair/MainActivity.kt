@@ -46,6 +46,9 @@ import io.github.earthdiver.qrrepair.core.CodewordHex
 import io.github.earthdiver.qrrepair.core.CodewordExtractor
 import io.github.earthdiver.qrrepair.core.Coord
 import io.github.earthdiver.qrrepair.core.FinderRole
+import io.github.earthdiver.qrrepair.core.FinderPolarity
+import io.github.earthdiver.qrrepair.core.PointD
+import io.github.earthdiver.qrrepair.core.ImageQuad
 import io.github.earthdiver.qrrepair.core.FormatSolver
 import io.github.earthdiver.qrrepair.core.GridGeometry
 import io.github.earthdiver.qrrepair.core.GeometryModel
@@ -61,6 +64,8 @@ import io.github.earthdiver.qrrepair.core.QrMatrix
 import io.github.earthdiver.qrrepair.core.FormatEditPolicy
 import io.github.earthdiver.qrrepair.core.FormatEditConflict
 import io.github.earthdiver.qrrepair.core.QrTextMatrixParser
+import io.github.earthdiver.qrrepair.core.QrTextMatrixOrientationEstimator
+import io.github.earthdiver.qrrepair.core.QrCellRegions
 import io.github.earthdiver.qrrepair.core.RecoveryCandidate
 import io.github.earthdiver.qrrepair.core.RecoveryFailure
 import io.github.earthdiver.qrrepair.core.SearchCompleteness
@@ -2150,14 +2155,22 @@ class MainActivity : Activity() {
                 val quietModules = 4
                 val center = quietModules * moduleSize + (moduleSize - 1) / 2.0
                 val last = center + (parsed.matrix.dimension - 1) * moduleSize
-                val quad = io.github.earthdiver.qrrepair.core.ImageQuad(
-                    io.github.earthdiver.qrrepair.core.PointD(center, center),
-                    io.github.earthdiver.qrrepair.core.PointD(last, center),
-                    io.github.earthdiver.qrrepair.core.PointD(last, last),
-                    io.github.earthdiver.qrrepair.core.PointD(center, last),
-                )
+                val orientation = QrTextMatrixOrientationEstimator.estimate(parsed.matrix)
+                val physicalCorners = listOf(PointD(center, center), PointD(last, center),
+                    PointD(last, last), PointD(center, last))
+                val corners = List(4) { physicalCorners[(it + (orientation?.quarterTurns ?: 0)) % 4] }
+                val quad = ImageQuad(corners[0], corners[1], corners[2], corners[3])
+                val finders = orientation?.finderCenters?.mapValues { (_, cell) ->
+                    PointD(center + cell.x * moduleSize, center + cell.y * moduleSize)
+                }.orEmpty()
                 val priority = parsed.matrix.prioritySearchCoordinates()
-                    .mapTo(linkedSetOf()) { io.github.earthdiver.qrrepair.core.Coord(it.first, it.second) }
+                    .mapTo(linkedSetOf()) { Coord(it.first, it.second) }
+                val edits = PreRecoveryCellEditState(priority.associateWith { ModuleValue.ERASED }, priority)
+                val removedPriority = if (orientation != null) {
+                    edits.rotateCoordinates(parsed.matrix.dimension, orientation.quarterTurns)
+                    val allowed = QrCellRegions(parsed.version).codewordCoordinates
+                    edits.revalidatePrioritySearch { it in allowed }
+                } else emptySet()
                 val settings = PreprocessSettings(
                     polarity = PolarityMode.NORMAL,
                     automaticThresholds = false,
@@ -2168,10 +2181,12 @@ class MainActivity : Activity() {
                     lockCorners = true,
                     lockVersion = true,
                     manualQuad = quad,
-                    logicalGridAssigned = false,
-                    preRecoveryEdits = priority.associateWith { ModuleValue.ERASED },
+                    manualFinders = finders,
+                    logicalGridAssigned = finders.isNotEmpty(),
+                    confirmedFinderPolarity = if (finders.isNotEmpty()) FinderPolarity.NORMAL else FinderPolarity.UNKNOWN,
+                    preRecoveryEdits = edits.edits.toMap(),
                     preRecoverySoftEdits = emptySet(),
-                    preRecoveryPrioritySearch = priority,
+                    preRecoveryPrioritySearch = edits.prioritySearch.toSet(),
                 ).withInitialErrorLimits()
                 if (token != workGeneration.get()) {
                     p.bitmap.recycle()
@@ -2203,21 +2218,34 @@ class MainActivity : Activity() {
                         RecoveryHistoryEntry(
                             kind = HistoryEventKind.IMPORT,
                             label = ui("テキスト行列を読み込み", "Imported text matrix"),
-                            detail = ui("V${parsed.version} / ${parsed.matrix.dimension}×${parsed.matrix.dimension}", "Version ${parsed.version} / ${parsed.matrix.dimension}×${parsed.matrix.dimension}"),
+                            detail = ui("V${parsed.version} / ${parsed.matrix.dimension}×${parsed.matrix.dimension}", "Version ${parsed.version} / ${parsed.matrix.dimension}×${parsed.matrix.dimension}") +
+                                (if (finders.isNotEmpty()) ui("; Finder位置・役割を自動設定", "; Finder positions and roles assigned automatically") else "") +
+                                (if (removedPriority.isNotEmpty()) "\n" + getString(R.string.priority_revalidated,
+                                    removedPriority.joinToString(" ") { "(${it.x},${it.y})" }) else ""),
                             snapshot = RecoverySnapshot(null, null, null, -1, settings),
                         ),
                     )
                     persistSessionAsync()
-                    guideText.text = ui(
+                    guideText.text = if (finders.isNotEmpty()) ui(
+                        "案内: テキスト行列からFinderの位置・役割と向きを自動設定しました。緑のFinderを確認してください。",
+                        "Guide: Finder positions, roles, and orientation were assigned automatically from the text matrix. Review the green Finders.",
+                    ) else ui(
                         "案内: テキスト行列から作成した疑似画像です。向きは未確定です。Finderの役割を指定すると向きが確定します。",
                         "Guide: This synthetic image was created from the text matrix. Its orientation is unassigned. Assign a Finder role to set the orientation.",
                     )
                     contentPreviewText.text = getString(R.string.no_content_preview)
                     statusText.text = ui(
-                        "テキスト行列を読み込みました（V${parsed.version}、${priority.size}個の*）。",
-                        "Text matrix imported (Version ${parsed.version}, ${priority.size} * cell(s)).",
+                        "テキスト行列を読み込みました（V${parsed.version}、${settings.preRecoveryPrioritySearch.size}個の*）。",
+                        "Text matrix imported (Version ${parsed.version}, ${settings.preRecoveryPrioritySearch.size} * cell(s)).",
                     )
                     if (standardResult != null) showImmediateQrResult(standardResult) else showPreprocessDialog()
+                    if (removedPriority.isNotEmpty()) {
+                        AlertDialog.Builder(this@MainActivity)
+                            .setMessage(getString(R.string.priority_revalidated,
+                                removedPriority.joinToString(" ") { "(${it.x},${it.y})" }))
+                            .setPositiveButton(android.R.string.ok, null)
+                            .show()
+                    }
                 }
                 bitmap = null // ownership moved to Prepared/UI
             } catch (t: Throwable) {

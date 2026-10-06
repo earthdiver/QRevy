@@ -91,6 +91,8 @@ enum class FinderRole { TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT;
 }
 enum class GeometryModel { SIMILARITY, TWO_FINDER, AFFINE, PROJECTIVE, MANUAL_PROJECTIVE }
 
+data class Coord(val x: Int, val y: Int)
+
 data class PointD(val x: Double, val y: Double) {
     operator fun plus(other: PointD) = PointD(x + other.x, y + other.y)
     operator fun minus(other: PointD) = PointD(x - other.x, y - other.y)

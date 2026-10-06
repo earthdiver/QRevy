@@ -291,8 +291,6 @@ object FormatSolver {
     private fun bitLength(v: Int): Int = if (v == 0) 0 else 32 - Integer.numberOfLeadingZeros(v)
 }
 
-data class Coord(val x: Int, val y: Int)
-
 data class PartialCodeword(
     val value: Int,
     val unknownBits: Int,
