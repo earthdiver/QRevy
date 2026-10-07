@@ -44,7 +44,7 @@ internal class RecoveryResultDialog(
     private val activity: Activity,
     private val modernStyle: Boolean,
     private val initialDocument: RecoveryResultDocument,
-    private val candidateIndices: List<Int>,
+    private val candidates: List<Pair<Int, RecoveryCandidate>>,
     private val selectCandidate: (Int) -> RecoveryResultDocument?,
     private val cellDescription: (Int, Int, QrMatrix) -> String,
     private val cellTechnicalDescription: (Int, Int, QrMatrix) -> String,
@@ -123,7 +123,7 @@ internal class RecoveryResultDialog(
         }
         val candidateTabs = RadioGroup(this).apply {
             orientation = RadioGroup.HORIZONTAL
-            candidateIndices.forEachIndexed { resultIndex, candidateIndex ->
+            candidates.forEachIndexed { resultIndex, (candidateIndex, _) ->
                 addView(RadioButton(activity).apply {
                     id = View.generateViewId()
                     text = getString(
@@ -215,9 +215,19 @@ internal class RecoveryResultDialog(
         }
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            if (candidateIndices.size > 1) addView(HorizontalScrollView(activity).apply {
+            if (candidates.size > 1) addView(HorizontalScrollView(activity).apply {
                 isHorizontalScrollBarEnabled = false
-                addView(candidateTabs)
+                addView(LinearLayout(activity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(button(ui("候補の内容一覧", "Candidate contents")) {
+                        CandidateContentsDialog(activity, candidates, document.candidateIndex) { index ->
+                            val position = candidates.indexOfFirst { it.first == index }
+                            candidateTabs.getChildAt(position)?.performClick()
+                        }.show()
+                    })
+                    addView(candidateTabs)
+                })
             })
             addView(HorizontalScrollView(activity).apply {
                 addView(LinearLayout(activity).apply {

@@ -186,6 +186,91 @@ class ResultScreenTrialTest {
         }
     }
 
+    @Test fun candidateContentsListPreservesFullTextAndSelectsFromBothResultViews() {
+        val payload = "https://example.org/?secret=" + "abcd".repeat(80)
+        val (matrix, first) = candidate(payload)
+        val (_, second) = candidate("byte payload")
+        val displayedFirst = first.copy(formatMismatches = 2, knownBitMismatchesAfterCorrection = 7,
+            manualDataEccMismatches = 1, correctedErrataSymbols = 3)
+        for (style in AppStyle.entries) for (language in AppLanguage.entries) withActivity(style, language) { activity ->
+            install(activity, matrix, listOf(first.copy(text = null, dataBytes = byteArrayOf(1)), displayedFirst, second.copy(text = null)))
+            field<RecoveryUiState>(activity, "recoveryState").selectRecovery(1)
+            refresh(activity)
+            fun openList(root: View): AlertDialog {
+                descendants(root).filterIsInstance<Button>().first {
+                    it.text.toString() == if (language == AppLanguage.JAPANESE) "候補の内容一覧" else "Candidate contents"
+                }.performClick()
+                return ShadowDialog.getLatestDialog() as AlertDialog
+            }
+            val dialog = openList(field(activity, "upperResultSelector"))
+            val list = descendants(dialog.window!!.decorView).filterIsInstance<android.widget.ListView>().single()
+            assertEquals(2, list.adapter.count)
+            val firstRow = list.adapter.getView(0, null, list) as android.widget.RadioButton
+            val firstMetrics = if (language == AppLanguage.JAPANESE)
+                "  ―  データ・ECCの不一致: 7bit"
+                else "  ―  Data/ECC mismatches: 7bit"
+            assertEquals(activity.getString(R.string.result_tab, 1) + firstMetrics + "\n" + payload, firstRow.text.toString())
+            assertTrue(firstRow.isChecked)
+            val overview = field<TextView>(activity, "contentPreviewText").text as android.text.Spanned
+            val overviewBackground = overview.getSpans(0, overview.length, android.text.style.BackgroundColorSpan::class.java).single()
+            val overviewForeground = overview.getSpans(0, overview.length, android.text.style.ForegroundColorSpan::class.java).single()
+            fun assertPayloadHighlight(row: TextView, expected: String) {
+                val styled = row.text as android.text.Spanned
+                val background = styled.getSpans(0, styled.length, android.text.style.BackgroundColorSpan::class.java).single()
+                val foreground = styled.getSpans(0, styled.length, android.text.style.ForegroundColorSpan::class.java).single()
+                val contentStart = styled.toString().indexOf('\n') + 1
+                for (span in listOf(background, foreground)) {
+                    assertEquals(contentStart, styled.getSpanStart(span))
+                    assertEquals(styled.length, styled.getSpanEnd(span))
+                    assertEquals(expected, styled.subSequence(styled.getSpanStart(span), styled.getSpanEnd(span)).toString())
+                }
+                assertEquals(overviewBackground.backgroundColor, background.backgroundColor)
+                assertEquals(overviewForeground.foregroundColor, foreground.foregroundColor)
+            }
+            assertPayloadHighlight(firstRow, payload)
+            val binaryRow = list.adapter.getView(1, firstRow, list) as TextView
+            val secondMetrics = if (language == AppLanguage.JAPANESE)
+                "  ―  データ・ECCの不一致: 0bit"
+                else "  ―  Data/ECC mismatches: 0bit"
+            assertEquals(activity.getString(R.string.result_tab, 2) + secondMetrics + "\nbyte payload", binaryRow.text.toString())
+            assertPayloadHighlight(binaryRow, "byte payload")
+            list.performItemClick(binaryRow, 1, list.adapter.getItemId(1))
+            assertFalse(dialog.isShowing)
+            assertEquals(2, field<RecoveryUiState>(activity, "recoveryState").recoveryIndex)
+            MainActivity::class.java.getDeclaredMethod("showZoomableResult").apply { isAccessible = true }.invoke(activity)
+            val enlarged = ShadowDialog.getLatestDialog() as AlertDialog
+            val contentDialog = openList(enlarged.window!!.decorView)
+            val contents = descendants(contentDialog.window!!.decorView).filterIsInstance<android.widget.ListView>().single()
+            assertTrue((contents.adapter.getView(1, null, contents) as android.widget.RadioButton).isChecked)
+            contents.performItemClick(contents.adapter.getView(0, null, contents), 0, contents.adapter.getItemId(0))
+            assertEquals(1, field<RecoveryUiState>(activity, "recoveryState").recoveryIndex)
+            val selectedTab = descendants(enlarged.window!!.decorView).filterIsInstance<android.widget.RadioButton>()
+                .first { it.text.toString() == activity.getString(R.string.result_tab, 1) }
+            assertTrue(selectedTab.isChecked)
+            assertTrue(field<TextView>(activity, "contentPreviewText").text.contains(payload))
+            enlarged.dismiss()
+        }
+    }
+
+    @Test fun candidateContentsListCapsAt256AndRetainsDuplicateTextAndOriginalIndices() {
+        val (_, result) = candidate("same text")
+        withActivity(AppStyle.MODERN, AppLanguage.ENGLISH) { activity ->
+            var selected = -1
+            CandidateContentsDialog(activity, (0..256).map { (it * 2 + 1) to result }, 511) {
+                selected = it
+            }.show()
+            val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+            val list = descendants(dialog.window!!.decorView).filterIsInstance<android.widget.ListView>().single()
+            assertEquals(256, list.adapter.count)
+            val row = list.adapter.getView(255, null, list) as android.widget.RadioButton
+            assertEquals(activity.getString(R.string.result_tab, 256) +
+                "  ―  Data/ECC mismatches: 0bit\nsame text", row.text.toString())
+            assertTrue(row.isChecked)
+            list.performItemClick(row, 255, list.adapter.getItemId(255))
+            assertEquals(511, selected)
+        }
+    }
+
     @Test fun binaryAndRsOnlyCandidatesHaveDifferentStatesAndNoTextCopy() {
         val (matrix, result) = candidate("ABC-123")
         withActivity(AppStyle.MODERN, AppLanguage.JAPANESE) { activity ->

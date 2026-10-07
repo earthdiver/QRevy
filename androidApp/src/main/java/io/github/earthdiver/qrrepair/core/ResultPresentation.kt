@@ -2,6 +2,18 @@ package io.github.earthdiver.qrrepair.core
 
 import io.github.earthdiver.qrrepair.localizedText
 
+/** Convert the payload, never the framed data codewords or their padding, for candidate review. */
+fun RecoveryCandidate.candidateContentText(): String {
+    val content = text ?: runCatching {
+        com.google.zxing.qrcode.decoder.ZxingPayloadBridge.decodeData(dataBytes, version, ecLevel, null).text
+    }.getOrNull()
+    return when (content) {
+        null -> localizedText("内容を文字列として表示できませんでした。", "The content could not be displayed as text.")
+        "" -> localizedText("（空の文字列）", "(empty text)")
+        else -> content
+    }
+}
+
 /** Result overview. Technical encoding/HEX information remains available in diagnostics. */
 fun QrContentPreview.resultContentText(fullText: String?, onRecoveredText: ((Int, Int) -> Unit)? = null): String = buildString {
     fun appendRecovered(value: String) {

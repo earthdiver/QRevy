@@ -997,7 +997,7 @@ class MainActivity : Activity() {
             activity = this,
             modernStyle = modernStyle,
             initialDocument = resultDocument() ?: return,
-            candidateIndices = displayedDecodedRecoveryEntries().map { it.first },
+            candidates = displayedDecodedRecoveryEntries(),
             selectCandidate = { index ->
                 selectRecoveryCandidate(index, recordSelection = true)
                 resultDocument()
@@ -1053,6 +1053,12 @@ class MainActivity : Activity() {
             selector.addView(HorizontalScrollView(this).apply {
                 isHorizontalScrollBarEnabled = false
                 addView(resultRadioGroup(results) { renderMainResultSelection() })
+            })
+            selector.addView(button(ui("候補の内容一覧", "Candidate contents")) {
+                CandidateContentsDialog(this, results, recoveryState.recoveryIndex,
+                    candidateSelectionLabel(allResults.size)) { index ->
+                    selectRecoveryCandidate(index, recordSelection = true)
+                }.show()
             })
             if (selector === upperResultSelector) {
                 val current = results.firstOrNull { it.first == recoveryState.recoveryIndex } ?: results.first()

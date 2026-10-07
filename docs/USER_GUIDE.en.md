@@ -142,6 +142,8 @@ Review results in this order:
 
 Use **Show diagnostics** for the search and candidate report. Open **Show detailed results** for the enlarged QR, then tap a cell to inspect provenance. **Show same codeword** highlights the other cells in its eight-bit codeword. Format-information cells show their role and bit position; calculation details compare both copies before and after repair and after removing the fixed format mask. The button changes to **Show ECC level cells**, **Show mask number cells**, or **Show format correction bits**, highlighting related cells in both copies. When multiple candidates remain, compare their content and candidate-agreement scope.
 
+When multiple candidates remain, **Candidate contents** opens a scrollable list of the full decoded text for up to 256 candidates, including text converted from byte payloads using the decoder’s character encoding. You can also check each candidate’s data/ECC-region mismatch count against known input values. Tap a candidate’s text to select it and update the result. The list is also available in the enlarged result.
+
 On the recovery result screen, **Analyze additional segments after terminator** appears below the diagnostics only when error-correction candidates were rejected because the QR data structure did not validate. It examines the data remaining after the four-bit terminator identified from the payload structure.
 
 - Analysis starts immediately after the terminator and also tries the next byte boundary when all intervening bits are known zeros. Both paths skip consecutive known `0000` sequences in four-bit steps, preserving ECI and FNC1 context. Unknown bits are never treated as zeros to skip them.
