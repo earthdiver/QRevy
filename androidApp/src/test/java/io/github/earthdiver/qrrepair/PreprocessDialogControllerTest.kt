@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Canvas
 import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
@@ -79,6 +80,75 @@ class PreprocessDialogControllerTest {
         val estimate = InitialGridEstimator.estimate(image, emptyList())
         assertNull(estimate)
         checkRequiresFinderAfterSaving(PreprocessSettings().withInitialGrid(estimate))
+    }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun selectingAVersionShowsAnUnorientedGridUntilAFinderRoleIsAssigned() {
+        fun assertGridVisible(overlay: PreprocessOverlayView, visible: Boolean) {
+            overlay.layout(0, 0, 240, 240)
+            val rendered = Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888)
+            try {
+                overlay.draw(Canvas(rendered))
+                // Inspect the interior, away from the cyan outer boundary and corner handles.
+                val cyanInside = (80 until 160).any { y -> (80 until 160).any { x ->
+                    val pixel = rendered.getPixel(x, y)
+                    Color.red(pixel) < 240 && Color.green(pixel) > 240 && Color.blue(pixel) > 240
+                } }
+                assertEquals("Interior grid visibility", visible, cyanInside)
+            } finally { rendered.recycle() }
+        }
+        for (style in AppStyle.entries) for (mirrored in listOf(false, true)) for (requested in listOf(1, 2)) {
+            val initial = PreprocessSettings(mirroredInput = mirrored).withInitialGrid(null)
+            lateinit var savedSettings: PreprocessSettings
+            withDialog(initial, style) { dialog, host, _, _ ->
+                val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
+                val originalQuad = overlay.imageQuad()
+                assertGridVisible(overlay, false)
+                click(dialog, "QRバージョン: 1 / 21×21セル")
+                (ShadowDialog.getLatestDialog() as AlertDialog).dismiss()
+                assertGridVisible(overlay, false)
+                click(dialog, "QRバージョン: 1 / 21×21セル")
+                (ShadowDialog.getLatestDialog() as AlertDialog).listView.performItemClick(null,
+                    requested - 1, (requested - 1).toLong())
+                assertGridVisible(overlay, true)
+                assertEquals(originalQuad, overlay.imageQuad())
+                assertFalse(overlay.isLogicalGridAssigned())
+                assertTrue(overlay.finderPoints().isEmpty())
+                click(dialog, "保存")
+                val saved = host.saves.single()
+                savedSettings = saved.settings
+                assertEquals(requested, savedSettings.version)
+                assertEquals(originalQuad, savedSettings.manualQuad)
+                assertNull(savedSettings.logicalQuad)
+                assertEquals(0, recover(saved).attemptedGeometries)
+            }
+            withDialog(savedSettings, style) { dialog, host, _, _ ->
+                val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
+                assertGridVisible(overlay, true)
+                assertFalse(overlay.isLogicalGridAssigned())
+                overlay.setFinderPoint(FinderRole.TOP_LEFT, overlay.expectedFinderCenter(FinderRole.TOP_LEFT))
+                click(dialog, "保存")
+                assertTrue(recover(host.saves.single()).attemptedGeometries > 0)
+            }
+        }
+    }
+
+    @Test fun selectingTheCurrentVersionPreservesFinderAssignmentsAndCellEdits() {
+        val roles = mapOf(FinderRole.TOP_LEFT to PointD(50.0, 50.0))
+        val edits = mapOf(Coord(10, 12) to ModuleValue.ONE)
+        val initial = PreprocessSettings(manualFinders = roles, preRecoveryEdits = edits)
+        withDialog(initial) { dialog, host, _, _ ->
+            val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
+            val originalQuad = overlay.imageQuad()
+            click(dialog, "QRバージョン: 1 / 21×21セル")
+            (ShadowDialog.getLatestDialog() as AlertDialog).listView.performItemClick(null, 0, 0L)
+            click(dialog, "保存")
+            val saved = host.saves.single().settings
+            assertEquals(originalQuad, saved.logicalQuad)
+            assertEquals(roles, saved.manualFinders)
+            assertEquals(edits, saved.preRecoveryEdits)
+        }
     }
 
     @Test fun importedProvisionalCornersRequireAFinderRoleBeforeRepair() {

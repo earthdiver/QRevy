@@ -294,6 +294,7 @@ internal class PreprocessDialogController(
             committedVersion = nextVersion
             version.progress = committedVersion - 1
             overlay.setVersion(committedVersion)
+            if (!overlay.isLogicalGridAssigned()) overlay.setPhysicalImageQuad(overlay.imageQuad())
             revalidatePrioritySearch()
             refreshLabels()
             noteDraftChange("version", ui("QRバージョンを変更", "Changed QR Version"), committedVersion.toString())
@@ -301,7 +302,12 @@ internal class PreprocessDialogController(
         }
         fun requestVersion(requested: Int) {
             overlay.clearCornerSelection()
-            if (requested == committedVersion || versionConfirmationShowing) return
+            if (versionConfirmationShowing) return
+            if (requested == committedVersion) {
+                if (!overlay.isLogicalGridAssigned()) overlay.setPhysicalImageQuad(overlay.imageQuad())
+                refreshLabels()
+                return
+            }
             if (cellEditState.edits.isNotEmpty()) {
                 versionConfirmationShowing = true
                 AlertDialog.Builder(activity)
