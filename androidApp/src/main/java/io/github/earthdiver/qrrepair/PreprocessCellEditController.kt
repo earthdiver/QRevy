@@ -105,5 +105,5 @@ internal class PreprocessCellEditController(
         takeIf { coord.x in 0 until dimension && coord.y in 0 until dimension }?.get(coord.x, coord.y)?.value
 
     private fun ui(japanese: String, english: String): String =
-        if (context.resources.configuration.locales[0]?.language == "ja") japanese else english
+        localizedText(japanese, english)
 }

@@ -1244,10 +1244,10 @@ internal class PreprocessDialogController(
     private fun dp(value: Int): Int = (value * activity.resources.displayMetrics.density).toInt()
 
     private fun isJapaneseUi(): Boolean =
-        activity.resources.configuration.locales[0]?.language == "ja"
+        AppLanguageManager.isJapanese
 
     private fun ui(japanese: String, english: String): String =
-        if (isJapaneseUi()) japanese else english
+        localizedText(japanese, english)
 
     private fun showFormatEditError(conflict: FormatEditConflict) {
         AlertDialog.Builder(activity)

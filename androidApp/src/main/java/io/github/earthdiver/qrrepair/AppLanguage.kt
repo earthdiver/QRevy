@@ -2,6 +2,7 @@ package io.github.earthdiver.qrrepair
 
 import android.content.Context
 import android.content.res.Configuration
+import android.content.res.Resources
 import java.util.Locale
 
 internal enum class AppLanguage(val tag: String) {
@@ -14,6 +15,8 @@ internal object AppLanguageManager {
     private const val KEY_LANGUAGE = "language"
     @Volatile internal var current: AppLanguage = AppLanguage.JAPANESE
         private set
+
+    val isJapanese: Boolean get() = current == AppLanguage.JAPANESE
 
     fun selected(context: Context): AppLanguage {
         val saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -45,20 +48,29 @@ internal object AppLanguageManager {
             .apply()
     }
 
-    /** Applies a user-selected locale without recreating the Activity and losing in-memory work. */
+    /** Keeps Android string resources aligned with the same language used by dynamic text. */
     @Suppress("DEPRECATION")
+    fun localizedResources(resources: Resources): Resources {
+        if (resources.configuration.locales[0]?.language != current.tag) {
+            val configuration = Configuration(resources.configuration).apply {
+                val locale = Locale.forLanguageTag(current.tag)
+                setLocale(locale)
+                setLayoutDirection(locale)
+            }
+            resources.updateConfiguration(configuration, resources.displayMetrics)
+        }
+        return resources
+    }
+
+    /** Applies a user-selected locale without recreating the Activity and losing in-memory work. */
     fun applyTo(context: Context, language: AppLanguage) {
         save(context, language)
         current = language
         val locale = Locale.forLanguageTag(language.tag)
         Locale.setDefault(locale)
-        val configuration = Configuration(context.resources.configuration).apply {
-            setLocale(locale)
-            setLayoutDirection(locale)
-        }
-        context.resources.updateConfiguration(configuration, context.resources.displayMetrics)
+        localizedResources(context.resources)
     }
 }
 
 internal fun localizedText(japanese: String, english: String): String =
-    if (AppLanguageManager.current == AppLanguage.JAPANESE) japanese else english
+    if (AppLanguageManager.isJapanese) japanese else english

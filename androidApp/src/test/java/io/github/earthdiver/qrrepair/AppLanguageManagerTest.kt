@@ -2,6 +2,8 @@ package io.github.earthdiver.qrrepair
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.res.Configuration
+import java.util.Locale
 import android.os.Looper
 import android.widget.TextView
 import org.junit.Assert.assertEquals
@@ -65,6 +67,102 @@ class AppLanguageManagerTest {
         assertEquals("復号内容: 日本語", (contentField.get(activity) as TextView).text.toString())
         assertNotNull(findText(activity.window.decorView, "Menu"))
         clearPreference(activity)
+    }
+
+    @Test
+    @Config(sdk = [35], qualifiers = "en-rUS")
+    @Suppress("DEPRECATION")
+    fun activityResourcesAndDynamicTextFollowTheSavedLanguageAfterResourceDrift() {
+        val app = org.robolectric.RuntimeEnvironment.getApplication()
+        clearPreference(app)
+        AppLanguageManager.save(app, AppLanguage.JAPANESE)
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        try {
+            for (language in listOf(AppLanguage.JAPANESE, AppLanguage.ENGLISH, AppLanguage.JAPANESE)) {
+                AppLanguageManager.applyTo(activity, language)
+                val rawResources = activity.baseContext.resources
+                rawResources.updateConfiguration(Configuration(rawResources.configuration).apply {
+                    setLocale(if (language == AppLanguage.JAPANESE) Locale.ENGLISH else Locale.JAPANESE)
+                }, rawResources.displayMetrics)
+                assertEquals(language, AppLanguageManager.selected(activity))
+                assertEquals(if (language == AppLanguage.JAPANESE) "メニュー" else "Menu",
+                    activity.getString(R.string.menu))
+                assertEquals(language.tag, activity.resources.configuration.locales[0].language)
+                assertEquals(if (language == AppLanguage.JAPANESE) "日本語" else "English",
+                    localizedText("日本語", "English"))
+                val ui = MainActivity::class.java.getDeclaredMethod("ui", String::class.java, String::class.java)
+                    .apply { isAccessible = true }
+                assertEquals(localizedText("日本語", "English"), ui.invoke(activity, "日本語", "English"))
+            }
+        } finally {
+            controller.pause().stop().destroy()
+            clearPreference(app)
+        }
+    }
+
+    @Test
+    @Config(sdk = [35], qualifiers = "en-rUS")
+    @Suppress("DEPRECATION")
+    fun cameraResourcesFollowTheSameAppLanguageAfterResourceDrift() {
+        val app = org.robolectric.RuntimeEnvironment.getApplication()
+        clearPreference(app)
+        AppLanguageManager.save(app, AppLanguage.JAPANESE)
+        val controller = Robolectric.buildActivity(CameraActivity::class.java).setup()
+        val activity = controller.get()
+        try {
+            val rawResources = activity.baseContext.resources
+            rawResources.updateConfiguration(Configuration(rawResources.configuration).apply {
+                setLocale(Locale.ENGLISH)
+            }, rawResources.displayMetrics)
+            assertEquals("メニュー", activity.getString(R.string.menu))
+            assertEquals(AppLanguage.JAPANESE, AppLanguageManager.current)
+        } finally {
+            controller.pause().stop().destroy()
+            clearPreference(app)
+        }
+    }
+
+    @Test
+    @Config(sdk = [35], qualifiers = "en-rUS")
+    fun newLaunchWithoutASavedChoiceUsesTheSystemLanguageForAllText() {
+        val app = org.robolectric.RuntimeEnvironment.getApplication()
+        clearPreference(app)
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        try {
+            assertEquals(AppLanguage.ENGLISH, AppLanguageManager.current)
+            assertEquals("Menu", controller.get().getString(R.string.menu))
+            assertNotNull(findText(controller.get().window.decorView, "Menu"))
+            assertEquals("English", localizedText("日本語", "English"))
+        } finally {
+            controller.pause().stop().destroy()
+            clearPreference(app)
+        }
+    }
+
+    @Test
+    @Config(sdk = [35], qualifiers = "en-rUS")
+    fun savedLanguageSurvivesActivityRecreationAndANewLaunch() {
+        val app = org.robolectric.RuntimeEnvironment.getApplication()
+        clearPreference(app)
+        try {
+            for (language in AppLanguage.entries) {
+                AppLanguageManager.save(app, language)
+                val menu = if (language == AppLanguage.JAPANESE) "メニュー" else "Menu"
+                val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+                try {
+                    assertNotNull(findText(controller.get().window.decorView, menu))
+                    controller.recreate()
+                    assertNotNull(findText(controller.get().window.decorView, menu))
+                    assertEquals(language, AppLanguageManager.current)
+                } finally { controller.pause().stop().destroy() }
+                val reopened = Robolectric.buildActivity(MainActivity::class.java).setup()
+                try {
+                    assertNotNull(findText(reopened.get().window.decorView, menu))
+                    assertEquals(language, AppLanguageManager.current)
+                } finally { reopened.pause().stop().destroy() }
+            }
+        } finally { clearPreference(app) }
     }
 
     private fun findText(view: android.view.View, expected: String): TextView? {

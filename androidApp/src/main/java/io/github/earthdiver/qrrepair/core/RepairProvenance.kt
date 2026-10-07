@@ -80,7 +80,7 @@ data class ModuleRepairTrace(
         RepairFilter.CANDIDATE_DIFF -> false // supplied independently by the inspector
     }
 
-    fun titleJa(): String = if (io.github.earthdiver.qrrepair.AppLanguageManager.current == io.github.earthdiver.qrrepair.AppLanguage.JAPANESE) when (primaryReason) {
+    fun titleJa(): String = if (io.github.earthdiver.qrrepair.AppLanguageManager.isJapanese) when (primaryReason) {
         RepairReasonKind.USER_OVERRIDE -> "ユーザー指定"
         RepairReasonKind.RS_ERASURE_RECOVERY -> "RS消失復元"
         RepairReasonKind.RS_ERROR_CORRECTION -> "RS誤り訂正"

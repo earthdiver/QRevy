@@ -260,5 +260,5 @@ internal class RecoveryResultDialog(
     private fun button(label: String, onClick: () -> Unit): Button = dialogViews.button(label, onClick)
     private fun dp(value: Int): Int = (value * activity.resources.displayMetrics.density).toInt()
     private fun ui(japanese: String, english: String): String =
-        if (activity.resources.configuration.locales[0]?.language == "ja") japanese else english
+        localizedText(japanese, english)
 }

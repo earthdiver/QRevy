@@ -2,6 +2,7 @@ package io.github.earthdiver.qrrepair
 
 import android.Manifest
 import android.content.Intent
+import android.content.res.Resources
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -129,6 +130,8 @@ class CameraActivity : ComponentActivity() {
     private var captureHandedOff = false
     private val captureRequestGate = CaptureRequestGate()
     private val imageIoExecutor = Executors.newSingleThreadExecutor()
+
+    override fun getResources(): Resources = AppLanguageManager.localizedResources(super.getResources())
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(AppLanguageManager.wrap(newBase))

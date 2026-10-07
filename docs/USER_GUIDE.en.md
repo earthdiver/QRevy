@@ -173,6 +173,8 @@ Deleting the currently open saved work leaves the on-screen work available. Choo
 
 ## 8. Appearance and navigation
 
+Choose Japanese or English under **Menu → Language**. The app uses its selected language for screen labels, camera controls, and diagnostics, and restores a saved choice on the next launch. Before a choice is saved, a Japanese system language selects Japanese; other system languages select English.
+
 Choose Classic or Modern under **Menu → Appearance (next launch)**, then save. Classic is the default. The choice takes effect on the next launch; screen rotation and language changes keep the active style.
 
 Modern uses the **01 Repair settings**, **02 Edit cells**, and **03 Result** tabs. The result tab is enabled only when a result exists. Switching tabs preserves the unsaved draft and Undo history. Returning Home asks before discarding unsaved changes.

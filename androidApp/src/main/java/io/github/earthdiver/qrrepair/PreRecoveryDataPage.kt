@@ -111,7 +111,7 @@ internal class PreRecoveryDataPage(
     private val inputProvider: () -> PreRecoveryDataInput?,
     private val formatConstraintProvider: () -> QrFormatConstraint? = { null },
 ) {
-    private val strings = if (AppLanguageManager.selected(context) == AppLanguage.JAPANESE) {
+    private val strings = if (AppLanguageManager.isJapanese) {
         PreRecoveryDataStrings()
     } else {
         PreRecoveryDataStrings(

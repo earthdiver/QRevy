@@ -21,6 +21,7 @@ import io.github.earthdiver.qrrepair.core.SamplingProfile
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.res.Resources
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -240,6 +241,8 @@ class MainActivity : Activity() {
     )
     private var pendingRetainedCellHistory: RetainedCellHistory? = null
     private val recoveryState = RecoveryUiState()
+
+    override fun getResources(): Resources = AppLanguageManager.localizedResources(super.getResources())
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(AppLanguageManager.wrap(newBase))
@@ -855,7 +858,7 @@ class MainActivity : Activity() {
 
     private fun showLanguageDialog() {
         val languages = arrayOf(getString(R.string.language_english), getString(R.string.language_japanese))
-        val current = AppLanguageManager.selected(this)
+        val current = AppLanguageManager.current
         AlertDialog.Builder(this)
             .setTitle(R.string.language_dialog_title)
             .setSingleChoiceItems(languages, if (current == AppLanguage.ENGLISH) 0 else 1) { dialog, which ->
@@ -2850,10 +2853,10 @@ class MainActivity : Activity() {
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
     private fun isJapaneseUi(): Boolean =
-        resources.configuration.locales[0]?.language == AppLanguage.JAPANESE.tag
+        AppLanguageManager.isJapanese
 
     private fun ui(japanese: String, english: String): String =
-        if (isJapaneseUi()) japanese else english
+        localizedText(japanese, english)
 }
 
 /** Labels describe source-image luminance; slider values remain in logical polarity. */

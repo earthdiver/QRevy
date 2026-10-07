@@ -11,7 +11,7 @@ import android.widget.LinearLayout
 internal class DialogViewFactory(private val context: Context) {
     fun button(label: String, onClick: () -> Unit): Button = Button(context).apply {
         text = label
-        textSize = if (context.resources.configuration.locales[0]?.language == "ja") 12f else 11f
+        textSize = if (AppLanguageManager.isJapanese) 12f else 11f
         minHeight = dp(if (AppStylePreferences.isModern(context)) 36 else 40)
         minimumHeight = dp(if (AppStylePreferences.isModern(context)) 36 else 40)
         minWidth = 0

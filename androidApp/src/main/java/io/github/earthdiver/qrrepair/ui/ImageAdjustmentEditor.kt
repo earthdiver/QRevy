@@ -14,6 +14,7 @@ import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.SeekBar
 import android.widget.TextView
+import io.github.earthdiver.qrrepair.AppLanguageManager
 import io.github.earthdiver.qrrepair.R
 import io.github.earthdiver.qrrepair.PrecisionStyle
 import io.github.earthdiver.qrrepair.core.ImageAdjustment
@@ -92,7 +93,7 @@ class ImageAdjustmentEditor(
         setText(label)
         contentDescription = context.getString(label)
         isAllCaps = false
-        textSize = if (resources.configuration.locales[0]?.language == "ja") 12f else 11f
+        textSize = if (AppLanguageManager.isJapanese) 12f else 11f
         minWidth = dp(48); minimumWidth = dp(48)
         minHeight = dp(36); minimumHeight = dp(36)
         setSingleLine(false)
