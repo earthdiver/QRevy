@@ -1187,7 +1187,7 @@ class MainActivity : Activity() {
 
     private fun showCodewordHex() {
         val attemptedCandidate = recoveryState.selectedRecovery
-        val failureData = if (attemptedCandidate == null && recoveryState.failure != null && recoveryState.workingMatrix != null) {
+        val savedData = if (attemptedCandidate == null && recoveryState.failure != null && recoveryState.workingMatrix != null) {
             val matrix = recoveryState.workingMatrix!!
             val failure = recoveryState.failure!!
             val version = (matrix.dimension - 17) / 4
@@ -1195,12 +1195,9 @@ class MainActivity : Activity() {
                 SavedRawData(matrix, CodewordExtractor.extract(matrix, version, failure.dataMask), version, failure.dataMask, failure.ecLevel)
             }.getOrNull()
         } else null
-        val savedData = when {
-            recoveryState.failure != null -> failureData
-            attemptedCandidate == null -> savedPreRecoveryData()
-            else -> null
-        }
+        val preRecoveryData = if (attemptedCandidate == null && recoveryState.failure == null) savedPreRecoveryData() else null
         val fallbackMatrix = recoveryState.workingMatrix?.takeIf { attemptedCandidate != null } ?: savedData?.matrix
+            ?: preRecoveryData?.matrix
             ?: run { Toast.makeText(this, ui("表示できるデータがありません。", "No data is available."), Toast.LENGTH_SHORT).show(); return }
         val text = TextView(this).apply {
             typeface = Typeface.MONOSPACE
@@ -1210,6 +1207,18 @@ class MainActivity : Activity() {
         }
         val displayState = RecoveryDataDisplayState(repairedStage = recoveryState.selectedRecovery?.isSelectableRecovery == true)
         fun render() {
+            if (preRecoveryData != null) {
+                text.text = if (displayState.repairedStage) {
+                    ui("制約・RS修復後", "After constraints/RS") + "\n\n" +
+                        ui("データ検証済みの修復後候補はありません。修復前を選択してください。", "No payload-validated repaired candidate is available. Select Before.")
+                } else {
+                    ui("制約・RS修復前", "Before constraints/RS") + " / " + buildPreRecoveryDataContent(
+                        preRecoveryData, preprocessSettings.formatConstraint, displayState.unmasked,
+                        displayState.partialInformation, preRecoveryDataStrings(isJapaneseUi()),
+                    ).text
+                }
+                return
+            }
             val candidate = recoveryState.selectedRecovery
             val matrix = recoveryState.workingMatrix ?: fallbackMatrix
             val validatedCandidate = candidate?.takeIf { it.isSelectableRecovery }
@@ -1303,7 +1312,7 @@ class MainActivity : Activity() {
         val ecLevel: com.google.zxing.qrcode.decoder.ErrorCorrectionLevel?,
     )
 
-    private fun savedPreRecoveryData(): SavedRawData? {
+    private fun savedPreRecoveryData(): PreRecoveryDataInput? {
         val prepared = preparedFor(preprocessSettings) ?: return null
         val quad = preprocessSettings.manualQuad ?: return null
         val version = preprocessSettings.version
@@ -1324,9 +1333,7 @@ class MainActivity : Activity() {
                 matrix.setPrioritySearch(coord.x, coord.y, coord in preprocessSettings.preRecoveryPrioritySearch)
             }
         }
-        val format = FormatSolver.ranked(matrix).firstOrNull() ?: return null
-        val extraction = runCatching { CodewordExtractor.extract(matrix, version, format.dataMask) }.getOrNull() ?: return null
-        return SavedRawData(matrix, extraction, version, format.dataMask, format.ecLevel)
+        return PreRecoveryDataInput(matrix, version)
     }
 
     private val dialogViews by lazy { DialogViewFactory(this) }

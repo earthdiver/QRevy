@@ -36,6 +36,23 @@ internal data class PreRecoveryDataStrings(
     val auto: String = "自動",
 )
 
+internal fun preRecoveryDataStrings(japanese: Boolean = AppLanguageManager.isJapanese): PreRecoveryDataStrings =
+    if (japanese) PreRecoveryDataStrings() else PreRecoveryDataStrings(
+        extractFailed = "Could not extract the data area.",
+        beforeUnmasking = "Before unmasking",
+        afterUnmasking = "After unmasking",
+        specifiedFormat = "manual format",
+        inferredFormat = "inferred format",
+        unknownFormat = "format unknown",
+        unknownBit = "unknown bit",
+        content = "Content",
+        partialInformation = "Partial information",
+        unvalidatedContent = "No payload-validated content is available. The partial information below is diagnostic only.",
+        selectFormat = "Format is unknown. Set the ECC level and mask on the Basic screen.",
+        interpretAfterUnmasking = "Content can be interpreted after unmasking.",
+        auto = "Auto",
+    )
+
 internal fun buildPreRecoveryDataContent(
     input: PreRecoveryDataInput,
     formatConstraint: QrFormatConstraint?,
@@ -111,25 +128,7 @@ internal class PreRecoveryDataPage(
     private val inputProvider: () -> PreRecoveryDataInput?,
     private val formatConstraintProvider: () -> QrFormatConstraint? = { null },
 ) {
-    private val strings = if (AppLanguageManager.isJapanese) {
-        PreRecoveryDataStrings()
-    } else {
-        PreRecoveryDataStrings(
-            extractFailed = "Could not extract the data area.",
-            beforeUnmasking = "Before unmasking",
-            afterUnmasking = "After unmasking",
-            specifiedFormat = "manual format",
-            inferredFormat = "inferred format",
-            unknownFormat = "format unknown",
-            unknownBit = "unknown bit",
-            content = "Content",
-            partialInformation = "Partial information",
-            unvalidatedContent = "No payload-validated content is available. The partial information below is diagnostic only.",
-            selectFormat = "Format is unknown. Set the ECC level and mask on the Basic screen.",
-            interpretAfterUnmasking = "Content can be interpreted after unmasking.",
-            auto = "Auto",
-        )
-    }
+    private val strings = preRecoveryDataStrings()
     private val output = TextView(context).apply {
         typeface = Typeface.MONOSPACE
         textSize = 11f
