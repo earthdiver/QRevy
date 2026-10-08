@@ -121,6 +121,15 @@ class PreprocessOverlayView(context: Context) : View(context) {
         invalidate()
     }
 
+    /** Retains the grid's coordinate basis while requiring Finder confirmation in the new image. */
+    fun remapRotatedImage(value: Bitmap, quad: ImageQuad) {
+        bitmap = value
+        quad.asList().forEachIndexed { index, point -> corners[index] = point }
+        logicalGridAssigned = false
+        clearCornerSelection()
+        clearFinders()
+    }
+
     /** Repositions observations when rectification changes only its margin and uniform scale. */
     fun remapRectifiedImage(value: Bitmap, before: ImageQuad, after: ImageQuad) {
         val scale = after.topLeft.distanceTo(after.topRight) / before.topLeft.distanceTo(before.topRight)

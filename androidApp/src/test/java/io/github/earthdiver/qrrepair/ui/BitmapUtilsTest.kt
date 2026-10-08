@@ -8,6 +8,7 @@ import com.google.zxing.qrcode.encoder.Encoder
 import io.github.earthdiver.qrrepair.core.Homography
 import io.github.earthdiver.qrrepair.core.ImageQuad
 import io.github.earthdiver.qrrepair.core.PointD
+import io.github.earthdiver.qrrepair.core.PreprocessSettings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -113,5 +114,45 @@ class BitmapUtilsTest {
         assertEquals(1_800, maxOf(rotated.bitmap.width, rotated.bitmap.height))
         assertTrue(!rotated.bitmap.isRecycled)
         assertTrue(!source.isRecycled)
+    }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun rotatedAndRectifiedGridKeepsSourceModulesThroughResizingAndReset() {
+        val modules = Encoder.encode("ROTATED GRID", ErrorCorrectionLevel.L,
+            mapOf(EncodeHintType.QR_VERSION to 1)).matrix
+        val pitch = 60
+        val size = 29 * pitch
+        val pixels = IntArray(size * size) { i ->
+            val x = (i % size) / pitch - 4
+            val y = (i / size) / pitch - 4
+            if (x in 0..20 && y in 0..20 && modules[x, y].toInt() == 1) Color.BLACK else Color.WHITE
+        }
+        val source = Bitmap.createBitmap(pixels, size, size, Bitmap.Config.ARGB_8888)
+        val first = 4.5 * pitch - .5
+        val last = first + 20 * pitch
+        val original = ImageQuad(PointD(first, first), PointD(last, first), PointD(last, last), PointD(first, last))
+        val rotated = BitmapUtils.rotate(source, 45f)
+        val quad = BitmapUtils.gridAfterRotation(source, original, PreprocessSettings(), 45f)
+        val rectified = BitmapUtils.rectify(rotated.bitmap, quad, 1, quietModules = 1.0)
+        try {
+            assertEquals(1_800, rotated.bitmap.width)
+            val mapping = Homography.fromCorrespondences(
+                listOf(PointD(0.0, 0.0), PointD(20.0, 0.0), PointD(20.0, 20.0), PointD(0.0, 20.0)), quad.asList())
+            for (y in 0..20) for (x in 0..20) {
+                val p = mapping.map(x.toDouble(), y.toDouble())
+                val luma = requireNotNull(rotated.luma.sampleMean(p.x, p.y, 0.0))
+                assertEquals("module ($x, $y)", modules[x, y].toInt(), if (luma < 128) 1 else 0)
+            }
+            val reset = BitmapUtils.gridAfterRotation(source, rectified.qrQuad,
+                PreprocessSettings(rotationDegrees = 45f, perspectiveCorrectionQuad = quad), 0f)
+            original.asList().zip(reset.asList()).forEach { (expected, actual) ->
+                assertTrue(expected.distanceTo(actual) < .001)
+            }
+        } finally {
+            rectified.prepared.bitmap.recycle()
+            rotated.bitmap.recycle()
+            source.recycle()
+        }
     }
 }

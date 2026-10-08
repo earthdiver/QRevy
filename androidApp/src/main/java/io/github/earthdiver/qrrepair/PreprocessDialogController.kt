@@ -420,14 +420,16 @@ internal class PreprocessDialogController(
             version = version.progress + 1,
             imageAdjustment = dialogState.imageAdjustment,
         )
+        fun replaceRotatedImage(before: PreprocessSettings) {
+            val quad = BitmapUtils.gridAfterRotation(source.bitmap, overlay.imageQuad(), before, dialogState.rotationDegrees)
+            editor.replaceWorking(BitmapUtils.forSettings(source, imageSettings()))
+            overlay.remapRotatedImage(editor.working.bitmap, quad)
+        }
         fun rotateBy(delta: Float) {
             finderSearchGeneration.incrementAndGet()
-            overlay.clearCornerSelection()
+            val before = imageSettings()
             dialogState.rotateBy(delta)
-            editor.replaceWorking(BitmapUtils.forSettings(source, imageSettings()))
-            overlay.setBitmap(editor.working.bitmap)
-            overlay.setVersion(version.progress + 1)
-            overlay.clearFinders()
+            replaceRotatedImage(before)
             userGeometryEdited = true
             noteDraftChange("rotation", ui("画像を回転", "Rotated image"), "${"%.1f".format(dialogState.rotationDegrees)}°")
             refreshLabels()
@@ -435,11 +437,9 @@ internal class PreprocessDialogController(
         }
         fun resetRotation() {
             finderSearchGeneration.incrementAndGet()
+            val before = imageSettings()
             dialogState.resetRotation()
-            editor.replaceWorking(BitmapUtils.forSettings(source, imageSettings()))
-            overlay.setBitmap(editor.working.bitmap)
-            overlay.setVersion(version.progress + 1)
-            overlay.clearFinders()
+            replaceRotatedImage(before)
             userGeometryEdited = true
             refreshLabels()
             noteDraftChange("rotation", ui("画像回転をリセット", "Reset image rotation"), "0°")

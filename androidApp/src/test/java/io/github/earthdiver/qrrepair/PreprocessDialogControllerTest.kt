@@ -51,7 +51,9 @@ class PreprocessDialogControllerTest {
         views(dialog.window!!.decorView).filterIsInstance<CheckBox>()
             .single { it.text.toString() == "閾値を自動設定" }
 
-    private fun withDialog(settings: PreprocessSettings? = null, style: AppStyle = AppStyle.CLASSIC, sourceBitmap: Bitmap? = null, block: (AlertDialog, Host, BitmapUtils.Prepared, BitmapUtils.Prepared) -> Unit) {
+    private fun withDialog(settings: PreprocessSettings? = null, style: AppStyle = AppStyle.CLASSIC, sourceBitmap: Bitmap? = null,
+                           savedCellEdits: PreRecoveryCellEditState? = null,
+                           block: (AlertDialog, Host, BitmapUtils.Prepared, BitmapUtils.Prepared) -> Unit) {
         val activity = Robolectric.buildActivity(Activity::class.java).setup()
         activity.get().setTheme(style.theme)
         val source = BitmapUtils.prepare(sourceBitmap ?: Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888).apply {
@@ -62,7 +64,7 @@ class PreprocessDialogControllerTest {
         PreprocessDialogController(activity.get(), settings ?: PreprocessSettings(version = 1, rotationDegrees = 15f,
             manualQuad = ImageQuad(PointD(20.0, 20.0), PointD(220.0, 20.0),
                 PointD(220.0, 220.0), PointD(20.0, 220.0))),
-            source, working, null, Executor { it.run() }, AtomicInteger(), RecoveryEngine(), host).show()
+            source, working, savedCellEdits, Executor { it.run() }, AtomicInteger(), RecoveryEngine(), host).show()
         shadowOf(Looper.getMainLooper()).idle()
         val dialog = ShadowDialog.getLatestDialog() as AlertDialog
         try { block(dialog, host, source, working) } finally {
@@ -193,6 +195,87 @@ class PreprocessDialogControllerTest {
                 assertEquals(rectified.topLeft.x, rectified.bottomLeft.x, .001)
                 assertEquals(rectified.topLeft.distanceTo(rectified.topRight),
                     rectified.topLeft.distanceTo(rectified.bottomLeft), .001)
+            }
+        }
+    }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun rotationAndResetKeepEditsAndHistoryOnTheSameQrModules() {
+        val modules = com.google.zxing.qrcode.encoder.Encoder.encode("ROTATION CHECK",
+            com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.L,
+            mapOf(com.google.zxing.EncodeHintType.QR_VERSION to 1)).matrix
+        val matrix = QrMatrix(21)
+        for (y in 0..20) for (x in 0..20) matrix.set(x, y,
+            if (modules[x, y].toInt() == 1) ModuleValue.ONE else ModuleValue.ZERO, 1f, ModuleSource.IMAGE)
+        val physicalQuad = ImageQuad(PointD(35.5, 35.5), PointD(195.5, 35.5),
+            PointD(195.5, 195.5), PointD(35.5, 195.5))
+        val edits = mapOf(Coord(10, 12) to ModuleValue.ONE, Coord(11, 12) to ModuleValue.ZERO,
+            Coord(12, 12) to ModuleValue.ERASED, Coord(13, 12) to ModuleValue.ERASED)
+        val soft = setOf(Coord(11, 12), Coord(12, 12), Coord(13, 12))
+        val priority = setOf(Coord(13, 12))
+        val extra = Coord(14, 12)
+        val history = PreRecoveryCellEditState(edits, priority, initialSoftEdits = soft).apply {
+            applyValues(listOf(extra), ModuleValue.ONE) { ModuleValue.ZERO }
+            undo()
+        }
+        for (mirrored in listOf(false, true)) for (rectified in listOf(false, true)) {
+            val logicalQuad = if (mirrored) physicalQuad.transposed() else physicalQuad
+            val initial = PreprocessSettings(mirroredInput = mirrored, manualQuad = logicalQuad,
+                manualFinders = mapOf(FinderRole.TOP_LEFT to PointD(59.5, 59.5)),
+                preRecoveryEdits = edits, preRecoverySoftEdits = soft, preRecoveryPrioritySearch = priority)
+            withDialog(initial, sourceBitmap = BitmapUtils.renderTextMatrixSource(matrix), savedCellEdits = history) { dialog, host, source, _ ->
+                val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
+                if (rectified) click(dialog, "選択範囲を正方形に射影補正")
+                click(dialog, "詳細設定")
+                for (action in listOf("右90°", "回転リセット", "左90°", "+1°", "-1°", "+0.1°", "-0.1°", "回転リセット")) {
+                    click(dialog, action)
+                    assertFalse(overlay.isLogicalGridAssigned())
+                    assertTrue(overlay.finderPoints().isEmpty())
+                    click(dialog, "保存")
+                    val degrees = host.saves.last().settings.rotationDegrees.toDouble()
+                    val radians = Math.toRadians(degrees)
+                    val c = kotlin.math.cos(radians)
+                    val s = kotlin.math.sin(radians)
+                    val w = source.bitmap.width.toDouble()
+                    val h = source.bitmap.height.toDouble()
+                    val left = minOf(0.0, w * c, -h * s, w * c - h * s)
+                    val top = minOf(0.0, w * s, h * c, w * s + h * c)
+                    fun rotated(p: PointD) = PointD(
+                        (p.x + .5) * c - (p.y + .5) * s - left - .5,
+                        (p.x + .5) * s + (p.y + .5) * c - top - .5)
+                    logicalQuad.asList().zip(overlay.imageQuad().asList()).forEach { (before, after) ->
+                        assertTrue("$action preserves the ordered grid: $before -> $after",
+                            rotated(before).distanceTo(after) < .001)
+                    }
+                    overlay.setFinderPoint(FinderRole.TOP_LEFT, rotated(PointD(59.5, 59.5)))
+                    click(dialog, "保存")
+                    val saved = host.saves.last()
+                    assertEquals(edits, saved.settings.preRecoveryEdits)
+                    assertEquals(soft, saved.settings.preRecoverySoftEdits)
+                    assertEquals(priority, saved.settings.preRecoveryPrioritySearch)
+                    val restored = saved.cellEdits.copyForEditing()
+                    assertEquals(1, restored.undoCount)
+                    assertEquals(1, restored.redoCount)
+                    assertEquals(setOf(extra), restored.redo())
+                    assertEquals(edits + (extra to ModuleValue.ONE), restored.edits)
+                    restored.undo()
+                    restored.undo()
+                    assertTrue(restored.edits.isEmpty())
+                    restored.redo()
+                    assertEquals(edits, restored.edits)
+                    assertEquals(soft, restored.softEdits)
+                    assertEquals(priority, restored.prioritySearch)
+                    val mapping = Homography.fromCorrespondences(
+                        listOf(PointD(0.0, 0.0), PointD(20.0, 0.0), PointD(20.0, 20.0), PointD(0.0, 20.0)),
+                        overlay.imageQuad().asList())
+                    for (y in 0..20) for (x in 0..20) {
+                        val p = mapping.map(x.toDouble(), y.toDouble())
+                        val luma = requireNotNull(saved.image.luma.sampleMean(p.x, p.y, 0.0))
+                        val expected = if (mirrored) modules[y, x].toInt() else modules[x, y].toInt()
+                        assertEquals("$action module ($x, $y)", expected, if (luma < 128) 1 else 0)
+                    }
+                }
             }
         }
     }

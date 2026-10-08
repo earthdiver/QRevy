@@ -4,12 +4,14 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
+import android.graphics.RectF
 import io.github.earthdiver.qrrepair.core.Homography
 import io.github.earthdiver.qrrepair.core.ImageQuad
 import io.github.earthdiver.qrrepair.core.PointD
 import io.github.earthdiver.qrrepair.core.LumaImage
 import io.github.earthdiver.qrrepair.core.ModuleValue
 import io.github.earthdiver.qrrepair.core.QrMatrix
+import io.github.earthdiver.qrrepair.core.PreprocessSettings
 import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.math.hypot
@@ -97,15 +99,9 @@ object BitmapUtils {
     }
 
     fun prepare(source: Bitmap, maxDimension: Int = MAX_PREPARED_DIMENSION): Prepared {
-        val longest = max(source.width, source.height)
-        val scaled = if (longest > maxDimension) {
-            val scale = maxDimension.toDouble() / longest
-            Bitmap.createScaledBitmap(
-                source,
-                (source.width * scale).roundToInt().coerceAtLeast(1),
-                (source.height * scale).roundToInt().coerceAtLeast(1),
-                true,
-            )
+        val (width, height) = preparedSize(source.width, source.height, maxDimension)
+        val scaled = if (width != source.width || height != source.height) {
+            Bitmap.createScaledBitmap(source, width, height, true)
         } else source
 
         val bitmap = try {
@@ -135,21 +131,60 @@ object BitmapUtils {
         }
     }
 
+    private fun preparedSize(width: Int, height: Int, maxDimension: Int = MAX_PREPARED_DIMENSION): Pair<Int, Int> {
+        val scale = minOf(1.0, maxDimension.toDouble() / max(width, height))
+        return (width * scale).roundToInt().coerceAtLeast(1) to (height * scale).roundToInt().coerceAtLeast(1)
+    }
+
+    private class RotationLayout(source: Bitmap, degrees: Float) {
+        val matrix = Matrix().apply { setRotate(degrees) }
+        val bounds = RectF(0f, 0f, source.width.toFloat(), source.height.toFloat()).also(matrix::mapRect)
+        val width = kotlin.math.ceil(bounds.width().toDouble()).toInt().coerceAtLeast(1)
+        val height = kotlin.math.ceil(bounds.height().toDouble()).toInt().coerceAtLeast(1)
+
+        fun pixelCenterTransform(): Matrix {
+            val (preparedWidth, preparedHeight) = preparedSize(width, height)
+            return Matrix(matrix).apply {
+                preTranslate(.5f, .5f)
+                postTranslate(-bounds.left, -bounds.top)
+                postScale(preparedWidth.toFloat() / width, preparedHeight.toFloat() / height)
+                postTranslate(-.5f, -.5f)
+            }
+        }
+    }
+
+    /** Keeps ordered grid corners on the same source modules when rotation clears rectification. */
+    internal fun gridAfterRotation(source: Bitmap, quad: ImageQuad, before: PreprocessSettings,
+                                   degrees: Float): ImageQuad {
+        val unrectify = before.perspectiveCorrectionQuad?.let { original ->
+            Homography.fromCorrespondences(rectifiedGrid(original, before.version).asList(), original.asList())
+        }
+        val oldRotation = RotationLayout(source, before.rotationDegrees).pixelCenterTransform()
+        val inverse = Matrix().also { check(oldRotation.invert(it)) }
+        val nextRotation = RotationLayout(source, degrees).pixelCenterTransform()
+        val transform = Matrix().apply { setConcat(nextRotation, inverse) }
+        fun mapped(point: PointD): PointD {
+            val rotatedSource = unrectify?.map(point) ?: point
+            val coordinates = floatArrayOf(rotatedSource.x.toFloat(), rotatedSource.y.toFloat())
+            transform.mapPoints(coordinates)
+            return PointD(coordinates[0].toDouble(), coordinates[1].toDouble())
+        }
+        return ImageQuad(mapped(quad.topLeft), mapped(quad.topRight), mapped(quad.bottomRight), mapped(quad.bottomLeft))
+    }
+
     /** Rotates pixels into a new white-backed bitmap; every downstream coordinate uses this image. */
     fun rotate(source: Bitmap, degrees: Float): Prepared {
         if (degrees % 360f == 0f) return prepare(source)
-        val matrix = Matrix().apply { setRotate(degrees) }
-        val bounds = android.graphics.RectF(0f, 0f, source.width.toFloat(), source.height.toFloat())
-        matrix.mapRect(bounds)
+        val layout = RotationLayout(source, degrees)
         val out = Bitmap.createBitmap(
-            kotlin.math.ceil(bounds.width().toDouble()).toInt().coerceAtLeast(1),
-            kotlin.math.ceil(bounds.height().toDouble()).toInt().coerceAtLeast(1),
+            layout.width,
+            layout.height,
             Bitmap.Config.ARGB_8888,
         )
         Canvas(out).apply {
             drawColor(Color.WHITE)
-            translate(-bounds.left, -bounds.top)
-            drawBitmap(source, matrix, null)
+            translate(-layout.bounds.left, -layout.bounds.top)
+            drawBitmap(source, layout.matrix, null)
         }
         return try {
             prepare(out).also { prepared ->
