@@ -257,12 +257,17 @@ internal object StrictQrPayloadValidator {
 
     private fun validateEci(bits: Bits): Int {
         val first = bits.read(8)
-        return when {
+        val assignment = when {
             (first and 0x80) == 0 -> first
             (first and 0xC0) == 0x80 -> ((first and 0x3F) shl 8) or bits.read(8)
             (first and 0xE0) == 0xC0 -> ((first and 0x1F) shl 16) or bits.read(16)
             else -> { bits.invalidEci(); error("Invalid ECI designator") }
         }
+        if (assignment > 999999) {
+            bits.invalidEci()
+            error("ECI assignment is out of range")
+        }
+        return assignment
     }
 
     private fun validateFiller(bits: Bits): Boolean {
