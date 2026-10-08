@@ -10,7 +10,7 @@ Invalid Kanji/Hanzi character codes are rejected by structure validation even wh
 
 ## Identify the outcome first
 
-List decoding can produce multiple candidates for errors beyond the correction range of conventional RS decoding. The app automatically selects Guruswami–Sudan (GS), Koetter–Vardy (KV), or Wu decoding according to the input and estimated computation. It searches for additional candidates when ordinary search finds no decoded candidate or every decoded candidate depends on RS partial-bit constraints.
+List decoding (GS, KV, and Wu) can produce multiple candidates for errors beyond the correction range of conventional RS. See [Recovery Strategy, section 4.6](RECOVERY_STRATEGY.en.md#46-automatic-list-decoding-fallback) for the search order and applicable conditions.
 
 | Outcome or warning | Meaning | Check first |
 | --- | --- | --- |
@@ -73,7 +73,11 @@ The initial-input section identifies the version, ECC, mask, and geometry used f
 
 In “3. Processing in this run,” “Methods used to obtain this candidate” identifies the methods used for the selected candidate. List-decoding trial counts and elapsed time cover the whole search, including the trial that produced the candidate. Durations below one second are shown as “less than 1s.” Known-bit mismatch limits, block-decoding trial counts by method, reasons for skipping decoding in some trials, and stop reasons for QR candidate combination search appear under “Filling and correction calculations.”
 
-The three list-decoding methods share a limit of five cumulative minutes per repair operation, excluding time spent in ordinary search. Validated candidates remain available after timeout, insufficient memory, or interruption, and “4. Verification results” reports why the search is unfinished.
+“List decoding without tentative assignments” and “Additional list decoding including tentative assignments” each show their execution status even when no new trial ran. Skipped stages also show the reason.
+
+Reuse of previously computed decoding results is counted separately and does not increase new trial counts.
+
+Validated candidates remain available after timeout, insufficient memory, or interruption, and “4. Verification results” reports why the search is unfinished.
 
 Search completion distinguishes three states within the specified conditions and search policy.
 

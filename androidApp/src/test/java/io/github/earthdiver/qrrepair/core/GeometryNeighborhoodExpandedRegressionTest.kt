@@ -11,6 +11,12 @@ import kotlin.math.sqrt
 
 /** A broader deterministic study than the compact displacement regression. */
 class GeometryNeighborhoodExpandedRegressionTest {
+    private data class RecoveryInput(val text: String, val dimension: Int, val cells: String)
+    // Geometry variants can sample identical observations. Cache complete cell snapshots,
+    // including confidence and provenance, without skipping any sampling or geometry checks.
+    private val recoveryCache = object : LinkedHashMap<RecoveryInput, Boolean>(4096, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<RecoveryInput, Boolean>?): Boolean = size > 4096
+    }
     private val widths = (3..8).map { it / 10.0 }
     private val pixelsPerModule = 10
     private val quietModules = 4
@@ -247,8 +253,20 @@ class GeometryNeighborhoodExpandedRegressionTest {
         ).reanchored()
         val matrix = MatrixSampler(prepared.image, prepared.profile).sample(geometry).first
         // Hold decoding capacity fixed while comparing geometry families and search widths.
-        return RecoveryEngine().recover(matrix, maxFormatCandidates = 1, listDecodingBudget = ListDecodingBudget(0))
-            .any { it.text == prepared.fixture.text }
+        val input = RecoveryInput(prepared.fixture.text, matrix.dimension, buildString {
+            for (y in 0 until matrix.dimension) for (x in 0 until matrix.dimension) {
+                val cell = matrix[x, y]
+                append((cell.value.ordinal or (cell.source.ordinal shl 2) or
+                    (if (cell.prioritySearch) 1 shl 15 else 0)).toChar())
+                val confidence = cell.confidence.toRawBits()
+                append((confidence ushr 16).toChar())
+                append(confidence.toChar())
+            }
+        })
+        return recoveryCache.getOrPut(input) {
+            RecoveryEngine().recover(matrix, maxFormatCandidates = 1, listDecodingBudget = ListDecodingBudget(0))
+                .any { it.text == prepared.fixture.text }
+        }
     }
 
     private fun renderCenterEvidence(matrix: ByteMatrix): LumaImage {

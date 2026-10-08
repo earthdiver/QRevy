@@ -8,10 +8,13 @@ import org.junit.Test
 class PriorityObservationRegressionTest {
     @Test fun explicitPriorityTrialsKeepOriginalEvidence() {
         val (matrix, originalExtraction, expectedRaw) = damagedMatrix()
-        var progressCalls = 0
+        val progress = mutableListOf<Pair<Int, Int>>()
         val engine = RecoveryEngine()
-        val candidates = engine.recover(matrix, maxFormatCandidates = 1) { _, _ -> progressCalls++ }
-        assertEquals(17, progressCalls) // All 16 assignments, followed by completion.
+        val candidates = engine.recover(matrix, maxFormatCandidates = 1) { done, total -> progress += done to total }
+        // Exact, conventional and additional list passes each report complete priority trials.
+        val batches = progress.filter { it.second != 0 }.chunked(17)
+        assertEquals(3, batches.size)
+        assertTrue(batches.all { it == (0..16).map { done -> done to 16 } })
         assertEquals(setOf("STAR-SEARCH"), candidates.map { it.text }.toSet())
         val candidate = candidates.first()
         assertEquals(9, candidate.originalErasedCodewords)
@@ -84,7 +87,8 @@ class PriorityObservationRegressionTest {
     @Test fun nestedRecoveryInProgressCallbackKeepsOuterEvidenceAndDiagnostics() {
         val (matrix, _, _) = damagedMatrix()
         val baselineEngine = RecoveryEngine()
-        val expectedOutcome = baselineEngine.recoverWithDiagnostics(matrix, maxFormatCandidates = 1)
+        val expectedOutcome = baselineEngine.recoverWithDiagnostics(matrix, maxFormatCandidates = 1,
+            listDecodingBudget = ListDecodingBudget(clockMillis = { 0L }))
         val expected = expectedOutcome.candidates
         val expectedAttempts = expectedOutcome.formatAttempts
         val expectedFailure = expectedOutcome.failure
@@ -97,7 +101,8 @@ class PriorityObservationRegressionTest {
             }
         }
         var nested = false
-        val actualOutcome = engine.recoverWithDiagnostics(matrix, maxFormatCandidates = 1) { _, _ ->
+        val actualOutcome = engine.recoverWithDiagnostics(matrix, maxFormatCandidates = 1,
+            listDecodingBudget = ListDecodingBudget(clockMillis = { 0L })) { _, _ ->
             if (!nested) {
                 nested = true
                 assertTrue(engine.recover(inner, maxFormatCandidates = 1).any { it.text == "NESTED" })

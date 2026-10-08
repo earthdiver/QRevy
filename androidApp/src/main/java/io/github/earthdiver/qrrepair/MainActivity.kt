@@ -1570,7 +1570,10 @@ class MainActivity : Activity() {
                     },
                     cancellation = cancellation,
                     stopRequested = { progressDialog.stopped.get() },
-                    listDecodingBudget = ListDecodingBudget(onProgress = progressDialog::listDecodingProgress),
+                    listDecodingBudget = ListDecodingBudget(
+                        onProgress = progressDialog::listDecodingProgress,
+                        onIdle = progressDialog::listDecodingIdle,
+                    ),
                     onPriorityProgress = progressDialog::priorityProgress,
                 )
             },
@@ -2363,7 +2366,10 @@ class MainActivity : Activity() {
                         workingLimitBytes = memoryPolicy.workingBytes),
                     cancellation = cancellation,
                     stopRequested = { progressDialog.stopped.get() },
-                    listDecodingBudget = ListDecodingBudget(onProgress = progressDialog::listDecodingProgress),
+                    listDecodingBudget = ListDecodingBudget(
+                        onProgress = progressDialog::listDecodingProgress,
+                        onIdle = progressDialog::listDecodingIdle,
+                    ),
                     onPriorityProgress = progressDialog::priorityProgress,
                     onProgress = { progress ->
                         progressDialog.phase("${progress.profile.label}: ${progress.message} (${progress.done}/${progress.total})")

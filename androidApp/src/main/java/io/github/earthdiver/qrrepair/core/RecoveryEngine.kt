@@ -140,6 +140,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
     private companion object {
         const val INITIAL_QR_COMBINATION_TRIALS = 4096
         const val MAX_QR_COMBINATION_TRIALS = 65_536
+        const val EARLY_LIST_ALLOWANCE_MILLIS = 1_000L
     }
 
     private val partialSolver = PartialCodewordSolver(rs)
@@ -286,30 +287,80 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 manualDataEccMismatches = manualMismatches, manualDataEccCompared = manualCompared,
                 alternativeDerivations = candidate.alternativeDerivations.map(::annotate))
         }
-        cancellation.check()
-        val found = try {
+        fun search(phase: RecoveryPhase) {
+            run.phase = phase
             recoverRun(run, matrix, maxFormatCandidates, trustKnownPayloadCount, formatConstraint,
                 maxKnownDataEccMismatches = maxKnownDataEccMismatches, maxFormatMismatches = maxFormatMismatches,
                 manualEdits = manualEdits, onPriorityProgress = onPriorityProgress)
-            // An exact known-bit solution does not examine possible errors in those known bits.
-            if (!run.parsedWithoutBitConstraints && run.earlyBlocker == null && maxKnownDataEccMismatches != 0) {
-                val version = (matrix.dimension - 17) / 4
-                val cap = minOf(maxKnownDataEccMismatches ?: Int.MAX_VALUE,
-                    ErrorLimitPolicy.listDecodingData(version))
-                val before = listDecodingBudget.elapsedMillis
-                run.listDecodingSummary = ListDecodingSummary(mismatchLimits = setOf(cap))
-                run.listDecodingPhase = true
-                try {
-                    listDecodingBudget.measure {
-                        recoverRun(run, matrix, maxFormatCandidates, trustKnownPayloadCount, formatConstraint,
-                            maxKnownDataEccMismatches = maxKnownDataEccMismatches, maxFormatMismatches = maxFormatMismatches,
-                            manualEdits = manualEdits, onPriorityProgress = onPriorityProgress)
+        }
+        fun skipLists(reason: ListDecodingStatus) {
+            run.listDecodingStatuses.keys.forEach { stage ->
+                if (run.listDecodingStatuses[stage] == ListDecodingStatus.NOT_REACHED)
+                    run.listDecodingStatuses[stage] = reason
+            }
+        }
+        fun searchLists(early: Boolean) {
+            val stage = if (early) ListDecodingStage.WITHOUT_ASSIGNMENTS else ListDecodingStage.ADDITIONAL
+            val phase = if (early) RecoveryPhase.EARLY_LIST else RecoveryPhase.ADDITIONAL_LIST
+            val cap = minOf(maxKnownDataEccMismatches ?: Int.MAX_VALUE,
+                ErrorLimitPolicy.listDecodingData((matrix.dimension - 17) / 4))
+            val previous = run.listDecodingSummary ?: ListDecodingSummary()
+            run.listDecodingSummary = previous.copy(mismatchLimits = previous.mismatchLimits + cap)
+            run.listDecodingStatuses[stage] = ListDecodingStatus.RUNNING
+            run.listDecodingStops.clear()
+            val before = listDecodingBudget.elapsedMillis
+            try {
+                if (early) listDecodingBudget.measureSlice(EARLY_LIST_ALLOWANCE_MILLIS) { search(phase) }
+                else listDecodingBudget.measure { search(phase) }
+            } catch (_: ListDecodingSliceLimitException) {
+                run.listDecodingStatuses[stage] = ListDecodingStatus.DEFERRED
+            } catch (_: ListDecodingTimeLimitException) {
+                run.listDecodingStatuses[stage] = ListDecodingStatus.TIME_LIMIT
+                run.incompleteReasons += SearchIncompleteReason.LIST_DECODING_TIME_LIMIT
+            } catch (error: RecoveryCancelledException) {
+                run.listDecodingStatuses[stage] = ListDecodingStatus.INTERRUPTED
+                throw error
+            } catch (error: Exception) {
+                run.listDecodingStatuses[stage] = ListDecodingStatus.INTERNAL_ERROR
+                throw error
+            } finally {
+                run.listDecodingSummary = run.listDecodingSummary?.let {
+                    it.copy(elapsedMillis = it.elapsedMillis + listDecodingBudget.elapsedMillis - before)
+                }
+                if (run.listDecodingStatuses[stage] == ListDecodingStatus.RUNNING) {
+                    run.listDecodingStatuses[stage] = when {
+                        CombinationSearchStop.WORKING_MEMORY_LIMIT in run.listDecodingStops -> ListDecodingStatus.WORKING_MEMORY_LIMIT
+                        run.listDecodingStops.isNotEmpty() -> ListDecodingStatus.SEARCH_LIMIT
+                        else -> ListDecodingStatus.COMPLETED
                     }
-                } catch (_: ListDecodingTimeLimitException) {
-                    run.incompleteReasons += SearchIncompleteReason.LIST_DECODING_TIME_LIMIT
-                } finally {
-                    run.listDecodingPhase = false
-                    run.listDecodingSummary = run.listDecodingSummary?.copy(elapsedMillis = listDecodingBudget.elapsedMillis - before)
+                }
+            }
+        }
+        cancellation.check()
+        val found = try {
+            search(RecoveryPhase.ORIGINAL_RS)
+            // This pass uses the original observations: no forced suffix or tentative bits.
+            // Keep its validated result when its success suppresses further searching.
+            val originalRsParsed = run.candidates.results().any { candidate ->
+                candidate.payloadParsed && candidate.conventionalRsDiagnostic?.let {
+                    it.succeeded && it.matches(candidate.correctedInterleaved) == true
+                } == true
+            }
+            when {
+                run.earlyBlocker != null ||
+                    run.searchDiagnostic().inputBlocker == RecoveryInputBlocker.STRUCTURAL_FIXED_CELLS ->
+                    skipLists(ListDecodingStatus.INPUT_CONSTRAINT)
+                originalRsParsed -> skipLists(if (maxKnownDataEccMismatches == 0)
+                    ListDecodingStatus.ZERO_ERROR_LIMIT else ListDecodingStatus.ORIGINAL_RS_SUCCEEDED)
+                else -> {
+                    if (maxKnownDataEccMismatches == 0) skipLists(ListDecodingStatus.ZERO_ERROR_LIMIT)
+                    else searchLists(early = true)
+                    // Independent passes keep a large tentative RS list from starving exact spaces.
+                    search(RecoveryPhase.BIT_CONSTRAINTS)
+                    if (maxKnownDataEccMismatches != 0) {
+                        search(RecoveryPhase.PARTIAL_RS)
+                        searchLists(early = false)
+                    }
                 }
             }
             run.finished = true
@@ -318,10 +369,12 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         } catch (error: RecoveryCancelledException) {
             cancellation.check()
             if (!stopRequested()) throw error
+            skipLists(ListDecodingStatus.INTERRUPTED)
             run.incompleteReasons += SearchIncompleteReason.USER_INTERRUPTED
             run.combinationSearch = run.combinationSearch.afterPass(setOf(CombinationSearchStop.USER_INTERRUPTED))
             run.candidates.results()
         } catch (_: Exception) {
+            skipLists(ListDecodingStatus.INTERNAL_ERROR)
             run.incompleteReasons += SearchIncompleteReason.INTERNAL_ERROR
             run.candidates.results()
         }
@@ -377,8 +430,8 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 .filter { effectiveLimit == null || it.mismatches <= effectiveLimit }
                 .take(maxFormatCandidates)
         }
-        if (priority.isEmpty()) {
-            recoverInternal(run, matrix, maxFormatCandidates, forcedFormats, allowBitEnumeration = true, trustKnownPayloadCount, maxFormatMismatches = effectiveLimit, maxKnownDataEccMismatches = maxKnownDataEccMismatches)
+        if (priority.isEmpty() || !run.phase.usesAssignments) {
+            recoverInternal(run, matrix, maxFormatCandidates, forcedFormats, allowBitEnumeration = run.phase.usesAssignments, trustKnownPayloadCount, maxFormatMismatches = effectiveLimit, maxKnownDataEccMismatches = maxKnownDataEccMismatches)
             return finish(run, run.candidates.results())
         }
         // First preserve ordinary QR behavior: every priority bit is still an erasure.
@@ -567,8 +620,12 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
             val trackSingleSegment = allowPayloadConstraints && trustKnownPayloadCount
             val headerData = if (trackSingleSegment) de.blocks.flatMap { it.codewords.take(it.numDataCodewords) }.toIntArray() else intArrayOf()
             val headerUnknown = if (trackSingleSegment) de.blocks.flatMap { it.unknownMasks.take(it.numDataCodewords) }.toIntArray() else intArrayOf()
-            val constraints = if (allowPayloadConstraints) {
-                PayloadConstraintSolver.apply(de, version, trustKnownCount = trustKnownPayloadCount, cancellation = run.cancellation)
+            val preserveObservations = !run.phase.usesAssignments
+            val constraints = if (allowPayloadConstraints && (!preserveObservations || trackSingleSegment)) {
+                // The first RS/list passes validate the assumption without changing observations.
+                val target = if (preserveObservations) de.copyDeep() else de
+                val result = PayloadConstraintSolver.apply(target, version, trustKnownCount = trustKnownPayloadCount, cancellation = run.cancellation)
+                if (preserveObservations) result.copy(filledBits = 0, filled = emptyList()) else result
             } else {
                 PayloadConstraintSolver.Result(0, 0, null, null)
             }
@@ -626,15 +683,19 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 }
                 val trialCounts = IntArray(de.blocks.size)
                 val interpolationCounts = IntArray(de.blocks.size)
+                val reusedCounts = IntArray(de.blocks.size)
                 val methodCounts = Array(de.blocks.size) { IntArray(ListDecoderMethod.entries.size) }
                 val foundListDecoded = ListDecodingQrSearch(rs).run(de, original, matrix, extraction, priorityAssignments.keys, version, requireNotNull(listDecodingLimit),
                     allowBitEnumeration, nonEnumerable, run.partialBitSearchLimit, run.retentionBudget.workingLimitBytes,
-                    run.cancellation, onRejection = { run.candidateRejections += it },
+                    run.cancellation, baseOnly = run.phase == RecoveryPhase.EARLY_LIST,
+                    cache = run.listDecodingCache,
+                    onRejection = { run.candidateRejections += it },
                     onProgress = { index, search ->
                         val previous = requireNotNull(run.listDecodingSummary)
                         run.listDecodingSummary = previous.copy(
                             trials = previous.trials + search.trials - trialCounts[index],
                             interpolations = previous.interpolations + search.interpolations - interpolationCounts[index],
+                            reusedTrials = previous.reusedTrials + search.reusedTrials - reusedCounts[index],
                             skipReasons = previous.skipReasons + search.skipReasons,
                             methodTrials = ListDecoderMethod.entries.associateWith { method ->
                                 (previous.methodTrials[method] ?: 0) + (search.methodTrials[method] ?: 0) - methodCounts[index][method.ordinal]
@@ -642,8 +703,12 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                         )
                         trialCounts[index] = search.trials
                         interpolationCounts[index] = search.interpolations
+                        reusedCounts[index] = search.reusedTrials
                         ListDecoderMethod.entries.forEach { method -> methodCounts[index][method.ordinal] = search.methodTrials[method] ?: 0 }
-                    }, onStops = { run.combinationSearch = run.combinationSearch.afterPass(it) },
+                    }, onStops = {
+                        run.listDecodingStops += it
+                        run.combinationSearch = run.combinationSearch.afterPass(it)
+                    },
                 ) { combination ->
                     // Rediscovering an existing exact candidate must not end additional
                     // bit trials or priority assignments before another payload is tested.
@@ -660,21 +725,20 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
 
             val trialSpaces = if (constraints.filledBits == 0) originalSpaces else
                 de.blocks.map { bitSolver.analyze(it, de.ecSymbolsPerBlock, run.cancellation) }
-            if (trialSpaces.any { (it?.dimension ?: 0) > 0 }) {
+            val exactOnly = maxKnownDataEccMismatches == 0 || run.phase == RecoveryPhase.BIT_CONSTRAINTS
+            if (run.phase != RecoveryPhase.ORIGINAL_RS && trialSpaces.any { (it?.dimension ?: 0) > 0 }) {
                 val nonEnumerable = de.blocks.indices.map { index ->
                     priorityRawIndices.mapNotNullTo(hashSetOf()) { raw ->
                         de.rawLocations.getOrNull(raw)?.takeIf { it.blockIndex == index }?.localIndex
                     }
                 }
-                val streamed = StreamingQrSearch(rs).run(de, trialSpaces, version, maxKnownDataEccMismatches == 0,
-                    allowBitEnumeration, nonEnumerable, run.partialBitSearchLimit, run.retentionBudget.workingLimitBytes,
+                val streamed = StreamingQrSearch(rs).run(de, trialSpaces, version, exactOnly,
+                    allowBitEnumeration, nonEnumerable, run.partialBitSearchLimit, run.availableWorkingBytes,
                     run.cancellation, onStops = { run.combinationSearch = run.combinationSearch.afterPass(it) },
                     onSearch = { run.solverCompleteness = run.solverCompleteness.combine(it) },
                 ) { combination ->
                     run.candidateCalculations++
                     val recorded = run.recordEvaluation(evaluator.evaluate(combination))
-                    if (recorded.parsed && combination.none { it.bitConstraintSolved })
-                        run.parsedWithoutBitConstraints = true
                     recorded.parsed
                 }
                 parsedFound = streamed.parsed || parsedFound
@@ -714,11 +778,11 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                     val space = if (constraints.filledBits == 0) originalSpaces[blockIndex]
                         else bitSolver.analyze(block, de.ecSymbolsPerBlock, run.cancellation)
                     val requiredBytes = blockCandidateWorkingBytes(block, space?.dimension,
-                        allowBitEnumeration, nonEnumerable, maxKnownDataEccMismatches == 0,
+                        allowBitEnumeration, nonEnumerable, exactOnly,
                         de.ecSymbolsPerBlock, conventionalDiagnostic.blocks.getOrNull(blockIndex)?.margin
                             .takeIf { matrix === run.diagnosticInput && constraints.filledBits == 0 },
                         partialBitSearchLimit = run.partialBitSearchLimit)
-                    if (requiredBytes > run.retentionBudget.workingLimitBytes - blockWorkingBytes) {
+                    if (requiredBytes > run.availableWorkingBytes - blockWorkingBytes) {
                         run.combinationSearch = run.combinationSearch.afterPass(setOf(CombinationSearchStop.WORKING_MEMORY_LIMIT))
                         throw ReedSolomonErasures.DecodeException("Exact RS space exceeds working-memory allowance",
                             RsFailureReason.BIT_SPACE_LIMIT)
@@ -727,8 +791,9 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                     partialSolver.decodeWithBitConstraints(
                         block,
                         de.ecSymbolsPerBlock,
-                        space = space,
-                        exactOnly = maxKnownDataEccMismatches == 0,
+                        space = space?.takeIf { run.phase != RecoveryPhase.ORIGINAL_RS ||
+                            (it.dimension == 0 && conventionalDiagnostic.blocks[blockIndex].status == ConventionalRsStatus.SUCCESS) },
+                        exactOnly = exactOnly,
                         allowBitEnumeration = allowBitEnumeration,
                         nonEnumerablePositions = nonEnumerable,
                         cancellation = run.cancellation,
@@ -789,7 +854,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
             // ordered combinations in expanding windows and preserves any fully validated result.
             val combinationStops = linkedSetOf<CombinationSearchStop>()
             var parsedCandidatesForFormat = 0
-            val affordableNodes = ((run.retentionBudget.workingLimitBytes - blockWorkingBytes) /
+            val affordableNodes = ((run.availableWorkingBytes - blockWorkingBytes) /
                 (256L + de.blocks.size * 16L)).coerceIn(0L, MAX_QR_COMBINATION_TRIALS.toLong()).toInt()
             if (affordableNodes == 0) {
                 run.combinationSearch = run.combinationSearch.afterPass(setOf(CombinationSearchStop.WORKING_MEMORY_LIMIT))
@@ -836,7 +901,6 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 if (recorded.parsed) {
                     parsedCandidatesForFormat++
                     parsedFound = true
-                    if (combination.none { it.bitConstraintSolved }) run.parsedWithoutBitConstraints = true
                 }
             }
             run.combinationSearch = run.combinationSearch.afterPass(combinationStops)

@@ -4,6 +4,8 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.os.Looper
 import android.widget.TextView
+import io.github.earthdiver.qrrepair.core.ListDecodingBudget
+import io.github.earthdiver.qrrepair.core.ListDecodingSliceLimitException
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -76,6 +78,47 @@ class RecoveryProgressDialogTest {
             dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
             progress.phase("Trials completed")
             assertFalse(message().contains("Trials completed"))
+        } finally {
+            progress.close()
+            activity.pause().stop().destroy()
+        }
+    }
+
+    @Test fun aDeferredListPassRestoresTheCurrentGridAndKeepsInterruptionVisible() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup()
+        val progress = RecoveryProgressDialog(activity.get(), 4)
+        var clock = 0L
+        val budget = ListDecodingBudget(
+            onProgress = progress::listDecodingProgress,
+            onIdle = progress::listDecodingIdle,
+            clockMillis = { clock },
+        )
+        try {
+            val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+            fun message(): String {
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(250))
+                return dialog.findViewById<TextView>(android.R.id.message).text.toString()
+            }
+            val listLabel = localizedText("リスト復号による追加探索", "List-decoding fallback")
+            progress.phase("Grid 1 / 2")
+            try {
+                budget.measureSlice(1000) {
+                    assertTrue(message().contains(listLabel))
+                    clock += 1000
+                    budget.check()
+                }
+                fail("The first pass must defer when its allowance is exhausted")
+            } catch (_: ListDecodingSliceLimitException) { }
+            assertTrue(message().contains("Grid 1 / 2"))
+            assertFalse(message().contains(listLabel))
+            progress.priorityProgress(3, 16)
+            assertTrue(message().contains("3 / 16"))
+            budget.measure {
+                assertTrue(message().contains(listLabel))
+                dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+            }
+            assertTrue(message().contains(localizedText("中断処理中", "Interrupting")))
+            assertFalse(message().contains(listLabel))
         } finally {
             progress.close()
             activity.pause().stop().destroy()

@@ -49,6 +49,9 @@ class RecoverySearchDiagnosticTest {
         assertEquals(RecoveryInputBlocker.STRUCTURAL_FIXED_CELLS, firstOutcome.searchDiagnostic.inputBlocker)
         assertEquals(0, firstOutcome.searchDiagnostic.candidateCalculations)
         assertNull(firstOutcome.failure!!.conventionalRsDiagnostic)
+        assertTrue(firstOutcome.searchDiagnostic.listDecodingExecution!!.stages.values.all {
+            it == setOf(ListDecodingStatus.INPUT_CONSTRAINT)
+        })
 
         val data = matrix().apply {
             flip(this, CodewordExtractor.extract(this, 1, qr.maskPattern).codewords.last().coordinates.first(), ModuleSource.USER)

@@ -331,9 +331,9 @@ class RepairGuideTextTest {
             assertTrue(text("statusText").contains(if (language == AppLanguage.JAPANESE) "データコード語列は2種類" else "2 distinct data codeword sequences"))
             for (stop in io.github.earthdiver.qrrepair.core.CombinationSearchStop.entries) {
                 val message = io.github.earthdiver.qrrepair.core.CombinationSearchSummary(1, setOf(stop)).description(16)
-                assertEquals(stop in setOf(io.github.earthdiver.qrrepair.core.CombinationSearchStop.USER_INTERRUPTED,
-                    io.github.earthdiver.qrrepair.core.CombinationSearchStop.WORKING_MEMORY_LIMIT),
-                    message.contains(if (language == AppLanguage.JAPANESE) "まだ調べていない組合せ" else "Some combinations remain unchecked"))
+                assertTrue(if (language == AppLanguage.JAPANESE)
+                    message.contains("まだ調べていない組合せ") || message.contains("未検査の組合せ")
+                    else message.contains("Some combinations remain unchecked"))
                 assertFalse(message.contains("探索窓"))
                 assertFalse(message.contains("展開ノード"))
             }

@@ -266,7 +266,7 @@ This option is selectable when an eligible format has a leading Numeric, Alphanu
 
 Conventional RS decoding corrects errors and erasures in each block over GF(256), with the capacity relation `2 × errors + erasures <= ECC symbols`. RS partial-bit constraints also use known bits inside partial codewords, as described below. Mathematical RS success alone does not make a candidate correct.
 
-List decoding can produce multiple candidates for errors beyond the correction range of conventional RS decoding. The app automatically selects Guruswami–Sudan (GS), Koetter–Vardy (KV), or Wu decoding according to the input and estimated computation. It searches for additional candidates when ordinary search finds no decoded candidate or every decoded candidate depends on RS partial-bit constraints (section 4.6).
+List decoding can produce multiple candidates for errors beyond the correction range of conventional RS decoding. The app automatically selects Guruswami–Sudan (GS), Koetter–Vardy (KV), or Wu decoding according to the input and estimated computation. Section 4.6 describes the search order and applicable conditions.
 
 ### 4.1 Data/ECC error limit and manual input values
 
@@ -298,13 +298,15 @@ Version information, other function modules, and remainder bits also stay outsid
 
 `*` markers may be assigned only to data/ECC modules. The default limit is four; advanced settings allows 4–14. The selected count determines the displayed assignment count (`2^count`, up to 16,384). Lowering the limit preserves existing marks; repair is blocked until the count fits the limit. In the cell editors, first assign the four corner positions and roles. Selecting fixed structures or remainder bits displays their type and coordinates. Orientation changes recheck eligibility and turn ineligible `*` marks back into `?`. Version changes clear all cell edits after confirmation.
 
+When cells are marked with `*`, RS partial-bit constraints, conventional RS with partial-bit search, and additional list decoding each use the following sequence. See section 4.6 for the overall search order.
+
 1. First treat every marked cell as an ordinary erasure.
 2. If that fails, try `2^count` assignments (up to `2^14 = 16384`) for marked bits only.
 3. Within each assignment trial, also allow the ordinary bounded search for other `?` bits; retain only payload-valid candidates.
 4. If distinct solutions remain, retain multiple candidates and do not declare an assignment unique.
 5. If all assignments fail, continue to the ordinary bounded `?` search using the original observation without priority guesses.
 
-In the current implementation, payload-constraint propagation remains enabled during the ordinary erasure attempt in step 1. A `*` at a position uniquely implied by mode/count, terminator, byte alignment, padding, or numeric/alphanumeric value ranges can therefore be resolved by a constraint before explicit 0/1 assignment enumeration, allowing the ordinary attempt to succeed. Thus `*` does not mean “always enumerate this bit”; it prioritizes enumeration only when ordinary erasure handling plus safe constraint propagation does not succeed. Constraint-derived resolutions remain distinguishable in repair provenance.
+In step 1, QR structure such as the mode, character count, or terminator may determine a cell's value. If decoding succeeds with that filling alone, no 0/1 assignments are tried. Repair reasons distinguish values inferred from structure from tentative 0/1 assignments.
 
 Temporary priority 0/1 assignments constrain only their trial; they are not known input bits. Known-bit counts, mismatch counts, original erased-codeword counts, and Before codeword views use the observation before those assignments. RS erasure counts and correction margins still describe the trial. Explicitly enumerated coordinates and values are retained in candidate provenance and displayed separately from ordinary partial-bit search. Other cells in the same codeword do not inherit priority-assignment provenance. Success on the ordinary route is not recorded as explicit priority enumeration.
 
@@ -314,15 +316,17 @@ See the [user guide](USER_GUIDE.en.md#4-edit-cells) for progress display and int
 
 ### 4.3 Ordinary partial-bit search
 
-When erasure decoding fails, or when the combined error/erasure correction margin is small, partial codewords with more known evidence are prioritized for a bounded enumeration: a shared per-block limit of 12, 13, or 14 bits (default 12), with at most 4,096, 8,192, or 16,384 trials respectively. The same setting bounds the remaining dimension enumerated by the exact RS-constraint route. The solver fixes enough partial erasures, within those bounds, to reserve capacity for multiple unknown-position errors.
+When erasure decoding fails, or when the combined error/erasure correction margin is small, partial codewords with more known evidence are prioritized for a bounded enumeration: a shared per-block limit of 12, 13, or 14 bits (default 12), with at most 4,096, 8,192, or 16,384 trials respectively. The same setting bounds the remaining dimension enumerated using RS partial-bit constraints. The solver fixes enough partial erasures, within those bounds, to reserve capacity for multiple unknown-position errors.
 
-These are per-block limits. Only codewords with one to four unknown bits are eligible for conventional enumeration. They are selected by increasing unknown-bit count, preserving local codeword order on ties. Codewords with five to eight unknown bits remain erasures on this route; the separate binary-constraint route may still use them.
+These are per-block limits. Only codewords with one to four unknown bits are eligible for conventional enumeration. They are selected by increasing unknown-bit count, preserving local codeword order on ties. Codewords with five to eight unknown bits remain erasures on this route; RS partial-bit constraints may still use them.
 
 ### 4.4 RS partial-bit constraints
 
+RS partial-bit constraints find values for unknown bits that satisfy the RS equations while preserving known bits.
+
 For each format interpretation and RS block, expand the GF(256) zero-syndrome equations into GF(2) equations on individual unknown bits. All known data and ECC bits are constants. Row reduction produces either an inconsistent system or an affine space with dimension `d = unknown bits − rank`. The solver computes bits fixed across every solution and a set of independent measurement bits without enumerating that space.
 
-- With a data/ECC error limit of zero, this exact-match route supplies block candidates. With a positive or unlimited allowance, its candidates supplement conventional errors+erasures decoding; finding an exact solution does not skip that conventional route.
+- With a data/ECC error limit of zero, this method supplies candidates. With a positive or unlimited allowance, conventional RS and list decoding continue even when this method finds candidates.
 - See section 4.2 for how this combines with priority `*` search.
 - Diagnostics and measurement recommendations describe the input before structure filling or temporary `*` assignments.
 - Fixed-bit values never overwrite the input or become manual pins. A completed candidate carries RS partial-bit provenance.
@@ -335,6 +339,8 @@ Candidates are generated and validated in the following order. Multiple segments
 3. **Exclude invalid combinations, then generate and validate candidates.** For numeric and alphanumeric data, exclude combinations outside the allowed value ranges before generating candidates. For example, the ten bits encoding three numeric digits must represent a value below 1,000. Generate the remaining candidates one at a time and validate them as QR codes.
 
 Splitting hypotheses or value ranges is limited to 4,096 branch steps per combination traversal. Search work, including condition checks and candidate generation, is limited to 65,536 nodes per format/structure trial. QR-combination limits also apply.
+
+Conventional RS and list decoding also validate QR structure and reject invalid candidates. With **Single-segment assumption** OFF, misread header bits are also eligible for correction.
 
 For example, twenty one-bit erasures scattered across twenty V1-L codewords can be uniquely solved when the binary rank is twenty, even though the conventional seven-symbol erasure budget and twelve-bit enumeration cannot resolve them.
 
@@ -352,7 +358,17 @@ QRR schema 25 persists each limit mode separately from its remembered manual val
 
 ### 4.6 Automatic list-decoding fallback
 
-For each sampled input, list decoding searches for additional candidates when conventional RS, RS partial-bit constraints, partial-bit search, and priority search find no decoded candidate or every decoded candidate depends on RS partial-bit constraints. Existing candidates are retained while alternatives allowing errors in known bits are examined. It is skipped when the data/ECC error limit is zero.
+For each sampled input, recovery proceeds in the following order. A “tentative assignment” means trying 0 or 1 for an unknown bit.
+
+1. Apply conventional RS to the original input, without structure filling or tentative assignments.
+2. Try list decoding without tentative assignments. Defer work that does not finish within one second to step 5.
+3. Find candidates using RS partial-bit constraints (section 4.4).
+4. Try conventional RS with tentative assignments from partial-bit search or priority `*` search.
+5. Try additional list decoding, including tentative assignments and retrying unfinished work from step 2.
+
+If step 1 produces a decoded candidate meeting the selected conditions, the search for that input ends. Candidates found in step 2 or later are retained while subsequent searches continue.
+
+Steps 2, 4, and 5 are skipped when the **Data/ECC error limit** is zero.
 
 GS and Wu treat codewords with remaining unknown bits as erasures and target one more erroneous codeword than conventional RS can correct. Where the strict Johnson bound permits this radius, the app selects a method using estimated work and working memory. GS interpolates over non-erased positions and evaluates candidate polynomials at all original positions. Wu uses error-locator polynomials; at this radius, constant and linear coefficient searches suffice. The same radius is not searched again with the other method.
 
@@ -364,7 +380,7 @@ Known-bit mismatches are capped at **5% of all data/ECC bits in the QR, rounded 
 
 Each trial's candidates are merged with conventional RS candidates, and QR structure and payload checks run as candidates are added. Alternatives are sought even for blocks that conventional RS decoded successfully. Rediscovering an existing decoded candidate does not end the additional search. Input conditions, including fixed cells and priority assignments, are enforced, and multiple valid candidates are retained. Each format/structure pass allows at most 65,536 combinations and 65,536 expanded search nodes.
 
-The three methods share **at most five cumulative minutes per repair operation**, excluding time spent in ordinary search. They share the ordinary search's working-memory limit. Computation can be interrupted; timeout, insufficient memory, or interruption retains validated candidates and reports why the search is unfinished.
+List decoding in steps 2 and 5 shares **at most five cumulative minutes per repair operation** across all three methods, excluding ordinary search time. Computation can be interrupted; timeout, insufficient memory, or interruption retains validated candidates and reports why the search is unfinished. See [Reading recovery result fields](RECOVERY_RESULT_FIELDS.en.md#diagnostic-details) for trial counts and reasons for skipped work.
 
 Algorithm references: [Guruswami–Sudan, errors and erasures](https://www.site.uottawa.ca/~zhcheng/list_dec.pdf), [Nielsen–Zeh, interpolation modules and root finding](https://arxiv.org/abs/1404.3022), [Koetter–Ma–Vardy, interpolation](https://arxiv.org/abs/1005.5734), [Wu, list decoding through error-locator polynomials](https://arxiv.org/abs/cs/0703105).
 
@@ -388,7 +404,7 @@ Ties preserve discovery order; comparisons across geometries finally use the ima
 
 Identical version, ECC, mask, and corrected codewords are merged into one result across geometries and polarities. Other derivations retain their diagnostics and provenance within the retention allowance, with omissions disclosed. The main display uses the best derivation’s provenance; route counts are not result counts.
 
-Equivalent block solutions also retain distinct conventional erasure/enumeration routes, including those found later. A conventional representative is chosen by larger RS margin, fewer search bits, fewer target symbols, then lower penalty; exact ties preserve discovery order. A conventional route remains representative when an equivalent binary-constraint route exists. Combination traversal independently uses the lowest penalty of all retained routes. Improving that traversal rank does not rewrite the representative's own metrics.
+Equivalent block solutions also retain distinct conventional erasure/enumeration routes, including those found later. A conventional representative is chosen by larger RS margin, fewer search bits, fewer target symbols, then lower penalty; exact ties preserve discovery order. The conventional route remains representative when RS partial-bit constraints produce the same solution. Combination traversal independently uses the lowest penalty of all retained routes. Improving that traversal rank does not rewrite the representative's own metrics.
 
 Final payload validation has the highest priority. Among candidates without a valid payload, format disagreement is a stronger ranking condition than mathematical RS success. Thus an RS-consistent solution that substantially contradicts format information is not considered diagnostically better than a format-consistent attempt with a small erasure-capacity shortfall. Candidates that overturn substantial known evidence, violate manual locks, or break structural rules are rejected or ranked lower.
 

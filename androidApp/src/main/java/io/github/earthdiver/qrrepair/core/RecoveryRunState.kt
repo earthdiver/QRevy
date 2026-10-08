@@ -9,6 +9,13 @@ internal enum class RecordedRecoveryCandidate(val parsed: Boolean) {
     NEWLY_PARSED(true),
 }
 
+internal enum class RecoveryPhase {
+    ORIGINAL_RS, EARLY_LIST, BIT_CONSTRAINTS, PARTIAL_RS, ADDITIONAL_LIST;
+
+    val isListDecoding: Boolean get() = this == EARLY_LIST || this == ADDITIONAL_LIST
+    val usesAssignments: Boolean get() = this == BIT_CONSTRAINTS || this == PARTIAL_RS || this == ADDITIONAL_LIST
+}
+
 /** Mutable search evidence belongs to exactly one invocation, including its fallback trials. */
 internal class RecoveryRunState(
     val diagnosticInput: QrMatrix,
@@ -17,8 +24,13 @@ internal class RecoveryRunState(
     val partialBitSearchLimit: Int,
     val listDecodingBudget: ListDecodingBudget,
 ) {
-    var listDecodingPhase = false
+    var phase = RecoveryPhase.ORIGINAL_RS
+    val listDecodingPhase: Boolean get() = phase.isListDecoding
     var listDecodingSummary: ListDecodingSummary? = null
+    val listDecodingCache = ListDecodingTrialCache(minOf(256L * 1024, retentionBudget.workingLimitBytes / 16))
+    val availableWorkingBytes: Long get() = retentionBudget.workingLimitBytes - listDecodingCache.workingBytes
+    val listDecodingStatuses = ListDecodingStage.entries.associateWith { ListDecodingStatus.NOT_REACHED }.toMutableMap()
+    val listDecodingStops = linkedSetOf<CombinationSearchStop>()
     val cancellation = RecoveryCancellation {
         baseCancellation.check()
         if (listDecodingPhase) listDecodingBudget.check()
@@ -39,8 +51,6 @@ internal class RecoveryRunState(
     val priorityHeaderHypotheses = linkedSetOf<String>()
     var acceptedCandidate = false
         private set
-    // Track validation before retention can omit candidates or their alternative routes.
-    var parsedWithoutBitConstraints = false
     var unresolvedCalculations = false
     var solverCompleteness = SearchCompleteness.COMPLETE
     var finished = false
@@ -97,6 +107,7 @@ internal class RecoveryRunState(
             inputBlocker = earlyBlocker ?: blockers.singleOrNull()?.takeIf { allInputsChecked },
             candidateRejections = candidateRejections.toSet(),
             listDecoding = listDecodingSummary,
+            listDecodingExecution = ListDecodingExecution(listDecodingStatuses.mapValues { setOf(it.value) }),
             singleSegmentStatuses = singleSegmentStatuses.toSet(),
             priorityHeaderHypotheses = priorityHeaderHypotheses.toSet(),
             acceptedCandidate = acceptedCandidate,

@@ -43,7 +43,9 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
             append(searchResultDescription(context))
         }
         val processing = listOfNotNull(candidate.displayConditions.candidateCalculationPolicyText(),
-            candidate.usedMethodsText(), listDecoding?.description())
+            candidate.usedMethodsText(),
+            (context.searchDiagnostic ?: candidate.searchDiagnostic)?.listDecodingExecution?.description(),
+            listDecoding?.description())
             .filter(String::isNotBlank).joinToString("\n\n")
         val stopReasons = candidate.combinationSearch.copy(stops = candidate.combinationSearch.stops.filterTo(linkedSetOf()) {
             it != CombinationSearchStop.USER_INTERRUPTED && it != CombinationSearchStop.WORKING_MEMORY_LIMIT
@@ -78,6 +80,10 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
                 append("\n\n").append((context.searchDiagnostic ?: failure.searchDiagnostic).singleSegmentProcessingText())
             }
             listDecoding?.let {
+                if (isNotEmpty()) append("\n\n")
+                append(it.description())
+            }
+            (context.searchDiagnostic ?: failure.searchDiagnostic)?.listDecodingExecution?.let {
                 if (isNotEmpty()) append("\n\n")
                 append(it.description())
             }

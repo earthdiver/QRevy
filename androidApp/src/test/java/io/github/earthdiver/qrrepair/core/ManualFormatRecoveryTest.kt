@@ -56,7 +56,7 @@ class ManualFormatRecoveryTest {
             } else {
                 assertTrue(results.isEmpty())
                 if (explicitMask) assertEquals(RecoveryFailureReason.MANUAL_PIN_CONFLICT, outcome.failure?.reason)
-                else assertEquals(1, outcome.formatAttempts)
+                else assertEquals(2, outcome.formatAttempts) // Original RS and exact constraints keep the trusted format.
             }
             assertEquals(edits, settings.preRecoveryEdits)
             for (y in 0 until matrix.dimension) for (x in 0 until matrix.dimension) {

@@ -38,8 +38,8 @@ data class CombinationSearchSummary(
     fun stopReasonsText(): String = stops.map { reason ->
         when (reason) {
             CombinationSearchStop.USER_INTERRUPTED -> localizedText("利用者が探索を中断しました。", "Search was interrupted by the user.")
-            CombinationSearchStop.SUCCESS_WINDOW -> localizedText("候補が見つかったため、以降の組合せの確認は所定の範囲までで終了しました。", "After finding a candidate, checking further combinations stopped at the prescribed search boundary.")
-            CombinationSearchStop.COMBINATION_LIMIT, CombinationSearchStop.NODE_LIMIT -> localizedText("仕様で定めた探索上限まで実行しました。", "Search reached the limit defined by the search policy.")
+            CombinationSearchStop.SUCCESS_WINDOW -> localizedText("候補が見つかったため、以降の組合せの確認は所定の範囲までで終了しました。未検査の組合せがあります。", "After finding a candidate, checking further combinations stopped at the prescribed search boundary. Some combinations remain unchecked.")
+            CombinationSearchStop.COMBINATION_LIMIT, CombinationSearchStop.NODE_LIMIT -> localizedText("仕様で定めた探索上限に達したため終了しました。未検査の組合せがあります。", "Search stopped at the limit defined by the search policy. Some combinations remain unchecked.")
             CombinationSearchStop.WORKING_MEMORY_LIMIT -> localizedText("計算用メモリの上限に達したため、途中で探索を終了しました。", "Search stopped early at the working-memory limit.")
         }
     }.distinct().joinToString("\n")

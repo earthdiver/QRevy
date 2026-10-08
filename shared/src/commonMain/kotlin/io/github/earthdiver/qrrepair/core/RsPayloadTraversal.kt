@@ -70,9 +70,6 @@ class RsPayloadTraversal(
         }
         fun marks() = IntArray(sources.size) { restrictions[it]?.checkpoint ?: 0 }
         fun restore(marks: IntArray) { restrictions.forEachIndexed { i, r -> r?.restore(marks[i]) } }
-        fun exactMatches(index: Int, word: IntArray): Boolean = word.indices.all {
-            (word[it] xor sources[index].block.codewords[it]) and sources[index].block.unknownMasks[it].inv() and 255 == 0
-        }
 
         suspend fun SequenceScope<List<PartialCodewordSolver.Result>>.emitBlocks(index: Int = 0) {
             cancellation.check()
@@ -288,8 +285,8 @@ class RsPayloadTraversal(
             val source = sources[index]
             val space = source.space?.takeIf { source.dimensionLimit > 0 || it.dimension == 0 }
             for (candidate in source.fixed) {
-                // Exact-space coverage preserves an equivalent ordinary derivation on emission.
-                if (space != null && space.dimension <= source.dimensionLimit && exactMatches(index, candidate.corrected)) continue
+                // A later symbolic branch may never be reached within the traversal budget.
+                // Validate this route now; the caller merges candidates after validation.
                 if (!step()) return
                 fixed[index] = candidate
                 choose(index + 1)

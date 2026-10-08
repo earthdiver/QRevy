@@ -51,6 +51,47 @@ class ListDecodingDiagnosticPresentationTest {
         candidatesOmitted = false, searchDiagnostic = diagnostic, selectedEntry = null,
     )
 
+    @Test fun skippedStagesRemainVisibleWithoutAnyDecoderTrials() = inBothLanguages { ja ->
+        for (reason in listOf(ListDecodingStatus.ORIGINAL_RS_SUCCEEDED, ListDecodingStatus.ZERO_ERROR_LIMIT,
+            ListDecodingStatus.INPUT_CONSTRAINT)) {
+            val diagnostic = wholeSearch.copy(listDecoding = null, listDecodingExecution = ListDecodingExecution(
+                ListDecodingStage.entries.associateWith { setOf(reason) }))
+            val presenter = RecoveryDiagnosticPresenter(ja)
+            val failure = RecoveryFailure(ErrorCorrectionLevel.L, 0, 30, 0, 30,
+                RecoveryFailureStage.PAYLOAD_VALIDATION, searchDiagnostic = diagnostic)
+            val reports = listOf(presenter.candidateReport(candidate(false), null, context(diagnostic)),
+                presenter.failureReport(failure, null, context(diagnostic, 0)))
+            for (report in reports) {
+                val processing = report.sections.single { it.stage == DiagnosticStage.PROCESSING }
+                assertTrue(processing.summary.contains(if (ja) "仮置きなしのリスト復号" else "List decoding without tentative assignments"))
+                assertTrue(processing.summary.contains(if (ja) "仮置きも使う追加リスト復号" else "Additional list decoding including tentative assignments"))
+                assertTrue(processing.summary.contains(diagnostic.listDecodingExecution!!.description()))
+                assertFalse(processing.summary.contains(if (ja) "試行回数" else "List-decoding trials"))
+            }
+        }
+    }
+
+    @Test fun combinedExecutionKeepsEveryStageDecisionAndTrialIneligibilityReason() = inBothLanguages { ja ->
+        val parts = listOf(
+            RecoverySearchDiagnostic(listDecodingExecution = ListDecodingExecution(mapOf(
+                ListDecodingStage.WITHOUT_ASSIGNMENTS to setOf(ListDecodingStatus.DEFERRED),
+                ListDecodingStage.ADDITIONAL to setOf(ListDecodingStatus.TIME_LIMIT)))),
+            RecoverySearchDiagnostic(listDecodingExecution = ListDecodingExecution(mapOf(
+                ListDecodingStage.WITHOUT_ASSIGNMENTS to setOf(ListDecodingStatus.COMPLETED),
+                ListDecodingStage.ADDITIONAL to setOf(ListDecodingStatus.COMPLETED))),
+                listDecoding = ListDecodingSummary(skipReasons = setOf(ListDecodingTrialSkip.TOO_MANY_ERASURES,
+                    ListDecodingTrialSkip.KV_PARAMETERS_UNAVAILABLE))))
+        val combined = RecoverySearchDiagnostic.combine(parts)!!
+        assertEquals(setOf(ListDecodingStatus.DEFERRED, ListDecodingStatus.COMPLETED),
+            combined.listDecodingExecution!!.stages[ListDecodingStage.WITHOUT_ASSIGNMENTS])
+        assertEquals(setOf(ListDecodingStatus.TIME_LIMIT, ListDecodingStatus.COMPLETED),
+            combined.listDecodingExecution.stages[ListDecodingStage.ADDITIONAL])
+        val processing = RecoveryDiagnosticPresenter(ja).candidateReport(candidate(false), null, context(combined))
+            .sections.single { it.stage == DiagnosticStage.PROCESSING }
+        assertTrue(processing.summary.contains(if (ja) "複数の読み取り試行" else "across sampled inputs"))
+        assertTrue(processing.details.contains(requireNotNull(combined.listDecoding).calculationDetails()))
+    }
+
     @Test fun candidateSummaryKeepsMethodsAndWholeSearchCountsSeparateFromCalculationDetails() = inBothLanguages { ja ->
         val report = RecoveryDiagnosticPresenter(ja).candidateReport(candidate(), null, context(wholeSearch))
         val processing = report.sections.single { it.stage == DiagnosticStage.PROCESSING }
@@ -71,6 +112,20 @@ class ListDecodingDiagnosticPresentationTest {
         assertTrue(processing.details.contains(if (ja) "一部試行の復号計算を省略" else "Decoding skipped for some trials"))
         assertFalse(report.fullText().contains(if (ja) "最後のGS試行" else "Last GS trial"))
         assertFalse(report.fullText().contains(if (ja) "時間予算" else "time budget"))
+    }
+
+    @Test fun reusedResultsAreAggregatedAndDisplayedSeparatelyFromNewTrials() = inBothLanguages { ja ->
+        val summary = ListDecodingSummary.combine(listOf(
+            ListDecodingSummary(trials = 1, methodTrials = mapOf(ListDecoderMethod.WU to 1), reusedTrials = 1),
+            ListDecodingSummary(reusedTrials = 2)))!!
+        assertEquals(1, summary.trials)
+        assertEquals(3, summary.reusedTrials)
+        val diagnostic = wholeSearch.copy(listDecoding = summary)
+        val processing = RecoveryDiagnosticPresenter(ja).candidateReport(candidate(method = ListDecoderMethod.WU),
+            null, context(diagnostic)).sections.single { it.stage == DiagnosticStage.PROCESSING }
+        assertTrue(processing.summary.contains(if (ja) "試行回数（探索全体）: 1回" else "trials (whole search): 1"))
+        assertTrue(processing.details.contains(if (ja) "復号結果を再利用: 3回" else "results reused: 3"))
+        assertTrue(processing.details.contains(if (ja) "新規の試行回数には含めません" else "excluded from new trial counts"))
     }
 
     @Test fun failureKeepsSkippedCalculationsInDetailsAndReportsTimeoutInVerification() = inBothLanguages { ja ->

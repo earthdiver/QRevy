@@ -29,6 +29,7 @@ class PrioritySearchRecoveryTest {
     @Test fun interruptionRetainsValidatedCandidatesAndMarksUncheckedSearch() {
         val (matrix, mask) = damaged(5)
         var stopped = false
+        var pass = 0
         val progress = mutableListOf<Pair<Int, Int>>()
         val outcome = RecoveryEngine().recoverWithDiagnostics(matrix,
             formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.L, mask),
@@ -36,7 +37,8 @@ class PrioritySearchRecoveryTest {
             stopRequested = { stopped },
             onPriorityProgress = { done, total ->
                 progress += done to total
-                if (done == 31) stopped = true
+                if (done == 0 && total > 0) pass++
+                if (pass == 2 && done == 31) stopped = true
             })
         assertTrue(outcome.candidates.any { it.text == "STAR-STOP" })
         assertTrue(outcome.candidates.size <= 1)
@@ -131,15 +133,21 @@ class PrioritySearchRecoveryTest {
         matrix.setPrioritySearch(0, 0, true)
         RecoveryEngine().recover(matrix)
     }
-    @Test fun lateStopAfterFinalAssignmentDoesNotLeaveUnfinishedWork() {
+    @Test fun stoppingAfterACompletedPriorityPassStillReportsTheRemainingListSearch() {
         val (matrix, mask) = damaged(5)
         var stopped = false
+        var pass = 0
         val outcome = RecoveryEngine().recoverWithDiagnostics(matrix,
             formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.L, mask),
-            stopRequested = { stopped }, onPriorityProgress = { done, total -> if (done == total) stopped = true })
+            stopRequested = { stopped }, onPriorityProgress = { done, total ->
+                if (done == 0 && total > 0) pass++
+                if (pass == 2 && done == total) stopped = true
+            })
         assertTrue(stopped)
         assertTrue(outcome.candidates.any { it.text == "STAR-STOP" })
-        assertEquals(SearchCompleteness.COMPLETE, outcome.searchDiagnostic.completeness)
+        assertEquals(SearchCompleteness.UNSEARCHED, outcome.searchDiagnostic.completeness)
+        assertEquals(setOf(ListDecodingStatus.INTERRUPTED),
+            outcome.searchDiagnostic.listDecodingExecution?.stages?.get(ListDecodingStage.ADDITIONAL))
     }
 
     @Test fun internalErrorAfterOrdinaryProcessingRetainsPartialExecutionEvidence() {

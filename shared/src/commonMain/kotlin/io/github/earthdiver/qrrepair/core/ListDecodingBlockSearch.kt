@@ -1,6 +1,6 @@
 package io.github.earthdiver.qrrepair.core
 
-enum class ListDecodingTrialSkip { TOO_MANY_ERASURES, NO_ADDITIONAL_RADIUS, MISMATCH_CAP, UNIQUE_NEARBY_WORD }
+enum class ListDecodingTrialSkip { TOO_MANY_ERASURES, NO_ADDITIONAL_RADIUS, MISMATCH_CAP, UNIQUE_NEARBY_WORD, KV_PARAMETERS_UNAVAILABLE }
 
 /** Incremental list decoding; QR validation runs after each complete list, before more assignments. */
 class ListDecodingBlockSearch(
@@ -13,6 +13,7 @@ class ListDecodingBlockSearch(
     private val mismatchLimit: Int,
     private val accepts: (IntArray) -> Boolean = { true },
     private val check: () -> Unit = {},
+    private val cache: ListDecodingTrialCache? = null,
 ) {
     private val plan = PartialBitTrialPlan(block, maxEnumeratedBits, nonEnumerablePositions = nonEnumerablePositions)
     private val nsym = block.codewords.size - block.numDataCodewords
@@ -29,6 +30,8 @@ class ListDecodingBlockSearch(
     var trials: Int = 0
         private set
     var interpolations: Int = 0
+        private set
+    var reusedTrials: Int = 0
         private set
     var memoryLimited: Boolean = false
         private set
@@ -76,10 +79,11 @@ class ListDecodingBlockSearch(
             if (!base) assignment = assignments
             return false
         }
-        trials++
         val guessed = if (base) block.codewords.copyOf() else plan.assignment(index)
         val before = accumulated.workingBytes
         val beforeCount = accumulated.size
+        val key = if (base && cache != null) ListDecodingTrialCache.Key(block) else null
+        var collected: ListDecodingTrialCache.Collector? = null
         fun offer(corrected: IntArray, positions: IntArray, listDecoding: ListDecodingDerivation?, reserve: Long = 0) {
             check()
             val mismatches = mismatches(corrected)
@@ -94,10 +98,21 @@ class ListDecodingBlockSearch(
                 guessedDisagreements * 100 + mismatches * 20 - margin,
                 listDecoding = listDecoding, originalKnownMismatches = mismatches)
             val growth = accumulated.workingBytes - before + accumulated.additionalBytes(result)
+            collected?.fit(availableBytes - reserve - growth)
             if (growth > availableBytes - reserve) throw ListDecodingWorkingMemoryException()
             accumulated.add(result)
         }
         try {
+            val cached = key?.let { cache?.get(it) }
+            if (cached != null) {
+                reusedTrials++
+                for (candidate in cached) {
+                    val positions = guessed.indices.filter { it in erased || candidate.corrected[it] != guessed[it] }.toIntArray()
+                    offer(candidate.corrected, positions, candidate.derivation)
+                }
+                return accumulated.size != beforeCount
+            }
+            trials++
             // Triangle inequality proves a close ordinary result is the only codeword in this
             // hard-decision ball. Healthy blocks and already-disproved QR payloads need no interpolation.
             val ordinary = try { rs.decode(guessed, nsym, erased) } catch (_: ReedSolomonErasures.DecodeException) { null }
@@ -123,13 +138,20 @@ class ListDecodingBlockSearch(
                 ?: return accumulated.size != beforeCount
             val parameters = choice.parameters
             methods[choice.method] = (methods[choice.method] ?: 0) + 1
+            collected = key?.let { cache?.collect(it) }
+            collected?.fit(availableBytes - (accumulated.workingBytes - before) - choice.workingBytes)
+            ordinary?.let { collected?.add(it.corrected, null,
+                availableBytes - (accumulated.workingBytes - before) - choice.workingBytes) }
             fun emit(corrected: IntArray) {
                 val errata = guessed.indices.filter { it in erased || corrected[it] != guessed[it] }.toIntArray()
                 val errors = errata.count { it !in erased }
-                offer(corrected, errata, ListDecodingDerivation(parameters.radius,
+                val derivation = ListDecodingDerivation(parameters.radius,
                     if (choice.method == ListDecoderMethod.GURUSWAMI_SUDAN) parameters.multiplicity else 0,
                     if (choice.method == ListDecoderMethod.GURUSWAMI_SUDAN) parameters.listDegree else 0,
-                    erased.size, errors, index, choice.method), choice.workingBytes)
+                    erased.size, errors, index, choice.method)
+                offer(corrected, errata, derivation, choice.workingBytes)
+                // Retain every root, including those rejected by this trial's pins or limits.
+                collected?.add(corrected, derivation, availableBytes - (accumulated.workingBytes - before) - choice.workingBytes)
             }
             if (choice.method == ListDecoderMethod.WU) {
                 WuDecoder(block.codewords.size, k).decode(guessed, erased, radius, available, check, ::emit)
@@ -137,6 +159,7 @@ class ListDecodingBlockSearch(
                 interpolations++
                 decoder.decode(guessed, erased, parameters, available, check).forEach(::emit)
             }
+            collected?.complete(availableBytes - (accumulated.workingBytes - before))
         } catch (_: ListDecodingWorkingMemoryException) {
             memoryLimited = true
             if (!base) assignment = assignments
@@ -151,30 +174,50 @@ class ListDecodingBlockSearch(
         val maximumWork = hard?.estimatedWork?.let { listDecodingWork(it, assignments.coerceAtLeast(1).toLong()) } ?: Long.MAX_VALUE
         val decoder = KoetterVardyDecoder(block.codewords.size, k)
         val targetErrors = maxOf(1, (softMasks.count { it == 0 } - k) / 2 + 1)
-        val parameters = decoder.parameters(softMasks, targetErrors, availableBytes, maximumWork, check) ?: return null
-        trials++
-        interpolations++
-        methods[ListDecoderMethod.KOETTER_VARDY] = 1
+        val parameters = decoder.parameters(softMasks, targetErrors, availableBytes, maximumWork, check) ?: run {
+            skipped += ListDecodingTrialSkip.KV_PARAMETERS_UNAVAILABLE
+            return null
+        }
         val beforeCount = accumulated.size
         val before = accumulated.workingBytes
+        val key = cache?.let { ListDecodingTrialCache.Key(block,
+            softMasks + intArrayOf(parameters.multiplicity, parameters.listDegree, parameters.degreeBound)) }
+        var collected: ListDecodingTrialCache.Collector? = null
+        fun offer(corrected: IntArray, derivation: ListDecodingDerivation, reserve: Long) {
+            check()
+            val mismatches = mismatches(corrected)
+            if (mismatches > mismatchLimit) { mismatchRejections++; return }
+            if (!accepts(corrected)) return
+            val errata = corrected.indices.filter { block.unknownMasks[it] != 0 || corrected[it] != block.codewords[it] }.toIntArray()
+            val result = PartialCodewordSolver.Result(corrected, errata, 0, 0, intArrayOf(), 0,
+                mismatches * 20, listDecoding = derivation, originalKnownMismatches = mismatches)
+            val growth = accumulated.workingBytes - before + accumulated.additionalBytes(result)
+            collected?.fit(availableBytes - reserve - growth)
+            if (growth > availableBytes - reserve) throw ListDecodingWorkingMemoryException()
+            accumulated.add(result)
+        }
         try {
+            val cached = key?.let { cache[it] }
+            if (cached != null) {
+                reusedTrials++
+                cached.forEach { offer(it.corrected, requireNotNull(it.derivation), 0) }
+                return accumulated.size != beforeCount
+            }
+            trials++
+            interpolations++
+            methods[ListDecoderMethod.KOETTER_VARDY] = 1
+            collected = key?.let { cache.collect(it) }
+            collected?.fit(availableBytes - parameters.workingBytes)
             decoder.decode(block.codewords, softMasks, parameters, availableBytes, check) { corrected, score ->
-                check()
-                val mismatches = mismatches(corrected)
-                if (mismatches > mismatchLimit) { mismatchRejections++; return@decode }
-                if (!accepts(corrected)) return@decode
-                val errata = corrected.indices.filter { block.unknownMasks[it] != 0 || corrected[it] != block.codewords[it] }.toIntArray()
                 val errors = corrected.indices.count { (corrected[it] xor block.codewords[it]) and softMasks[it].inv() and 255 != 0 }
                 val derivation = ListDecodingDerivation(0, parameters.multiplicity, parameters.listDegree,
                     softMasks.count { it.countOneBits() > 4 }, errors, -1, ListDecoderMethod.KOETTER_VARDY,
                     score, parameters.degreeBound + 1)
-                val result = PartialCodewordSolver.Result(corrected, errata, 0, 0, intArrayOf(), 0,
-                    mismatches * 20, listDecoding = derivation, originalKnownMismatches = mismatches)
-                if (accumulated.workingBytes - before + accumulated.additionalBytes(result) > availableBytes - parameters.workingBytes) {
-                    throw ListDecodingWorkingMemoryException()
-                }
-                accumulated.add(result)
+                offer(corrected, derivation, parameters.workingBytes)
+                collected?.add(corrected, derivation,
+                    availableBytes - (accumulated.workingBytes - before) - parameters.workingBytes)
             }
+            collected?.complete(availableBytes - (accumulated.workingBytes - before))
         } catch (_: ListDecodingWorkingMemoryException) {
             memoryLimited = true
         }

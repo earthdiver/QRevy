@@ -14,7 +14,7 @@ internal class RecoveryProgressDialog(activity: Activity, priorityCount: Int) {
     val stopped = AtomicBoolean(false)
     private val done = AtomicInteger(0)
     private val total = AtomicInteger(0)
-    private val listDecodingActive = AtomicBoolean(false)
+    private val listDecodingMessage = AtomicReference<String?>(null)
     private val hasPriority = priorityCount > 0
     private val phase = AtomicReference(localizedText("復元を準備中", "Preparing repair"))
     private val started = SystemClock.elapsedRealtime()
@@ -30,13 +30,14 @@ internal class RecoveryProgressDialog(activity: Activity, priorityCount: Int) {
         override fun run() {
             if (closed) return
             val seconds = (SystemClock.elapsedRealtime() - started) / 1000
+            val listMessage = listDecodingMessage.get()
             dialog.setMessage(buildString {
-                append(phase.get())
+                append(listMessage ?: phase.get())
                 if (hasPriority && total.get() > 0) {
                     append("\n").append(localizedText(
                         "現在の格子の*探索: ${done.get()} / ${total.get()}通り",
                         "* combinations completed for current grid: ${done.get()} / ${total.get()}"))
-                } else if (hasPriority && !listDecodingActive.get()) {
+                } else if (hasPriority && listMessage == null) {
                     append("\n").append(localizedText(
                         "通常処理を実行中（必要な場合に*探索を行います）",
                         "Running ordinary recovery; * search runs when needed"))
@@ -50,6 +51,7 @@ internal class RecoveryProgressDialog(activity: Activity, priorityCount: Int) {
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener {
                 stopped.set(true)
+                listDecodingMessage.set(null)
                 phase.set(localizedText("中断処理中…見つかった候補を保持します", "Interrupting… retaining candidates found so far"))
                 dialog.getButton(AlertDialog.BUTTON_NEGATIVE).isEnabled = false
             }
@@ -63,14 +65,16 @@ internal class RecoveryProgressDialog(activity: Activity, priorityCount: Int) {
         total.set(count)
     }
     fun phase(message: String) {
-        if (!stopped.get()) { listDecodingActive.set(false); phase.set(message) }
+        if (!stopped.get()) { listDecodingMessage.set(null); phase.set(message) }
     }
     fun listDecodingProgress(elapsedMillis: Long, limitMillis: Long) {
         if (stopped.get()) return
-        listDecodingActive.set(true)
-        phase.set(localizedText(
+        listDecodingMessage.set(localizedText(
             "リスト復号による追加探索: 累計${elapsedMillis / 1000} / ${limitMillis / 1000}秒",
             "List-decoding fallback: ${elapsedMillis / 1000} / ${limitMillis / 1000}s cumulative"))
+    }
+    fun listDecodingIdle() {
+        listDecodingMessage.set(null)
     }
     fun close() {
         closed = true

@@ -31,6 +31,7 @@ data class RecoverySearchDiagnostic(
     /** At most two distinct mode/count bit patterns, to distinguish multiple hypotheses. */
     val priorityHeaderHypotheses: Set<String> = emptySet(),
     val listDecoding: ListDecodingSummary? = null,
+    val listDecodingExecution: ListDecodingExecution? = null,
 ) {
     val completeness: SearchCompleteness get() = when {
         unsearched || incompleteReasons.isNotEmpty() -> SearchCompleteness.UNSEARCHED
@@ -76,6 +77,7 @@ data class RecoverySearchDiagnostic(
                     parts.all { it?.inputBlocker == blocker && it.coverageComplete }
                 },
                 listDecoding = ListDecodingSummary.combine(known.mapNotNull { it.listDecoding }),
+                listDecodingExecution = ListDecodingExecution.combine(known.mapNotNull { it.listDecodingExecution }),
                 candidateRejections = known.flatMapTo(linkedSetOf()) { it.candidateRejections },
                 singleSegmentStatuses = known.flatMapTo(linkedSetOf()) { it.singleSegmentStatuses },
                 priorityHeaderHypotheses = known.asSequence().flatMap { it.priorityHeaderHypotheses }.distinct().take(2).toSet(),

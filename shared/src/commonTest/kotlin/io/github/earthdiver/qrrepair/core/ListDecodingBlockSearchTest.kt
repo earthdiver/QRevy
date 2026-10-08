@@ -5,6 +5,16 @@ import kotlin.test.*
 class ListDecodingBlockSearchTest {
     private val memory = 32L * 1024 * 1024
 
+    @Test fun ineligibleHardAndSoftInputsExplainWhyNoDecoderTrialRuns() {
+        val encoded = ReedSolomonErasures().encode(intArrayOf(3, 17, 41, 59), 4)
+        val block = RsBlockWork(4, encoded, IntArray(8) { 15 })
+        val search = ListDecodingBlockSearch(block, block, emptyList(), 0, true, emptySet(), 5)
+        while (search.hasNext) search.advance(memory)
+        assertEquals(0, search.trials)
+        assertEquals(setOf(ListDecodingTrialSkip.TOO_MANY_ERASURES, ListDecodingTrialSkip.KV_PARAMETERS_UNAVAILABLE),
+            search.skipReasons)
+    }
+
     @Test fun selectsWuOrGsForTheSameRadiusAccordingToWorkAndMemory() {
         val wu = assertNotNull(ListDecodingPlanner.hard(26, 19, 0, memory) {})
         val gs = assertNotNull(ListDecodingPlanner.hard(44, 8, 0, memory) {})

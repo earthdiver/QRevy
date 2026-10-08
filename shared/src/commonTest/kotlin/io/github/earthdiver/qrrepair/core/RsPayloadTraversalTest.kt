@@ -11,6 +11,19 @@ class RsPayloadTraversalTest {
     }
     private fun bytes(bits: String): IntArray = bits.padEnd((bits.length + 7) / 8 * 8, '0').chunked(8).map { it.toInt(2) }.toIntArray()
 
+    @Test fun anAvailableConventionalCandidateIsNotDeferredToAnUnreachedExactBranch() {
+        val source = source(intArrayOf(0x40, 0x10, 0), intArrayOf(0, 0, 0x10))
+        val original = rs.encode(intArrayOf(0x40, 0x10, 0), 4)
+        val alternatives = (0..200).map { value ->
+            PartialCodewordSolver.Result(rs.encode(intArrayOf(0x40, 0x10 or (value shr 4), value shl 4 and 255), 4),
+                intArrayOf(), 2, 1, intArrayOf(2), 0)
+        }
+        val traversal = RsPayloadTraversal(listOf(RsCandidateSource(source.block, alternatives, source.space, 12)), 1, 100)
+        val found = traversal.combinations { true }.toList()
+        assertTrue(traversal.limited)
+        assertTrue(found.any { it.single().corrected.contentEquals(original) })
+    }
+
     @Test fun firstCandidateDoesNotRequireMaterializingTheRemaining65535() {
         val source = source(intArrayOf(0x40, 0x20, 0, 0), intArrayOf(0, 15, 255, 240), 16)
         assertEquals(16, source.space!!.dimension)

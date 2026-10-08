@@ -137,10 +137,15 @@ class ListDecodingContinuationTest {
 
     @Test fun interruptionKeepsPreviouslyValidatedBitConstraintCandidates() {
         val fixture = Fixture()
-        var started = false
-        val outcome = fixture.recover(budget = ListDecodingBudget(onProgress = { _, _ -> started = true }), stop = { started })
+        var clock = 0L
+        var additionalStarted = false
+        val outcome = fixture.recover(budget = ListDecodingBudget(
+            onProgress = { elapsed, _ -> if (elapsed >= 2_000) additionalStarted = true },
+            clockMillis = { clock += 250; clock }), stop = { additionalStarted })
         assertTrue(outcome.candidates.any { it.correctedInterleaved.contentEquals(fixture.alternative) })
         assertTrue(SearchIncompleteReason.USER_INTERRUPTED in outcome.searchDiagnostic.incompleteReasons)
         assertFalse(SearchIncompleteReason.LIST_DECODING_TIME_LIMIT in outcome.searchDiagnostic.incompleteReasons)
+        assertEquals(setOf(ListDecodingStatus.INTERRUPTED),
+            outcome.searchDiagnostic.listDecodingExecution?.stages?.get(ListDecodingStage.ADDITIONAL))
     }
 }

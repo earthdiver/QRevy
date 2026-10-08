@@ -20,14 +20,16 @@ class RecoveryCandidateSetRegressionTest {
     @Test fun paddingRecoveredThroughTwoRoutesIsOneResult() {
         val (matrix, format) = fixture()
         val extraction = CodewordExtractor.extract(matrix, 2, format.dataMask!!)
-        val de = QrBlockInterleaver.deinterleave(extraction, 2, format.ecLevel!!)
-        val raw = de.rawLocations.indexOfLast { it != null &&
-            it.localIndex == de.blocks[it.blockIndex].numDataCodewords - 1 }
-        val coord = extraction.codewords[raw].coordinates[7]
-        matrix.set(coord.x, coord.y, ModuleValue.ERASED, 0f, ModuleSource.IMAGE)
-        val candidates = RecoveryEngine().recover(matrix, formatConstraint = format)
+        // Keep the header, but exceed conventional erasure capacity. Exact constraints
+        // recover the same QR both with inferred padding and with the original observations.
+        extraction.codewords.drop(2).forEach { word ->
+            val coord = word.coordinates[7]
+            matrix.set(coord.x, coord.y, ModuleValue.ERASED, 0f, ModuleSource.IMAGE)
+        }
+        val candidates = RecoveryEngine().recover(matrix, formatConstraint = format, maxKnownDataEccMismatches = 0)
         assertEquals(1, candidates.size)
         assertEquals("RECOVERY EVIDENCE", candidates.single().text)
+        assertFalse(candidates.single().conventionalRsDiagnostic!!.succeeded)
         val routes = listOf(candidates.single()) + candidates.single().alternativeDerivations
         assertTrue(routes.any { it.constraintFilledBits > 0 })
         assertTrue(routes.any { it.constraintFilledBits == 0 })

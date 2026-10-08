@@ -14,8 +14,7 @@ class CombinationSearchSummaryTest {
             for (stop in CombinationSearchStop.entries) {
                 val stopped = summary.copy(stops = setOf(stop)).description(count)
                 assertTrue(stopped.startsWith(message))
-                assertEquals(stop in setOf(CombinationSearchStop.USER_INTERRUPTED, CombinationSearchStop.WORKING_MEMORY_LIMIT),
-                    stopped.contains("まだ調べていない組合せ"))
+                assertTrue(stopped.contains("まだ調べていない組合せ") || stopped.contains("未検査の組合せ"))
                 assertFalse(stopped.contains("正解が含まれるとは限りません"))
             }
         }

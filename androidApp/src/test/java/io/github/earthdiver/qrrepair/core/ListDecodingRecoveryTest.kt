@@ -48,7 +48,13 @@ class ListDecodingRecoveryTest {
         assertTrue(correct.repairInfo.any { it.listDecoding != null })
         assertEquals(ListDecoderMethod.WU, correct.actualBlockMethods.single().listDecoding?.method)
         assertEquals(0, requireNotNull(outcome.searchDiagnostic.listDecoding).interpolations)
-        assertTrue(requireNotNull(outcome.searchDiagnostic.listDecoding).methodTrials.getValue(ListDecoderMethod.WU) > 0)
+        assertEquals(1, requireNotNull(outcome.searchDiagnostic.listDecoding).trials)
+        assertEquals(mapOf(ListDecoderMethod.WU to 1), requireNotNull(outcome.searchDiagnostic.listDecoding).methodTrials)
+        assertEquals(1, requireNotNull(outcome.searchDiagnostic.listDecoding).reusedTrials)
+        assertTrue(outcome.searchDiagnostic.listDecodingExecution!!.stages.values.all {
+            it == setOf(ListDecodingStatus.COMPLETED)
+        })
+        assertTrue(correct.combinationSearch.stops.isEmpty())
         assertFalse(SearchIncompleteReason.LIST_DECODING_TIME_LIMIT in outcome.searchDiagnostic.incompleteReasons)
     }
 
@@ -176,6 +182,9 @@ class ListDecodingRecoveryTest {
         assertTrue(outcome.candidates.any { it.text == f.text })
         assertNull(outcome.searchDiagnostic.listDecoding)
         assertEquals(0L, budget.elapsedMillis)
+        assertTrue(outcome.searchDiagnostic.listDecodingExecution!!.stages.values.all {
+            it == setOf(ListDecodingStatus.ORIGINAL_RS_SUCCEEDED)
+        })
     }
 
     @Test fun deadlineAndStopButtonHaveDistinctDiagnostics() {
@@ -189,6 +198,29 @@ class ListDecodingRecoveryTest {
         val stopped = f.recover(budget = ListDecodingBudget(onProgress = { _, _ -> started = true }), stop = { started })
         assertTrue(SearchIncompleteReason.USER_INTERRUPTED in stopped.searchDiagnostic.incompleteReasons)
         assertFalse(SearchIncompleteReason.LIST_DECODING_TIME_LIMIT in stopped.searchDiagnostic.incompleteReasons)
+    }
+
+    @Test fun findingAPayloadStillReportsPendingAssignmentTrials() {
+        val f = Fixture(1, ErrorCorrectionLevel.H, "KV RECOVER")
+        for (word in f.extraction.codewords) {
+            val coord = word.coordinates.last()
+            f.matrix.set(coord.x, coord.y, ModuleValue.ERASED, 0f, ModuleSource.IMAGE)
+        }
+        f.flip(0, 128)
+        f.flip(1, 128)
+        val extraction = CodewordExtractor.extract(f.matrix, 1, 0)
+        val de = QrBlockInterleaver.deinterleave(extraction, 1, ErrorCorrectionLevel.H)
+        val stops = linkedSetOf<CombinationSearchStop>()
+        var assignmentsRemain = false
+        val parsed = ListDecodingQrSearch(ReedSolomonErasures()).run(de, de, f.matrix, extraction,
+            emptySet(), 1, 2, true, listOf(emptySet()), 12, 32L * 1024 * 1024, RecoveryCancellation.NONE,
+            onRejection = {}, onProgress = { _, search ->
+                if (ListDecoderMethod.KOETTER_VARDY in search.methodTrials) assignmentsRemain = search.hasNext
+            }, onStops = { stops += it },
+        ) { it.single().corrected.contentEquals(f.raw) }
+        assertTrue(parsed)
+        assertTrue(assignmentsRemain)
+        assertEquals(setOf(CombinationSearchStop.SUCCESS_WINDOW), stops)
     }
 
     @Test fun kvAutomaticallyAddsADecodedCandidateBeforeRepeatingUnknownBitAssignments() {
@@ -208,6 +240,8 @@ class ListDecodingRecoveryTest {
         assertEquals(2, restored.knownBitMismatchesAfterCorrection)
         assertEquals(ListDecoderMethod.KOETTER_VARDY, restored.actualBlockMethods.single().listDecoding?.method)
         assertTrue(requireNotNull(outcome.searchDiagnostic.listDecoding).methodTrials.getValue(ListDecoderMethod.KOETTER_VARDY) > 0)
+        assertEquals(setOf(ListDecodingStatus.COMPLETED),
+            outcome.searchDiagnostic.listDecodingExecution?.stages?.get(ListDecodingStage.WITHOUT_ASSIGNMENTS))
         val smallMemory = f.recover(workingLimit = 1024L * 1024)
         assertTrue(smallMemory.candidates.any { it.correctedInterleaved.contentEquals(f.raw) })
         f.matrix[f.extraction.codewords[0].coordinates[0].x, f.extraction.codewords[0].coordinates[0].y].source = ModuleSource.USER
