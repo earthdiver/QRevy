@@ -2,6 +2,16 @@ plugins {
     id("com.android.application")
 }
 
+// Gradle's JVM properties are not inherited by forked test JVMs. Forward only this
+// supported control and declare it as an input so changing the count reruns tests.
+val recoveryFuzzIterations = providers.systemProperty("qr.fuzz.iterations").orElse("24")
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    inputs.property("qr.fuzz.iterations", recoveryFuzzIterations)
+    systemProperty("qr.fuzz.iterations", recoveryFuzzIterations.get())
+    // Extended CI runs expose the completed-count message as well as retaining it in test reports.
+    testLogging.showStandardStreams = providers.systemProperty("qr.fuzz.iterations").isPresent
+}
+
 android {
     namespace = "io.github.earthdiver.qrrepair"
     compileSdk = 37

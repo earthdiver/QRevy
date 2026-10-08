@@ -71,6 +71,7 @@ class QrReleaseRegressionTest {
                 recovered.any { it.text == text },
             )
         }
+        println("Completed $iterations deterministic recovery fuzz iterations")
     }
 
     @Test
