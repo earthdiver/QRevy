@@ -34,6 +34,8 @@ Transparent images use a white background for both display and analysis. Partial
 
 **Set thresholds automatically** is enabled by default for a new image. While enabled, the app recalculates one global threshold pair when the grid changes. Moving either slider switches to manual thresholds; turning the option off directly keeps the current pair. Manual thresholds remain unchanged during corner adjustment and repair fine-tuning. Turn the option on again to recalculate them. A reopened session restores its saved mode and values. Unstable sampling can also produce `?`; fixed and tentative edits are not overwritten.
 
+Before logical grid orientation is assigned, automatic mode uses the provisional image thresholds. The editor preview and saved pre-repair Data view use the same rule, including manual cell values.
+
 The threshold sliders in pre-repair settings show which brightness values after image adjustment are read as `0` or `1`.
 
 When the app can determine whether black and white are reversed from the square patterns at the QR code’s corners (Finder patterns), it uses that result for the preview’s cell values and the threshold descriptions. If **Auto** is selected and this has not yet been determined, assigning a Finder position makes the app check the surrounding area using both normal and inverted interpretations.
@@ -171,6 +173,8 @@ Each session has at most 40 history checkpoints. Memory or storage limits can re
 
 Reopening work or a history checkpoint recalculates recovery candidates from the saved input and settings. When the selected QR was recorded, the same QR is selected even if candidate order changes. If that QR is not found in the new search, no candidate is selected and the app explains why.
 
+An immediate scan result survives screen rotation. Reopening an untouched import also restores the result by scanning the verified source image again, without repeating the initial notice. Saved repair settings and edited checkpoints retain their own state.
+
 Deleting the currently open saved work leaves the on-screen work available. Choosing **Save** or running repair afterward saves it as a new session.
 
 **Copy content** sends the complete recovered text to the operating-system clipboard. Exporting a recovered image writes it outside app-private storage. Saving work inside the app keeps it in app-private storage. Review sharing and backup behavior at the destination. See [Privacy](../PRIVACY.md) and [Security](../SECURITY.md).
@@ -184,5 +188,7 @@ Choose Classic or Modern under **Menu → Appearance (next launch)**, then save.
 Modern uses the **01 Repair settings**, **02 Edit cells**, and **03 Result** tabs. The result tab is enabled only when a result exists. Switching tabs preserves the unsaved draft and Undo history. Returning Home asks before discarding unsaved changes.
 
 Unsaved settings, cell edits, and Undo/Redo history survive screen rotation in both styles. They remain unsaved until you choose **Save** or run repair.
+
+Repair settings use a vertical layout in narrow windows and place the image beside the controls in short, wide windows. The preview fits within the available height while Save and Repair remain accessible.
 
 The on-screen Home/Cancel controls, Android Back, and tapping outside the settings dialog ask before discarding unsaved changes.

@@ -63,6 +63,37 @@ class SavedPreRecoveryDataTest {
         }
     }
 
+    @Test fun savingKeepsTheEditorsThresholdPolicyAndManualValues() {
+        for (style in AppStyle.entries) for (assigned in listOf(false, true)) for (automatic in listOf(false, true)) {
+            withActivity(observedMatrix(), style = style) { activity ->
+                val bitmap = BitmapUtils.renderTextMatrixSource(observedMatrix())
+                for (y in 112 until 120) for (x in 112 until 120)
+                    bitmap.setPixel(x, y, android.graphics.Color.rgb(150, 150, 150))
+                set(activity, "prepared", BitmapUtils.prepare(bitmap))
+                val settings = PreprocessSettings(polarity = PolarityMode.NORMAL, blackMax = 96, whiteMin = 160,
+                    automaticThresholds = automatic, logicalGridAssigned = assigned,
+                    manualQuad = ImageQuad(PointD(35.5, 35.5), PointD(195.5, 35.5), PointD(195.5, 195.5), PointD(35.5, 195.5)),
+                    preRecoveryEdits = mapOf(Coord(11, 11) to ModuleValue.ONE))
+                set(activity, "preprocessSettings", settings)
+                call(activity, "showPreprocessDialog")
+                shadowOf(Looper.getMainLooper()).idle()
+                val editor = ShadowDialog.getLatestDialog() as AlertDialog
+                val overlay = views(editor.window!!.decorView).filterIsInstance<io.github.earthdiver.qrrepair.ui.PreprocessOverlayView>().single()
+                val preview = overlay.javaClass.getDeclaredField("editMatrix").apply { isAccessible = true }.get(overlay) as QrMatrix
+                val expected = preview[10, 10].value
+                if (!assigned && automatic) assertEquals(ModuleValue.ERASED, expected)
+                views(editor.window!!.decorView).filterIsInstance<Button>().first { it.text == "Save" }.performClick()
+                shadowOf(Looper.getMainLooper()).idle()
+                val data = call(activity, "savedPreRecoveryData") as PreRecoveryDataInput
+                assertEquals("$style assigned=$assigned automatic=$automatic", expected, data.matrix[10, 10].value)
+                assertEquals(ModuleValue.ONE, data.matrix[11, 11].value)
+                assertEquals(ModuleSource.USER, data.matrix[11, 11].source)
+                editor.dismiss()
+                bitmap.recycle()
+            }
+        }
+    }
+
     @Test fun formatChosenAndSavedInTheEditorIsUsedByMainData() {
         for (style in AppStyle.entries) withActivity(observedMatrix(), style = style) { activity ->
             call(activity, "showPreprocessDialog")

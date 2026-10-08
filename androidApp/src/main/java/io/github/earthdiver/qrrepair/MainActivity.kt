@@ -144,6 +144,7 @@ class MainActivity : Activity() {
         val history: RetainedCellHistory?,
         val editorWork: RetainedEditorWork?,
         val imageImport: RetainedImageImport? = null,
+        val immediateResult: ImmediateQrResult? = null,
     )
     private data class RetainedImageImport(val source: Bitmap, val state: Bundle)
     private var importEditorDialog: AlertDialog? = null
@@ -161,7 +162,20 @@ class MainActivity : Activity() {
         val draft: PreprocessEditorDraft,
     )
 
+    private data class ImmediateQrResult(
+        val sessionId: String?,
+        val entryId: String?,
+        val settings: PreprocessSettings,
+        val text: String,
+        val rawBytes: ByteArray?,
+    )
+    private var immediateResult: ImmediateQrResult? = null
+    private var pendingImmediateResult: ImmediateQrResult? = null
     private var immediateResultShown = false
+        set(value) {
+            field = value
+            if (!value) immediateResult = null
+        }
     private lateinit var modernHeader: View
     private var preprocessEditor: PreprocessEditorSession? = null
     private lateinit var homePanel: LinearLayout
@@ -270,12 +284,17 @@ class MainActivity : Activity() {
             preprocessSettings = work.savedSettings
             savedCellEditState = work.savedEdits
             sessionHistory.replace(work.history, work.cursor)
+            retained.immediateResult?.takeIf { it.sessionId == work.sessionId &&
+                it.entryId == sessionHistory.current?.id && it.settings == work.savedSettings }?.let {
+                renderImmediateQrResult(it, showNotice = false)
+            }
             showPreprocessPage(work.draft.page, work.draft)
             return
         }
         val restoredSessionId = savedInstanceState?.getString(STATE_SESSION_ID)
         if (restoredSessionId != null && RecoverySessionCodec.isSafeSessionId(restoredSessionId)) {
             pendingRetainedCellHistory = retained?.history
+            pendingImmediateResult = retained?.immediateResult
             restoreSessionById(restoredSessionId)
         } else {
             showStartMenu()
@@ -303,7 +322,7 @@ class MainActivity : Activity() {
             importEditor?.let { RetainedImageImport(image, it.saveState()) }
         }
         retainImportSource = imageImport != null
-        return RetainedActivityState(activeStyle, history, editorWork, imageImport)
+        return RetainedActivityState(activeStyle, history, editorWork, imageImport, immediateResult)
     }
 
     private fun purgeStaleCameraCaptures() {
@@ -1325,8 +1344,9 @@ class MainActivity : Activity() {
                 pitch, 0.0, quad, io.github.earthdiver.qrrepair.core.GeometryModel.MANUAL_PROJECTIVE,
             ).reanchored()
         }.getOrNull() ?: return null
-        val profile = preprocessSettings.variants().firstOrNull()
-        val matrix = MatrixSampler(prepared.luma, profile).sample(geometry).first
+        val profile = preprocessSettings.variants().first()
+        val matrix = PreRecoveryPreviewSampler().sample(prepared.luma, geometry, profile,
+            preprocessSettings.logicalGridAssigned).first
         preprocessSettings.preRecoveryEdits.forEach { (coord, value) ->
             if (coord.x in 0 until matrix.dimension && coord.y in 0 until matrix.dimension) {
                 matrix.set(coord.x, coord.y, value, 1f, preprocessSettings.sourceForPreRecoveryEdit(value, coord))
@@ -1487,6 +1507,7 @@ class MainActivity : Activity() {
 
     private fun openRestoredHistoryEntry() {
         when {
+            immediateResultShown -> showWorkspace()
             recoveryState.workingMatrix != null -> showZoomableResult()
             prepared != null -> showPreprocessDialog()
             else -> Toast.makeText(this, ui("この履歴点には表示できる元画像・QR行列がありません。", "This history entry has no viewable source image or QR matrix."), Toast.LENGTH_LONG).show()
@@ -1499,6 +1520,9 @@ class MainActivity : Activity() {
         onRestored: (() -> Unit)? = null,
     ) {
         closePreprocessEditor()
+        val cachedResult = pendingImmediateResult ?: immediateResult
+        pendingImmediateResult = null
+        immediateResultShown = false
         val snapshot = entry.snapshot
         savedCellEditState = null
         preprocessSettings = snapshot.preprocessSettings ?: PreprocessSettings()
@@ -1523,7 +1547,7 @@ class MainActivity : Activity() {
             return
         }
         if (matrix == null || geometry == null) {
-            workGeneration.incrementAndGet()
+            val token = workGeneration.incrementAndGet()
             historyRestoreToken = null
             recoveryState.clear()
             contentPreviewText.text = getString(R.string.no_content_preview)
@@ -1535,6 +1559,28 @@ class MainActivity : Activity() {
             } else {
                 guideText.text = ui("案内: 元画像を検証できないため、この履歴点の画像設定は利用できません。保存済み行列のある履歴点を選択してください。", "Guide: The source image could not be verified. Select a history entry that contains a saved matrix.")
                 statusText.text = ui("$prefix。履歴は読み込みましたが、元画像は利用できません。", "$prefix. History was loaded, but the source image is unavailable.")
+            }
+            // Only an untouched import represents the image that was scanned immediately.
+            // Saved settings/edits must remain repair work, even if the source still decodes.
+            if (p != null && entry.kind == HistoryEventKind.IMPORT && snapshot.sourceMatrix == null &&
+                preprocessSettings.preRecoveryEdits.isEmpty()) {
+                if (cachedResult != null && cachedResult.sessionId == sessionId &&
+                    cachedResult.entryId == entry.id && cachedResult.settings == preprocessSettings) {
+                    renderImmediateQrResult(cachedResult, showNotice = false)
+                    onRestored?.invoke()
+                } else {
+                    historyRestoreToken = token
+                    executor.execute {
+                        val result = decodeStandardQr(p.bitmap)
+                        runOnUiThread {
+                            if (isFinishing || isDestroyed || token != workGeneration.get()) return@runOnUiThread
+                            historyRestoreToken = null
+                            if (result != null) renderImmediateQrResult(immediateQrResult(result), showNotice = false)
+                            onRestored?.invoke()
+                        }
+                    }
+                }
+                return
             }
             onRestored?.invoke()
             return
@@ -2249,7 +2295,13 @@ class MainActivity : Activity() {
         StandardQrDecoder.decode(bitmap.width, bitmap.height, pixels)
     }.getOrNull()
 
-    private fun showImmediateQrResult(result: Result) {
+    private fun immediateQrResult(result: Result) = ImmediateQrResult(
+        sessionId, sessionHistory.current?.id, preprocessSettings, result.text, result.rawBytes?.copyOf())
+
+    private fun showImmediateQrResult(result: Result) = renderImmediateQrResult(immediateQrResult(result), showNotice = true)
+
+    private fun renderImmediateQrResult(result: ImmediateQrResult, showNotice: Boolean) {
+        immediateResult = result
         immediateResultShown = true
         showWorkspace()
         if (modernStyle) {
@@ -2268,7 +2320,7 @@ class MainActivity : Activity() {
         statusText.text = ui("正常なQRコードを即時デコードしました。修復は不要です。", "The valid QR code was decoded immediately; repair is unnecessary.")
         guideText.text = ui("案内: 内容を確認してください。必要な場合のみ『修復する』を開けます。", "Guide: Review the content. Open Repair only if needed.")
         contentPreviewText.text = ui("内容プレビュー: 正常QR\n${result.text}", "Content preview: Valid QR\n${result.text}")
-        AlertDialog.Builder(this)
+        if (showNotice) AlertDialog.Builder(this)
             .setTitle(ui("QRコードの内容", "QR code content"))
             .setMessage(display)
             .setNegativeButton(R.string.repair) { _, _ -> showPreprocessDialog() }
