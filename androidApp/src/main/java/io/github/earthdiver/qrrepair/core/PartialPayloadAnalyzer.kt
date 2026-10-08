@@ -257,9 +257,9 @@ object PartialPayloadAnalyzer {
             when (mode) {
                 1 -> {
                     while (remaining >= 3 && !unknown && !invalid) {
-                        if (take(10, { it < 1000 }, { "%03d".format(it) })) remaining -= 3
+                        if (take(10, { it < 1000 }, { it.toString().padStart(3, '0') })) remaining -= 3
                     }
-                    if (!unknown && !invalid && remaining == 2) take(7, { it < 100 }, { "%02d".format(it) })
+                    if (!unknown && !invalid && remaining == 2) take(7, { it < 100 }, { it.toString().padStart(2, '0') })
                     if (!unknown && !invalid && remaining == 1) take(4, { it < 10 }, { it.toString() })
                 }
                 2 -> {

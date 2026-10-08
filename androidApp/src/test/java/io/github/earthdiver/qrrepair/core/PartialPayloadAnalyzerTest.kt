@@ -5,6 +5,27 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PartialPayloadAnalyzerTest {
+    @Test fun numericPayloadUsesAsciiDigitsRegardlessOfDeviceLocale() {
+        val original = java.util.Locale.getDefault()
+        try {
+            for (tag in listOf("en-US", "ja-JP", "ar-EG", "fa-IR")) {
+                java.util.Locale.setDefault(java.util.Locale.forLanguageTag(tag))
+                for (text in listOf("0123456", "01", "0")) {
+                    val body = text.chunked(3).joinToString("") {
+                        binary(it.toInt(), when (it.length) { 3 -> 10; 2 -> 7; else -> 4 })
+                    }
+                    val report = PartialPayloadAnalyzer.analyze(partials("0001" + binary(text.length, 10) + body), 1)
+                    assertEquals(tag, text, report.knownTextPrefix)
+                }
+                val partial = PartialPayloadAnalyzer.analyze(partials("0001" + binary(5, 10) + binary(12, 10) + "???????"), 1)
+                assertEquals("012", partial.knownTextPrefix)
+                assertTrue(partial.stoppedAtUnknownBit)
+            }
+        } finally {
+            java.util.Locale.setDefault(original)
+        }
+    }
+
     @Test fun reportsKnownBytePrefixAndStopsAtFirstUnknownByte() {
         // Byte mode, count 3, then A, one unknown byte, C.
         val bits = "0100" + "00000011" + "01000001" + "????????" + "01000011"
