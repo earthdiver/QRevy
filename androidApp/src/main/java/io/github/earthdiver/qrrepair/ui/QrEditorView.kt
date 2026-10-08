@@ -258,9 +258,11 @@ class QrEditorView(context: Context) : View(context) {
         return PointD((x - offsetX) / viewScale.toDouble(), (y - offsetY) / viewScale.toDouble())
     }
 
-    private fun eventToCell(event: MotionEvent): Coord? {
+    private fun eventToCell(event: MotionEvent): Coord? = positionToCell(event.x, event.y)
+
+    private fun positionToCell(viewX: Float, viewY: Float): Coord? {
         val g = geometry ?: return null
-        val p = viewToImage(event.x, event.y) ?: return null
+        val p = viewToImage(viewX, viewY) ?: return null
         val module = g.imageToModule(p.x, p.y)
         val x = floor(module.x + 0.5).toInt()
         val y = floor(module.y + 0.5).toInt()
@@ -634,11 +636,19 @@ class QrEditorView(context: Context) : View(context) {
             when (editorTool) {
                 EditorTool.BRUSH_ZERO, EditorTool.BRUSH_ONE, EditorTool.BRUSH_ERASURE, EditorTool.BRUSH_ERASURE_WIDE -> {
                     val brushSize = editorTool.brushSize() ?: 1
+                    fun appendSamples() {
+                        for (index in 0 until event.historySize) {
+                            positionToCell(event.getHistoricalX(index), event.getHistoricalY(index))?.let {
+                                activeStroke += footprint(it, brushSize)
+                            }
+                        }
+                        cell?.let { activeStroke += footprint(it, brushSize) }
+                    }
                     when (event.actionMasked) {
-                        MotionEvent.ACTION_DOWN -> { activeStroke.clear(); cell?.let { activeStroke += footprint(it, brushSize) }; parent?.requestDisallowInterceptTouchEvent(true); invalidate(); return true }
-                        MotionEvent.ACTION_MOVE -> { cell?.let { activeStroke += footprint(it, brushSize) }; invalidate(); return true }
+                        MotionEvent.ACTION_DOWN -> { activeStroke.clear(); appendSamples(); parent?.requestDisallowInterceptTouchEvent(true); invalidate(); return true }
+                        MotionEvent.ACTION_MOVE -> { appendSamples(); invalidate(); return true }
                         MotionEvent.ACTION_UP -> {
-                            cell?.let { activeStroke += footprint(it, brushSize) }
+                            appendSamples()
                             val value = when (editorTool) {
                                 EditorTool.BRUSH_ZERO -> ModuleValue.ZERO
                                 EditorTool.BRUSH_ONE -> ModuleValue.ONE

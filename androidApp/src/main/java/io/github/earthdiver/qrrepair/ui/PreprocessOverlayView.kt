@@ -68,6 +68,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
     private var editCell: Coord? = null
     var cellEditorTool: EditorTool = EditorTool.NAVIGATE
     private val editStroke = linkedSetOf<Coord>()
+    private var editGestureCancelledByMultiTouch = false
     private var editSelection: Set<Coord> = emptySet()
     private var editSelectionIsRectangle = false
     private var editRangeStart: Coord? = null
@@ -420,42 +421,45 @@ class PreprocessOverlayView(context: Context) : View(context) {
         if (gridPreviewAvailable && renderSampledCells) drawClassificationPreview(canvas, scale, ox, oy)
         val dimension = 17 + 4 * version
         val halfModule = 0.5 / (dimension - 1)
-        fun gridPoint(u: Double, v: Double): PointD {
-            val top = PointD(vc[0].x + (vc[1].x - vc[0].x) * u, vc[0].y + (vc[1].y - vc[0].y) * u)
-            val bottom = PointD(vc[3].x + (vc[2].x - vc[3].x) * u, vc[3].y + (vc[2].y - vc[3].y) * u)
-            return PointD(top.x + (bottom.x - top.x) * v, top.y + (bottom.y - top.y) * v)
-        }
-        val boundaryCorners = listOf(
-            gridPoint(-halfModule, -halfModule),
-            gridPoint(1.0 + halfModule, -halfModule),
-            gridPoint(1.0 + halfModule, 1.0 + halfModule),
-            gridPoint(-halfModule, 1.0 + halfModule),
-        )
-        boundaryPath.rewind()
-        boundaryPath.moveTo(boundaryCorners[0].x.toFloat(), boundaryCorners[0].y.toFloat())
-        for (i in 1..3) boundaryPath.lineTo(boundaryCorners[i].x.toFloat(), boundaryCorners[i].y.toFloat())
-        boundaryPath.close()
-        canvas.drawPath(boundaryPath, linePaint)
-        if (gridPreviewAvailable) {
-            val gridStep = when { dimension <= 33 -> 1; dimension <= 65 -> 2; else -> 4 }
-            val gridLines = ((0..dimension step gridStep) + dimension).distinct()
-            for (i in gridLines) {
-                val t = (i - 0.5) / (dimension - 1)
-                val verticalStart = gridPoint(t, -halfModule)
-                val verticalEnd = gridPoint(t, 1.0 + halfModule)
-                val horizontalStart = gridPoint(-halfModule, t)
-                val horizontalEnd = gridPoint(1.0 + halfModule, t)
-                canvas.drawLine(verticalStart.x.toFloat(), verticalStart.y.toFloat(), verticalEnd.x.toFloat(), verticalEnd.y.toFloat(), gridPaint)
-                canvas.drawLine(horizontalStart.x.toFloat(), horizontalStart.y.toFloat(), horizontalEnd.x.toFloat(), horizontalEnd.y.toFloat(), gridPaint)
-            }
-            if (logicalGridAssigned && !highlightManualOnly) {
-                drawExpectedStructures(canvas, scale, ox, oy)
-                val timing = 6.0 / (dimension - 1)
-                drawInterpolated(canvas, vc[0], vc[3], vc[1], vc[2], timing, structurePaint)
-                drawInterpolated(canvas, vc[0], vc[1], vc[3], vc[2], timing, structurePaint)
-                drawFinderBox(canvas, vc, dimension, 0, 0)
-                drawFinderBox(canvas, vc, dimension, dimension - 7, 0)
-                drawFinderBox(canvas, vc, dimension, 0, dimension - 7)
+        previewGeometry()?.let { geometry ->
+            fun gridPoint(u: Double, w: Double): PointD =
+                v(geometry.moduleToImage(u * (dimension - 1), w * (dimension - 1)))
+            val boundaryCorners = listOf(
+                gridPoint(-halfModule, -halfModule),
+                gridPoint(1.0 + halfModule, -halfModule),
+                gridPoint(1.0 + halfModule, 1.0 + halfModule),
+                gridPoint(-halfModule, 1.0 + halfModule),
+            )
+            boundaryPath.rewind()
+            boundaryPath.moveTo(boundaryCorners[0].x.toFloat(), boundaryCorners[0].y.toFloat())
+            for (i in 1..3) boundaryPath.lineTo(boundaryCorners[i].x.toFloat(), boundaryCorners[i].y.toFloat())
+            boundaryPath.close()
+            canvas.drawPath(boundaryPath, linePaint)
+            if (gridPreviewAvailable) {
+                val gridStep = when { dimension <= 33 -> 1; dimension <= 65 -> 2; else -> 4 }
+                val gridLines = ((0..dimension step gridStep) + dimension).distinct()
+                for (i in gridLines) {
+                    val t = (i - 0.5) / (dimension - 1)
+                    val verticalStart = gridPoint(t, -halfModule)
+                    val verticalEnd = gridPoint(t, 1.0 + halfModule)
+                    val horizontalStart = gridPoint(-halfModule, t)
+                    val horizontalEnd = gridPoint(1.0 + halfModule, t)
+                    canvas.drawLine(verticalStart.x.toFloat(), verticalStart.y.toFloat(), verticalEnd.x.toFloat(), verticalEnd.y.toFloat(), gridPaint)
+                    canvas.drawLine(horizontalStart.x.toFloat(), horizontalStart.y.toFloat(), horizontalEnd.x.toFloat(), horizontalEnd.y.toFloat(), gridPaint)
+                }
+                if (logicalGridAssigned && !highlightManualOnly) {
+                    drawExpectedStructures(canvas, geometry, scale, ox, oy)
+                    fun modulePoint(x: Double, y: Double) = v(geometry.moduleToImage(x, y))
+                    for ((start, end) in listOf(
+                        modulePoint(0.0, 6.0) to modulePoint(dimension - 1.0, 6.0),
+                        modulePoint(6.0, 0.0) to modulePoint(6.0, dimension - 1.0),
+                    )) {
+                        canvas.drawLine(start.x.toFloat(), start.y.toFloat(), end.x.toFloat(), end.y.toFloat(), structurePaint)
+                    }
+                    drawFinderBox(canvas, ::modulePoint, 0, 0)
+                    drawFinderBox(canvas, ::modulePoint, dimension - 7, 0)
+                    drawFinderBox(canvas, ::modulePoint, 0, dimension - 7)
+                }
             }
         }
         vc.forEachIndexed { index, point ->
@@ -512,18 +516,20 @@ class PreprocessOverlayView(context: Context) : View(context) {
         (dragPoint ?: selectedCorner?.let(corners::get))?.let { drawMagnifier(canvas, source, it, scale) }
     }
 
-    /** Draws the ideal fixed QR modules lightly, so alignment can be judged against the image. */
-    private fun drawExpectedStructures(canvas: Canvas, fitScale: Double, ox: Double, oy: Double) {
+    private fun previewGeometry(): GridGeometry? {
         val dimension = 17 + 4 * version
         val quad = imageQuad()
         val pitch = ((quad.topLeft.distanceTo(quad.topRight) + quad.topLeft.distanceTo(quad.bottomLeft)) /
             (2.0 * (dimension - 1))).coerceAtLeast(.25)
-        val geometry = runCatching {
-            GridGeometry(
-                version, FinderRole.TOP_LEFT, quad.topLeft.x, quad.topLeft.y,
-                pitch, 0.0, quad, GeometryModel.MANUAL_PROJECTIVE,
-            ).reanchored()
-        }.getOrNull() ?: return
+        return runCatching {
+            GridGeometry(version, FinderRole.TOP_LEFT, quad.topLeft.x, quad.topLeft.y,
+                pitch, 0.0, quad, GeometryModel.MANUAL_PROJECTIVE).reanchored()
+        }.getOrNull()
+    }
+
+    /** Draws the ideal fixed QR modules lightly, so alignment can be judged against the image. */
+    private fun drawExpectedStructures(canvas: Canvas, geometry: GridGeometry, fitScale: Double, ox: Double, oy: Double) {
+        val dimension = geometry.dimension
         fun screen(p: PointD) = PointD(ox + p.x * fitScale, oy + p.y * fitScale)
         fun module(mx: Int, my: Int, black: Boolean) {
             val points = listOf(
@@ -742,19 +748,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
         canvas.restoreToCount(saved)
     }
 
-    private fun drawInterpolated(canvas: Canvas, a: PointD, b: PointD, c: PointD, d: PointD, t: Double, paint: Paint = gridPaint) {
-        val p = PointD(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)
-        val q = PointD(c.x + (d.x - c.x) * t, c.y + (d.y - c.y) * t)
-        canvas.drawLine(p.x.toFloat(), p.y.toFloat(), q.x.toFloat(), q.y.toFloat(), paint)
-    }
-
-    private fun drawFinderBox(canvas: Canvas, q: List<PointD>, dimension: Int, moduleX: Int, moduleY: Int) {
-        fun map(x: Double, y: Double): PointD {
-            val u = x / (dimension - 1); val v = y / (dimension - 1)
-            val top = PointD(q[0].x + (q[1].x - q[0].x) * u, q[0].y + (q[1].y - q[0].y) * u)
-            val bottom = PointD(q[3].x + (q[2].x - q[3].x) * u, q[3].y + (q[2].y - q[3].y) * u)
-            return PointD(top.x + (bottom.x - top.x) * v, top.y + (bottom.y - top.y) * v)
-        }
+    private fun drawFinderBox(canvas: Canvas, map: (Double, Double) -> PointD, moduleX: Int, moduleY: Int) {
         val pts = listOf(map(moduleX.toDouble(), moduleY.toDouble()), map((moduleX + 6).toDouble(), moduleY.toDouble()), map((moduleX + 6).toDouble(), (moduleY + 6).toDouble()), map(moduleX.toDouble(), (moduleY + 6).toDouble()))
         val path = Path().apply { moveTo(pts[0].x.toFloat(), pts[0].y.toFloat()); for (i in 1..3) lineTo(pts[i].x.toFloat(), pts[i].y.toFloat()); close() }
         canvas.drawPath(path, structurePaint)
@@ -764,25 +758,54 @@ class PreprocessOverlayView(context: Context) : View(context) {
         val source = bitmap ?: return false
         val scale = min(width.toDouble() / source.width, height.toDouble() / source.height)
         val ox = (width - source.width * scale) / 2.0; val oy = (height - source.height * scale) / 2.0
-        var p = PointD(((event.x - ox) / scale).coerceIn(0.0, source.width.toDouble()), ((event.y - oy) / scale).coerceIn(0.0, source.height.toDouble()))
         val magnifierFocus = if (cellEditorTool == EditorTool.NAVIGATE) {
             editGeometry?.takeIf { cellEditInteractive }?.let { geometry -> editCell?.let { geometry.moduleToImage(it.x.toDouble(), it.y.toDouble()) } }
         } else {
             null
         }
         val magnifier = magnifierFocus?.let { magnifierMapping(source, it, scale) }
-        if (magnifier != null && magnifier.destination.contains(event.x, event.y)) {
-            p = PointD(
-                (magnifier.source.left + (event.x - magnifier.destination.left) / magnifier.destination.width() * magnifier.source.width()).toDouble(),
-                (magnifier.source.top + (event.y - magnifier.destination.top) / magnifier.destination.height() * magnifier.source.height()).toDouble(),
-            )
+        fun imagePoint(x: Float, y: Float): PointD {
+            if (magnifier != null && magnifier.destination.contains(x, y)) {
+                return PointD(
+                    (magnifier.source.left + (x - magnifier.destination.left) / magnifier.destination.width() * magnifier.source.width()).toDouble(),
+                    (magnifier.source.top + (y - magnifier.destination.top) / magnifier.destination.height() * magnifier.source.height()).toDouble(),
+                )
+            }
+            return PointD(((x - ox) / scale).coerceIn(0.0, source.width.toDouble()),
+                ((y - oy) / scale).coerceIn(0.0, source.height.toDouble()))
         }
-        fun editCoord(): Coord? {
+        val p = imagePoint(event.x, event.y)
+        fun editCoord(x: Float = event.x, y: Float = event.y): Coord? {
             val geometry = editGeometry ?: return null
             val dimension = editMatrix?.dimension ?: return null
-            val module = geometry.imageToModule(p.x, p.y)
+            val point = imagePoint(x, y)
+            val module = geometry.imageToModule(point.x, point.y)
             return Coord(kotlin.math.floor(module.x + .5).toInt(), kotlin.math.floor(module.y + .5).toInt())
                 .takeIf { it.x in 0 until dimension && it.y in 0 until dimension }
+        }
+        fun appendBrushSamples() {
+            val size = cellEditorTool.editBrushSize() ?: return
+            for (index in 0 until event.historySize) {
+                editCoord(event.getHistoricalX(index), event.getHistoricalY(index))?.let {
+                    editStroke += editFootprint(it, size); editCell = it
+                }
+            }
+            editCoord()?.let { editStroke += editFootprint(it, size); editCell = it }
+        }
+        if (cellEditInteractive && cellEditorTool != EditorTool.NAVIGATE) {
+            if (event.actionMasked == MotionEvent.ACTION_POINTER_DOWN || event.pointerCount > 1) {
+                editGestureCancelledByMultiTouch = true
+                editStroke.clear(); editRangeStart = null; editRangeEnd = null
+                parent?.requestDisallowInterceptTouchEvent(false)
+                invalidate()
+                return true
+            }
+            if (editGestureCancelledByMultiTouch) {
+                if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                    editGestureCancelledByMultiTouch = false
+                }
+                return true
+            }
         }
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
@@ -795,7 +818,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
                             onEditCellSelected?.invoke(cell.x, cell.y)
                         }
                         EditorTool.BRUSH_ZERO, EditorTool.BRUSH_ONE, EditorTool.BRUSH_ERASURE, EditorTool.BRUSH_ERASURE_WIDE -> {
-                            editStroke.clear(); editStroke += editFootprint(cell, cellEditorTool.editBrushSize() ?: 1); editCell = cell
+                            editStroke.clear(); appendBrushSamples()
                             editSelectionIsRectangle = false
                         }
                         EditorTool.STAMP_ERASURE_SMALL, EditorTool.STAMP_ERASURE_MEDIUM, EditorTool.STAMP_ERASURE_LARGE -> {
@@ -871,11 +894,10 @@ class PreprocessOverlayView(context: Context) : View(context) {
             }
             MotionEvent.ACTION_MOVE -> {
                 if (editGeometry != null && cellEditInteractive) {
+                    appendBrushSamples()
                     editCoord()?.let { cell ->
                         when (cellEditorTool) {
-                            EditorTool.BRUSH_ZERO, EditorTool.BRUSH_ONE, EditorTool.BRUSH_ERASURE, EditorTool.BRUSH_ERASURE_WIDE -> {
-                                editStroke += editFootprint(cell, cellEditorTool.editBrushSize() ?: 1); editCell = cell
-                            }
+                            EditorTool.BRUSH_ZERO, EditorTool.BRUSH_ONE, EditorTool.BRUSH_ERASURE, EditorTool.BRUSH_ERASURE_WIDE -> Unit
                             EditorTool.STAMP_ERASURE_SMALL, EditorTool.STAMP_ERASURE_MEDIUM, EditorTool.STAMP_ERASURE_LARGE -> {
                                 editStroke.clear(); editStroke += editFootprint(cell, cellEditorTool.editStampSize() ?: 3); editCell = cell
                             }
@@ -912,6 +934,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (editGeometry != null && cellEditInteractive) {
                     if (event.actionMasked == MotionEvent.ACTION_UP) {
+                        appendBrushSamples()
                         if (cellEditorTool == EditorTool.NAVIGATE) performClick()
                         val brushValue = when (cellEditorTool) {
                             EditorTool.BRUSH_ZERO -> ModuleValue.ZERO
