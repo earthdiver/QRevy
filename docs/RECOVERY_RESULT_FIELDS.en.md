@@ -19,7 +19,7 @@ List decoding (GS, KV, and Wu) can produce multiple candidates for errors beyond
 | No recovery candidate was found in the checked range. | No selectable candidate was retained; this can include RS-consistent values rejected by later checks | Input conditions, reference diagnosis, rejection reasons, and search completion |
 | Combination/node limit | The specified search policy reached its normal boundary | Completion does not prove uniqueness |
 | Candidates omitted (retention limit) | Only some of the candidates found are displayed | Omitted candidates are not included in the displayed count and cannot be selected |
-| List-decoding time limit | The cumulative five-minute allowance for list-decoding fallback was reached | Validated candidates remain available; some list-decoding trials remain unchecked |
+| List-decoding time limit | The cumulative 600-second allowance for list-decoding fallback was reached | Validated candidates remain available; some list-decoding trials remain unchecked |
 | Working-memory limit | Search stopped at the memory limit for calculation | Some combinations remain unchecked |
 
 ### Short reading example
@@ -73,7 +73,9 @@ The initial-input section identifies the version, ECC, mask, and geometry used f
 
 In “3. Processing in this run,” “Methods used to obtain this candidate” identifies the methods used for the selected candidate. List-decoding trial counts and elapsed time cover the whole search, including the trial that produced the candidate. Durations below one second are shown as “less than 1s.” Known-bit mismatch limits, block-decoding trial counts by method, reasons for skipping decoding in some trials, and stop reasons for QR candidate combination search appear under “Filling and correction calculations.”
 
-“List decoding without tentative assignments” and “Additional list decoding including tentative assignments” each show their execution status even when no new trial ran. Skipped stages also show the reason.
+“List decoding without tentative assignments” and “List decoding including tentative assignments” each appear only when that stage ran at least one new trial. Stages that only reused computed results are also hidden. The whole-search trial count and elapsed time appear first, followed by the status of stages with new trials. When both stages were ineligible and neither new trials nor result reuse occurred, the zero count is followed by “List-decoding calculations were not run because the eligibility conditions were not met.” without a stage label. Reuse counts and combination-search stop reasons remain in the calculation details. Timeout, insufficient memory, interruption, and other reasons for unfinished work remain in “4. Verification”.
+
+The settings show the selected +1/+2/+3 extension per RS block. Calculation details show attempted and completed GS/Wu trials by absolute error radius. Counts cover all inputs and blocks; they do not imply that every input reached that radius. Johnson-bound exclusions, an earlier decoded result, and resource limits can leave the selected maximum unreached. Calculation details for candidates obtained with KV show the agreement score and required score.
 
 Reuse of previously computed decoding results is counted separately and does not increase new trial counts.
 

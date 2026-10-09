@@ -12,7 +12,7 @@ import java.util.zip.GZIPOutputStream
 
 /** Android-independent, bounded and checksummed persistence codec for repair sessions. */
 object RecoverySessionCodec {
-    const val CURRENT_VERSION = 25
+    const val CURRENT_VERSION = 26
     const val MAX_HISTORY_ENTRIES = 40
     const val MAX_SESSION_PAYLOAD_BYTES = 16 * 1024 * 1024
     const val MAX_SESSION_FILE_BYTES = 20 * 1024 * 1024
@@ -121,7 +121,7 @@ object RecoverySessionCodec {
         }
     }
 
-    /** Decodes only the current QRR schema with strict validation. */
+    /** Decodes the supported QRR schemas with strict validation and explicit defaults. */
     fun decode(fileBytes: ByteArray): Payload {
         if (fileBytes.size > MAX_SESSION_FILE_BYTES) throw CorruptSessionException("session file exceeds size limit")
         if (fileBytes.size < 16 + HASH_BYTES) throw CorruptSessionException("session file is truncated")
@@ -375,6 +375,7 @@ object RecoverySessionCodec {
         out.writeInt(settings.prioritySearchLimit)
         out.writeInt(settings.partialBitSearchLimit)
         out.writeBoolean(settings.mirroredInput)
+        out.writeInt(settings.listDecodingAdditionalErrors)
     }
 
     private fun readPreprocessSettings(input: DataInputStream, formatVersion: Int): PreprocessSettings {
@@ -499,6 +500,7 @@ object RecoverySessionCodec {
                     requireCorrupt(value in 0..1, "invalid mirrored input flag")
                     value == 1
                 } else false,
+                listDecodingAdditionalErrors = if (formatVersion >= 26) input.readInt() else ListDecodingLimit.DEFAULT,
                 rotationDegrees = rotation,
                 polarity = polarity,
                 automaticThresholds = automaticThresholds,
@@ -546,6 +548,7 @@ object RecoverySessionCodec {
         require(settings.preRecoverySoftEdits.all { it in settings.preRecoveryEdits })
         require(settings.prioritySearchLimit in 4..14)
         require(settings.partialBitSearchLimit in PartialBitSearchLimit.supported)
+        require(settings.listDecodingAdditionalErrors in ListDecodingLimit.supported)
         require(settings.preRecoveryPrioritySearch.size <= 14)
         require(settings.preRecoveryPrioritySearch.all { settings.preRecoveryEdits[it] == ModuleValue.ERASED })
         require(settings.formatMismatchLimit == null || settings.formatMismatchLimit in 0..30)

@@ -21,12 +21,16 @@ class GuruswamiSudanDecoder(val length: Int, val dataLength: Int) {
         product
     } }
 
-    /** Targets exactly one symbol beyond ordinary errors+erasures decoding. */
-    fun parameters(erasures: Int, workingLimitBytes: Long, check: () -> Unit = {}): Parameters? {
+    fun parameters(erasures: Int, workingLimitBytes: Long, check: () -> Unit = {}): Parameters? =
+        parameters(erasures, workingLimitBytes, ListDecodingLimit.DEFAULT, check)
+
+    /** A finite integer radius strictly inside the Johnson bound. */
+    fun parameters(erasures: Int, workingLimitBytes: Long, additionalErrors: Int, check: () -> Unit = {}): Parameters? {
         require(erasures in 0..length)
+        require(additionalErrors in ListDecodingLimit.supported)
         val n = length - erasures
         if (n < dataLength) return null
-        val radius = (n - dataLength) / 2 + 1
+        val radius = (n - dataLength) / 2 + additionalErrors
         val agreement = n - radius
         val weight = dataLength - 1
         val delta = agreement * agreement - n * weight
@@ -65,7 +69,8 @@ class GuruswamiSudanDecoder(val length: Int, val dataLength: Int) {
         require(received.size == length && received.all { it in 0..255 })
         require(erased.distinct().size == erased.size && erased.all { it in received.indices })
         require(parameters.points == length - erased.size)
-        require(parameters == parameters(erased.size, Long.MAX_VALUE, check))
+        require(parameters == parameters(erased.size, Long.MAX_VALUE,
+            parameters.radius - (length - erased.size - dataLength) / 2, check))
         if (parameters.workingBytes > workingLimitBytes) throw ListDecodingWorkingMemoryException()
         check()
         val omitted = BooleanArray(length).also { flags -> erased.forEach { flags[it] = true } }

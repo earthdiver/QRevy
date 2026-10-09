@@ -224,11 +224,12 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
         displayLockManualBits: Boolean? = null,
         partialBitSearchLimit: Int = PartialBitSearchLimit.DEFAULT,
+        listDecodingAdditionalErrors: Int = ListDecodingLimit.DEFAULT,
         listDecodingBudget: ListDecodingBudget = ListDecodingBudget(),
         onPriorityProgress: ((done: Int, total: Int) -> Unit)? = null,
     ): List<RecoveryCandidate> = recoverWithDiagnostics(
         matrix, maxFormatCandidates, trustKnownPayloadCount, formatConstraint, maxFormatMismatches,
-        maxKnownDataEccMismatches, manualEdits, retentionBudget, cancellation, displayLockManualBits, partialBitSearchLimit = partialBitSearchLimit, listDecodingBudget = listDecodingBudget, onPriorityProgress = onPriorityProgress,
+        maxKnownDataEccMismatches, manualEdits, retentionBudget, cancellation, displayLockManualBits, partialBitSearchLimit = partialBitSearchLimit, listDecodingAdditionalErrors = listDecodingAdditionalErrors, listDecodingBudget = listDecodingBudget, onPriorityProgress = onPriorityProgress,
     ).candidates
 
     /** Returns the candidates and diagnostic evidence from this invocation as one value. */
@@ -245,10 +246,12 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         displayLockManualBits: Boolean? = null,
         stopRequested: () -> Boolean = { false },
         partialBitSearchLimit: Int = PartialBitSearchLimit.DEFAULT,
+        listDecodingAdditionalErrors: Int = ListDecodingLimit.DEFAULT,
         listDecodingBudget: ListDecodingBudget = ListDecodingBudget(),
         onPriorityProgress: ((done: Int, total: Int) -> Unit)? = null,
     ): RecoveryOutcome {
         require(partialBitSearchLimit in PartialBitSearchLimit.supported)
+        require(listDecodingAdditionalErrors in ListDecodingLimit.supported)
         require(maxFormatMismatches == null || maxFormatMismatches in 0..30)
         require(maxKnownDataEccMismatches == null || maxKnownDataEccMismatches in 0..MAX_QR_DATA_ECC_BITS)
         val priority = matrix.prioritySearchCoordinates()
@@ -261,9 +264,9 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         val run = RecoveryRunState(matrix, retentionBudget, RecoveryCancellation {
             cancellation.check()
             stopRequested()
-        }, partialBitSearchLimit, listDecodingBudget)
+        }, partialBitSearchLimit, listDecodingBudget, listDecodingAdditionalErrors)
         val conditions = RecoveryDisplayConditions(trustKnownPayloadCount, displayLockManualBits,
-            formatConstraint, maxFormatMismatches, maxKnownDataEccMismatches, partialBitSearchLimit)
+            formatConstraint, maxFormatMismatches, maxKnownDataEccMismatches, partialBitSearchLimit, listDecodingAdditionalErrors)
         val manual = FormatEditPolicy.manualValues(matrix) + manualEdits
         // Share one immutable summary across potentially thousands of retained derivations.
         val publishedDiagnostic by lazy(LazyThreadSafetyMode.NONE) { run.searchDiagnostic() }
@@ -305,7 +308,8 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
             val cap = minOf(maxKnownDataEccMismatches ?: Int.MAX_VALUE,
                 ErrorLimitPolicy.listDecodingData((matrix.dimension - 17) / 4))
             val previous = run.listDecodingSummary ?: ListDecodingSummary()
-            run.listDecodingSummary = previous.copy(mismatchLimits = previous.mismatchLimits + cap)
+            run.listDecodingSummary = previous.copy(mismatchLimits = previous.mismatchLimits + cap,
+                extensionLimits = previous.extensionLimits + run.listDecodingAdditionalErrors)
             run.listDecodingStatuses[stage] = ListDecodingStatus.RUNNING
             run.listDecodingStops.clear()
             val before = listDecodingBudget.elapsedMillis
@@ -327,10 +331,15 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 run.listDecodingSummary = run.listDecodingSummary?.let {
                     it.copy(elapsedMillis = it.elapsedMillis + listDecodingBudget.elapsedMillis - before)
                 }
+                run.listDecodingNewTrials[stage] = (run.listDecodingSummary?.trials ?: previous.trials) - previous.trials
                 if (run.listDecodingStatuses[stage] == ListDecodingStatus.RUNNING) {
+                    val current = requireNotNull(run.listDecodingSummary)
                     run.listDecodingStatuses[stage] = when {
                         CombinationSearchStop.WORKING_MEMORY_LIMIT in run.listDecodingStops -> ListDecodingStatus.WORKING_MEMORY_LIMIT
                         run.listDecodingStops.isNotEmpty() -> ListDecodingStatus.SEARCH_LIMIT
+                        // Count this stage independently; reusing a completed result is applicable work too.
+                        current.trials == previous.trials && current.reusedTrials == previous.reusedTrials ->
+                            ListDecodingStatus.INELIGIBLE
                         else -> ListDecodingStatus.COMPLETED
                     }
                 }
@@ -695,18 +704,27 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                     val interpolationCounts = IntArray(de.blocks.size)
                     val reusedCounts = IntArray(de.blocks.size)
                     val methodCounts = Array(de.blocks.size) { IntArray(ListDecoderMethod.entries.size) }
+                    val radiusCounts = Array(de.blocks.size) { emptyMap<Int, Int>() }
+                    val completedRadiusCounts = Array(de.blocks.size) { emptyMap<Int, Int>() }
                     val foundListDecoded = ListDecodingQrSearch(rs).run(de, original, matrix, extraction, priorityAssignments.keys, version, requireNotNull(listDecodingLimit),
                         trialBitEnumeration, nonEnumerable, run.partialBitSearchLimit, run.retentionBudget.workingLimitBytes,
                         run.cancellation, baseOnly = run.phase == RecoveryPhase.EARLY_LIST || basicOnly,
-                        cache = run.listDecodingCache,
+                        cache = run.listDecodingCache, additionalErrors = run.listDecodingAdditionalErrors,
                         onRejection = { run.candidateRejections += it },
                         onProgress = { index, search ->
                             val previous = requireNotNull(run.listDecodingSummary)
+                            fun addRadii(total: Map<Int, Int>, current: Map<Int, Int>, before: Map<Int, Int>) =
+                                (total.keys + current.keys).associateWith { radius ->
+                                    (total[radius] ?: 0) + (current[radius] ?: 0) - (before[radius] ?: 0)
+                                }
                             run.listDecodingSummary = previous.copy(
                                 trials = previous.trials + search.trials - trialCounts[index],
                                 interpolations = previous.interpolations + search.interpolations - interpolationCounts[index],
                                 reusedTrials = previous.reusedTrials + search.reusedTrials - reusedCounts[index],
                                 skipReasons = previous.skipReasons + search.skipReasons,
+                                hardRadiusTrials = addRadii(previous.hardRadiusTrials, search.hardRadiusTrials, radiusCounts[index]),
+                                completedHardRadiusTrials = addRadii(previous.completedHardRadiusTrials,
+                                    search.completedHardRadiusTrials, completedRadiusCounts[index]),
                                 methodTrials = ListDecoderMethod.entries.associateWith { method ->
                                     (previous.methodTrials[method] ?: 0) + (search.methodTrials[method] ?: 0) - methodCounts[index][method.ordinal]
                                 }.filterValues { it > 0 },
@@ -714,6 +732,8 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                             trialCounts[index] = search.trials
                             interpolationCounts[index] = search.interpolations
                             reusedCounts[index] = search.reusedTrials
+                            radiusCounts[index] = search.hardRadiusTrials
+                            completedRadiusCounts[index] = search.completedHardRadiusTrials
                             ListDecoderMethod.entries.forEach { method -> methodCounts[index][method.ordinal] = search.methodTrials[method] ?: 0 }
                         }, onStops = {
                             run.listDecodingStops += it

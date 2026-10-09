@@ -47,6 +47,8 @@ fun RecoveryDisplayConditions?.runSettingsText(): String = this?.let { settings 
     append(localizedText("\n単一セグメントの仮定: ", "\nSingle-segment assumption: "))
         .append(if (settings.trustSingleSegment) "ON" else "OFF")
     append('\n').append(settings.limitText(true)).append('\n').append(settings.limitText(false))
+    append(localizedText("\n通常RSからの追加探索上限: ＋${settings.listDecodingAdditionalErrors}語／RSブロック（GS・Wu）",
+        "\nList-decoding extension limit: +${settings.listDecodingAdditionalErrors} symbols per RS block (GS/Wu)"))
     if (settings.dataEccLimit == 0) {
         append(localizedText(
             "\n入力のデータ・ECCの0/1と完全に一致する候補だけを採用します。「?」の補完はできます。",

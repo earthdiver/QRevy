@@ -87,7 +87,11 @@ class ListDecodingContinuationTest {
         val outcome = assertRetainsBothPayloads(fixture)
         val restored = outcome.candidates.single { it.correctedInterleaved.contentEquals(fixture.original) }
         assertTrue(restored.partialGuessedBits > 0)
-        assertTrue(requireNotNull(outcome.searchDiagnostic.listDecoding).trials > 1)
+        val totalTrials = requireNotNull(outcome.searchDiagnostic.listDecoding).trials
+        val stageTrials = requireNotNull(outcome.searchDiagnostic.listDecodingExecution).newTrials
+        assertTrue(totalTrials > 1)
+        assertTrue(stageTrials.getValue(ListDecodingStage.ADDITIONAL) > 0)
+        assertEquals(totalTrials, stageTrials.values.sum())
     }
 
     private fun assertRetainsBothPayloads(fixture: Fixture): RecoveryOutcome {

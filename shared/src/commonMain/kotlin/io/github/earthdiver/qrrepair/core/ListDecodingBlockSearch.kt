@@ -14,6 +14,7 @@ class ListDecodingBlockSearch(
     private val accepts: (IntArray) -> Boolean = { true },
     private val check: () -> Unit = {},
     private val cache: ListDecodingTrialCache? = null,
+    private val additionalErrors: Int = ListDecodingLimit.DEFAULT,
 ) {
     private val plan = PartialBitTrialPlan(block, maxEnumeratedBits, nonEnumerablePositions = nonEnumerablePositions)
     private val nsym = block.codewords.size - block.numDataCodewords
@@ -21,6 +22,8 @@ class ListDecodingBlockSearch(
     private val rs = ReedSolomonErasures()
     private val accumulated = BlockCandidateAccumulator()
     private var basePending = true
+    private var baseExtra = 1
+    private var assignmentExtra = 1
     private val softMasks = block.unknownMasks.copyOf().also { masks ->
         nonEnumerablePositions.forEach { if (masks[it] != 0) masks[it] = 255 }
     }
@@ -39,6 +42,10 @@ class ListDecodingBlockSearch(
         private set
     private val skipped = linkedSetOf<ListDecodingTrialSkip>()
     private val methods = linkedMapOf<ListDecoderMethod, Int>()
+    private val radiusTrials = linkedMapOf<Int, Int>()
+    private val completedRadiusTrials = linkedMapOf<Int, Int>()
+    val hardRadiusTrials: Map<Int, Int> get() = radiusTrials.toMap()
+    val completedHardRadiusTrials: Map<Int, Int> get() = completedRadiusTrials.toMap()
     val methodTrials: Map<ListDecoderMethod, Int> get() = methods.toMap()
     val skipReasons: Set<ListDecodingTrialSkip> get() = skipped.toSet()
     val hasNext: Boolean get() = basePending || softPending || assignment < assignments
@@ -47,6 +54,7 @@ class ListDecodingBlockSearch(
 
     init {
         require(block.codewords.size == original.codewords.size && mismatchLimit >= 0)
+        require(additionalErrors in ListDecodingLimit.supported)
         initialCandidates.forEach { result ->
             val mismatches = mismatches(result.corrected)
             if (mismatches <= mismatchLimit && accepts(result.corrected)) {
@@ -68,21 +76,26 @@ class ListDecodingBlockSearch(
         }
         if (!hasNext) return false
         val base = basePending
-        basePending = false
-        val index = if (base) -1 else assignment++
+        val index = if (base) -1 else assignment
+        val extra = if (base) baseExtra++ else assignmentExtra++
+        if (base) basePending = baseExtra <= additionalErrors
+        else if (assignmentExtra > additionalErrors) { assignment++; assignmentExtra = 1 }
         val erased = if (base) plan.erased else plan.remainingErasures
         val n = block.codewords.size - erased.size
         val k = block.numDataCodewords
-        val radius = (n - k) / 2 + 1
+        val radius = (n - k) / 2 + extra
         if (n < k || (n - radius).toLong() * (n - radius) <= n.toLong() * (k - 1)) {
             skipped += if (n < k) ListDecodingTrialSkip.TOO_MANY_ERASURES else ListDecodingTrialSkip.NO_ADDITIONAL_RADIUS
-            if (!base) assignment = assignments
+            if (base) basePending = false
+            else if (extra == 1) assignment = assignments
+            else { assignment = index + 1; assignmentExtra = 1 }
             return false
         }
         val guessed = if (base) block.codewords.copyOf() else plan.assignment(index)
         val before = accumulated.workingBytes
         val beforeCount = accumulated.size
-        val key = if (base && cache != null) ListDecodingTrialCache.Key(block) else null
+        val key = if (base && cache != null) ListDecodingTrialCache.Key(block,
+            if (extra == 1) intArrayOf() else intArrayOf(extra)) else null
         var collected: ListDecodingTrialCache.Collector? = null
         fun offer(corrected: IntArray, positions: IntArray, listDecoding: ListDecodingDerivation?, reserve: Long = 0) {
             check()
@@ -124,8 +137,8 @@ class ListDecodingBlockSearch(
                     return accumulated.size != beforeCount
                 }
             }
-            // Any additional word has exactly radius disagreements: ordinary RS already
-            // covers every smaller distance. A disagreement at an unchanged, fully known
+            // Earlier shells and ordinary RS cover the smaller distances. A new word
+            // has exactly radius disagreements. A mismatch at an unchanged, fully known
             // original byte costs at least one known bit; assigned/inferred bytes may not.
             val freeErrorSymbols = guessed.indices.count { it !in erased &&
                 (original.unknownMasks[it] != 0 || guessed[it] != original.codewords[it]) }
@@ -134,10 +147,11 @@ class ListDecodingBlockSearch(
                 return accumulated.size != beforeCount
             }
             val available = availableBytes - (accumulated.workingBytes - before)
-            val choice = ListDecodingPlanner.hard(block.codewords.size, k, erased.size, available, check)
+            val choice = ListDecodingPlanner.hard(block.codewords.size, k, erased.size, available, extra, check)
                 ?: return accumulated.size != beforeCount
             val parameters = choice.parameters
             methods[choice.method] = (methods[choice.method] ?: 0) + 1
+            radiusTrials[radius] = (radiusTrials[radius] ?: 0) + 1
             collected = key?.let { cache?.collect(it) }
             collected?.fit(availableBytes - (accumulated.workingBytes - before) - choice.workingBytes)
             ordinary?.let { collected?.add(it.corrected, null,
@@ -160,9 +174,10 @@ class ListDecodingBlockSearch(
                 decoder.decode(guessed, erased, parameters, available, check).forEach(::emit)
             }
             collected?.complete(availableBytes - (accumulated.workingBytes - before))
+            completedRadiusTrials[radius] = (completedRadiusTrials[radius] ?: 0) + 1
         } catch (_: ListDecodingWorkingMemoryException) {
             memoryLimited = true
-            if (!base) assignment = assignments
+            if (base) basePending = false else assignment = assignments
         }
         return accumulated.size != beforeCount
     }

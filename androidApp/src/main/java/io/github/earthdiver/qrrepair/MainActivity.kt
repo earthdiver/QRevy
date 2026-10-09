@@ -1613,6 +1613,7 @@ class MainActivity : Activity() {
                     matrix.copy(),
                     trustKnownPayloadCount = requestSettings.trustKnownPayloadCount,
                     partialBitSearchLimit = requestSettings.partialBitSearchLimit,
+                    listDecodingAdditionalErrors = requestSettings.listDecodingAdditionalErrors,
                     formatConstraint = requestSettings.formatConstraint,
                     maxFormatMismatches = requestSettings.effectiveFormatMismatchLimit,
                     maxKnownDataEccMismatches = requestSettings.effectiveDataEccMismatchLimit,

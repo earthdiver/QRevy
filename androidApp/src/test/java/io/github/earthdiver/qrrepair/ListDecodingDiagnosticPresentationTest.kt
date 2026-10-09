@@ -12,6 +12,19 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class ListDecodingDiagnosticPresentationTest {
+    @Test fun radiusDetailsSeparateTheSelectedLimitFromCompletedCalculations() = inBothLanguages { ja ->
+        val summary = ListDecodingSummary.combine(listOf(
+            ListDecodingSummary(extensionLimits = setOf(3), hardRadiusTrials = mapOf(9 to 1, 10 to 1, 11 to 1),
+                completedHardRadiusTrials = mapOf(9 to 1, 10 to 1)),
+            ListDecodingSummary(extensionLimits = setOf(3), hardRadiusTrials = mapOf(11 to 1),
+                completedHardRadiusTrials = mapOf(11 to 1))))!!
+        val details = summary.calculationDetails()
+        assertTrue(details.contains(if (ja) "追加探索上限（RSブロックごと）: ＋3語" else "extension limit per RS block: +3 symbols"))
+        assertTrue(details.contains(if (ja) "訂正半径11語: 2試行／1完了" else "radius 11 symbols: 2 attempted / 1 completed"))
+        val settings = RecoveryDisplayConditions(false, true, null, null, null, listDecodingAdditionalErrors = 3)
+        assertTrue(settings.runSettingsText().contains(if (ja) "＋3語／RSブロック" else "+3 symbols per RS block"))
+    }
+
     private fun inBothLanguages(check: (Boolean) -> Unit) {
         val app = RuntimeEnvironment.getApplication()
         val previous = AppLanguageManager.current
@@ -51,7 +64,7 @@ class ListDecodingDiagnosticPresentationTest {
         candidatesOmitted = false, searchDiagnostic = diagnostic, selectedEntry = null,
     )
 
-    @Test fun skippedStagesRemainVisibleWithoutAnyDecoderTrials() = inBothLanguages { ja ->
+    @Test fun skippedStagesAreHiddenWithoutAnyDecoderTrials() = inBothLanguages { ja ->
         for (reason in listOf(ListDecodingStatus.ORIGINAL_RS_SUCCEEDED, ListDecodingStatus.ZERO_ERROR_LIMIT,
             ListDecodingStatus.INPUT_CONSTRAINT)) {
             val diagnostic = wholeSearch.copy(listDecoding = null, listDecodingExecution = ListDecodingExecution(
@@ -63,11 +76,38 @@ class ListDecodingDiagnosticPresentationTest {
                 presenter.failureReport(failure, null, context(diagnostic, 0)))
             for (report in reports) {
                 val processing = report.sections.single { it.stage == DiagnosticStage.PROCESSING }
-                assertTrue(processing.summary.contains(if (ja) "仮置きなしのリスト復号" else "List decoding without tentative assignments"))
-                assertTrue(processing.summary.contains(if (ja) "仮置きも使う追加リスト復号" else "Additional list decoding including tentative assignments"))
-                assertTrue(processing.summary.contains(diagnostic.listDecodingExecution!!.description()))
+                assertFalse(processing.summary.contains(if (ja) "仮置きなしのリスト復号" else "List decoding without tentative assignments"))
+                assertFalse(processing.summary.contains(if (ja) "仮置きも使うリスト復号" else "List decoding including tentative assignments"))
                 assertFalse(processing.summary.contains(if (ja) "試行回数" else "List-decoding trials"))
             }
+        }
+    }
+
+    @Test fun ineligibleZeroTrialReportsShowTotalsThenOneExplanationWithoutStageLabels() = inBothLanguages { ja ->
+        val diagnostic = wholeSearch.copy(
+            listDecoding = ListDecodingSummary(skipReasons = setOf(ListDecodingTrialSkip.TOO_MANY_ERASURES,
+                ListDecodingTrialSkip.KV_PARAMETERS_UNAVAILABLE)),
+            listDecodingExecution = ListDecodingExecution(ListDecodingStage.entries.associateWith {
+                setOf(ListDecodingStatus.INELIGIBLE)
+            }),
+        )
+        val presenter = RecoveryDiagnosticPresenter(ja)
+        val failure = RecoveryFailure(ErrorCorrectionLevel.L, 0, 30, 0, 30,
+            RecoveryFailureStage.REED_SOLOMON, searchDiagnostic = diagnostic)
+        val reports = listOf(presenter.candidateReport(candidate(false), null, context(diagnostic)),
+            presenter.failureReport(failure, null, context(diagnostic, 0)))
+        val explanation = if (ja) "適用条件を満たさないため、リスト復号の計算は実行しませんでした。"
+            else "List-decoding calculations were not run because the eligibility conditions were not met."
+        val label = if (ja) "仮置きなしのリスト復号" else "List decoding without tentative assignments"
+        for (report in reports) {
+            val processing = report.sections.single { it.stage == DiagnosticStage.PROCESSING }
+            assertTrue(processing.summary.contains(if (ja) "試行回数（探索全体）: 0回" else "trials (whole search): 0"))
+            assertFalse(processing.summary.contains(label))
+            val totals = requireNotNull(diagnostic.listDecoding).description()
+            assertTrue(processing.summary.endsWith("$totals\n\n$explanation"))
+            assertEquals(1, processing.summary.split(explanation).size - 1)
+            assertFalse(processing.summary.contains(if (ja) "仮置きも使うリスト復号" else "List decoding including tentative assignments"))
+            assertFalse(processing.summary.contains(if (ja) "適用条件の確認" else "eligibility checks"))
         }
     }
 
@@ -77,19 +117,91 @@ class ListDecodingDiagnosticPresentationTest {
                 ListDecodingStage.WITHOUT_ASSIGNMENTS to setOf(ListDecodingStatus.DEFERRED),
                 ListDecodingStage.ADDITIONAL to setOf(ListDecodingStatus.TIME_LIMIT)))),
             RecoverySearchDiagnostic(listDecodingExecution = ListDecodingExecution(mapOf(
-                ListDecodingStage.WITHOUT_ASSIGNMENTS to setOf(ListDecodingStatus.COMPLETED),
-                ListDecodingStage.ADDITIONAL to setOf(ListDecodingStatus.COMPLETED))),
+                ListDecodingStage.WITHOUT_ASSIGNMENTS to setOf(ListDecodingStatus.INELIGIBLE),
+                ListDecodingStage.ADDITIONAL to setOf(ListDecodingStatus.INELIGIBLE))),
                 listDecoding = ListDecodingSummary(skipReasons = setOf(ListDecodingTrialSkip.TOO_MANY_ERASURES,
-                    ListDecodingTrialSkip.KV_PARAMETERS_UNAVAILABLE))))
+                    ListDecodingTrialSkip.KV_PARAMETERS_UNAVAILABLE))),
+            RecoverySearchDiagnostic(listDecodingExecution = ListDecodingExecution(
+                ListDecodingStage.entries.associateWith { setOf(ListDecodingStatus.COMPLETED) },
+                newTrials = mapOf(ListDecodingStage.ADDITIONAL to 1)),
+                listDecoding = localSearch))
         val combined = RecoverySearchDiagnostic.combine(parts)!!
-        assertEquals(setOf(ListDecodingStatus.DEFERRED, ListDecodingStatus.COMPLETED),
+        assertEquals(setOf(ListDecodingStatus.DEFERRED, ListDecodingStatus.INELIGIBLE, ListDecodingStatus.COMPLETED),
             combined.listDecodingExecution!!.stages[ListDecodingStage.WITHOUT_ASSIGNMENTS])
-        assertEquals(setOf(ListDecodingStatus.TIME_LIMIT, ListDecodingStatus.COMPLETED),
+        assertEquals(setOf(ListDecodingStatus.TIME_LIMIT, ListDecodingStatus.INELIGIBLE, ListDecodingStatus.COMPLETED),
             combined.listDecodingExecution.stages[ListDecodingStage.ADDITIONAL])
         val processing = RecoveryDiagnosticPresenter(ja).candidateReport(candidate(false), null, context(combined))
             .sections.single { it.stage == DiagnosticStage.PROCESSING }
         assertTrue(processing.summary.contains(if (ja) "複数の読み取り試行" else "across sampled inputs"))
+        assertTrue(processing.summary.contains(if (ja) "適用条件を満たさないため" else "eligibility conditions were not met"))
+        assertTrue(processing.summary.contains(if (ja) "試行回数（探索全体）: 1回" else "trials (whole search): 1"))
         assertTrue(processing.details.contains(requireNotNull(combined.listDecoding).calculationDetails()))
+    }
+
+    @Test fun eachStageRequiresNewTrialsWhileCountsReuseAndStopReasonsRemainVisible() = inBothLanguages { ja ->
+        val additionalLabel = if (ja) "仮置きも使うリスト復号" else "List decoding including tentative assignments"
+        val initialLabel = if (ja) "仮置きなしのリスト復号" else "List decoding without tentative assignments"
+        for (initialTrials in listOf(0, 1)) for (additionalTrials in listOf(0, 1)) {
+            val execution = ListDecodingExecution(
+                stages = mapOf(ListDecodingStage.WITHOUT_ASSIGNMENTS to setOf(ListDecodingStatus.COMPLETED),
+                    ListDecodingStage.ADDITIONAL to setOf(ListDecodingStatus.SEARCH_LIMIT)),
+                newTrials = mapOf(ListDecodingStage.WITHOUT_ASSIGNMENTS to initialTrials,
+                    ListDecodingStage.ADDITIONAL to additionalTrials))
+            val combined = ListDecodingExecution.combine(listOf(execution, execution))!!
+            assertEquals(additionalTrials * 2, combined.newTrials[ListDecodingStage.ADDITIONAL])
+            val diagnostic = wholeSearch.copy(listDecoding = localSearch.copy(trials = initialTrials + additionalTrials, reusedTrials = 1),
+                listDecodingExecution = combined)
+            val stops = CombinationSearchSummary(stops = setOf(CombinationSearchStop.COMBINATION_LIMIT))
+            val selected = candidate(false).copy(combinationSearch = stops)
+            val failure = RecoveryFailure(ErrorCorrectionLevel.L, 0, 30, 0, 30,
+                RecoveryFailureStage.PAYLOAD_VALIDATION, combinationSearch = stops)
+            val presenter = RecoveryDiagnosticPresenter(ja)
+            for (report in listOf(presenter.candidateReport(selected, null, context(diagnostic)),
+                presenter.failureReport(failure, null, context(diagnostic, 0)))) {
+                val processing = report.sections.single { it.stage == DiagnosticStage.PROCESSING }
+                if (initialTrials == 1 && additionalTrials == 0) {
+                    val completed = if (ja) "適用条件の確認と、適用可能な探索を実行しました"
+                        else "eligibility checks and applicable searches completed"
+                    val totals = requireNotNull(diagnostic.listDecoding).description()
+                    assertTrue(processing.summary.endsWith("$totals\n\n$initialLabel: $completed"))
+                }
+                assertEquals(initialTrials > 0, processing.summary.contains(initialLabel))
+                assertEquals(additionalTrials > 0, processing.summary.contains(additionalLabel))
+                assertTrue(processing.summary.contains(requireNotNull(diagnostic.listDecoding).description()))
+                assertEquals(processing.summary.trim(), processing.summary)
+                assertTrue(processing.details.contains(if (ja) "復号結果を再利用: 1回" else "results reused: 1"))
+                assertTrue(processing.details.contains(stops.stopReasonsText()))
+            }
+        }
+    }
+
+    @Test fun anUnstartedAdditionalStageDoesNotHideTheOverallTimeLimit() = inBothLanguages { ja ->
+        val diagnostic = wholeSearch.copy(
+            listDecodingExecution = ListDecodingExecution(mapOf(ListDecodingStage.ADDITIONAL to setOf(ListDecodingStatus.TIME_LIMIT))),
+            incompleteReasons = setOf(SearchIncompleteReason.LIST_DECODING_TIME_LIMIT))
+        val report = RecoveryDiagnosticPresenter(ja).candidateReport(candidate(false), null, context(diagnostic))
+        assertFalse(report.fullText().contains(if (ja) "仮置きも使うリスト復号" else "List decoding including tentative assignments"))
+        assertTrue(report.sections.single { it.stage == DiagnosticStage.VERIFICATION }.summary.contains(
+            if (ja) "リスト復号による追加探索は時間切れで終了しました" else "List-decoding fallback ended at the time limit"))
+    }
+
+    @Test fun zeroTrialsDoNotClaimIneligibilityForUnfinishedOrReusedWork() = inBothLanguages { ja ->
+        for (status in listOf(ListDecodingStatus.TIME_LIMIT, ListDecodingStatus.INTERRUPTED,
+            ListDecodingStatus.INTERNAL_ERROR, ListDecodingStatus.WORKING_MEMORY_LIMIT, ListDecodingStatus.COMPLETED)) {
+            val diagnostic = wholeSearch.copy(listDecoding = ListDecodingSummary(
+                reusedTrials = if (status == ListDecodingStatus.COMPLETED) 1 else 0),
+                listDecodingExecution = ListDecodingExecution(mapOf(
+                    ListDecodingStage.WITHOUT_ASSIGNMENTS to setOf(ListDecodingStatus.INELIGIBLE),
+                    ListDecodingStage.ADDITIONAL to setOf(status))))
+            val presenter = RecoveryDiagnosticPresenter(ja)
+            val failure = RecoveryFailure(ErrorCorrectionLevel.L, 0, 30, 0, 30, RecoveryFailureStage.REED_SOLOMON)
+            for (report in listOf(presenter.candidateReport(candidate(false), null, context(diagnostic)),
+                presenter.failureReport(failure, null, context(diagnostic, 0)))) {
+                val summary = report.sections.single { it.stage == DiagnosticStage.PROCESSING }.summary
+                assertTrue(summary.contains(requireNotNull(diagnostic.listDecoding).description()))
+                assertFalse(summary.contains(if (ja) "適用条件を満たさないため" else "eligibility conditions were not met"))
+            }
+        }
     }
 
     @Test fun candidateSummaryKeepsMethodsAndWholeSearchCountsSeparateFromCalculationDetails() = inBothLanguages { ja ->
@@ -143,7 +255,7 @@ class ListDecodingDiagnosticPresentationTest {
         assertFalse(processing.summary.contains(if (ja) "時間切れ" else "time limit"))
         assertTrue(verification.summary.contains(if (ja) "リスト復号による追加探索は時間切れで終了しました" else "List-decoding fallback ended at the time limit"))
         assertTrue(verification.summary.contains(if (ja) "未探索の組合せ" else "combinations remain unchecked"))
-        assertFalse(report.fullText().contains(if (ja) "累計5分" else "five-minute"))
+        assertFalse(report.fullText().contains(if (ja) "累計600秒" else "600-second"))
     }
 
     @Test fun wholeSearchListDecodingDoesNotClaimItWasUsedForAConventionalCandidate() = inBothLanguages { ja ->

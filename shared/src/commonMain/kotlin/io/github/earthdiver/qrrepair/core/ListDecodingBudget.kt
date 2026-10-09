@@ -4,7 +4,7 @@ import kotlin.time.TimeSource
 
 /** One repair's cumulative list-decoding time. Ordinary recovery between passes does not consume it. */
 class ListDecodingBudget(
-    val limitMillis: Long = 300_000,
+    val limitMillis: Long = 600_000,
     private val onProgress: ((elapsedMillis: Long, limitMillis: Long) -> Unit)? = null,
     private val onIdle: (() -> Unit)? = null,
     private val clockMillis: () -> Long = monotonicClock(),

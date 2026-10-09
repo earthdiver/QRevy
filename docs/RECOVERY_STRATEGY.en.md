@@ -356,7 +356,7 @@ Both controls offer Default, Exact match (0 bits), Strict, Relaxed, Manual, and 
 
 The conditions share generated source symbols and are not independent real photographs. Results depend on damage distribution, seed, scoring weights, and finite search/retention budgets. There was no fresh holdout after selecting 10%, and limits cannot reject alternatives that require zero changes to known bits. Reusable evaluation and enumeration commands are in the [study tools](../tools/detector-study/README.md#synthetic-dataecc-error-limit-study); detailed run archives are local research artifacts, not required product documentation.
 
-QRR schema 25 persists each limit mode separately from its remembered manual value. Exact match stays at zero across versions. Explicit ECC/mask selections and fixed-cell protection retain their separate rules.
+QRR schema 26 persists each limit mode separately from its remembered manual value. Exact match stays at zero across versions. Explicit ECC/mask selections and fixed-cell protection retain their separate rules.
 
 ### 4.6 Automatic list-decoding fallback
 
@@ -372,7 +372,11 @@ If step 1 produces a decoded candidate meeting the selected conditions, the sear
 
 Steps 2, 4, and 5 are skipped when the **Data/ECC error limit** is zero.
 
-GS and Wu treat codewords with remaining unknown bits as erasures and target one more erroneous codeword than conventional RS can correct. Where the strict Johnson bound permits this radius, the app selects a method using estimated work and working memory. GS interpolates over non-erased positions and evaluates candidate polynomials at all original positions. Wu uses error-locator polynomials; at this radius, constant and linear coefficient searches suffice. The same radius is not searched again with the other method.
+GS and Wu are used both without tentative bit assignments and in searches that combine tentative assignments with list decoding. In the latter case, the outer search assigns 0/1 values to some unknown bits before invoking GS or Wu. In either case, before GS or Wu decoding begins, the positions of input codewords with remaining unknown bits are designated as erasure positions. This applies at all three extension settings: +1, +2, and +3.
+
+**List-decoding extension** selects up to +1, +2, or +3 erroneous codewords beyond conventional RS per block (default: +1). For each input or tentative assignment, radii increase from `floor((ECC symbols − erasures) / 2) + 1` to the selected limit, strictly inside the Johnson bound. Some block configurations cannot reach the selected extension. The shared time and memory limits still apply, and a newly decoded QR can end further trials after its complete decoder list has been validated. The selected extension does not change KV score thresholds.
+
+The app selects GS or Wu for each radius using estimated work and memory; it does not run both methods over the same radius. GS interpolates over non-erased positions and evaluates candidate polynomials at the original coordinates. Wu uses constant/linear search at +1; at +2 and +3 it solves small linear systems from error-location subsets, checks the remaining roots, and handles closer codewords separately.
 
 Before enumerating unknown-bit assignments, KV uses the known bits within partial codewords. For codewords with one to four unknown bits, it distributes interpolation weights (multiplicities) equally among compatible values. More ambiguous codewords are omitted from interpolation. These weights are neither image confidence scores nor probabilities of correctness. KV is tried only when its candidate score conditions and estimated computation make it useful. If no new decoded candidate results, partial-bit search continues.
 
@@ -382,7 +386,7 @@ Known-bit mismatches are capped at **5% of all data/ECC bits in the QR, rounded 
 
 Each trial's candidates are merged with conventional RS candidates, and QR structure and payload checks run as candidates are added. Alternatives are sought even for blocks that conventional RS decoded successfully. Rediscovering an existing decoded candidate does not end the additional search. Input conditions, including fixed cells and priority assignments, are enforced, and multiple valid candidates are retained. Each format/structure pass allows at most 65,536 combinations and 65,536 expanded search nodes.
 
-List decoding in steps 2 and 5 shares **at most five cumulative minutes per repair operation** across all three methods, excluding ordinary search time. Computation can be interrupted; timeout, insufficient memory, or interruption retains validated candidates and reports why the search is unfinished. See [Reading recovery result fields](RECOVERY_RESULT_FIELDS.en.md#diagnostic-details) for trial counts and reasons for skipped work.
+List decoding in steps 2 and 5 shares **at most 600 cumulative seconds (10 minutes) per repair operation** across all three methods, excluding ordinary search time. Computation can be interrupted; timeout, insufficient memory, or interruption retains validated candidates and reports why the search is unfinished. See [Reading recovery result fields](RECOVERY_RESULT_FIELDS.en.md#diagnostic-details) for trial counts and reasons for skipped work.
 
 Algorithm references: [Guruswami–Sudan, errors and erasures](https://www.site.uottawa.ca/~zhcheng/list_dec.pdf), [Nielsen–Zeh, interpolation modules and root finding](https://arxiv.org/abs/1404.3022), [Koetter–Ma–Vardy, interpolation](https://arxiv.org/abs/1005.5734), [Wu, list decoding through error-locator polynomials](https://arxiv.org/abs/cs/0703105).
 
@@ -436,7 +440,7 @@ The Android app derives separate result, current-trial, and solver allowances fr
 
 Candidate agreement and candidate-based check guidance compare distinct decoded candidates from the same input matrix as the selected candidate. A full QR matrix is generated for each compared candidate, so the comparison uses at most the top 16 to bound memory and computation. If the selected decoded candidate is outside that range, it replaces the last entry. The compared count and the retained decoded-candidate count for that input are explicit; sample agreement is not treated as agreement among all candidates. Candidates that pass QR structure validation without successful final decoding can be selected and exported but are excluded from this comparison.
 
-History in QRR schema 25 stores the selected QR’s version, ECC level, mask, corrected codewords, and actual sampling polarity. Recalculation restores selection by QR identity rather than list position; if no candidate matches, selection remains empty. Actual polarity is recorded separately from the user’s automatic/normal/inverted search preference. User-facing history count and size limits are described in the [User Guide](USER_GUIDE.en.md#7-save-resume-and-export).
+History in QRR schema 26 stores the selected QR’s version, ECC level, mask, corrected codewords, and actual sampling polarity. Recalculation restores selection by QR identity rather than list position; if no candidate matches, selection remains empty. Actual polarity is recorded separately from the user’s automatic/normal/inverted search preference. User-facing history count and size limits are described in the [User Guide](USER_GUIDE.en.md#7-save-resume-and-export).
 
 When conflicts with fixed values are not allowed, data/ECC pin conflicts reject the candidate and retain conflicting coordinates, input values, and required candidate values. Otherwise equivalent generic payload failures do not overwrite actionable diagnostics. Temporary priority assignments are not manual input pins.
 

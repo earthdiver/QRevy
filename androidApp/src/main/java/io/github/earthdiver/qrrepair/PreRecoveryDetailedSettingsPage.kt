@@ -30,6 +30,7 @@ internal class PreRecoveryDetailedSettingsPage(
     prioritySearchControl: View? = null,
     partialBitSearchControl: View? = null,
     mirroredInput: CheckBox? = null,
+    listDecodingControl: View? = null,
 ) {
     val view: View = ScrollView(context).apply {
         addView(LinearLayout(context).apply {
@@ -52,6 +53,7 @@ internal class PreRecoveryDetailedSettingsPage(
             addSettingsItem(TextView(context).apply { setText(R.string.thresholding) }, 6)
             addView(polarity)
             partialBitSearchControl?.let { addSettingsItem(it, 6) }
+            listDecodingControl?.let { addSettingsItem(it, 6) }
             prioritySearchControl?.let { addSettingsItem(it, 6) }
             addSettingsItem(searchQuadNeighborhood, 6)
             addView(TextView(context).apply {

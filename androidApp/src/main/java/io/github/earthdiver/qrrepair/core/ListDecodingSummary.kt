@@ -11,6 +11,9 @@ data class ListDecodingSummary(
     val skipReasons: Set<ListDecodingTrialSkip> = emptySet(),
     val methodTrials: Map<ListDecoderMethod, Int> = emptyMap(),
     val reusedTrials: Int = 0,
+    val extensionLimits: Set<Int> = emptySet(),
+    val hardRadiusTrials: Map<Int, Int> = emptyMap(),
+    val completedHardRadiusTrials: Map<Int, Int> = emptyMap(),
 ) {
     fun description(): String = localizedText(
         "リスト復号の試行回数（探索全体）: ${trials}回、所要時間: ${if (elapsedMillis < 1000) "1秒未満" else "${elapsedMillis / 1000}秒"}",
@@ -25,7 +28,7 @@ data class ListDecodingSummary(
     fun calculationDetails(): String = localizedText(
         "リスト復号の計算（探索全体）",
         "List-decoding calculations (whole search)",
-    ) + mismatchLimitDescription().takeIf { it.isNotBlank() }?.let { "\n$it" }.orEmpty() +
+    ) + mismatchLimitDescription().takeIf { it.isNotBlank() }?.let { "\n$it" }.orEmpty() + radiusDetails() +
         (if (reusedTrials == 0) "" else localizedText(
             "\n完了済みのブロック復号結果を再利用: ${reusedTrials}回（新規の試行回数には含めません）",
             "\nCompleted block-decoding results reused: $reusedTrials (excluded from new trial counts)",
@@ -34,11 +37,20 @@ data class ListDecodingSummary(
     } + if (skipReasons.isEmpty()) "" else localizedText("\n一部試行の復号計算を省略: ", "\nDecoding skipped for some trials: ") +
             skipReasons.sortedBy { it.ordinal }.joinToString("; ") { reason -> when (reason) {
                 ListDecodingTrialSkip.TOO_MANY_ERASURES -> localizedText("不明bitを含むコード語が多すぎる", "too many codewords contain unknown bits")
-                ListDecodingTrialSkip.NO_ADDITIONAL_RADIUS -> localizedText("通常RSを超える訂正半径を取れない", "no radius beyond conventional RS")
+                ListDecodingTrialSkip.NO_ADDITIONAL_RADIUS -> localizedText("試行対象の訂正半径がJohnson境界の条件を満たさない", "the requested trial radius is outside the strict Johnson bound")
                 ListDecodingTrialSkip.MISMATCH_CAP -> localizedText("追加候補は必ず既知ビットの不一致上限を超える", "every additional candidate would exceed the known-bit limit")
                 ListDecodingTrialSkip.UNIQUE_NEARBY_WORD -> localizedText("対象の半径内に別の符号語がないと証明できた", "no other codeword can lie within the selected radius")
                 ListDecodingTrialSkip.KV_PARAMETERS_UNAVAILABLE -> localizedText("KV法の適用条件または計算規模の条件を満たさない", "KV eligibility or computation-size conditions are not met")
             } }
+
+    private fun radiusDetails(): String = buildString {
+        if (extensionLimits.isNotEmpty()) append(localizedText(
+            "\nGS・Wuの追加探索上限（RSブロックごと）: ${extensionLimits.sorted().joinToString { "＋${it}語" }}",
+            "\nGS/Wu extension limit per RS block: ${extensionLimits.sorted().joinToString { "+$it symbols" }}"))
+        for ((radius, attempts) in hardRadiusTrials.toSortedMap()) append(localizedText(
+            "\nGS・Wuの訂正半径${radius}語: ${attempts}試行／${completedHardRadiusTrials[radius] ?: 0}完了",
+            "\nGS/Wu radius $radius symbols: $attempts attempted / ${completedHardRadiusTrials[radius] ?: 0} completed"))
+    }
 
     companion object {
         fun combine(parts: List<ListDecodingSummary>): ListDecodingSummary? = if (parts.isEmpty()) null else ListDecodingSummary(
@@ -48,6 +60,12 @@ data class ListDecodingSummary(
             skipReasons = parts.flatMapTo(linkedSetOf()) { it.skipReasons },
             methodTrials = ListDecoderMethod.entries.associateWith { method -> parts.sumOf { it.methodTrials[method] ?: 0 } }
                 .filterValues { it > 0 },
+            extensionLimits = parts.flatMapTo(linkedSetOf()) { it.extensionLimits },
+            hardRadiusTrials = sumRadii(parts.map { it.hardRadiusTrials }),
+            completedHardRadiusTrials = sumRadii(parts.map { it.completedHardRadiusTrials }),
         )
+
+        private fun sumRadii(parts: List<Map<Int, Int>>) = parts.flatMap { it.keys }.toSet()
+            .associateWith { radius -> parts.sumOf { it[radius] ?: 0 } }
     }
 }

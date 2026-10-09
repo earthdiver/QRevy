@@ -7,6 +7,43 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ListDecodingRecoveryTest {
+    @Test fun selectedExtensionRecoversTwoAndThreeExtraErrorsWithoutAssignments() {
+        for ((ecc, extra) in listOf(ErrorCorrectionLevel.H to 2, ErrorCorrectionLevel.H to 3, ErrorCorrectionLevel.Q to 2)) {
+            val f = Fixture(ecc = ecc, text = "RADIUS")
+            val radius = f.de.ecSymbolsPerBlock / 2 + extra
+            val data = f.de.blocks.single().numDataCodewords
+            for (i in data until data + radius) f.flip(i, 1)
+            val smaller = f.recover(additionalErrors = extra - 1)
+            assertTrue(smaller.candidates.none { it.correctedInterleaved.contentEquals(f.raw) })
+            val result = f.recover(additionalErrors = extra)
+            val correct = result.candidates.single { it.correctedInterleaved.contentEquals(f.raw) }
+            assertEquals(f.text, correct.text)
+            assertEquals(0, correct.partialGuessedBits)
+            assertEquals(extra, correct.displayConditions!!.listDecodingAdditionalErrors)
+            assertEquals(radius, correct.actualBlockMethods.single().listDecoding!!.radius)
+            val summary = requireNotNull(result.searchDiagnostic.listDecoding)
+            assertEquals(setOf(extra), summary.extensionLimits)
+            assertTrue(summary.completedHardRadiusTrials.getOrDefault(radius, 0) > 0)
+            assertTrue(summary.hardRadiusTrials.keys.all { it <= radius })
+            if (ecc == ErrorCorrectionLevel.Q) assertEquals(ListDecoderMethod.WU, correct.actualBlockMethods.single().listDecoding!!.method)
+            assertTrue(f.recover(limit = radius - 1, additionalErrors = extra).candidates.none { it.correctedInterleaved.contentEquals(f.raw) })
+            val coord = f.extraction.codewords[data].coordinates.last()
+            f.matrix[coord.x, coord.y].source = ModuleSource.USER
+            assertTrue(f.recover(additionalErrors = extra).candidates.none { it.correctedInterleaved.contentEquals(f.raw) })
+        }
+    }
+
+    @Test fun widerMultipleBlocksStillShareTheQrMismatchLimit() {
+        val f = Fixture(3, ErrorCorrectionLevel.Q)
+        for ((raw, location) in f.de.rawLocations.withIndex()) if (requireNotNull(location).localIndex in 2..12) f.flip(raw, 1)
+        assertTrue(f.recover(additionalErrors = 1).candidates.none { it.correctedInterleaved.contentEquals(f.raw) })
+        val restored = f.recover(additionalErrors = 2).candidates.single { it.correctedInterleaved.contentEquals(f.raw) }
+        assertEquals(f.text, restored.text)
+        assertEquals(22, restored.knownBitMismatchesAfterCorrection)
+        assertTrue(restored.actualBlockMethods.all { it.listDecoding?.radius == 11 })
+        assertTrue(f.recover(limit = 21, additionalErrors = 2).candidates.none { it.correctedInterleaved.contentEquals(f.raw) })
+    }
+
     private class Fixture(val version: Int = 1, val ecc: ErrorCorrectionLevel = ErrorCorrectionLevel.L, val text: String = "GS RECOVERY") {
         val qr = Encoder.encode(text, ecc, mapOf(EncodeHintType.QR_VERSION to version, EncodeHintType.QR_MASK_PATTERN to 0))
         val matrix = QrMatrix(qr.matrix.width).apply {
@@ -27,9 +64,10 @@ class ListDecodingRecoveryTest {
         }
         fun recover(limit: Int? = null, budget: ListDecodingBudget = ListDecodingBudget(),
             partialBitLimit: Int = PartialBitSearchLimit.DEFAULT, workingLimit: Long = 32L * 1024 * 1024,
-            stop: () -> Boolean = { false }) =
+            additionalErrors: Int = ListDecodingLimit.DEFAULT, stop: () -> Boolean = { false }) =
             RecoveryEngine().recoverWithDiagnostics(matrix, formatConstraint = constraint,
                 maxKnownDataEccMismatches = limit, listDecodingBudget = budget, partialBitSearchLimit = partialBitLimit,
+                listDecodingAdditionalErrors = additionalErrors,
                 retentionBudget = RecoveryRetentionBudget(workingLimitBytes = workingLimit), stopRequested = stop)
     }
 
@@ -51,11 +89,36 @@ class ListDecodingRecoveryTest {
         assertEquals(1, requireNotNull(outcome.searchDiagnostic.listDecoding).trials)
         assertEquals(mapOf(ListDecoderMethod.WU to 1), requireNotNull(outcome.searchDiagnostic.listDecoding).methodTrials)
         assertEquals(1, requireNotNull(outcome.searchDiagnostic.listDecoding).reusedTrials)
-        assertTrue(outcome.searchDiagnostic.listDecodingExecution!!.stages.values.all {
+        val execution = requireNotNull(outcome.searchDiagnostic.listDecodingExecution)
+        assertEquals(mapOf(ListDecodingStage.WITHOUT_ASSIGNMENTS to 1, ListDecodingStage.ADDITIONAL to 0),
+            execution.newTrials)
+        assertTrue(execution.stages.values.all {
             it == setOf(ListDecodingStatus.COMPLETED)
         })
         assertTrue(correct.combinationSearch.stops.isEmpty())
         assertFalse(SearchIncompleteReason.LIST_DECODING_TIME_LIMIT in outcome.searchDiagnostic.incompleteReasons)
+    }
+
+    @Test fun ineligibleInputsReportBothListStagesAsUnexecutedWithZeroTrials() {
+        val f = Fixture(text = "NO LIST TRIALS")
+        for (raw in 2..19) {
+            for (coord in f.extraction.codewords[raw].coordinates.take(if (raw < 16) 8 else 4)) {
+                f.matrix.set(coord.x, coord.y, ModuleValue.ERASED, 0f, ModuleSource.IMAGE)
+            }
+        }
+        val outcome = f.recover()
+        assertTrue(outcome.candidates.isEmpty())
+        assertTrue(outcome.searchDiagnostic.incompleteReasons.isEmpty())
+        val summary = requireNotNull(outcome.searchDiagnostic.listDecoding)
+        assertEquals(0, summary.trials)
+        assertEquals(0, summary.reusedTrials)
+        assertTrue(summary.methodTrials.isEmpty())
+        assertTrue(summary.skipReasons.containsAll(setOf(ListDecodingTrialSkip.TOO_MANY_ERASURES,
+            ListDecodingTrialSkip.KV_PARAMETERS_UNAVAILABLE)))
+        val execution = requireNotNull(outcome.searchDiagnostic.listDecodingExecution)
+        for (stage in ListDecodingStage.entries) {
+            assertEquals(setOf(ListDecodingStatus.INELIGIBLE), execution.stages[stage])
+        }
     }
 
     @Test fun fivePercentCapAppliesEvenWithUnlimitedAndSmallerManualCapsRemainBinding() {

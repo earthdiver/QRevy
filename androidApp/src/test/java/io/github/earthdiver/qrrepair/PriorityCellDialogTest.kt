@@ -58,6 +58,8 @@ class PriorityCellDialogTest {
         block: (Fixture) -> Unit,
     ) {
         val controller = Robolectric.buildActivity(Activity::class.java).setup()
+        val previousLanguage = AppLanguageManager.current
+        AppLanguageManager.applyTo(controller.get(), AppLanguage.JAPANESE)
         val prepared = BitmapUtils.prepare(Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888).apply {
             eraseColor(if (value == ModuleValue.ONE) Color.BLACK else Color.WHITE)
         })
@@ -70,6 +72,7 @@ class PriorityCellDialogTest {
         val dialog = ShadowDialog.getLatestDialog() as AlertDialog
         try { Fixture(dialog, host).also { it.openEditor(); block(it) } } finally {
             dialog.dismiss()
+            AppLanguageManager.applyTo(controller.get(), previousLanguage)
             controller.pause().stop().destroy()
             if (!prepared.bitmap.isRecycled) prepared.bitmap.recycle()
         }

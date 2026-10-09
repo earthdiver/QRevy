@@ -17,6 +17,7 @@ internal class ListDecodingQrSearch(private val rs: ReedSolomonErasures) {
         cancellation: RecoveryCancellation,
         baseOnly: Boolean = false,
         cache: ListDecodingTrialCache? = null,
+        additionalErrors: Int = ListDecodingLimit.DEFAULT,
         onRejection: (RecoveryCandidateRejection) -> Unit,
         onProgress: (Int, ListDecodingBlockSearch) -> Unit,
         onStops: (Set<CombinationSearchStop>) -> Unit,
@@ -87,7 +88,7 @@ internal class ListDecodingQrSearch(private val rs: ReedSolomonErasures) {
                             onRejection(RecoveryCandidateRejection.FIXED_CELLS)
                         }
                         valid
-                    }, check = cancellation::check, cache = cache)
+                    }, check = cancellation::check, cache = cache, additionalErrors = additionalErrors)
                 if (used() > workingLimitBytes) {
                     stops += CombinationSearchStop.WORKING_MEMORY_LIMIT
                     return false

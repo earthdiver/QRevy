@@ -23,6 +23,7 @@ internal class RecoveryRunState(
     baseCancellation: RecoveryCancellation,
     val partialBitSearchLimit: Int,
     val listDecodingBudget: ListDecodingBudget,
+    val listDecodingAdditionalErrors: Int = ListDecodingLimit.DEFAULT,
 ) {
     var phase = RecoveryPhase.ORIGINAL_RS
     val listDecodingPhase: Boolean get() = phase.isListDecoding
@@ -30,6 +31,7 @@ internal class RecoveryRunState(
     val listDecodingCache = ListDecodingTrialCache(minOf(256L * 1024, retentionBudget.workingLimitBytes / 16))
     val availableWorkingBytes: Long get() = retentionBudget.workingLimitBytes - listDecodingCache.workingBytes
     val listDecodingStatuses = ListDecodingStage.entries.associateWith { ListDecodingStatus.NOT_REACHED }.toMutableMap()
+    val listDecodingNewTrials = mutableMapOf<ListDecodingStage, Int>()
     val listDecodingStops = linkedSetOf<CombinationSearchStop>()
     val cancellation = RecoveryCancellation {
         baseCancellation.check()
@@ -107,7 +109,8 @@ internal class RecoveryRunState(
             inputBlocker = earlyBlocker ?: blockers.singleOrNull()?.takeIf { allInputsChecked },
             candidateRejections = candidateRejections.toSet(),
             listDecoding = listDecodingSummary,
-            listDecodingExecution = ListDecodingExecution(listDecodingStatuses.mapValues { setOf(it.value) }),
+            listDecodingExecution = ListDecodingExecution(listDecodingStatuses.mapValues { setOf(it.value) },
+                newTrials = listDecodingNewTrials.toMap()),
             singleSegmentStatuses = singleSegmentStatuses.toSet(),
             priorityHeaderHypotheses = priorityHeaderHypotheses.toSet(),
             acceptedCandidate = acceptedCandidate,

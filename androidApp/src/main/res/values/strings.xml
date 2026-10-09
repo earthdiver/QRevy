@@ -210,4 +210,8 @@
     <string name="partial_bit_search_limit_note">Shared limit per RS block for partial-bit search and the remaining degrees of freedom after solving RS constraints. Default: 12 bits. Each extra bit doubles the maximum enumeration count; combining this with * search increases the workload further. Memory limits may stop the search before this limit is reached.</string>
     <string name="mirrored_input">Treat input image as mirrored</string>
     <string name="mirrored_input_note">Exchanges the top-right and bottom-left Finder roles and grid axes. The image stays unchanged; cell edits stay on the same image cells.</string>
+    <string name="list_decoding_limit">List-decoding extension (symbols): +%1$d</string>
+    <string name="list_decoding_limit_title">Extra errors beyond conventional RS</string>
+    <string name="list_decoding_limit_choice">Extra symbols per RS block: +%1$d</string>
+    <string name="list_decoding_limit_note">Default: +1. GS/Wu try increasing radii up to this limit within the Johnson bound and the shared time and memory limits. +2 and +3 may take much longer. KV uses its own agreement score.</string>
 </resources>

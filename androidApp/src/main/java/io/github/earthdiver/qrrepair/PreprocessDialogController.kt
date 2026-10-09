@@ -585,6 +585,35 @@ internal class PreprocessDialogController(
                 textSize = 12f
             })
         }
+        val listLimitButton = button("", {}).apply {
+            setSingleLine(false)
+            maxLines = Int.MAX_VALUE
+        }
+        fun refreshListLimit() {
+            listLimitButton.text = getString(R.string.list_decoding_limit, searchSettings.listDecodingAdditionalErrors)
+        }
+        refreshListLimit()
+        listLimitButton.setOnClickListener {
+            val choices = io.github.earthdiver.qrrepair.core.ListDecodingLimit.supported.toList()
+            AlertDialog.Builder(this).setTitle(R.string.list_decoding_limit_title)
+                .setSingleChoiceItems(choices.map { getString(R.string.list_decoding_limit_choice, it) }.toTypedArray(),
+                    choices.indexOf(searchSettings.listDecodingAdditionalErrors)) { dialog, which ->
+                    searchSettings.listDecodingAdditionalErrors = choices[which]
+                    refreshListLimit()
+                    noteDraftChange("list-decoding-limit", getString(R.string.list_decoding_limit_title),
+                        getString(R.string.list_decoding_limit_choice, searchSettings.listDecodingAdditionalErrors))
+                    dialog.dismiss()
+                }.setNegativeButton(R.string.close, null).show()
+        }
+        val listDecodingControl = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(listLimitButton, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(TextView(activity).apply {
+                setText(R.string.list_decoding_limit_note)
+                textSize = 12f
+            })
+        }
         val priorityLimitButton = button("", {}).apply {
             setSingleLine(false)
             maxLines = Int.MAX_VALUE
@@ -649,6 +678,7 @@ internal class PreprocessDialogController(
             dataEccMismatchLimitControl = dataEccMismatchLimitControl,
             prioritySearchControl = priorityLimitButton,
             partialBitSearchControl = partialBitSearchControl,
+            listDecodingControl = listDecodingControl,
             actions = DetailedSettingsPageActions(
                 rotateBy = ::rotateBy,
                 resetRotation = ::resetRotation,

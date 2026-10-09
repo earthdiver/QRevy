@@ -44,16 +44,10 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
         }
         val processing = listOfNotNull(candidate.displayConditions.candidateCalculationPolicyText(),
             candidate.usedMethodsText(),
-            (context.searchDiagnostic ?: candidate.searchDiagnostic)?.listDecodingExecution?.description(),
-            listDecoding?.description())
+            listDecodingProcessingText(context.searchDiagnostic ?: candidate.searchDiagnostic))
             .filter(String::isNotBlank).joinToString("\n\n")
-        val stopReasons = candidate.combinationSearch.copy(stops = candidate.combinationSearch.stops.filterTo(linkedSetOf()) {
-            it != CombinationSearchStop.USER_INTERRUPTED && it != CombinationSearchStop.WORKING_MEMORY_LIMIT
-        }).stopReasonsText().takeIf(String::isNotBlank)?.let {
-            ui("QR候補の組合せ探索の終了理由\n", "Stop reasons for QR candidate combination search\n") + it
-        }
         val processingDetails = listOfNotNull(candidateProcessingText(candidate, context.selectedEntry),
-            listDecoding?.calculationDetails(), stopReasons)
+            listDecoding?.calculationDetails(), combinationStopReasons(candidate.combinationSearch))
             .filter(String::isNotBlank).joinToString("\n\n")
         return RecoveryDiagnosticReport(ui("選択中の候補の診断", "Diagnostics for the selected candidate"), listOf(
             DiagnosticSection(DiagnosticStage.SETTINGS, candidate.displayConditions.runSettingsText()),
@@ -79,14 +73,11 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
             if (failure.displayConditions?.trustSingleSegment == true) {
                 append("\n\n").append((context.searchDiagnostic ?: failure.searchDiagnostic).singleSegmentProcessingText())
             }
-            listDecoding?.let {
-                if (isNotEmpty()) append("\n\n")
-                append(it.description())
-            }
-            (context.searchDiagnostic ?: failure.searchDiagnostic)?.listDecodingExecution?.let {
-                if (isNotEmpty()) append("\n\n")
-                append(it.description())
-            }
+            listDecodingProcessingText(context.searchDiagnostic ?: failure.searchDiagnostic)
+                .takeIf(String::isNotBlank)?.let {
+                    if (isNotEmpty()) append("\n\n")
+                    append(it)
+                }
         }
         val verification = buildString {
             append(searchResultDescription(context))
@@ -102,7 +93,7 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
                 ui("参考：補完・探索後の計算記録（", "Reference: calculation after filling/search (") +
                     (geometry?.version?.let { version -> "V$version / " }.orEmpty()) +
                     "ECC ${failure.ecLevel} / " + ui("マスク${failure.dataMask}）\n", "mask ${failure.dataMask})\n") + it
-            }, listDecoding?.calculationDetails(),
+            }, listDecoding?.calculationDetails(), combinationStopReasons(failure.combinationSearch),
         ).joinToString("\n\n")
         return RecoveryDiagnosticReport(ui("修復結果の診断", "Recovery result diagnostics"), listOf(
             DiagnosticSection(DiagnosticStage.SETTINGS, failure.displayConditions.runSettingsText()),
@@ -111,6 +102,24 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
             DiagnosticSection(DiagnosticStage.VERIFICATION, verification),
         ))
     }
+
+    private fun listDecodingProcessingText(diagnostic: RecoverySearchDiagnostic?): String {
+        val summary = diagnostic?.listDecoding
+        val execution = diagnostic?.listDecodingExecution
+        val ineligible = summary?.trials == 0 && summary.reusedTrials == 0 &&
+            ListDecodingStage.entries.all { execution?.stages?.get(it) == setOf(ListDecodingStatus.INELIGIBLE) }
+        val status = if (ineligible) ui(
+            "適用条件を満たさないため、リスト復号の計算は実行しませんでした。",
+            "List-decoding calculations were not run because the eligibility conditions were not met.",
+        ) else execution?.description()
+        return listOfNotNull(summary?.description(), status).filter(String::isNotBlank).joinToString("\n\n")
+    }
+
+    private fun combinationStopReasons(summary: CombinationSearchSummary): String? = summary.copy(stops = summary.stops.filterTo(linkedSetOf()) {
+            it != CombinationSearchStop.USER_INTERRUPTED && it != CombinationSearchStop.WORKING_MEMORY_LIMIT
+        }).stopReasonsText().takeIf(String::isNotBlank)?.let {
+            ui("QR候補の組合せ探索の終了理由\n", "Stop reasons for QR candidate combination search\n") + it
+        }
 
     private fun candidateProcessingText(candidate: RecoveryCandidate, entry: RecoveryResultEntry?): String {
         val processing = buildString {

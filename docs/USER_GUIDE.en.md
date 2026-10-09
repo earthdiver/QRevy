@@ -100,6 +100,7 @@ QR error correction uses Reed–Solomon (RS) codes.
 | Setting | Consider it when | Main risk or limit |
 | --- | --- | --- |
 | Partial-bit search / dimension limit | Extend partial-bit enumeration or enumerate more remaining RS degrees of freedom | Choose 12, 13, or 14 bits (default 12), per RS block; each extra bit doubles the maximum enumeration count |
+| List-decoding extension | Explore errors further beyond conventional RS | Choose +1, +2, or +3 symbols per RS block (default: +1); higher settings can be much slower and remain subject to the Johnson bound and shared resource limits |
 | Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells) | Retain fixed designations while allowing recovery to correct their values | Defaults to OFF; ON still enforces error limits and explicit ECC/mask selections |
 | Automatically fine-tune sampling position | Corners are close but module-center sampling is slightly displaced | Includes alignment-pattern refinement and increases work; preserves version and logical orientation |
 | Format-information error limit | ECC-level/mask candidates should closely match known format cells | Too strict a limit can remove every format before RS is attempted |
@@ -122,6 +123,8 @@ Default follows that version rule. An explicitly selected Strict or Relaxed pres
 
 List decoding can produce multiple candidates for errors beyond the correction range of conventional RS decoding. The app automatically selects Guruswami–Sudan (GS), Koetter–Vardy (KV), or Wu decoding according to the input and estimated computation. This fallback caps known-bit mismatches at 5% of all data/ECC bits in the QR, rounded up, or the **Data/ECC error limit** if smaller. A zero limit disables list decoding.
 
+**List-decoding extension** applies to GS and Wu. The app tries smaller radii first and chooses the method automatically. It is an exploration limit, not a promise of additional recovery. KV continues to use its own agreement score.
+
 See [Recovery Strategy](RECOVERY_STRATEGY.en.md) for exact interactions and bounds.
 
 Search completion covers the specified conditions and bounded search policy. It is separate from candidate or explanation retention omissions and does not guarantee correctness or uniqueness. See [Understanding recovery result fields](RECOVERY_RESULT_FIELDS.en.md) for the messages and reasons for unfinished work.
@@ -134,7 +137,7 @@ A **validated candidate** has passed QR structure validation and the specified i
 
 Recovery starts with conventional RS on the original input. If this does not produce a decoded candidate meeting the selected conditions, recovery continues with additional search. See [Recovery Strategy, section 4.6](RECOVERY_STRATEGY.en.md#46-automatic-list-decoding-fallback) for the search order.
 
-The three list-decoding methods share at most five cumulative minutes per repair operation, excluding ordinary search time. **Interrupt repair** remains available throughout. Validated candidates remain available after timeout, insufficient memory, or interruption.
+The three list-decoding methods share at most 600 cumulative seconds (10 minutes) per repair operation, excluding ordinary search time. **Interrupt repair** remains available throughout. Validated candidates remain available after timeout, insufficient memory, or interruption.
 
 Review results in this order:
 
@@ -167,7 +170,7 @@ Import automatically saves the source image and a session before you press Save 
 
 Starting another import preserves pending saves for the previous work. Repeated save requests for the same work retain its latest requested history and selected checkpoint.
 
-Resume saved sessions from **Saved work**. **Operation history** shows the current edit history. QRR sessions and saved source images stay in app-private no-backup storage, but they are not encrypted files. Saved work uses QRR schema 25. Schemas 23 and 24 can also be opened with mirrored input OFF; schema 23 uses a partial-bit search / dimension limit of 12 bits. Other schema versions cannot be opened.
+Resume saved sessions from **Saved work**. **Operation history** shows the current edit history. QRR sessions and saved source images stay in app-private no-backup storage, but they are not encrypted files. Saved work uses QRR schema 26 and stores the list-decoding extension per history entry. Schemas 23–25 can also be opened with the default +1 extension. Schemas 23 and 24 use mirrored input OFF; schema 23 uses a partial-bit search / dimension limit of 12 bits. Other schema versions cannot be opened.
 
 Each session has at most 40 history checkpoints. Memory or storage limits can reduce that number. Trimming history to fit these limits removes older checkpoints while preserving the currently selected checkpoint and the latest one.
 

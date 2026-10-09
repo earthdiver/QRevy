@@ -5,24 +5,28 @@ import io.github.earthdiver.qrrepair.localizedText
 enum class ListDecodingStage { WITHOUT_ASSIGNMENTS, ADDITIONAL }
 
 enum class ListDecodingStatus {
-    NOT_REACHED, RUNNING, COMPLETED, DEFERRED, TIME_LIMIT, WORKING_MEMORY_LIMIT, SEARCH_LIMIT,
+    NOT_REACHED, RUNNING, COMPLETED, INELIGIBLE, DEFERRED, TIME_LIMIT, WORKING_MEMORY_LIMIT, SEARCH_LIMIT,
     INTERRUPTED, INTERNAL_ERROR, ORIGINAL_RS_SUCCEEDED, ZERO_ERROR_LIMIT, INPUT_CONSTRAINT,
 }
 
 /** Decisions survive candidate eviction and are aggregated independently of decoder trial counts. */
 data class ListDecodingExecution(
     val stages: Map<ListDecodingStage, Set<ListDecodingStatus>> = emptyMap(),
+    val newTrials: Map<ListDecodingStage, Int> = emptyMap(),
 ) {
-    fun description(): String = stages.entries.sortedBy { it.key.ordinal }.joinToString("\n") { (stage, statuses) ->
+    fun description(): String = stages.entries.filter { (stage, _) ->
+        newTrials.getOrDefault(stage, 0) > 0
+    }.sortedBy { it.key.ordinal }.joinToString("\n") { (stage, statuses) ->
         val label = when (stage) {
             ListDecodingStage.WITHOUT_ASSIGNMENTS -> localizedText("仮置きなしのリスト復号", "List decoding without tentative assignments")
-            ListDecodingStage.ADDITIONAL -> localizedText("仮置きも使う追加リスト復号", "Additional list decoding including tentative assignments")
+            ListDecodingStage.ADDITIONAL -> localizedText("仮置きも使うリスト復号", "List decoding including tentative assignments")
         }
         val scope = if (statuses.size > 1) localizedText("（複数の読み取り試行の集計）", " (across sampled inputs)") else ""
         label + scope + ": " + statuses.sortedBy { it.ordinal }.joinToString("; ") { status -> when (status) {
             ListDecodingStatus.NOT_REACHED -> localizedText("この段階には到達していません", "this stage was not reached")
             ListDecodingStatus.RUNNING -> localizedText("実行中", "running")
             ListDecodingStatus.COMPLETED -> localizedText("適用条件の確認と、適用可能な探索を実行しました", "eligibility checks and applicable searches completed")
+            ListDecodingStatus.INELIGIBLE -> localizedText("適用条件を満たさないため、リスト復号の計算は実行しませんでした。", "List-decoding calculations were not run because the eligibility conditions were not met.")
             ListDecodingStatus.DEFERRED -> localizedText("先行枠の時間上限に達し、残りを追加探索へ回しました", "the initial time allowance was reached; remaining work was deferred to additional search")
             ListDecodingStatus.TIME_LIMIT -> localizedText("リスト復号全体の時間上限により未完了です", "unfinished at the cumulative list-decoding time limit")
             ListDecodingStatus.WORKING_MEMORY_LIMIT -> localizedText("計算用メモリの上限により未完了です", "unfinished at the working-memory limit")
@@ -39,6 +43,8 @@ data class ListDecodingExecution(
         fun combine(parts: List<ListDecodingExecution>): ListDecodingExecution? = if (parts.isEmpty()) null else
             ListDecodingExecution(ListDecodingStage.entries.mapNotNull { stage ->
                 parts.flatMapTo(linkedSetOf()) { it.stages[stage].orEmpty() }.takeIf { it.isNotEmpty() }?.let { stage to it }
-            }.toMap())
+            }.toMap(), newTrials = ListDecodingStage.entries.associateWith { stage ->
+                parts.sumOf { it.newTrials.getOrDefault(stage, 0) }
+            })
     }
 }

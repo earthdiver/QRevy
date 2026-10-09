@@ -107,6 +107,7 @@ internal class PreprocessDialogState(private val initial: PreprocessSettings) {
             lockManualBits = controls.lockManualBits,
             prioritySearchLimit = controls.prioritySearchLimit,
             partialBitSearchLimit = search.partialBitSearchLimit,
+            listDecodingAdditionalErrors = search.listDecodingAdditionalErrors,
             perspectiveCorrectionQuad = perspectiveCorrectionQuad,
             manualQuad = geometry.quad,
             manualFinders = geometry.finders,

@@ -3,6 +3,20 @@ package io.github.earthdiver.qrrepair.core
 import kotlin.test.*
 
 class ListDecodingBudgetTest {
+    @Test fun defaultBudgetAllowsSixHundredCumulativeSecondsAcrossPasses() {
+        var clock = 0L
+        val budget = ListDecodingBudget(clockMillis = { clock })
+        budget.measure { clock += 300_000; budget.check() }
+        clock += 20_000
+        budget.measure { clock += 299_999; budget.check() }
+        assertFalse(budget.exhausted)
+        assertFailsWith<ListDecodingTimeLimitException> {
+            budget.measure { clock++; budget.check() }
+        }
+        assertEquals(600_000L, budget.elapsedMillis)
+        assertTrue(budget.exhausted)
+    }
+
     @Test fun aDeferredFirstPassLeavesTheCumulativeBudgetAvailable() {
         var clock = 0L
         var idleCount = 0

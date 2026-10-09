@@ -182,6 +182,7 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
                     matrix,
                     trustKnownPayloadCount = settings.trustKnownPayloadCount,
                     partialBitSearchLimit = settings.partialBitSearchLimit,
+                    listDecodingAdditionalErrors = settings.listDecodingAdditionalErrors,
                     formatConstraint = settings.formatConstraint,
                     maxFormatMismatches = settings.effectiveFormatMismatchLimit,
                     maxKnownDataEccMismatches = ErrorLimitPolicy.data(

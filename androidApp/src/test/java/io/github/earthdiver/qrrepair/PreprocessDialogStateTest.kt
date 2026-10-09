@@ -30,6 +30,18 @@ class PreprocessDialogStateTest {
         }
     }
 
+    @Test fun selectedListExtensionSurvivesCaptureAndSamplingProfiles() {
+        for (limit in 1..3) {
+            val state = PreprocessDialogState(PreprocessSettings())
+            state.search.listDecodingAdditionalErrors = limit
+            val captured = state.captureSettings(controls(),
+                geometry(), emptyMap(), emptySet())
+            assertEquals(limit, captured.listDecodingAdditionalErrors)
+            captured.variants().forEach { assertEquals(limit, it.settings.listDecodingAdditionalErrors) }
+            assertEquals(limit, captured.recoverySnapshot().listDecodingAdditionalErrors)
+        }
+    }
+
     @Test fun toneChangesSurviveGeometryChangesAndPreserveManualEdits() {
         val tones = io.github.earthdiver.qrrepair.core.ImageAdjustment(25, -10, true)
         val state = PreprocessDialogState(PreprocessSettings(imageAdjustment = tones))
