@@ -2407,8 +2407,8 @@ class MainActivity : Activity() {
         analysisPrepared = p
         val token = workGeneration.incrementAndGet()
         recoveryState.clear()
+        updateContentPreview()
         contentPreviewText.text = ""
-        setDiagnosticDetails(null)
         guideText.text = ""
         refreshMainResultSelector()
         val searchSummary = requestSettings.searchSummary()

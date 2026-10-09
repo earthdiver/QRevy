@@ -5,6 +5,8 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
+import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
@@ -12,16 +14,22 @@ import android.widget.TextView
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.google.zxing.qrcode.encoder.Encoder
 import io.github.earthdiver.qrrepair.core.*
+import io.github.earthdiver.qrrepair.ui.BitmapUtils
+import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowDialog
-import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "ja-rJP-w412dp-h892dp-port-mdpi")
@@ -286,6 +294,60 @@ class ResultScreenTrialTest {
             assertEquals(View.GONE, field<View>(activity, "resultSavePngButton").visibility)
             MainActivity::class.java.getDeclaredMethod("startSavePng").apply { isAccessible = true }.invoke(activity)
             assertTrue(field<TextView>(activity, "statusText").text.contains("検証済みの修復結果がない"))
+        }
+    }
+
+    @Test fun startingAnotherRepairClearsPreviousResultsBeforeWorkerRuns() {
+        val (matrix, result) = candidate("PREVIOUS-RESULT")
+        for (style in AppStyle.entries) for (importAnotherImage in listOf(false, true)) withActivity(style, AppLanguage.ENGLISH) { activity ->
+            var image = BitmapUtils.prepare(
+                Bitmap.createBitmap(120, 120, Bitmap.Config.ARGB_8888))
+            MainActivity::class.java.getDeclaredField("prepared").apply { isAccessible = true }.set(activity, image)
+            install(activity, matrix, listOf(result))
+            assertEquals(View.VISIBLE, field<View>(activity, "resultExplanationText").visibility)
+            val executor = field<ExecutorService>(activity, "executor")
+            MainActivity::class.java.getDeclaredMethod("showStartMenu").apply { isAccessible = true }.invoke(activity)
+            if (importAnotherImage) {
+                val bitmap = Bitmap.createBitmap(160, 160, Bitmap.Config.ARGB_8888).apply {
+                    eraseColor(Color.WHITE)
+                }
+                MainActivity::class.java.getDeclaredMethod("acceptDecodedImage", Bitmap::class.java,
+                    File::class.java, ImageAdjustment::class.java).apply { isAccessible = true }
+                    .invoke(activity, bitmap, null, ImageAdjustment())
+                repeat(2) {
+                    executor.submit {}.get(30, TimeUnit.SECONDS)
+                    shadowOf(Looper.getMainLooper()).idle()
+                    field<ExecutorService>(activity, "ioExecutor")
+                        .submit {}.get(30, TimeUnit.SECONDS)
+                }
+                ShadowDialog.getLatestDialog()?.dismiss()
+                image = field(activity, "prepared")
+                assertSame(bitmap, image.bitmap)
+            }
+            val release = CountDownLatch(1)
+            val started = CountDownLatch(1)
+            executor.execute { started.countDown(); release.await() }
+            assertTrue(started.await(10, TimeUnit.SECONDS))
+            try {
+                MainActivity::class.java.getDeclaredMethod("startAutoRecovery").apply { isAccessible = true }.invoke(activity)
+                assertTrue(ShadowDialog.getLatestDialog()!!.isShowing)
+                assertFalse(field<TextView>(activity, "contentPreviewText").text.contains("PREVIOUS-RESULT"))
+                for (name in listOf("resultActions", "resultNextAction", "resultExplanationText", "diagnosticToggle",
+                    "upperResultSelector", "mainResultSelector")) {
+                    assertEquals(name, View.GONE, field<View>(activity, name).visibility)
+                }
+                assertEquals(View.VISIBLE, field<View>(activity, "guideText").visibility)
+                if (style == AppStyle.MODERN) {
+                    val preview = field<View>(activity, "workspacePreview")
+                    assertNull(preview.javaClass.getDeclaredField("matrix").apply { isAccessible = true }.get(preview))
+                    assertSame(image.bitmap, preview.javaClass.getDeclaredField("source").apply { isAccessible = true }.get(preview))
+                }
+            } finally {
+                field<AtomicInteger>(activity, "workGeneration").incrementAndGet()
+                release.countDown()
+                executor.submit {}.get(10, TimeUnit.SECONDS)
+                shadowOf(Looper.getMainLooper()).idle()
+            }
         }
     }
 
