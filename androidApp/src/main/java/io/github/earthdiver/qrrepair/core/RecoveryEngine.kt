@@ -650,6 +650,8 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
             if (trackSingleSegment && constraints.trustedStructure == null) {
                 // Keep the user's condition in force even when the header cannot establish it.
                 considerFailure(run, format, RecoveryFailureStage.PAYLOAD_VALIDATION,
+                    originalErasedCodewords = originalErasures,
+                    erasedCodewords = extraction.codewords.count { it.unknownBits != 0 },
                     reason = RecoveryFailureReason.SINGLE_SEGMENT_CONDITION_UNAVAILABLE,
                     rsBitDiagnostic = bitDiagnostic)
                 continue

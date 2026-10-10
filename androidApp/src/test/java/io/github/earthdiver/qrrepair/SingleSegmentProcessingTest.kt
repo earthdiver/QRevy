@@ -106,6 +106,36 @@ class SingleSegmentProcessingTest {
         }
     }
 
+    @Test fun unavailableSingleSegmentConditionRetainsTheOriginalUnknownCounts() {
+        for ((bits, words) in listOf(listOf(0) to 1, listOf(0, 1, 8, 160) to 3)) {
+            val input = matrix()
+            bits.forEach { setBit(input, it, null) }
+            val outcome = RecoveryEngine().recoverWithDiagnostics(input, trustKnownPayloadCount = true,
+                formatConstraint = format, maxKnownDataEccMismatches = 0)
+            val failure = requireNotNull(outcome.failure)
+            assertTrue(outcome.candidates.isEmpty())
+            assertEquals(RecoveryFailureReason.SINGLE_SEGMENT_CONDITION_UNAVAILABLE, failure.reason)
+            assertEquals(bits.size, failure.rsBitDiagnostic!!.unknownBits)
+            assertEquals(words, failure.originalErasedCodewords)
+            assertEquals(words, failure.erasedCodewords)
+            assertEquals(words, failure.conventionalRsDiagnostic!!.blocks.single().erasures)
+            val previous = AppLanguageManager.current
+            try {
+                for (language in AppLanguage.entries) {
+                    AppLanguageManager.applyTo(RuntimeEnvironment.getApplication(), language)
+                    val ja = language == AppLanguage.JAPANESE
+                    val report = RecoveryDiagnosticPresenter(ja).failureReport(failure, null,
+                        RecoveryDiagnosticContext(0, outcome.searchDiagnostic.unsearched, false, outcome.searchDiagnostic, null))
+                    val details = report.sections.single { it.stage == DiagnosticStage.INPUT }.details
+                    assertTrue(details, details.contains(if (ja) "データ・ECC領域の不明なbit: ${bits.size}"
+                        else "Unknown bits in data/ECC: ${bits.size}"))
+                    assertTrue(details, details.contains(if (ja) "不明なbitを含むコード語（全ブロック合計）: $words"
+                        else "Codewords containing unknown bits (all blocks): $words"))
+                }
+            } finally { AppLanguageManager.applyTo(RuntimeEnvironment.getApplication(), previous) }
+        }
+    }
+
     @Test fun priorityModeAndCountEnableForcingAndRetainHypothesisProvenance() {
         val input = matrix()
         val coords = CodewordExtractor.extract(input, 1, qr.maskPattern).codewords.flatMap { it.coordinates }
