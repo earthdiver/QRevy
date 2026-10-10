@@ -55,6 +55,7 @@ object PayloadConstraintSolver {
         val viablePlans: Int,
         val inferredMode: Int?,
         val inferredCount: Int?,
+        /** Matching suffix bits from the original observation when [apply] receives one. */
         val evidenceBits: Int = 0,
         val filled: List<FilledBit> = emptyList(),
         /** False when [maxPlans] stopped enumeration before every compatible structure was seen. */
@@ -78,12 +79,14 @@ object PayloadConstraintSolver {
 
     private data class DataGroup(val start: Int, val width: Int, val maxValue: Int)
 
+    /** [evidenceInput] affects the reported evidence only, never plan selection or propagation. */
     fun apply(
         de: DeinterleavedQr,
         version: Int,
         maxPlans: Int = 4096,
         trustKnownCount: Boolean = false,
         cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
+        evidenceInput: DeinterleavedQr? = null,
     ): Result {
         cancellation.check()
         val refs = buildList {
@@ -103,6 +106,20 @@ object PayloadConstraintSolver {
                 known[bitIndex] = (ref.block.codewords[ref.byteIndex] shr bit) and 1
             }
         }
+        val evidenceKnown = evidenceInput?.let { input ->
+            require(input.blocks.size == de.blocks.size)
+            require(input.blocks.indices.all { index ->
+                input.blocks[index].numDataCodewords == de.blocks[index].numDataCodewords &&
+                    input.blocks[index].codewords.size == de.blocks[index].codewords.size
+            })
+            IntArray(totalBits) { bitIndex ->
+                val ref = refs[bitIndex / 8]
+                val block = input.blocks[ref.blockIndex]
+                val bit = 7 - bitIndex % 8
+                if ((block.unknownMasks[ref.byteIndex] and (1 shl bit)) != 0) -1
+                else (block.codewords[ref.byteIndex] shr bit) and 1
+            }
+        } ?: known
 
         fun bitPatternValue(value: Int, width: Int, offset: Int): Int =
             (value shr (width - 1 - offset)) and 1
@@ -160,6 +177,8 @@ object PayloadConstraintSolver {
         // parity of the byte at which padding starts: that byte must be EC, the next 11, etc.
         val padMismatchSuffix = Array(2) { IntArray(totalBits + 1) }
         val padMatchSuffix = Array(2) { IntArray(totalBits + 1) }
+        val evidencePadMatchSuffix = if (evidenceInput == null) padMatchSuffix
+            else Array(2) { IntArray(totalBits + 1) }
         for (phase in 0..1) {
             var i = totalBits - 1
             while (i >= 0) {
@@ -172,6 +191,10 @@ object PayloadConstraintSolver {
                     if (observed >= 0 && observed != expected) 1 else 0
                 padMatchSuffix[phase][i] = padMatchSuffix[phase][i + 1] +
                     if (observed >= 0 && observed == expected) 1 else 0
+                if (evidenceInput != null) {
+                    evidencePadMatchSuffix[phase][i] = evidencePadMatchSuffix[phase][i + 1] +
+                        if (evidenceKnown[i] == expected) 1 else 0
+                }
                 i--
             }
         }
@@ -201,6 +224,16 @@ object PayloadConstraintSolver {
                 matches += padMatchSuffix[phase][cursor]
             }
             return mismatches to matches
+        }
+
+        fun observedFillerMatches(payloadEnd: Int): Int {
+            val alignmentEnd = min(totalBits, ((min(totalBits, payloadEnd + 4) + 7) / 8) * 8)
+            var matches = 0
+            for (bit in payloadEnd until alignmentEnd) if (evidenceKnown[bit] == 0) matches++
+            if (alignmentEnd < totalBits) {
+                matches += evidencePadMatchSuffix[(alignmentEnd / 8) and 1][alignmentEnd]
+            }
+            return matches
         }
 
         fun forcedAt(plan: Plan, bitIndex: Int): Forced? {
@@ -303,10 +336,14 @@ object PayloadConstraintSolver {
         val bestEvidence = trustedHeaderPlan?.fillerKnownMatches ?: zeroMismatch.maxOf { it.fillerKnownMatches }
         val viable = trustedHeaderPlan?.let(::listOf)
             ?: zeroMismatch.filter { it.fillerKnownMatches == bestEvidence }
+        // Priority assignments may support a trial's structure, but are not observed evidence.
+        // Keep the trial score above for eligibility and report only the original known suffix.
+        val reportedEvidence = if (evidenceInput == null) bestEvidence
+            else viable.maxOf { observedFillerMatches(it.payloadEnd) }
         val inferredMode = viable.map { it.mode }.distinct().singleOrNull()
         val inferredCount = viable.map { it.count }.distinct().singleOrNull()
         if (trustedHeaderPlan == null && bestEvidence < 6) {
-            return Result(0, viable.size, inferredMode, inferredCount, bestEvidence)
+            return Result(0, viable.size, inferredMode, inferredCount, reportedEvidence)
         }
 
         val filledTrace = mutableListOf<FilledBit>()
@@ -394,7 +431,7 @@ object PayloadConstraintSolver {
             viablePlans = viable.size,
             inferredMode = inferredMode,
             inferredCount = inferredCount,
-            evidenceBits = bestEvidence,
+            evidenceBits = reportedEvidence,
             filled = filledTrace,
             forcedByTrustedHeader = trustedHeaderPlan != null,
             trustedStructure = trustedHeaderPlan?.let {
