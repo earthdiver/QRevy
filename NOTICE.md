@@ -1,8 +1,6 @@
 # Notices
 
-Dependency versions, artifact details, and third-party copyright and license texts are maintained in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Include that document and the license files under `licenses/` with source distributions. The app displays a synchronized copy from `androidApp/src/main/res/raw/third_party_notices.txt`.
-
-When dependencies change, update the canonical document and its app copy together, then reconcile the resolved runtime dependency graph using `scripts/release-audit.sh`. The inventory does not replace the release dependency review.
+Dependency versions and third-party copyright and license texts are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and displayed in the app. Include that document and the license files under `licenses/` with source distributions.
 
 ## QR Code trademark
 

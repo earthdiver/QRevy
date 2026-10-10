@@ -2,198 +2,167 @@
 
 English | [Japanese](USER_GUIDE.ja.md)
 
-This guide covers the Android workflow from importing a damaged QR through adjustment, recovery, review, and saving. See [Recovery Strategy](RECOVERY_STRATEGY.en.md) for the algorithms and [Understanding recovery result fields](RECOVERY_RESULT_FIELDS.en.md) for diagnostics.
+This guide explains how to import, adjust, repair, and save a QR code in the Android app. Each square in the code is called a **cell** in the app; the QR specification calls it a module.
 
-A recovered result is not proof that it matches the original content. Independently verify important URLs, credentials, payment destinations, and other consequential data.
+Recovery does not guarantee that the result matches the original content. Independently verify important information before using it.
 
 ## 1. Choose an input
 
-| Input | Best suited for | Important note |
-| --- | --- | --- |
-| Image file | An existing photo or scan | EXIF orientation is applied during import |
-| Camera | Capturing the symbol now | Confirm the crop after capture; the temporary capture and lossless hand-off image are deleted after use |
-| `0 / 1 / ? / *` matrix text | Module decisions prepared elsewhere | Only the permitted characters and valid QR dimensions are accepted |
+| Input | How to open it |
+| --- | --- |
+| Image file | Choose **Import image** or **Select image**, then select a photo or scan. Its recorded orientation is applied automatically. |
+| Camera | Choose **Camera** or **Take photo**, allow camera access, and capture the code. Review the crop, then choose **Crop and analyze**. |
+| Matrix text | Choose **Import text matrix** or **TXT matrix**. Each character represents one cell: `0`, `1`, `?`, or `*`. Use a [matrix template](../templates/text-matrices/README.md) to keep the required format and dimensions. |
 
-Ready-to-edit [matrix templates for versions 1–40](../templates/text-matrices/README.md) are available for text import.
+Prefer an image containing the complete QR code and its surrounding white margin, with clearly visible cell centers. Transparent areas are displayed and analyzed against white.
 
-Prefer an image containing the complete QR and, when possible, its surrounding quiet zone, with module centers that are not completely blurred. Never attach a sensitive real QR image to a public issue.
+Importing automatically saves the work and source image. See [Save, resume, and export](#7-save-resume-and-export) for storage limits.
 
-Transparent images use a white background for both display and analysis. Partially transparent colors are blended with white before brightness, contrast, or inversion is applied.
+## 2. Adjust the image and grid
 
-## 2. Adjust image and geometry
+In Classic, choose **Repair** to open the settings. In Modern, use **01 Repair settings**.
 
-1. Rotate in 90°, 1°, or 0.1° increments when needed.
-2. Crop to the QR region.
-3. Review the estimated corners and version.
-4. Review the black/unknown/white thresholds so gray damage remains `?` where appropriate.
-5. Enable **Treat detected color clusters as unknown (?)** only when colored damage should be treated as unknown. It starts disabled.
+1. Rotate and crop the image as needed. Drag a crop corner or edge to resize it, or drag inside it to move it.
+2. Use **Image adjustment** for **Contrast** and **Brightness**, or **Invert** to reverse black and white. The item menu provides numeric entry and resets. **Before** compares the adjusted and original tones without changing the crop or rotation; analysis still uses the adjustments. **Done** closes the slider.
+3. Check **QR Version** and align the orange corner handles with the centers of the outermost cells. Version 1 has 21 cells per side; each subsequent version adds four.
+4. Review the cell values in the preview. Adjust the white/unknown/black thresholds if damaged areas are being read as definite `0` or `1` values.
 
-**Image adjustment** in the crop screen opens a **Contrast** or **Brightness** slider. Use the item menu for numeric entry, an individual reset, or **Reset all image adjustments**. **Invert** is available on the normal tool row. **Done** closes the slider; it does not start analysis.
+Automatic estimates may need correction. If only an outline appears, select **QR Version**, even if the displayed value is already correct, to show a grid. Adjust the corners and assign a Finder role as described below. **Rectify selection to a square** clears Finder roles and orientation; assign a role again afterward.
 
-**Before** toggles the same image between adjusted and unadjusted tones without changing the crop or rotation. Analysis always uses the adjustment settings; while comparing, the action says **Analyze adjusted image**.
+**Set thresholds automatically** starts enabled for image imports. It recalculates thresholds when the grid changes. Moving a slider switches to manual thresholds; turning the option off keeps the current values. Manual thresholds stay unchanged during corner adjustment and sampling fine-tuning. Turn the option on to recalculate them. Saved work retains the mode and values.
 
-**Set thresholds automatically** is enabled by default for a new image. While enabled, the app recalculates one global threshold pair when the grid changes. Moving either slider switches to manual thresholds; turning the option off directly keeps the current pair. Manual thresholds remain unchanged during corner adjustment and repair fine-tuning. Turn the option on again to recalculate them. A reopened session restores its saved mode and values. Unstable sampling can also produce `?`; fixed and tentative edits are not overwritten.
+Unstable readings can also become `?`. Manual edits override image readings. Enable **Treat detected color clusters as unknown (?)** only when detected colored damage should be treated as unknown. It starts disabled and is available only when color clusters were detected.
 
-Before logical grid orientation is assigned, automatic mode uses the provisional image thresholds. The editor preview and saved pre-repair Data view use the same rule, including manual cell values.
+## 3. Check Finder roles
 
-The threshold sliders in pre-repair settings show which brightness values after image adjustment are read as `0` or `1`.
+The three large square patterns near a QR code’s corners are **Finder patterns**, labeled **Finder** in the app. Their roles describe the code’s upright orientation, which may differ from the photo’s orientation.
 
-When the app can determine whether black and white are reversed from the square patterns at the QR code’s corners (Finder patterns), it uses that result for the preview’s cell values and the threshold descriptions. If **Auto** is selected and this has not yet been determined, assigning a Finder position makes the app check the surrounding area using both normal and inverted interpretations.
+Image and text imports may assign roles automatically. Check the green Finder markers. **At least one Finder role must be assigned before repair.**
 
-Automatic estimates are starting values, not proof of the correct symbol. Align corners with the centers of the outer modules and confirm that the selected version agrees with the number of cells along one side.
+- To assign a role, choose **Top left**, **Top right**, or **Bottom left**, then tap the center of the corresponding visible pattern. The app refines the position when it detects a nearby pattern.
+- To remove an incorrect role, choose **Clear** and tap its green marker. Clearing all roles also clears orientation, while keeping corners and cell edits. Assign a role again before repair.
+- A hidden Finder does not need an assignment. An incorrect role can prevent recovery, so use only roles you can identify.
 
-For a newly imported image, initial corners and version are tried in this order: ZXing-C++, grid periodicity, then a two-Finder fallback. The last route covers version 2 and later symbols. Two diagonal Finders can be assigned as top-right and bottom-left when both timing axes provide sufficient evidence, even without an alignment pattern. Otherwise, a verified lower-right alignment pattern may still support provisional corners without role assignment. Strong perspective distortion is not supported. If every route fails, only the outline and corner handles are shown initially. Selecting a QR Version, including the current value, displays a grid within the current outline without assigning its orientation. Adjust the corners manually to match the image. Without automatically assigned Finder roles, assign at least one role before repair. Rectifying the selection preserves the corrected corner positions but clears Finder roles and grid orientation; assign a role again before repair.
-
-## 3. Review and assign Finder roles
-
-On new image import, a grid derived from ZXing-C++ can automatically set Finder centers and their top-left, top-right, and bottom-left logical roles when strict checks of all three Finders, white separators, timing patterns, and position stability pass. The import history records this assignment. These checks are heuristics, not a guarantee or a statistical probability.
-
-Text matrix import compares the three Finders, their white separators, and both timing patterns in all four rotations using normal black/white polarity. For each pattern, the proportion of known cells is calculated using all its cells, including unknown (`?` or `*`) cells. Finder roles and orientation are assigned together when each pattern meets the required proportion and error limit, and one orientation matches clearly better than the others. If these conditions are not met, both remain unassigned. The matrix size and cell values are retained, and `*` marks follow their cells when orientation changes. Check the green Finders, or assign a role manually when automatic assignment is unavailable.
-
-Text import renders `0` as white, `1` as black, and `?`/`*` as gray. As with image input, confirmed Finder polarity takes precedence over the **Normal**, **Inverted**, and **Auto** selections. Without confirmed polarity, **Inverted** exchanges the interpretation of image-derived `0` and `1`; manually edited values remain unchanged. **Treat input image as mirrored** uses the same control for either input type.
-
-To remove an incorrect assignment, press **Clear** in the Finder section and tap the green Finder. Clear all assigned Finders to make logical orientation unassigned again. Corners and existing cell edits are retained. Saving and reopening the work does not reapply a cleared assignment.
-
-When roles were not assigned automatically, or orientation needs changing, manually assign logical roles to visible Finders. The app looks for the square pattern near the selected point to refine its center and determine whether black and white are reversed. A hidden Finder need not be assigned as though it were observed.
-
-With exactly one assigned role and **Automatically fine-tune sampling position** enabled, small rotations around that logical corner are also evaluated. An incorrect role can prevent the correct recovery. If an assignment is uncertain, clear it and review the roles; after clearing all assignments, assign at least one role again before repair.
+When Finder patterns establish whether black and white are reversed, that interpretation takes precedence over **Auto**, **Normal**, and **Inverted**. Otherwise, those controls determine how image values are interpreted. Manually entered cell values stay unchanged.
 
 ## 4. Edit cells
 
-| Input | Meaning | Typical use |
-| --- | --- | --- |
-| `0` | Logical white/zero | Mark a cell that can be read as white |
-| `1` | Logical black/one | Mark a cell that can be read as black |
-| `?` | Unknown | Treat a weak observation as an erasure |
-| `*` | Keep value `?`, but prioritize bounded 0/1 search | Mark cells to try first if ordinary erasure handling fails; default limit 4, configurable to 14 |
+In Classic, long-press **Edit cells (long press)**. In Modern, choose **Edit cells** or **02 Cells**. Tap a cell, then choose its value; use the arrow buttons to move to a neighboring cell.
 
-Choose a source for the selected cells:
-
-| Source | Behavior during recovery |
+| Value | Meaning |
 | --- | --- |
-| **From image** | Remove the edit and resample with the current thresholds |
-| **Tentative (correctable)** | Keep the edited value as input, but allow recovery to correct it |
-| **Fixed (no correction)** | Protect the edited 0/1 from conflicting candidates by default |
+| `0` | Logical zero: white in the normal black/white interpretation |
+| `1` | Logical one: black in the normal black/white interpretation |
+| `?` | Unknown; use when a cell cannot be read reliably |
+| `*` | Unknown, with priority given to trying both `0` and `1` during repair |
 
-Changing an image-derived value to a different 0/1 makes it Fixed; entering the image value again does not remove that designation. You can also fix the current image-derived 0/1 without changing it. Editing a tentative 0/1 keeps it tentative, while changing `?` or `*` to 0/1 makes it Fixed. Fixed and tentative edits survive threshold changes, Undo/Redo, and saving.
+| Tool | Operation |
+| --- | --- |
+| **▱** | Drag to select a rectangle, then choose a value or source for the selected cells. |
+| **0 brush**, **1 brush**, **? brush** | Drag across cells to apply the corresponding value. |
+| **? 5×5** | Tap to mark a five-by-five area as unknown. |
+| **1 cell** | Return to selecting one cell at a time. |
+| **Undo / Redo** | Undo or redo an edit. |
 
-In the enlarged cell editor, dragging or pinching temporarily hides cell symbols and overlays, leaving the image and QR boundary visible. The overlays return when all fingers are lifted or the gesture is canceled.
+Choose how the selected values should be treated:
 
-Cyan solid squares mark fixed cells; dashed squares mark tentative cells. Yellow circles mark selections. **Highlight edited cells** includes both kinds and changes only the overlay. The menu also applies to multiple selected cells. `?` is image-derived or tentative; `*` is always tentative. Neither can be Fixed.
+| Source | Effect |
+| --- | --- |
+| **From image** | Remove the edit and read the image using the current settings. |
+| **Tentative (correctable)** | Use the entered value, but allow recovery to correct it. |
+| **Fixed (no correction)** | Reject recovery candidates that conflict with the entered `0` or `1`, by default. |
 
-**Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)** in advanced settings defaults to OFF. Turning it ON is an explicit exception to the normal Fixed behavior: the cells retain their Fixed provenance, input values, and solid outlines, but recovery may correct them as if they were tentative. Turning it OFF protects those values again. Either way, format and data/ECC error limits, explicit ECC/mask/version selections, and consistency checks between fixed cells and explicit selections remain enforced.
+Changing an image-derived value to a different `0` or `1`, or changing `?` or `*` to `0` or `1`, makes it Fixed. For an uncertain value, enter it and then choose **Tentative (correctable)**. Editing an existing tentative `0` or `1` keeps it tentative. To remove an edit, choose **From image**; entering the image value again does not remove it. Unknown values cannot be Fixed.
 
-In advanced settings, **Priority search cell limit** accepts 4–14 cells (default 4). The actual selected count determines the assignments: 4 cells give 16, and 14 give 16,384. Each additional cell doubles the assignments; **Automatically fine-tune sampling position** adds further work. Candidate retention limits remain independent of this setting. Lowering the limit preserves existing marks; raise it or remove marks before repairing if the count is over the limit.
+Cyan solid squares mark fixed cells; dashed squares mark tentative cells; yellow circles mark selections. **Highlight edited cells** changes only the display. Edits are preserved when thresholds change and when work is saved and reopened.
 
-The **Repair progress** dialog shows the current grid/reading-condition phase and elapsed time. During `*` assignment trials, it also shows completed and total assignments for the current grid. **Interrupt repair** stops the whole repair, including further grids and reading conditions, and retains candidates already found.
+**Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)** in **Details** is off by default. Turning it on allows recovery to correct fixed values while preserving their entered values and Fixed designation. Turning it off protects them again. Error limits and explicitly selected version, error-correction level, and mask still apply, including consistency checks between fixed cells and explicit selections.
 
-Assign the four corner positions and roles before marking `*`. Fixed structures such as finder/alignment patterns and format information, and remainder bits, cannot be marked. Selecting an ineligible cell displays its type and coordinates. If a selection includes any ineligible cell, no cells in that selection are marked.
+### Priority search with `*`
 
-Changing orientation rechecks existing `*` positions, removes only ineligible marks, and reports their coordinates. Their `?` values remain, and eligible marks are retained. Changing version clears all cell edits, including `*`, after confirmation.
+Error-correction code (**ECC**) data helps repair damaged QR content. `*` is available only in data/ECC cells, after corners and orientation are assigned. Finder patterns, format information, and other structural cells cannot be marked. If a selection includes an ineligible cell, no cells in that selection are changed.
+
+**Priority search cell limit** in **Details** allows 4–14 cells and defaults to 4. Each additional marked cell doubles the value combinations to try, so repair can take much longer. Lowering the limit keeps existing marks; remove marks or raise the limit before repairing if the count is too high. This also applies to marks imported from text.
+
+Changing orientation removes only marks that are no longer in data/ECC cells; their `?` values remain. Changing the version clears all cell edits after confirmation.
 
 ## 5. Choose advanced settings
 
-**Treat input image as mirrored** is OFF by default and is saved per session. Enable it for a mirrored QR image. The image display stays unchanged; the top-right and bottom-left Finder roles and grid axes exchange. Manual cell values, fixed/tentative status, and Undo/Redo history follow the same image cells. Priority marks outside data/ECC after the change are removed with an explanation; their unknown values remain. Turning it off exchanges the axes again. Explicit Version, ECC, and mask selections remain enforced.
+Open **Details**. Start with the defaults and change settings when the preview or results show a reason to do so. QR error correction uses **Reed–Solomon (RS)** codes. A codeword contains eight bits; a block is a group of codewords corrected together.
 
-QR error correction uses Reed–Solomon (RS) codes.
+If you know the error-correction level or mask, choose it under **ECC: Auto** or **Mask: Auto** in the repair settings. Otherwise leave **Auto** selected.
 
-| Setting | Consider it when | Main risk or limit |
-| --- | --- | --- |
-| Partial-bit search / dimension limit | Extend partial-bit enumeration or enumerate more remaining RS degrees of freedom | Choose 12, 13, or 14 bits (default 12), per RS block; each extra bit doubles the maximum enumeration count |
-| List-decoding extension | Explore errors further beyond conventional RS | Choose +1, +2, or +3 symbols per RS block (default: +1); higher settings can be much slower and remain subject to the Johnson bound and shared resource limits |
-| Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells) | Retain fixed designations while allowing recovery to correct their values | Defaults to OFF; ON still enforces error limits and explicit ECC/mask selections |
-| Automatically fine-tune sampling position | Corners are close but module-center sampling is slightly displaced | Includes alignment-pattern refinement and increases work; preserves version and logical orientation |
-| Format-information error limit | ECC-level/mask candidates should closely match known format cells | Too strict a limit can remove every format before RS is attempted |
-| Data/ECC error limit | Candidates that overturn too much known evidence should be restricted | `0 bits` requires exact agreement with every comparable known bit |
-| When the mode and character/byte count are read or assigned by \* trials, assume a single segment and force the following structure. | One segment whose header is known or can be hypothesized using * trials | Do not use with ECI, FNC1, Structured Append, or multiple segments |
+| Setting | When to use it and what to expect |
+| --- | --- |
+| **Automatically fine-tune sampling position** | Use when the corners are close but readings may miss cell centers. It adds work while preserving the selected version and orientation. |
+| **Partial-bit search / dimension limit** | Choose 12, 13, or 14 bits per RS block; the default is 12. Each extra bit doubles the maximum number of combinations. |
+| **List-decoding extension (symbols)** | Open this control to choose **Extra errors beyond conventional RS**: +1, +2, or +3 codewords per block; the default is +1. A higher limit can take much longer and may not find more candidates. |
+| **Treat input image as mirrored** | Enable for a mirrored QR image. The top-right and bottom-left Finder roles exchange; the displayed image is unchanged and edits stay on the same image cells. It defaults to off and is saved with the work. |
 
-The last setting is labeled **Single-segment assumption** in diagnostics. Check **Processing in this run** to see whether it was applied to the candidate.
+Searches also have time and memory limits. Raising a setting does not guarantee that all combinations will be checked.
 
-**Partial-bit search / dimension limit** controls how many assignments can be enumerated. Choosing 12, 13, or 14 allows up to 4,096, 8,192, or 16,384 assignments, respectively.
+### Error limits
 
-This limit applies per RS block. When the mode or character/byte count remains undetermined and several hypotheses are tried, each block is checked against the limit for each hypothesis. The total number of candidates may therefore exceed the enumeration counts above.
+**Format-information error limit** restricts disagreements with known cells that identify the error-correction level and mask. **Known data/ECC bit error limit** restricts disagreements with known data/ECC cells. Unknown cells do not count. A smaller limit is stricter, but can exclude the correct result when the input contains misread cells.
 
-Raising the limit increases work, and combining it with `*` search increases work further. Working-memory and search limits also apply, so a higher setting does not guarantee more recovered candidates.
+Both controls offer **Default**, **Exact match (0 bits)**, **Strict**, **Relaxed**, **Manual**, and **Unlimited**. The effective bit count is shown. Editing the number or using ± selects Manual; choose **Apply** to confirm.
 
-Both error-limit controls offer **Default**, **Exact match (0 bits)**, **Strict**, **Relaxed**, **Manual**, and **Unlimited**, with the effective bit count shown. Editing the number or using ± selects Manual.
+Presets recalculate when the version changes. Manual keeps the entered number; if it becomes invalid, enter a valid number. Exact match requires agreement with all compared known cells. See [Understanding repair results](RECOVERY_RESULT_FIELDS.en.md#input-agreement-and-qr-settings) for cells excluded from comparison. Unlimited removes that control’s limit; fixed-cell protection and explicit QR settings still apply.
 
-For new imports, the format-information limit starts at **6 bits** across both copies (Strict); Relaxed allows **9 bits**, independent of version. The data/ECC limit starts at **0.875%** of the version's total data/ECC bits for **V1–4**, and **10%** for **V5–40**, rounded up to whole bits. For example, V4 starts at 7 bits and V5 at 108 bits. These presets are operational compromises, not guarantees of correct recovery.
+List decoding explores alternatives beyond conventional RS correction. It also limits known data/ECC bit disagreements to 5% of all data/ECC bits, rounded up, or the selected data/ECC limit if smaller. A zero data/ECC limit disables list decoding.
 
-Default follows that version rule. An explicitly selected Strict or Relaxed preset keeps its selected policy and recalculates its bit count when version changes; Manual and Unlimited remain explicit. Stored manual numbers are retained while using a preset. The format limit also applies when both ECC and mask are explicitly selected. If the limits remove a correct candidate, select a higher manual limit or Unlimited and retry.
+### Single-segment assumption
 
-List decoding can produce multiple candidates for errors beyond the correction range of conventional RS decoding. The app automatically selects Guruswami–Sudan (GS), Koetter–Vardy (KV), or Wu decoding according to the input and estimated computation. This fallback caps known-bit mismatches at 5% of all data/ECC bits in the QR, rounded up, or the **Data/ECC error limit** if smaller. A zero limit disables list decoding.
+A segment is a continuous part of QR data using one encoding mode. The option beginning **When the mode and character/byte count are read or assigned by \* trials…** assumes exactly one Numeric, Alphanumeric, Byte, or Kanji segment. Diagnostics call it **Single-segment assumption**.
 
-**List-decoding extension** applies to GS and Wu. The app tries smaller radii first and chooses the method automatically. It is an exploration limit, not a promise of additional recovery. KV continues to use its own agreement score.
+Enable it only when that structure is known. It treats data as ending at the declared count and may replace conflicting observations after that point. The mode and count must be readable or assigned through `*` trials. Do not use it for multiple segments, messages split across QR codes (**Structured Append**), or data requiring additional control headers. Leave it off when uncertain.
 
-See [Recovery Strategy](RECOVERY_STRATEGY.en.md) for exact interactions and bounds.
+## 6. Repair and inspect results
 
-Search completion covers the specified conditions and bounded search policy. It is separate from candidate or explanation retention omissions and does not guarantee correctness or uniqueness. See [Understanding recovery result fields](RECOVERY_RESULT_FIELDS.en.md) for the messages and reasons for unfinished work.
+Choose **Save & repair** in Classic or **Repair** in Modern to save the current work and run recovery. **Save** stores the work without running recovery.
 
-## 6. Recover and inspect results
+A **validated candidate** passes QR structure and input checks; content decoding can still fail.
 
-**Repair** saves the current work and then runs recovery. **Save** stores the current work without running recovery.
+The progress dialog shows elapsed time. **Interrupt repair** stops the repair and retains validated candidates already found. List decoding has a cumulative limit of **10 minutes per repair**, excluding ordinary search time, so the whole repair can take longer. Validated candidates remain available after a timeout or insufficient memory.
 
-A **validated candidate** has passed QR structure validation and the specified input constraints. A **decoded candidate** has also passed final decoding of QR data. QR data can contain text or binary data.
+1. Review the recovered content. If several candidates remain, open **Candidate contents** to compare their full text and tap one to select it.
+2. Open **Show diagnostics** to check input disagreements, search completion, and omitted-candidate notices. One candidate or a completed search does not prove the result is correct.
+3. Open **Show detailed results** and tap cells to inspect their values and reasons. **Show same codeword** highlights the cells in the same codeword. **Data** shows bits and hexadecimal (**HEX**) values.
 
-Recovery starts with conventional RS on the original input. If this does not produce a decoded candidate meeting the selected conditions, recovery continues with additional search. See [Recovery Strategy, section 4.6](RECOVERY_STRATEGY.en.md#46-automatic-list-decoding-fallback) for the search order.
+See [Understanding repair results](RECOVERY_RESULT_FIELDS.en.md) for result statuses, field meanings, cell colors, and comparison examples. [How QR Repair recovers a code](RECOVERY_STRATEGY.en.md) explains the search order and when each method applies.
 
-The three list-decoding methods share at most 600 cumulative seconds (10 minutes) per repair operation, excluding ordinary search time. **Interrupt repair** remains available throughout. Validated candidates remain available after timeout, insufficient memory, or interruption.
+**Unmask** changes the display only; it does not change the saved QR image. For an unsuccessful attempt with no verified mask, the displayed image may stay unchanged. Turn it off to return to the normal view.
 
-Review results in this order:
-
-1. Whether any validated candidates were found, and whether the selected candidate is also decoded.
-2. The number of validated candidates and distinct contents.
-3. ECC level, mask, format mismatches, and data/ECC mismatches.
-4. Search completion, unchecked combinations, and omitted-candidate notices.
-5. Decoded content and repair reasons for important cells.
-
-Use **Show diagnostics** to review the selected candidate’s QR structure, final decoding, input mismatches, and search-wide completion. Read **Processing in this run** for the methods used, then open each section’s **Show details** for calculation records and HEX. See [Understanding recovery result fields](RECOVERY_RESULT_FIELDS.en.md) for field meanings.
-
-Open **Show detailed results** for the enlarged QR, then tap a cell to inspect provenance. **Show same codeword** highlights the other cells in its eight-bit codeword. Format-information cells show their role and bit position; calculation details compare both copies before and after repair and after removing the fixed format mask. The button changes to **Show ECC level cells**, **Show mask number cells**, or **Show format correction bits**, highlighting related cells in both copies. When multiple candidates remain, compare their content and candidate-agreement scope.
-
-When multiple candidates remain, **Candidate contents** opens a scrollable list of the full decoded text for up to 256 candidates, including text converted from byte payloads using the decoder’s character encoding. You can also check each candidate’s data/ECC-region mismatch count against known input values. Tap a candidate’s text to select it and update the result. The list is also available in the enlarged result.
-
-On the recovery result screen, **Analyze additional segments after terminator** appears below the diagnostics only when error-correction candidates were rejected because the QR data structure did not validate. It examines the data remaining after the four-bit terminator identified from the payload structure.
-
-- Analysis starts immediately after the terminator and also tries the next byte boundary when all intervening bits are known zeros. Both paths skip consecutive known `0000` sequences in four-bit steps, preserving ECI and FNC1 context. Unknown bits are never treated as zeros to skip them.
-- When several starting positions are possible for additional segments, select a starting position to compare the results. The view shows skipped zero ranges and an item-by-item trace, including control headers, their bit ranges, and the reason and field where syntax parsing stops. Unsupported ECI assignments are identified separately from syntax failures; an unsupported assignment is not declared invalid in the standard. Positions count from bit 0 of the main payload data, excluding error-correction bytes. Completed additional segments up to the next terminator or parsing failure count as one group. Completed segments remain visible even if a later item fails. Analysis checks up to 16 combinations of starting positions and 16 continuations after terminators per combination, including control-only continuations, with a notice when a limit is reached.
-- The trace shows ECI assignment values and supported character sets, declared lengths and available bits for failed payloads, and empty payloads. Bytes under an unsupported ECI remain available as HEX without using the previous character set. Text conversion resumes for later segments after a supported ECI; independently readable segments remain visible even when the whole group cannot be converted to text.
-- **Show/hide raw tail bits and HEX** displays the raw bits and hexadecimal values. Choose to start immediately after the terminator, at the start of the next byte after the terminator, or at a specified bit position. Unknown bits and final partial bytes are not filled. A trailing `EC / 11` sequence is identified as possible padding but remains in the raw data.
-
-This analysis assumes additional QR segments after a terminator. It does not establish overall QR validity or make a rejected candidate valid, and any displayed content still requires independent verification.
-
-In the enlarged repair result, enabling **Unmask** displays both the before and after cells with the selected candidate’s QR mask removed. When no candidate is selected, it uses the displayed failed attempt’s mask, even if RS correction or payload validation failed. The mask number and its source are shown; a failed attempt’s mask is unverified. Candidate changes update the display mask. Function patterns and unknown cells stay unchanged. This only changes the display: saved cell values, manual edits, and fixed constraints are preserved. Clear the checkbox to restore the masked display. When neither a candidate nor an attempt provides a mask number, the checkbox is cleared and disabled with an explanation. Scroll the controls horizontally on narrow screens.
+When available below diagnostics, **Analyze additional segments after terminator** examines data after the QR end marker in an unsuccessful structural check. Select a proposed starting position to compare interpretations. **Show/hide raw tail bits and HEX** displays the underlying bits; its display can start after the terminator, at the next byte, or at a chosen bit offset. This inspection does not make the attempt or the additional content a validated recovery result.
 
 ## 7. Save, resume, and export
 
-In this guide, **Saved work** is called **Recent work** in Classic.
+The app saves automatically on import and before repair. It keeps at most **20 saved work entries**. When this limit is exceeded, the least recently stored entries and their source images are deleted, including during startup cleanup.
 
-Import automatically saves the source image and a session before you press Save or Repair. **Saved work** retains at most 20 sessions; new imports also count toward this limit. When it is exceeded, the least recently saved work and its source image are automatically deleted. The limit also applies on startup. Touch and hold an entry to delete that work, or use **Delete all**.
+Tap an entry in **Saved work** or **Recent work** to reopen it. Long-press to delete one, or use **Delete all** to remove the list. Deleting the entry currently on screen leaves that open work available; saving afterward creates a new entry.
 
-Starting another import preserves pending saves for the previous work. Repeated save requests for the same work retain its latest requested history and selected checkpoint.
+**Operation history** keeps up to **40 states**; memory and file-size limits can reduce that number. The selected and latest states are kept when older states are trimmed. Reopening a state saved after repair recomputes its candidates. If the previous candidate is no longer found, the app leaves the result unselected and explains why.
 
-Resume saved sessions from **Saved work**. **Operation history** shows the current edit history. QRR sessions and saved source images stay in app-private no-backup storage, but they are not encrypted files. Saved work uses QRR schema 26 and stores the list-decoding extension per history entry. Schemas 23–25 can also be opened with the default +1 extension. Schemas 23 and 24 use mirrored input OFF; schema 23 uses a partial-bit search / dimension limit of 12 bits. Other schema versions cannot be opened.
+### Saved-work compatibility
 
-Each session has at most 40 history checkpoints. Memory or storage limits can reduce that number. Trimming history to fit these limits removes older checkpoints while preserving the currently selected checkpoint and the latest one.
+QRR is the app’s saved-work format. The app writes format version **26** and reads versions **23–26**; other versions are rejected. Older files restore settings they did not store as follows:
 
-Reopening work or a history checkpoint recalculates recovery candidates from the saved input and settings. When the selected QR was recorded, the same QR is selected even if candidate order changes. If that QR is not found in the new search, no candidate is selected and the app explains why.
+| File version | Restored defaults |
+| --- | --- |
+| 25 | List-decoding extension: +1 |
+| 24 | List-decoding extension: +1; mirrored input: off |
+| 23 | List-decoding extension: +1; mirrored input: off; partial-bit search / dimension limit: 12 |
 
-An immediate scan result survives screen rotation. Reopening an untouched import also restores the result by scanning the verified source image again, without repeating the initial notice. Saved repair settings and edited checkpoints retain their own state.
+### Export and privacy
 
-Deleting the currently open saved work leaves the on-screen work available. Choosing **Save** or running repair afterward saves it as a new session.
+**Copy content** sends the complete recovered text to the device clipboard. **Save PNG** exports the selected validated QR candidate as a Portable Network Graphics (PNG) image; an unsuccessful attempt cannot be exported as a recovered QR.
 
-**Copy content** sends the complete recovered text to the operating-system clipboard. Exporting a recovered image writes it outside app-private storage. Saving work inside the app keeps it in app-private storage. Review sharing and backup behavior at the destination. See [Privacy](../PRIVACY.md) and [Security](../SECURITY.md).
+Saved work is private to the app and excluded from Android backup and device transfer. The app does not encrypt it. Exported images are stored outside app-private storage; review the destination’s sharing and backup settings. See [Privacy](../PRIVACY.md) and [Security](../SECURITY.md).
 
 ## 8. Appearance and navigation
 
-Choose Japanese or English under **Menu → Language**. The app uses its selected language for screen labels, camera controls, and diagnostics, and restores a saved choice on the next launch. Before a choice is saved, a Japanese system language selects Japanese; other system languages select English.
+- Choose Japanese or English under **Menu → Language**. Before a choice is saved, the app uses Japanese for a Japanese system language and English otherwise.
+- Choose Classic or Modern under **Menu → Appearance (next launch)**, then save. Classic is the default. The choice takes effect on the next launch; rotating the screen or changing language does not apply it.
+- Modern uses **01 Repair settings**, **02 Cells**, and **03 Result**. The result tab is available after a result exists and keeps that result until the next repair.
 
-Choose Classic or Modern under **Menu → Appearance (next launch)**, then save. Classic is the default. The choice takes effect on the next launch; screen rotation and language changes keep the active style.
-
-Modern uses the **01 Repair settings**, **02 Edit cells**, and **03 Result** tabs. The result tab is enabled only when a result exists. Switching tabs preserves the unsaved draft and Undo history. Returning Home asks before discarding unsaved changes.
-
-Unsaved settings, cell edits, and Undo/Redo history survive screen rotation in both styles. They remain unsaved until you choose **Save** or run repair.
-
-Repair settings use a vertical layout in narrow windows and place the image beside the controls in short, wide windows. The preview fits within the available height while Save and Repair remain accessible.
-
-The on-screen Home/Cancel controls, Android Back, and tapping outside the settings dialog ask before discarding unsaved changes.
+Switching tabs and rotating the screen preserve unsaved settings, cell edits, and Undo/Redo history. Choose **Save** or run repair to save them. Leaving the settings asks before discarding unsaved changes.

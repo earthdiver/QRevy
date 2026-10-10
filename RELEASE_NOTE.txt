@@ -1,33 +1,21 @@
 QR Repair v0.18.0
 
-QR Repair helps recover damaged QR codes that ordinary readers cannot decode. Processing runs entirely offline on your Android device.
-
-GETTING STARTED
-1. Import an image, take a photo, or load a QR matrix text file.
-2. Rotate, invert, adjust brightness or contrast, and crop as needed. Check the estimated corners, QR version, and black/unknown/white thresholds.
-3. Review the positions and roles of the Finder patterns.
-4. If needed, edit individual cells: 0 = white, 1 = black, ? = unknown. Use Tentative for uncertain edits and Fixed for values that recovery should preserve.
-5. Tap Repair, then inspect the decoded content, alternative candidates, and explanations for repaired cells.
+QR Repair helps recover damaged QR codes offline on your Android device.
 
 WHAT'S NEW
-• Added list decoding for damaged data beyond the correction range of conventional Reed-Solomon decoding. The app selects Guruswami–Sudan, Koetter–Vardy, or Wu decoding according to the input and estimated computation. Candidates still require QR structure validation, the selected input constraints, and final payload decoding before being reported as decoded.
-• List decoding also searches for alternatives when every ordinarily decoded candidate relies on partial-bit constraints, retaining candidates already found. It shares a five-minute cumulative limit per repair, supports interruption, and keeps validated candidates after timeout or insufficient memory. Known-bit mismatches are capped at 5% of all data/ECC bits, rounded up, or the selected Data/ECC error limit if smaller; a zero limit disables this fallback.
-• Reed-Solomon search now checks payload-structure constraints while streaming candidates. Diagnostics distinguish candidate recovery methods, search completion, and specific failure reasons, with calculation details available separately.
-• Text matrix imports automatically assign Finder roles and logical orientation when Finder, separator, and timing patterns clearly identify one rotation. Ambiguous or insufficient evidence leaves roles and orientation unassigned for manual review. Matrix dimensions, cell values, and eligible priority-search marks are preserved.
-• Added independently generated damaged-QR text examples demonstrating list decoding, with reproducible inputs and results.
-• Saved-work compatibility is unchanged: QRR schema 25 is used, schemas 23 and 24 can also be opened with mirrored input OFF, and schema 23 uses the default 12-bit partial-bit search limit. Other schemas cannot be opened, and sessions in the old storage location are not migrated.
+• Added list decoding to search for additional candidates beyond the usual error-correction range. Candidates must still pass the selected constraints and QR validity checks before their content is reported as decoded.
+• List decoding has a cumulative limit of 10 minutes per repair, excluding ordinary search time. Interrupting a repair or reaching a time or memory limit keeps candidates already found.
+• Text matrix import assigns Finder roles and orientation automatically when the square finder patterns and surrounding structure identify a clear orientation. If roles remain unassigned, assign at least one before repair.
+• Result diagnostics explain how candidates were recovered and whether the search finished, stopped early, or left calculations unresolved.
 
-USEFUL FEATURES
-• Undo/Redo, detailed cell diagnostics, and recovered-image export.
-• Save work without running recovery, and resume it from Saved work (Recent work in Classic).
-• English/Japanese interfaces and Classic/Modern layouts.
+SAVED WORK COMPATIBILITY
+Work is saved in QR Repair's QRR format, version 26. Versions 23–26 can be opened. Earlier files use defaults for settings they do not contain: a 12-bit partial-bit search limit for version 23, mirrored input off for versions 23–24, and a list-decoding extension of +1 for versions 23–25. Other format versions cannot be opened.
 
 REQUIREMENTS AND LIMITS
-• Android 8.0 or newer.
-• Supports QR Code Model 2, versions 1–40.
+• Android 8.0 or later; QR Code Model 2, versions 1–40.
 • Model 1, Micro QR, and rMQR are unsupported.
-• Strong perspective distortion is not supported.
-• Imports automatically save work. At most 20 sessions are retained; exceeding the limit deletes the least recently saved work and its source image.
+• Check the estimated QR outline, version, and Finder roles before repair. Difficult images may need manual adjustment.
+• Importing an image or text matrix automatically saves work. At most 20 items are retained; exceeding the limit deletes the least recently saved work and its source image.
 
 IMPORTANT
-Recovery does not guarantee that the result matches the original content. Confidence scores are heuristics, not probabilities. Independently verify important information. Recovered URLs never open automatically.
+Recovery does not guarantee that the result matches the original content. Confidence scores are explanatory measures, not probabilities. Independently verify important information. Recovered web addresses (URLs) never open automatically.

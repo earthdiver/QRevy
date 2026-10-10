@@ -2,25 +2,26 @@
 
 English | [Japanese](PRIVACY.ja.md)
 
-QR Repair is designed for local, on-device processing.
+QR Repair processes QR codes locally on your Android device. The app does not request the Internet permission.
 
-| Data | When it exists | Storage or destination | Removal or retention |
-| --- | --- | --- | --- |
-| Imported image or image rendered from matrix text | Automatically persisted when import is accepted, before Save or Repair is pressed | App-private `noBackupFilesDir` as a lossless content-addressed PNG | Removed with its session by user deletion or automatic removal beyond the 20-session limit |
-| Camera capture JPEG and hand-off PNG | Between camera capture and import | App-private cache | Deleted after import or failure; remaining matching files are purged on startup once their last modification is at least 24 hours old |
-| QRR repair session | Automatically created on import; updated when work is saved or repair runs | App-private `noBackupFilesDir` | Up to 20 sessions, ordered by most recent save; older sessions and their source images are automatically deleted when the limit is exceeded, or removed by user deletion |
-| Copied text | Only after an explicit copy action | Operating-system clipboard | Controlled by the operating system |
-| Recovered image or other export | Only after an explicit export action | Destination selected or authorized by the user | Controlled by the destination rather than QR Repair's private storage |
+## Saved work
 
-- The app does not request the Internet permission.
-- Repair sessions and source images are stored under Android's app-private `noBackupFilesDir`. Imported/captured images and images rendered from matrix text are automatically persisted as lossless, content-addressed PNG files as soon as import is accepted, even without pressing Save or Repair.
-- Saved work keeps at most 20 sessions. Saving a new session beyond this limit automatically deletes the least recently saved session and its source image. The limit is also enforced on startup. To remove an individual session sooner, open Saved work (Recent work in Classic) and touch and hold its entry, then confirm deletion; Delete all removes every saved session.
-- Automatic Android cloud backup and device-transfer backup are disabled/excluded because QR content may contain sensitive data such as Wi-Fi credentials, contact information, authentication URLs, or other private text. Manifest backup settings and XML exclusion rules remain defense-in-depth in addition to the no-backup storage location.
-- Recovered URLs are never opened automatically.
-- Recovered text is displayed and compared without masking or redaction. Copying content preserves the complete recovered text.
-- Camera capture uses an app-private cache JPEG. Confirming the crop creates a lossless, unadjusted PNG for import and deletes the capture JPEG. The hand-off PNG is deleted after import, including failure paths. Stale `qr-capture-*.jpg` and `qr-capture-*.png` files, including their interrupted crop-write temporary files, are purged on startup once their last modification is at least 24 hours old. Restarting sooner does not remove them through this purge.
-- Copy content sends the complete recovered text to the operating-system clipboard. Image export writes to the destination selected by the user. Saving work inside the app keeps it in app-private storage.
+Import automatically saves your work and its source image, including images created from matrix text, before you press **Save** or **Repair**. Saving or repairing updates that work.
 
-If telemetry, crash reporting, advertising, cloud sync, sharing SDKs, or any network feature is added in the future, this document and the store privacy disclosures must be updated before release.
+At most 20 saved sessions are kept. New imports count toward this limit. When it is exceeded, the least recently saved work and its source image are automatically deleted. The limit also applies on startup.
 
-GZIP compression and SHA-256 integrity checks used by session storage do not encrypt QR content. Device-level and operating-system protections remain relevant to saved sensitive data.
+To delete work, touch and hold its entry in **Saved work** (**Recent work** in Classic), then confirm deletion. **Delete all** removes all saved work.
+
+Work and source images stay in app-private storage, excluded from Android cloud backup and device transfer. These storage protections do not encrypt QR content.
+
+## Temporary files and sharing
+
+| Data | Handling |
+| --- | --- |
+| Temporary camera images | Kept in app-private storage and deleted after use, including when import fails. Capture and crop files left behind are removed on startup once at least 24 hours have passed since their last modification. |
+| Copied content | **Copy content** sends the complete recovered text to the system clipboard. Android controls how long clipboard content is kept. |
+| Exported images | Saved outside app-private storage only when you choose to export. The destination's sharing and backup settings apply. |
+
+Recovered text is displayed and compared in full, without masking or redaction. Recovered web addresses (URLs) never open automatically.
+
+See [Security](SECURITY.md) for file validation and reporting security or privacy issues.

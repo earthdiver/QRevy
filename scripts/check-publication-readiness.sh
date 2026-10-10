@@ -68,4 +68,4 @@ for workflow in .github/workflows/*.yml .github/workflows/*.yaml; do
 done
 
 if [ "$failed" -ne 0 ]; then exit 1; fi
-echo 'Static publication-readiness checks passed. Complete docs/RELEASE_CHECKLIST.md manually.'
+echo 'Static publication-readiness checks passed. Release signing and distribution settings still require maintainer review.'

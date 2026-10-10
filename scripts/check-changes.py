@@ -24,7 +24,7 @@ SCOPE_REASONS = {
 def scope_for(path: str) -> str:
     # Check policy files before the documentation rule. New source areas and
     # test fixtures default to full validation until their dependencies are reviewed.
-    if path in {"AGENTS.md", "CONTRIBUTING.md"}:
+    if path == "AGENTS.md":
         return "full"
     parts = PurePosixPath(path).parts
     if path.endswith(".md") and (len(parts) == 1 or parts[0] in {"docs", "iosApp", "templates"}):

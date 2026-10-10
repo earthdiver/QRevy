@@ -1,21 +1,30 @@
-# Recovery example: multiple bullet-like holes
+# Recovery example: a QR code with holes
+
+English | [Japanese](README.ja.md)
 
 | Before repair | After repair | Filled cells |
 | --- | --- | --- |
-| ![QR with nine irregular holes](before.png) | ![Actual recovery result](after.png) | ![Filled cells highlighted in blue](details.png) |
+| ![Synthetic QR with nine irregular holes](before.png) | ![Recovered QR](after.png) | ![Filled cells highlighted in blue](details.png) |
 
-**A synthetic QR with 56.8% missing yields one candidate matching the original.**
+In this synthetic example, 478 of 841 cells (56.8%) are unknown. The [recorded result](result.json) contains one candidate matching the original QR code and this text:
 
 ```text
 QR Repair: recovered QR.
 ```
 
-Settings: Version 3 / M [TEXT matrix](before.txt); single-segment assumption on; four mode bits and one byte-count bit marked `*`; zero allowed data/ECC bit differences; partial-bit search limit 12.
+## Try it
 
-Of 841 cells, 478 are unknown: 145 function cells and 333 data/ECC cells. Missing cells are counted at module centers within the symbol. Before illustrates the damage; Filled cells visualizes the result. After is rendered from actual corrected codewords and verified against the full original matrix and payload. ZXing-C++ and ZXing Java cannot decode the before image but both decode the result.
+Import [before.txt](before.txt) using **Import text matrix**, then set the following in the pre-repair settings. Use the text file as input; the images above illustrate the damage and result.
 
-This synthetic example runs the current core through a desktop evaluation harness. Some calculations remain unresolved, so one returned candidate is not proof of mathematical uniqueness.
+| Setting | Value |
+| --- | --- |
+| QR version | 3 |
+| Error correction (ECC) level | M |
+| Single-segment assumption | On |
+| Priority search cell limit | **5** (the default is 4) |
+| Known data/ECC bit error limit | 0 bits (exact match) |
+| Partial-bit search / dimension limit | 12 bits |
 
-[Results and generation parameters](result.json) · [Input matrix visualization](input-matrix.png) · [Generator](../../../scripts/generate-bullet-hole-example.py)
+The file already marks five unknown cells with `*` for priority search. Keep those marks. Check the roles assigned to the square finder patterns (**Finder** in the app); if none are assigned, assign at least one before running **Repair**. See the [User Guide](../../USER_GUIDE.en.md) for the controls.
 
-Generation requires Pillow 11.3.0, qrcode 8.2, zxing-cpp 3.1.1, a separately supplied local QR Repair evaluation executable (`--harness`), and the StandardReader Java classpath (`--java-reader-classpath`). Images and generator code are independently created project assets under the repository license.
+The repaired matrix and content match the original in the recorded run. However, one returned candidate does not establish that no other answers are possible, and the missing-cell percentage is not a general recovery limit. The example images were independently generated for this project.

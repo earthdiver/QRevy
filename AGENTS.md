@@ -51,7 +51,7 @@ By default, this includes staged, unstaged, and untracked changes relative to `H
 
 | Changed area | Required local checks |
 | --- | --- |
-| Root/docs/iOS/template Markdown only, excluding this file and `CONTRIBUTING.md` | Whitespace checks; review content, links, and paired translations |
+| Root/docs/iOS/template Markdown only, excluding this file | Whitespace checks; review content, links, and paired translations |
 | Android application/UI/session Kotlin or display resources, including their UI/session tests | All Android unit tests except the two exhaustive geometry studies, lint, and debug build |
 | Shared test sources or fixtures only | Shared JVM tests |
 | Shared production code, Android recovery core or core tests/fixtures, build/dependency/CI/check configuration, manifest/backup rules, or unclassified files | Full checks |

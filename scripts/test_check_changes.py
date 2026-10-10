@@ -60,7 +60,7 @@ class CheckSelectionTest(unittest.TestCase):
                  TEST + "core/GeometryNeighborhoodExpandedRegressionTest.kt",
                  "androidApp/src/test/resources/new-fixture.txt", "androidApp/src/main/AndroidManifest.xml",
                  "androidApp/src/main/res/xml/backup_rules.xml", "androidApp/build.gradle.kts",
-                 "gradle/libs.versions.toml", "scripts/check-changes.py", "AGENTS.md", "CONTRIBUTING.md",
+                 "gradle/libs.versions.toml", "scripts/check-changes.py", "AGENTS.md",
                  ".github/workflows/android.yml", "docs/examples/new-fixture.png",
                  APP + "newArea/Unknown.kt", "unknown-file", "shared/src/iosMain/New.kt"]
         for path in paths:

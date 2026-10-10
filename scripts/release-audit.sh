@@ -11,4 +11,4 @@ mkdir -p build/androidApp/reports build/shared/reports
 ./gradlew --no-daemon :shared:jvmTest :androidApp:testDebugUnitTest -Pqr.testScope=full :androidApp:lint :androidApp:assembleRelease :androidApp:bundleRelease
 printf '%s\n' "Android dependency report: build/androidApp/reports/release-runtime-dependencies.txt"
 printf '%s\n' "Shared dependency report: build/shared/reports/shared-dependencies.txt"
-printf '%s\n' "Review THIRD_PARTY_NOTICES.md and docs/RELEASE_CHECKLIST.md before publication."
+printf '%s\n' "Review THIRD_PARTY_NOTICES.md against the dependency reports before publication."

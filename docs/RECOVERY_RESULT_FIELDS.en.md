@@ -1,176 +1,142 @@
-# Understanding recovery result fields
+# Understanding repair results
 
 English | [Japanese](RECOVERY_RESULT_FIELDS.ja.md)
 
-The main content display and diagnostic details describe candidate generation and consistency. Confidence is not a statistical probability, and Reed–Solomon (RS) success alone does not prove correctness.
+This reference explains results, diagnostics, and the reasons shown for repaired cells. For operations and settings, see the [User Guide](USER_GUIDE.en.md). For search order and when each method applies, see [How QR Repair recovers a code](RECOVERY_STRATEGY.en.md).
 
-A **validated candidate** has passed QR structure validation and the specified input constraints. A **decoded candidate** has also passed final decoding of QR data. QR data can contain text or binary data.
+QR codes include error-correction code (ECC) data to help recover damaged content. Passing Reed–Solomon (RS) checks alone does not prove that the recovered content is correct. Confidence scores are explanatory measures, not probabilities. Independently verify important recovered information.
 
-Invalid Kanji/Hanzi character codes are rejected by structure validation even when RS is consistent; replacement text is not accepted as a successful character-mode result. These character-code checks do not apply to Byte-mode binary data.
+## Identify the outcome
 
-## Identify the outcome first
+A **validated candidate** passes QR structure checks and the specified input conditions. A **decoded candidate** also passes final decoding of the QR data. QR data can contain text or binary data.
 
-List decoding (GS, KV, and Wu) can produce multiple candidates for errors beyond the correction range of conventional RS. See [Recovery Strategy, section 4.6](RECOVERY_STRATEGY.en.md#46-automatic-list-decoding-fallback) for the search order and applicable conditions.
-
-| Outcome or warning | Meaning | Check first |
+| Display | Meaning | What to check |
 | --- | --- | --- |
-| N recovery candidates meeting the specified conditions were found. | Validated candidates were retained; final decoding is reported separately | Content, distinct-content count, candidate agreement, and search completion |
-| The QR data format was verified / The data cannot be displayed as text. | The selected candidate passed QR structure validation, but final decoding did not succeed | Data/codewords and repair evidence; the QR can still be selected and exported |
-| No recovery candidate was found in the checked range. | No selectable candidate was retained; this can include RS-consistent values rejected by later checks | Input conditions, reference diagnosis, rejection reasons, and search completion |
-| Combination/node limit | The specified search policy reached its normal boundary | Completion does not prove uniqueness |
-| Candidates omitted (retention limit) | Only some of the candidates found are displayed | Omitted candidates are not included in the displayed count and cannot be selected |
-| List-decoding time limit | The cumulative 600-second allowance for list-decoding fallback was reached | Validated candidates remain available; some list-decoding trials remain unchecked |
-| Working-memory limit | Search stopped at the memory limit for calculation | Some combinations remain unchecked |
+| N recovery candidates meeting the specified conditions were found. | The listed candidates passed validation; decoding is reported separately | Content, differences between candidates, and search completion |
+| The QR data format was verified / The data cannot be displayed as text. | The selected candidate passed structure checks, but final decoding failed | **Data** and cell repair reasons; the QR can still be selected and exported |
+| No recovery candidate was found in the checked range. | No selectable candidate was retained | Input conditions, rejection reasons, and search completion |
 
-### Short reading example
+When no repair candidate is found, **Data** shows the input, including its unknown values (`?`), and result-image export is unavailable. Partially readable input shown in diagnostics is not a decoded result: it stops at unknown bits or invalid values.
 
-Suppose three decoded candidates from the same reading attempt are compared. Candidate agreement of `2 / 3` means one candidate differs from the selected candidate at that cell. Inspect its source-image evidence and repair reason. Agreement of `3 / 3` still does not prove uniqueness across candidates outside the comparison or unexplored solutions.
+## Candidates and content
 
-## Results and counts
+The result list contains up to 256 candidates from all reading attempts. A reading attempt samples the image with one combination of grid position and reading conditions. The displayed count covers selectable candidates; retention or memory limits can leave other candidates out of the list.
 
-The result list shows up to 256 of the highest-ranked candidates from all reading attempts. Result switching, comparison of two candidates, and PNG export all use this list.
+Each distinct recovered QR counts once. **Records yielding the same QR** describes other methods or reading attempts that produced it. Switching candidates updates the QR, input before repair, and diagnostics together.
 
-When many candidates are found, or memory limits apply, only some candidates may be displayed. The displayed count is the number of selectable candidates in the list, not necessarily the total number found.
+The distinct-content count compares encoded QR data, rather than displayed text alone. For example, two candidates that encode `ABC` differently can display the same text and still count as different contents.
 
-“Others omitted” means some candidates that were found are absent from the list. “Some combinations remain unchecked” means required work within the specified search policy was not completed. Both notices can appear together.
+Validated candidates can be selected and exported even if final decoding fails. Copying content and candidate-agreement analysis require decoded candidates. The content display and copy action preserve the complete recovered string, including when it is also interpreted as a web address (URL) or contact.
 
-Validated candidates can be selected and exported as a QR regardless of final decoding. Only decoded candidates support copying content and candidate-agreement analysis. Neither proves identity with the original content. Candidate count and search completion are separate: finding a candidate does not mean all required search work finished.
+For a message split across several QR symbols (**Structured Append**), the result shows this symbol's position, total count, and parity (a value used to check the complete message). QR Repair handles individual symbols; it does not join them or verify the complete message's parity.
 
-Each candidate represents a distinct recovered QR code. **Records yielding the same QR** shows other recovery methods and sampled-input attempts that produced that QR. Cell repair reasons describe the representative method.
+## Search completion and omissions
 
-The distinct-content count compares data-codeword sequences; equal displayed text can still count as different content. Switching candidates updates the QR display, the input before repair, and diagnostics to match that candidate.
+Finding a candidate and completing the search are separate outcomes.
 
-When decoded text can also be interpreted as a URL, email, SMS, contact, or another structured type, the display shows the complete original string in addition to parsed fields. It is not silently truncated or replaced by selected fields. Copying preserves that same complete string.
+| Display | Meaning |
+| --- | --- |
+| Search completed within the specified conditions and search policy. | The app finished its defined search range, including normal endings at search limits. It did not necessarily check every mathematically possible solution. |
+| Some combinations remain unchecked. | Interruption, a time limit, insufficient working memory, or an internal error prevented required work. |
+| Search completion could not be determined. | The available records do not establish whether the search finished. |
+| Others omitted / Candidates omitted (retention limit) | Some candidates already found are absent from the list and cannot be selected. This is separate from unfinished searching. |
 
-When no candidate passes QR structure and the specified constraints, the app reports that no recovery candidate was found in the checked range and shows diagnostics. Unvalidated corrections do not overwrite the result matrix. The Data dialog initially shows Before with original partial codewords containing `?`. Switching to After does not expose an unvalidated corrected byte sequence. Result PNG export is unavailable for unvalidated candidates and failed attempts. A diagnostic input image can instead be exported from detailed repair settings.
-
-## Partial input diagnostics
-
-Partial diagnostics describe unvalidated input, not successful decoding. For a leading Numeric, Alphanumeric, Byte or Kanji segment, the view shows its mode, character/byte count and consecutive readable body prefix. Body display stops at unknown bits or invalid character values.
-
-For Hanzi, the four-bit subset indicator after the mode is read before the character count. Only subset 1 (GB2312) permits reading the following count. A missing, unknown or unsupported indicator is reported without reading a count. Partial body display is not supported for Hanzi; this is separate from final Hanzi candidate validation and decoding.
+List decoding is an additional search for candidates beyond the usual RS correction range. Its cumulative time allowance is **600 seconds (10 minutes) per repair**, excluding time spent on ordinary searches. Timeout, insufficient memory, or interruption preserves validated candidates already found. A completed search does not establish uniqueness, and completion without a candidate does not prove that no solution exists.
 
 ## Input agreement and QR settings
 
 | Field | Meaning |
-|---|---|
-| Error correction level | `L / M / Q / H`, with progressively more ECC codewords at the same version. Recovery depends on damage locations and codeword layout. |
-| Mask | `0–7`. Modules are unmasked to extract codewords; the mask is reapplied after correction. |
-| Format information: mismatches / known input bits compared at repair start | Disagreements with the candidate's BCH format value / compared known bits. Manually entered format bits determined by explicit ECC/mask selections are excluded. |
-| Data/ECC region: mismatches / known input bits compared at repair start | Disagreements between known data/ECC input bits and corrected codewords mapped back through the mask / compared bits. |
+| --- | --- |
+| Version | The QR's size; `V3`, for example, means version 3. |
+| Error correction level (ECC level) | `L / M / Q / H`. At the same version, these provide increasing amounts of error-correction data. Recovery also depends on where damage occurs. |
+| Mask | A numbered pattern (`0–7`) applied to the QR data. The selected mask affects how cell values are interpreted. |
+| Format-information mismatches | Differences between the candidate and the two copies of format information (error-correction level and mask) in the input QR code. |
+| Data/ECC-region mismatches | Disagreements in the encoded content and error-correction data. QR function patterns and other information outside this region are excluded. |
 
-Comparisons use known bits at repair start, including image sampling and manual edits. Zero compared bits leaves agreement unknown.
+Mismatch counts compare the candidate with known `0 / 1` values at repair start, including manual edits. For example, `3 / 80` means that three of the 80 compared bits disagree. Unknown cells, including temporary values tried for `*`, are excluded. With zero compared bits, agreement is unknown.
 
-The format-information error limit applies even when explicit ECC and mask selections leave only one format. Among attempts without validated payloads, stronger format agreement takes precedence over RS success.
+Format comparison also excludes **fixed 0/1 cells whose values are determined by explicit ECC/mask selections alone**. Tentative edits remain in the comparison. This exclusion still applies when the setting allowing correction of fixed values is enabled.
 
-Data/ECC comparisons exclude `?`, temporary priority `*` assignments, function modules, and remainder bits. The data/ECC error limit retains candidates at or below the limit. `0 bits` uses partial-bit constraints to fill unknown bits and accepts only candidates matching every known bit. “Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)” defaults to OFF: candidates that conflict with fixed cells are rejected separately. ON allows their values to be corrected while retaining their fixed designation and input values. Tentative cells are correctable in either setting. Corrections remain subject to the format and data/ECC error limits; explicit ECC/mask/version selections and conflicts between fixed cells and explicit selections remain enforced.
-
-List-decoding fallback caps known-bit mismatches at 5% of all data/ECC bits in the QR, rounded up, or the **Data/ECC error limit** if smaller. A zero limit disables list decoding.
+An error limit of **0 bits** requires agreement at every compared known bit. Fixed-value protection is a separate condition: increasing an error limit does not permit changes to protected fixed cells. Explicit version, ECC, and mask selections remain enforced. See the User Guide for changing these settings.
 
 ## Diagnostic details
 
-Diagnostics are organized into four sections.
-
-| Section | What to check |
+| Section | What it describes |
 | --- | --- |
-| Settings for this run | Settings used when recovery was run |
-| Input before repair | Input at repair start and the conventional RS reference diagnostic |
-| Processing in this run | Methods and calculation conditions used to obtain the candidate, and search records |
-| Verification results | QR structure, final decoding, input mismatches, search completion, and candidate omissions |
+| Settings for this run | The settings used for this repair |
+| Input before repair | The starting input and its conventional RS reference check |
+| Processing in this run | Methods, assumptions, and calculation records for the candidate, plus search-wide records |
+| Verification results | Structure checks, final decoding, input mismatches, search completion, and omissions |
 
-The conventional RS reference diagnostic applies conventional RS to the input before structure filling or tentative assignments. It identifies the version, ECC, and mask used. Check **Verification results** for the outcome of the whole search.
+The conventional RS reference check uses the input before structure-based filling or temporary assignments. Its success or failure describes that check; **Verification results** reports the overall outcome. Search-wide records also include attempts that did not produce the selected candidate.
 
-If QR structure verification passes but final decoding fails, inspect the recovered content in **Data** in the detailed results.
+A **codeword** is a group of eight bits. In RS calculation records, **symbol** and **byte** also refer to this unit. An **RS block** is a group of codewords processed together for error correction. Counts of unknown or corrected codewords differ from counts of repaired cells: filling one unknown bit can resolve a whole codeword.
 
-**Processing in this run** contains these records:
+### Methods shown in diagnostics
 
-- **Methods used to obtain this candidate**: recovery methods, applied assumptions, and intermediate filling or tentative assignments.
-- **Calculation record for this candidate**: block values and formulas, the list-decoding mismatch limit, and combination-search stop reasons.
-- **Records yielding the same QR**: other recovery methods and sampled-input attempts yielding the same QR, and their differences.
-- **Search-wide records**: list-decoding trial count (newly executed calculations), reuse count for computed results, and elapsed time.
+Method names describe how candidate values were calculated, often separately for each RS block. The values used can include structure-based fills and temporary assignments made before that calculation.
 
-Search-wide records include trials that did not produce the selected candidate. GS/Wu counts by error radius cover all inputs and blocks; inputs may reach different radii. See [Recovery Strategy](RECOVERY_STRATEGY.en.md) for the search range.
+| Method | What it uses | What it does |
+| --- | --- | --- |
+| Conventional RS | Codeword values and positions containing unknown bits | Fills unknown codewords and corrects wrong values within the usual RS range. A codeword containing any unknown bit is treated as an erasure. |
+| Partial-bit constraints | Known bits and RS conditions | Solves for unknown bits while preserving the known bits at that stage. This method does not correct a wrong known bit. |
+| Bit search / priority-cell bit search | A limited set of unknown bits | Tries `0 / 1` assignments before further checks. Partial-bit search completes selected codewords; priority-cell search uses cells marked `*`. Trial values are assumptions. |
+| Structure filling | QR data rules, such as mode, length, terminator, and padding | Fills values implied by the structure being tested. Some fills depend on the single-segment assumption. |
+| Guruswami–Sudan (GS) | Positions and values of codewords not treated as erasures | Uses equations relating positions and values to find RS candidates beyond the usual correction range. |
+| Koetter–Vardy (KV) | Possible codeword values consistent with the known bits | Shares calculation weight among those possible values and looks for candidates with sufficient weighted agreement. This can use partly known codewords without trying every combination of their unknown bits. |
+| Wu | Possible positions of erroneous codewords | Finds error-location patterns and checks the corrections they imply, beyond the usual RS range. Wu is a researcher's surname, not an abbreviation. |
 
-Read search completion as follows:
+For the same input and correction range, the app selects GS or Wu based on estimated work and memory. The method name is not a confidence ranking. Multiple methods producing the same candidate do not provide independent proof that it is correct.
 
-| Message | Meaning |
+For example, KV treats `10100011` and `10101011` as equally weighted possibilities for `1010?011`. This does not mean that each has a 50% probability of being correct. The weights come from known and unknown bits, not directly from image brightness. At the same base weight, more unknown bits reduce each value's share; highly ambiguous codewords may contribute no weight. Known input errors may still be corrected, but protected fixed `0 / 1` values remain separate requirements for accepting a candidate.
+
+### Calculation terms
+
+| Display | Meaning |
 | --- | --- |
-| Search completed within the specified conditions and search policy. | The bounded policy finished; this does not mean every mathematical solution was enumerated or establish uniqueness |
-| Some combinations remain unchecked. | Interruption, the list-decoding time limit, insufficient working memory, or an internal error prevented required work |
-| Search completion could not be determined. | Execution records are insufficient to determine completion |
+| Correction radius | The maximum number of non-erased codewords that may differ from the values used in that trial. It is not the number of repaired bits or differences from the original QR. |
+| Remaining erasures | Codewords still treated as unknown after any filling or temporary assignments. They are counted separately from errors within the correction radius. |
+| Extension limit: +1 / +2 / +3 | The requested GS/Wu extension beyond the conventional RS radius for each block, given its remaining erasures. It counts codewords. Applicability, time, and memory limits can prevent reaching it; KV uses its own score condition. |
+| Conventional RS correction margin | The ECC allowance left in that calculation after counting each erasure once and each erroneous codeword twice. A value calculated after filling or temporary assignments does not describe the starting input's margin. |
+| Agreement score / Required score | KV's weighted agreement total and the minimum needed by that calculation. These are neither probabilities nor the candidate-agreement counts shown for cells. |
+| Multiplicity / Base multiplicity | The weight used to build GS/KV calculation conditions. KV shares its base weight among compatible codeword values. Larger values can increase work; they do not indicate greater confidence. |
+| Y degree | A degree limit in the equations used by GS/KV. It describes the calculation, not the number or correctness of candidates. |
+| Johnson bound | A mathematical condition limiting the GS/Wu correction radius used by the app. A trial that does not meet this condition is skipped; that does not prove that no repair exists. |
 
-Validated candidates remain available for inspection and export after timeout, insufficient memory, or interruption. Completing the search without a candidate does not prove that no mathematical solution exists.
+The starting-input reference reports an unknown margin when RS produces no correction result. Partial-bit constraints and list decoding do not have a conventional RS margin.
 
-### Geometry
+Trial and completion counts describe block calculations, not recovered QR candidates. Records for the whole search can include calculations unrelated to the selected candidate. A skipped calculation and an interrupted calculation have different meanings; read the stated reason together with search completion.
 
-“Manual projective” uses selected corners. “Projective” includes refinement supported by alignment-pattern image evidence. Logical orientation and version are preserved. References such as “top-left reference” describe geometry, not payload reading direction. `V<version>` is the QR version; each side has `17 + 4 × version` modules.
+The **degrees of freedom** value counts unknown bits that can be chosen independently while satisfying RS conditions. This diagnostic assumes that the selected format and known input bits are correct. Zero means one RS solution under those assumptions, before checking QR content. It does not count recovered candidates. A suggested cell to check can reduce this ambiguity even when no validated candidate has been found.
 
-### Unknown codewords before and after structure filling
+When a candidate is rejected, review the stated reason. A conflict with a fixed cell calls for reviewing that edit; a format-limit failure calls for reviewing format-information cells, ECC/mask selections, or the format-information error limit. An estimate of zero additional bits to check does not guarantee recovery: known values may be wrong, or the search may reach a limit.
 
-- At input: codewords containing at least one unknown input bit.
-- At recovery: codewords still containing unknown bits after this route's priority assignments and structure constraints, before RS processing.
+## Cell repair reasons
 
-Multiplying the difference by eight does not give repaired bits. Additional codewords resolved by conventional partial-bit enumeration are also not included in that difference.
+In **Show detailed results**, a cell's details distinguish its input value, final value, main reason, and supporting evidence. Reasons explain how a value was obtained; several reasons do not amount to independent votes for correctness.
 
-### Codewords targeted for filling/correction and conventional RS margin
+| Repair-reason border | Category | Meaning |
+| --- | --- | --- |
+| Green | QR structure | The selected version and format determine the value, such as a square finder pattern or format-information cell. This depends on those selections being correct. |
+| Orange | RS | **RS erasure recovery** fills an input `?`; **RS error correction** changes an input `0` or `1`. |
+| Purple | Payload constraint | Rules for the QR's content, length, end marker, or padding (data filling unused space after the content) supplied the value. It may depend on an assumed data structure. |
+| Magenta | Bit-level candidate search | The search tried `0 / 1` values for unknown bits within a limit. |
+| Blue | User edit | The user specified the value or its source. **Input** shows whether it was fixed, tentative, or fixed with correction allowed. |
 
-“Codewords targeted for filling/correction” counts targeted codeword positions, potentially including both erasures and unknown-position errors. Partial-bit constraint routes count positions containing unknown bits as targets.
+**Supporting evidence** supports the final value. A value later changed by RS appears as intermediate history. For example, if a structure rule fills `0` and RS later changes it to `1`, that earlier `0` is recorded as an intermediate value. It does not support the final `1`.
 
-The conventional RS margin is the minimum block value of `ECC symbols − erasures passed to RS − 2 × unknown-position errors` for the representative recovery method. It uses the erasure count after conventional partial-bit enumeration; zero is the conventional RS capacity boundary. This measure does not apply to partial-bit constraints or list decoding.
+**Single-segment assumption** reports whether the corresponding advanced setting was enabled and applied to this candidate. A segment is one part of QR data encoded in a particular mode. Review this assumption when structure-based filling is involved. A generic **Repair** reason means that no more specific category is available. Cells are not highlighted as changed solely because their source was relabeled while their value stayed the same.
 
-**Calculation record for this candidate** shows the radius and remaining erasures for GS/Wu, the agreement score and required score for KV, and interpolation multiplicity and Y degree where applicable. The radius is the maximum number of targeted erroneous codewords; the score uses interpolation weights.
+Cell coordinates `(x,y)` start at zero. Codeword numbers, RS block numbers, positions within a block, and bit positions start at one; bit 1 is the leftmost bit. **After removing the QR mask** shows before/after codeword values, with `?` for unknown bits and brackets around the selected bit. **Show same codeword** highlights its eight cells.
 
-### Structure filling and observed suffix matches
-
-This document uses **Single-segment assumption**, the diagnostic label, for the advanced setting “When the mode and character/byte count are read or assigned by \* trials, assume a single segment and force the following structure.”
-
-“Filling/changes using QR structure” or “Filling/changes under the specified assumption” counts bits assigned by this route, including replaced known bits when **Single-segment assumption** is ON. Heuristic assignments later overturned by RS remain in this processing count.
-
-“Observed bits matching the assumed suffix structure” counts known bits agreeing with the terminator, byte alignment, and alternating `0xEC / 0x11` padding. It is not a repaired-bit count.
-
-### Priority 0/1 search / Partial-bit search
-
-“Search with tentative values for prioritized unknown cells” counts bits searched by assigning tentative values to `*` cells that were unknown in the input.
-
-The partial-bit search count is the sum of the following values across RS blocks.
-
-- Conventional partial-bit search counts the unknown bits selected for enumeration.
-- RS partial-bit constraints count the degrees of freedom remaining after mode and character/byte count, terminator, and padding conditions are applied.
-
-The diagnostic dimension describes the input, so it may differ from the partial-bit search count.
-
-### RS partial-bit constraints
-
-Partial-bit constraints find unknown-cell values that satisfy QR error-correction conditions. Degrees of freedom count unknown bits that can be chosen independently among valid combinations.
-
-Shows unknown bits, independent constraint rank, degrees of freedom, and bits fixed across every solution. These diagnostics assume the selected format and known input data/ECC are correct. They describe the observation before structure constraints and temporary priority assignments, before QR payload validation.
-
-With zero degrees of freedom, the RS solution is unique under those assumptions. An inconsistent space is reported as “No combination satisfies the RS constraints while preserving all entered values,” without guessing an error count. Exceeding the enumeration dimension limit does not mean no solution exists.
-
-QR combination-search diagnostics distinguish a window ending after success, the combination limit, and the expanded-node limit. These are normal endings of the specified policy, even if other mathematical combinations exist. They do not produce an unfinished-search warning. A working-memory allowance that prevents reaching the specified policy boundary is reported separately as unfinished work. Displayed candidate counts cover retained validated results, not every candidate found during search.
-
-## Failure reasons and additional checks
-
-Whole-search reasons distinguish fixed format cells incompatible with explicit ECC/mask selections, fixed cells outside data/ECC incompatible with the QR structure, and calculated candidates rejected by fixed cells or error limits. Temporary priority-assignment conflicts are not reported as manual input pin conflicts.
-
-RS capacity and correction results appear in the format-specific reference diagnosis. Partial-bit and QR combination-search limits appear as search-limit notices. Block numbers are one-based.
-
-Erasure-capacity shortfall measures the minimum bits that must be decided to reduce each block's erasure count to its ECC symbol count. When used by guidance, zero can still fail because of known-bit errors or search limits. This is different from degrees of freedom.
-
-Even without validated candidates, a consistent ambiguous RS space can provide a conditional check cell that reduces degrees of freedom by one bit. This is not a count of validated QR candidates.
-
-If the format-information error limit excludes every permitted format, recovery reports a format-limit failure without attempting RS. It shows mismatches, compared known bits, and the configured limit for the best permitted format. Review format cells, ECC/mask selections, or the format-information error limit. The limit applies when both ECC and mask are selected, and manual selection conflicts remain checked.
-
-## Structured Append and FNC1
-
-For Structured Append, the preview and result display include this symbol’s one-based position, total and parity. Validation applies to this symbol; it does not mean the whole message is assembled or parity-verified. Fragment text is displayed without masking or redaction, and copying preserves the complete recovered text. The FNC1 second-position application indicator is shown separately from the body as its raw eight-bit value in decimal.
+Format-information cells show their role and bit position. Calculation details compare the two copies of format information; the related-cell button highlights the matching error-correction-level, mask-number, or correction-bit cells. The data-region **Unmask** display does not change format-information cells.
 
 ## Cell confidence and candidate agreement
 
-“Candidate agreement” shows how many compared candidates have the same black or white value as the selected QR at a given cell. For example, `12 / 16` means 12 of the 16 compared candidates agree with the selected candidate at that cell. Agreement is displayed when at least two candidates can be compared.
+**Input-cell relative confidence** describes the input before repair, which can include manual edits. **Candidate assessment** also considers evidence such as candidate agreement. Both are explanatory scores, not probabilities of correctness.
 
-The comparison uses at most 16 decoded candidates from the same reading attempt as the selected candidate. It uses the highest-ranked candidates and always includes the selected candidate if it is a decoded candidate. This comparison scope is separate from the result list of up to 256 candidates.
+**Candidate agreement** counts candidates whose value at a cell matches the selected candidate. For example, `12 / 16` means that 12 of the 16 compared candidates agree at that cell.
 
-The accompanying “validated candidates in total” count covers decoded candidates still listed from that reading attempt; it excludes candidates from other attempts. Candidate splits and additional-check guidance also apply only to the candidates actually compared. Even `16 / 16` neither guarantees agreement with candidates outside the comparison nor expresses the probability that the cell is correct.
+The comparison uses up to 16 of the highest-ranked **decoded candidates from the same reading attempt**, always including the selected decoded candidate. It appears when at least two candidates can be compared. This is a smaller set than the result list of up to 256 candidates.
 
-See [Understanding repair reasons](REPAIR_REASONS.en.md) for cell reasons and intermediate history.
+The accompanying **validated candidates in total** count covers retained decoded candidates from that reading attempt, excluding other attempts. Candidate-based suggestions apply only to the candidates compared. Even `16 / 16` does not establish agreement with excluded or undiscovered candidates, or prove that the cell is correct.
