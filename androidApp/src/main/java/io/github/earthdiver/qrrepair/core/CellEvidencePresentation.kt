@@ -2,6 +2,17 @@ package io.github.earthdiver.qrrepair.core
 
 import io.github.earthdiver.qrrepair.localizedText
 
+/** The result image and its cell evidence must use the same optional unmasking. */
+internal fun displayedModuleValue(value: ModuleValue, version: Int, x: Int, y: Int, maskToRemove: Int?): ModuleValue {
+    if (maskToRemove == null || QrFunctionMask.isFunction(version, x, y) ||
+        !CodewordExtractor.maskApplies(maskToRemove, x, y)) return value
+    return when (value) {
+        ModuleValue.ZERO -> ModuleValue.ONE
+        ModuleValue.ONE -> ModuleValue.ZERO
+        ModuleValue.ERASED -> ModuleValue.ERASED
+    }
+}
+
 /** bitIndex follows extraction order: zero is the leftmost (most significant) bit. */
 fun codewordCellText(index: Int, bitIndex: Int, value: Int, unknown: Int, corrected: Int?,
     block: Int?, local: Int?, targeted: Boolean): String = buildString {
@@ -17,7 +28,6 @@ fun codewordCellText(index: Int, bitIndex: Int, value: Int, unknown: Int, correc
     append(localizedText("\nマスク解除後：", "\nAfter removing the QR mask: "))
     append(bits(value, unknown)).append(" → ").append(bits(corrected ?: 0, if (corrected == null) 255 else 0))
     append(localizedText("\n選択中：左から${bitIndex + 1}番目のbit（[ ]で表示）", "\nSelected: bit ${bitIndex + 1} from the left (in [ ])"))
-    append(localizedText("\n画面の白黒にはQRのマスクを適用しています。", "\nThe QR mask is applied to the displayed cells."))
     if (targeted) append(localizedText("\nこのコード語はRSの訂正対象です。セルごとの変更は上の前後値で確認できます。",
         "\nThis codeword was targeted by RS. See the cell's before/after values above for its individual change."))
 }

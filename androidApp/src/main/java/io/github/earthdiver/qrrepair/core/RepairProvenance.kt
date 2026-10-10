@@ -141,8 +141,8 @@ data class ModuleRepairTrace(
         ))
         priorityAssignment?.let { value ->
             append(localizedText(
-                "\n優先0/1探索でこのセルに${value.symbol()}を仮置きしました。元入力の既知bitではありません。",
-                "\nPriority 0/1 search assigned ${value.symbol()} to this cell. It was not a known input bit.",
+                "\n優先0/1探索でこのセルに${value.symbol()}を仮置きしました（マスク解除前の値）。元入力の既知bitではありません。",
+                "\nPriority 0/1 search assigned ${value.symbol()} to this cell (before removing the QR mask). It was not a known input bit.",
             ))
         }
         if (partialEnumerated) append(localizedText("\n未知bitの限定列挙を行い、RS整合する候補を探索しました。", "\nUnknown bits were enumerated within a limit to find RS-consistent candidates."))

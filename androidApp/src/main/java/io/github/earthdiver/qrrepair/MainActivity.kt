@@ -9,6 +9,7 @@ import io.github.earthdiver.qrrepair.core.candidatePairComparisonText
 import io.github.earthdiver.qrrepair.ui.ResultActionRow
 import io.github.earthdiver.qrrepair.core.RecoveryDiagnosticReport
 import io.github.earthdiver.qrrepair.core.codewordCellText
+import io.github.earthdiver.qrrepair.core.displayedModuleValue
 import io.github.earthdiver.qrrepair.core.RecoveryInputBlocker
 import io.github.earthdiver.qrrepair.core.identity
 import io.github.earthdiver.qrrepair.core.isSelectableRecovery
@@ -60,6 +61,7 @@ import io.github.earthdiver.qrrepair.core.PreprocessSettings
 import io.github.earthdiver.qrrepair.core.StandardQrDecoder
 import io.github.earthdiver.qrrepair.core.searchSummary
 import io.github.earthdiver.qrrepair.core.QrMatrix
+import io.github.earthdiver.qrrepair.core.QrFunctionMask
 import io.github.earthdiver.qrrepair.core.FormatEditPolicy
 import io.github.earthdiver.qrrepair.core.FormatEditConflict
 import io.github.earthdiver.qrrepair.core.QrTextMatrixParser
@@ -1085,7 +1087,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun resultCellDetailText(x: Int, y: Int, matrix: QrMatrix): String {
+    private fun resultCellDetailText(x: Int, y: Int, matrix: QrMatrix, maskToRemove: Int? = null): String {
         fun value(v: ModuleValue) = when (v) {
             ModuleValue.ZERO -> ui("白（0）", "White (0)")
             ModuleValue.ONE -> ui("黒（1）", "Black (1)")
@@ -1094,6 +1096,9 @@ class MainActivity : Activity() {
         val trace = recoveryState.traces[Coord(x, y)]
         val cell = matrix[x, y]
         val before = trace?.originalValue ?: recoveryState.sourceMatrix?.get(x, y)?.value ?: cell.value
+        val version = (matrix.dimension - 17) / 4
+        val displayedBefore = displayedModuleValue(before, version, x, y, maskToRemove)
+        val displayedAfter = displayedModuleValue(cell.value, version, x, y, maskToRemove)
         val reason = when {
             cell.source == ModuleSource.USER_UNLOCKED -> ui("固定指定した値です。修正可の設定により復元時の訂正を許可しています。", "This fixed user value allows correction under the current option.")
             cell.source == ModuleSource.USER_SOFT -> ui("仮指定した値です。復元時に訂正されることがあります。", "This tentative user value may be corrected during recovery.")
@@ -1112,8 +1117,10 @@ class MainActivity : Activity() {
         }
         return buildString {
             append(ui("セル ($x,$y)（座標は0から）", "Cell ($x,$y) (zero-based coordinates)"))
-            append('\n').append(if (before == cell.value) ui("${value(cell.value)}のまま", "Unchanged: ${value(cell.value)}")
-                else "${value(before)} → ${value(cell.value)}")
+            append('\n').append(if (displayedBefore == displayedAfter) ui("${value(displayedAfter)}のまま", "Unchanged: ${value(displayedAfter)}")
+                else "${value(displayedBefore)} → ${value(displayedAfter)}")
+            if (maskToRemove != null && !QrFunctionMask.isFunction(version, x, y))
+                append(ui("\nマスク解除後の表示値です。", "\nValues shown after removing the QR mask."))
             FormatCellGroup.at(matrix.dimension, x, y)?.let { append('\n').append(it.cellText()) }
             append('\n').append(reason)
             val source = trace?.originalSource ?: recoveryState.sourceMatrix?.get(x, y)?.source

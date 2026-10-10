@@ -168,9 +168,14 @@ class FiveImprovementsUiTest {
                     alternativeRsDerivations = listOf(PartialCodewordSolver.Derivation(listOf(2), 0, 0, emptyList(), 4, 0, false)))
                 state.traces = mapOf(coord to trace)
                 state.confidenceMap = mapOf(coord to CellConfidence(.8f, "中", "", "Medium", "", 2, 3))
-                fun text(method: String): String = MainActivity::class.java.getDeclaredMethod(method,
-                    Int::class.javaPrimitiveType, Int::class.javaPrimitiveType, QrMatrix::class.java)
-                    .apply { isAccessible = true }.invoke(a, 12, 12, matrix) as String
+                fun text(method: String): String {
+                    val arguments = if (method == "resultCellDetailText") arrayOf(12, 12, matrix, null)
+                        else arrayOf(12, 12, matrix)
+                    val types = arrayOf(Int::class.javaPrimitiveType, Int::class.javaPrimitiveType, QrMatrix::class.java) +
+                        if (method == "resultCellDetailText") arrayOf(Int::class.javaObjectType) else emptyArray()
+                    return MainActivity::class.java.getDeclaredMethod(method, *types)
+                        .apply { isAccessible = true }.invoke(a, *arguments) as String
+                }
                 val basic = text("resultCellDetailText")
                 assertTrue(basic.contains(if (lang == AppLanguage.JAPANESE) "黒（1）のまま" else "Unchanged: Black (1)"))
                 assertFalse(basic.contains(if (lang == AppLanguage.JAPANESE) "白黒を変更" else "changed the value"))

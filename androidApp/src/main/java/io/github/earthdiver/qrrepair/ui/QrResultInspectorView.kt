@@ -12,11 +12,10 @@ import android.view.ScaleGestureDetector
 import android.view.View
 import io.github.earthdiver.qrrepair.localizedText
 import io.github.earthdiver.qrrepair.core.CellConfidence
-import io.github.earthdiver.qrrepair.core.CodewordExtractor
 import io.github.earthdiver.qrrepair.core.Coord
 import io.github.earthdiver.qrrepair.core.ModuleRepairTrace
 import io.github.earthdiver.qrrepair.core.ModuleValue
-import io.github.earthdiver.qrrepair.core.QrFunctionMask
+import io.github.earthdiver.qrrepair.core.displayedModuleValue
 import io.github.earthdiver.qrrepair.core.QrMatrix
 import io.github.earthdiver.qrrepair.core.RepairFilter
 import io.github.earthdiver.qrrepair.core.RepairReasonKind
@@ -245,16 +244,9 @@ class QrResultInspectorView(context: Context) : View(context) {
 
     private fun drawMatrix(canvas: Canvas, matrix: QrMatrix) {
         val version = (matrix.dimension - 17) / 4
-        val mask = dataMask
+        val maskToRemove = dataMask.takeIf { unmasked }
         for (y in 0 until matrix.dimension) for (x in 0 until matrix.dimension) {
-            val stored = matrix[x, y].value
-            val invert = unmasked && mask != null &&
-                !QrFunctionMask.isFunction(version, x, y) && CodewordExtractor.maskApplies(mask, x, y)
-            val displayed = if (invert) when (stored) {
-                ModuleValue.ONE -> ModuleValue.ZERO
-                ModuleValue.ZERO -> ModuleValue.ONE
-                ModuleValue.ERASED -> ModuleValue.ERASED
-            } else stored
+            val displayed = displayedModuleValue(matrix[x, y].value, version, x, y, maskToRemove)
             fill.color = when (displayed) {
                 ModuleValue.ONE -> Color.BLACK
                 ModuleValue.ZERO -> Color.WHITE

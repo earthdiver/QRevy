@@ -30,6 +30,8 @@ internal data class RecoveryResultDocument(
     val candidateIndex: Int,
     val failureMask: Int?,
 ) {
+    val dataMask: Int? get() = (candidate?.dataMask ?: failureMask)?.takeIf { it in 0..7 }
+
     fun codewordAt(coord: Coord): Pair<Int, Int>? {
         for ((index, word) in candidate?.extraction?.codewords.orEmpty().withIndex()) {
             val bit = word.coordinates.indexOf(coord)
@@ -46,7 +48,7 @@ internal class RecoveryResultDialog(
     private val initialDocument: RecoveryResultDocument,
     private val candidates: List<Pair<Int, RecoveryCandidate>>,
     private val selectCandidate: (Int) -> RecoveryResultDocument?,
-    private val cellDescription: (Int, Int, QrMatrix) -> String,
+    private val cellDescription: (Int, Int, QrMatrix, Int?) -> String,
     private val cellTechnicalDescription: (Int, Int, QrMatrix) -> String,
     private val codewordDescription: (Int, Int) -> String,
 ) {
@@ -69,7 +71,6 @@ internal class RecoveryResultDialog(
         val view = QrResultInspectorView(this).apply { setComparisonEnabled(false) }
         val unmask = CheckBox(this).apply {
             text = ui("マスク解除", "Unmask")
-            setOnCheckedChangeListener { _, checked -> view.setUnmasked(checked) }
         }
         val maskDescription = TextView(this).apply {
             textSize = 12f
@@ -77,7 +78,7 @@ internal class RecoveryResultDialog(
         }
         fun refreshInspectorDocument(keepViewport: Boolean = false) {
             val candidate = document.candidate
-            val mask = (candidate?.dataMask ?: document.failureMask)?.takeIf { it in 0..7 }
+            val mask = document.dataMask
             view.setDocument(before, after, document.traces, keepViewport = keepViewport, dataMask = mask)
             unmask.isEnabled = mask != null
             if (mask == null) unmask.isChecked = false
@@ -103,7 +104,7 @@ internal class RecoveryResultDialog(
             if (coord == null) return
             view.setSelected(coord.x, coord.y)
             detail.text = buildString {
-                append(cellDescription(coord.x, coord.y, after))
+                append(cellDescription(coord.x, coord.y, after, document.dataMask.takeIf { unmask.isChecked }))
                 if (formatGroup != null && showCellCalculations) {
                     if (relatedCellsHighlighted) view.setHighlightedCodeword(formatGroup.coordinates(after.dimension))
                     append("\n\n").append(cellTechnicalDescription(coord.x, coord.y, after))
@@ -143,13 +144,13 @@ internal class RecoveryResultDialog(
                         after = nextAfter
                         document = nextDocument
                         displayedGeometry = document.geometry
-                        refreshInspectorDocument(keepViewport = keepPosition)
-                        view.clearHighlightedCodeword()
                         if (!keepPosition) {
                             selectedCoord = null
                             relatedCellsHighlighted = false
                             detail.text = ui("表示位置をリセットしました。セルを選択してください。", "View reset. Select a cell.")
                         }
+                        refreshInspectorDocument(keepViewport = keepPosition)
+                        view.clearHighlightedCodeword()
                         refreshCellEvidence()
                     }
                 })
@@ -159,6 +160,10 @@ internal class RecoveryResultDialog(
             relatedCellsHighlighted = true
             refreshCellEvidence()
         }.apply { isEnabled = false; visibility = View.GONE }
+        unmask.setOnCheckedChangeListener { _, checked ->
+            view.setUnmasked(checked)
+            refreshCellEvidence()
+        }
         val detailPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             if (modernStyle) {
