@@ -67,6 +67,35 @@ class TentativeRecoveryTest {
         }
     }
 
+    @Test fun manualComparisonIncludesTentativeAndUnlockedValuesButExcludesUnknownAndFunctionCells() {
+        val qr = Encoder.encode("TENTATIVE", ErrorCorrectionLevel.H, mapOf(EncodeHintType.QR_VERSION to 2))
+        val matrix = QrMatrix(qr.matrix.width).apply {
+            for (y in 0 until dimension) for (x in 0 until dimension)
+                set(x, y, if (qr.matrix.get(x, y).toInt() == 1) ModuleValue.ONE else ModuleValue.ZERO, 1f, ModuleSource.IMAGE)
+        }
+        val coords = CodewordExtractor.extract(matrix, 2, qr.maskPattern).codewords[4].coordinates
+        val sources = listOf(ModuleSource.USER, ModuleSource.USER_SOFT, ModuleSource.USER_UNLOCKED,
+            ModuleSource.USER_SOFT, ModuleSource.USER_SOFT, ModuleSource.IMAGE)
+        sources.forEachIndexed { index, source ->
+            val coord = coords[index]
+            val value = matrix[coord.x, coord.y].value
+            matrix.set(coord.x, coord.y, when (index) {
+                1, 2, 5 -> if (value == ModuleValue.ONE) ModuleValue.ZERO else ModuleValue.ONE
+                3 -> ModuleValue.ERASED
+                else -> value
+            }, 1f, source)
+        }
+        matrix.set(0, 0, matrix[0, 0].value, 1f, ModuleSource.USER)
+        val candidate = RecoveryEngine().recover(matrix, formatConstraint = QrFormatConstraint(qr.ecLevel, qr.maskPattern))
+            .first { it.text == "TENTATIVE" }
+
+        assertEquals(4, candidate.manualDataEccCompared)
+        assertEquals(2, candidate.manualDataEccMismatches)
+        assertEquals(3, candidate.knownBitMismatchesAfterCorrection)
+        assertTrue(candidate.inputComparisonText().contains("手動指定4bitとの不一致 2bit"))
+        assertTrue(candidate.resultExplanationText().contains("手動指定と異なる値: 2bit"))
+    }
+
     @Test fun settingsSnapshotDetachesTentativeCoordinatesAndKeepsFixedNeighbors() {
         val a = Coord(10, 10)
         val b = Coord(11, 10)

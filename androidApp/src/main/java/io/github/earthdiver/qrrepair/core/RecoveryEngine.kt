@@ -267,7 +267,12 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         }, partialBitSearchLimit, listDecodingBudget, listDecodingAdditionalErrors)
         val conditions = RecoveryDisplayConditions(trustKnownPayloadCount, displayLockManualBits,
             formatConstraint, maxFormatMismatches, maxKnownDataEccMismatches, partialBitSearchLimit, listDecodingAdditionalErrors)
-        val manual = FormatEditPolicy.manualValues(matrix) + manualEdits
+        val manual = buildMap {
+            for (y in 0 until matrix.dimension) for (x in 0 until matrix.dimension) {
+                val cell = matrix[x, y]
+                if (cell.source.isUserEdit) put(Coord(x, y), cell.value)
+            }
+        } + manualEdits
         // Share one immutable summary across potentially thousands of retained derivations.
         val publishedDiagnostic by lazy(LazyThreadSafetyMode.NONE) { run.searchDiagnostic() }
         fun annotate(candidate: RecoveryCandidate): RecoveryCandidate {
