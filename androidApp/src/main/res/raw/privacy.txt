@@ -1,6 +1,6 @@
 Privacy
 
-QR Repair processes QR codes locally on your Android device. The app does not request the Internet permission.
+QRevy processes QR codes locally on your Android device. The app does not request the Internet permission.
 
 • Import automatically saves your work and its source image, including images created from matrix text, before you press Save or Repair. Saving or repairing updates that work.
 • At most 20 saved sessions are kept. New imports count toward this limit. When it is exceeded, the least recently saved work and its source image are automatically deleted. The limit also applies on startup.

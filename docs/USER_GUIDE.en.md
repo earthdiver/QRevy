@@ -1,4 +1,4 @@
-# QR Repair User Guide
+# QRevy User Guide
 
 English | [Japanese](USER_GUIDE.ja.md)
 
@@ -129,7 +129,7 @@ The progress dialog shows elapsed time. **Interrupt repair** stops the repair an
 2. Open **Show diagnostics** to check input disagreements, search completion, and omitted-candidate notices. One candidate or a completed search does not prove the result is correct.
 3. Open **Show detailed results** and tap cells to inspect their values and reasons. **Show same codeword** highlights the cells in the same codeword. **Data** shows bits and hexadecimal (**HEX**) values.
 
-See [Understanding repair results](RECOVERY_RESULT_FIELDS.en.md) for result statuses, field meanings, cell colors, and comparison examples. [How QR Repair recovers a code](RECOVERY_STRATEGY.en.md) explains the search order and when each method applies.
+See [Understanding repair results](RECOVERY_RESULT_FIELDS.en.md) for result statuses, field meanings, cell colors, and comparison examples. [How QRevy recovers a code](RECOVERY_STRATEGY.en.md) explains the search order and when each method applies.
 
 **Unmask** changes the display only; it does not change the saved QR image. For an unsuccessful attempt with no verified mask, the displayed image may stay unchanged. Turn it off to return to the normal view.
 

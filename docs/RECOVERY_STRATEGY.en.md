@@ -1,8 +1,8 @@
-# How QR Repair recovers a code
+# How QRevy recovers a code
 
 English | [Japanese](RECOVERY_STRATEGY.ja.md)
 
-QR Repair combines image readings, QR structure, and error correction to find candidates for a damaged Model 2 QR code. This document explains how those sources of information work together and where uncertainty remains.
+QRevy combines image readings, QR structure, and error correction to find candidates for a damaged Model 2 QR code. This document explains how those sources of information work together and where uncertainty remains.
 
 For operations and settings, see the [User Guide](USER_GUIDE.en.md). For diagnostic labels and cell evidence, see [Understanding repair results](RECOVERY_RESULT_FIELDS.en.md).
 
@@ -76,7 +76,7 @@ Enabling that option makes the single-segment interpretation and its required en
 
 ### List decoding: GS, KV, and Wu
 
-List decoding can return several RS-consistent answers beyond the range where conventional RS finds a single answer. QR Repair chooses methods according to the available information, estimated work, and memory. They are not a fixed sequence of three increasingly stronger decoders.
+List decoding can return several RS-consistent answers beyond the range where conventional RS finds a single answer. QRevy chooses methods according to the available information, estimated work, and memory. They are not a fixed sequence of three increasingly stronger decoders.
 
 | Method | Role in this app |
 | --- | --- |

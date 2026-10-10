@@ -43,7 +43,7 @@ class AppStyleTest {
             try {
                 val activity = next.get()
                 assertTrue(AppStylePreferences.isModern(activity))
-                assertEquals("QR Repair", find(activity.window.decorView, "QR Repair")!!.text.toString())
+                assertEquals("QRevy", find(activity.window.decorView, "QRevy")!!.text.toString())
                 if (launch == 1) {
                     choose(activity, AppStyle.CLASSIC)
                     assertTrue(AppStylePreferences.isModern(activity))

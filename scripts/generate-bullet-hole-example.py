@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate irregular bullet-like holes and verify conditional priority recovery.
+"""Generate irregular bullet-like holes and verify priority recovery.
 
 Requires Pillow, qrcode, zxing-cpp, and separately supplied local evaluation tools.
 The input is a TEXT matrix; the PNG is its visualization, not an image-import test.
@@ -38,9 +38,28 @@ def text_matrix(matrix):
     return [''.join('1' if cell else '0' for cell in row) for row in matrix]
 
 
-PAYLOAD = 'QR Repair: recovered QR.'
+PAYLOAD = 'QRevy app: recovered QR.'
 HOLES = [(2, 2, 5.5), (2, 26, 5.5), (11, 1, 5.5), (11, 12, 5.5),
          (13, 24, 6.5), (22, 14, 3.5), (16, 7, 3.5), (17, 16, 3.5), (28, 28, 2.05)]
+CORE_SOURCE_ROOTS = ('shared/src/commonMain',
+                     'androidApp/src/main/java/io/github/earthdiver/qrrepair/core',
+                     'androidApp/src/main/java/com/google/zxing/qrcode/decoder')
+
+
+def core_source_sha256():
+    """Hash sorted UTF-8 '<file SHA-256>  <repository-relative path>\n' lines.
+
+    Include every Kotlin and Java source under CORE_SOURCE_ROOTS. Hash file bytes as-is;
+    use POSIX paths and LF manifest separators, independent of Git history.
+    """
+    repository = Path(__file__).resolve().parent.parent
+    sources = sorted((path for root in CORE_SOURCE_ROOTS
+                      for path in (repository / root).rglob('*') if path.suffix in {'.kt', '.java'}),
+                     key=lambda path: path.relative_to(repository).as_posix())
+    assert sources
+    manifest = ''.join(f'{hashlib.sha256(path.read_bytes()).hexdigest()}  '
+                       f'{path.relative_to(repository).as_posix()}\n' for path in sources)
+    return hashlib.sha256(manifest.encode('utf-8')).hexdigest()
 
 
 def edge_radius(angle, hole_index, radius):
@@ -125,7 +144,10 @@ def main():
     data_ecc_missing = sum(basic[y][x] == '?' for y, x in data_positions)
     remainder_missing = sum(basic[y][x] == '?' for y, x in remainder_positions)
     assert data_ecc_missing + remainder_missing + function_missing == sum(row.count('?') for row in basic)
-    settings = dict(kind='matrix', limit='EXACT', fine=False, partialBits=12,
+    # Match the documented UI settings: ECC M, automatic mask, and the default
+    # six-bit format-error limit. The harness must apply these explicit settings.
+    settings = dict(kind='matrix', ecc='M', mask=None, formatBits=6,
+                    limit='EXACT', fine=False, partialBits=12,
                     budgetMs=60000, maxChecks=100000000, edits=[])
     with tempfile.TemporaryDirectory(prefix='qr-priority-examples-') as temporary:
         work = Path(temporary)
@@ -145,17 +167,24 @@ def main():
         runs = [json.loads(line) for line in (work / 'runs.jsonl').read_text().splitlines()]
         for name, lines in variants:
             group = [r for r in runs if r['id'] == name]
+            assert len(group) == 3
+            assert {r['request']['action'] for r in group} == {'single-off', 'single-on', 'ordinary-unknowns'}
             selected = next(r for r in group if r['request']['action'] == 'single-on')
             for r in group:
                 assert r['status'] == 'completed'
-                if r is not selected:
+                d = r['searchDiagnostic']
+                assert d['solverCompleteness'] == 'COMPLETE' and d['coverageComplete']
+                assert not d['unsearched'] and not d['incompleteReasons']
+                assert not d['candidatesOmitted'] and not d['derivationsOmitted']
+                if r['request']['action'] == 'ordinary-unknowns':
                     assert not r['candidates'], (name, r['request']['action'])
             assert len(selected['candidates']) == 1
             c = selected['candidates'][0]
-            d = selected['searchDiagnostic']
+            single_off = next(r for r in group if r['request']['action'] == 'single-off')
+            assert len(single_off['candidates']) == 1
+            assert all(single_off['candidates'][0][key] == c[key]
+                       for key in ['version', 'ecc', 'mask', 'text', 'codewords', 'dataBytes'])
             assert c['text'] == PAYLOAD and c['knownMismatches'] == 0
-            assert d['solverCompleteness'] == 'COMPLETE' and d['coverageComplete']
-            assert not d['unsearched'] and not d['incompleteReasons'] and not d['candidatesOmitted']
             assert c['constraintForcedByUserSetting']
             assert c['singleSegmentStatus'] == 'APPLIED_WITH_PRIORITY_HEADER'
             assert any(b['bitConstraintSolved'] for b in c['actualBlockMethods'])
@@ -209,12 +238,13 @@ def main():
                           unknown_cells=sum(row.count('?') for row in lines), priority_cells=len(assignments),
                           total_cells=n*n, settings=settings, comparison=comparison, selected_candidate=c,
                           reader_results=readers, original_matrix_match=True,
-                          core_commit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+                          core_source_sha256=core_source_sha256(),
                           generator_packages={p: importlib.metadata.version(p) for p in ['qrcode', 'Pillow', 'zxing-cpp']},
                           sha256={p: hashlib.sha256((output / p).read_bytes()).hexdigest()
                                   for p in ['before.txt', 'before.png', 'input-matrix.png', 'after.txt', 'after.png', 'details.png']})
             (output / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
-            print(f"Verified {name}: {result['unknown_cells']} '?' + {len(assignments)} '*'; OFF=0, ON=1 exact candidate.")
+            counts = ', '.join(f"{r['action']}={r['candidate_count']}" for r in comparison)
+            print(f"Verified {name}: {result['unknown_cells']} '?' + {len(assignments)} '*'; {counts}.")
 
 
 if __name__ == '__main__':

@@ -425,7 +425,7 @@ class MainActivity : Activity() {
             val candidate = recoveryState.selectedRecovery?.takeIf { it.payloadParsed } ?: return@button
             val value = candidate.text ?: return@button
             (getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
-                .setPrimaryClip(android.content.ClipData.newPlainText("QR Repair", value))
+                .setPrimaryClip(android.content.ClipData.newPlainText("QRevy", value))
             Toast.makeText(this, ui("内容をコピーしました。", "Content copied."), Toast.LENGTH_SHORT).show()
         }
         resultSavePngButton = button(getString(R.string.save_png)) { startSavePng() }.apply {
@@ -565,7 +565,7 @@ class MainActivity : Activity() {
         }
         modernHeader = LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
-            addView(label(getString(R.string.app_name), 28f).apply {
+            addView(label(getString(R.string.app_name), 32f).apply {
                 PrecisionStyle.brand(this)
             }, LinearLayout.LayoutParams(0, -2, 1f))
             addView(button(getString(R.string.menu)) { showAppMenu() })
@@ -577,7 +577,7 @@ class MainActivity : Activity() {
             addView(label(ui("●  端末内で処理", "●  Processed on your device"), 12f).apply {
                 setTextColor(PrecisionStyle.MUTED)
             })
-            addView(label(ui("QRコードの救世主", "A lifesaver for QR codes"), 30f).apply {
+            addView(label(ui("QRコードの救世主", "A lifesaver for QR codes"), 22f).apply {
                 setTextColor(PrecisionStyle.TEXT)
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             })
@@ -2828,7 +2828,7 @@ class MainActivity : Activity() {
         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "image/png"
-            putExtra(Intent.EXTRA_TITLE, "qr-repaired.png")
+            putExtra(Intent.EXTRA_TITLE, "QRevy-repaired.png")
         }
         startActivityForResult(intent, REQ_SAVE_PNG)
     }
@@ -2851,7 +2851,7 @@ class MainActivity : Activity() {
         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "image/png"
-            putExtra(Intent.EXTRA_TITLE, "qr-repair-debug-input.png")
+            putExtra(Intent.EXTRA_TITLE, "QRevy-debug-input.png")
         }
         startActivityForResult(intent, REQ_SAVE_DIAGNOSTIC_INPUT)
     }

@@ -9,7 +9,7 @@ struct ContentView: View {
             VStack(spacing: 16) {
                 Image(systemName: "qrcode.viewfinder")
                     .font(.system(size: 64))
-                Text("QR Repair")
+                Text("QRevy")
                     .font(.title)
                 Text("Shared core v\(core.version())")
                     .font(.headline)
@@ -22,7 +22,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
             .padding()
-            .navigationTitle("QR Repair")
+            .navigationTitle("QRevy")
         }
     }
 }

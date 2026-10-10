@@ -2,7 +2,7 @@
 
 [English](PRIVACY.md) | 日本語
 
-QR Repairは、Android端末内でQRコードを処理します。インターネット権限は要求しません。
+QRevyは、Android端末内でQRコードを処理します。インターネット権限は要求しません。
 
 ## 保存した作業
 

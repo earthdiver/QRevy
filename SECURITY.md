@@ -6,7 +6,7 @@ A recovered QR code is not proof that its content matches the original. Independ
 
 ## Saved files
 
-QR Repair checks saved work before loading it, including file size, content integrity, settings, and cell values. Invalid work files are set aside rather than loaded.
+QRevy checks saved work before loading it, including file size, content integrity, settings, and cell values. Invalid work files are set aside rather than loaded.
 
 Source images are checked separately for integrity, dimensions, and file size. Missing images and images that fail these checks are not used. Valid work history and QR matrices can still be opened without the source image.
 

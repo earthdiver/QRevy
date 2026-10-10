@@ -1,8 +1,8 @@
-# QR Repair
+# QRevy
 
 English | [Japanese](README.ja.md)
 
-QR Repair is an offline Android app for recovering damaged QR codes that ordinary readers cannot decode. Adjust the image and individual cells, compare recovery candidates, and inspect the reasons for each repair.
+QRevy is an offline Android app for recovering damaged QR codes that ordinary readers cannot decode. Adjust the image and individual cells, compare recovery candidates, and inspect the reasons for each repair.
 
 Supports Android 8.0 or later and QR Code Model 2, versions 1–40. Model 1, Micro QR, and rMQR are unsupported. This repository does not include a complete iOS app.
 
@@ -39,7 +39,7 @@ Install the generated Android package (APK), `build/androidApp/outputs/apk/debug
 ## Reference
 
 - [Understanding repair results](docs/RECOVERY_RESULT_FIELDS.en.md)
-- [How QR Repair recovers a code](docs/RECOVERY_STRATEGY.en.md)
+- [How QRevy recovers a code](docs/RECOVERY_STRATEGY.en.md)
 - [Text matrix templates](templates/text-matrices/README.md)
 - [Privacy](PRIVACY.md)
 - [Security](SECURITY.md)

@@ -1,8 +1,8 @@
-# QR Repair
+# QRevy
 
 [English](README.md) | 日本語
 
-QR Repairは、通常のリーダーでは読み取れない損傷したQRコードを、オフラインで修復するAndroidアプリです。画像や個々のセルを調整し、修復候補を比較して、修復の根拠を確認できます。
+QRevyは、通常のリーダーでは読み取れない損傷したQRコードを、オフラインで修復するAndroidアプリです。画像や個々のセルを調整し、修復候補を比較して、修復の根拠を確認できます。
 
 Android 8.0以降と、QR Code Model 2のバージョン1～40に対応しています。Model 1、Micro QR、rMQRには対応していません。このリポジトリには完成したiOSアプリは含まれていません。
 
@@ -39,7 +39,7 @@ bash scripts/verify-wrapper.sh
 ## 関連文書
 
 - [修復結果の見方](docs/RECOVERY_RESULT_FIELDS.ja.md)
-- [QR Repairの修復の仕組み](docs/RECOVERY_STRATEGY.ja.md)
+- [QRevyの修復の仕組み](docs/RECOVERY_STRATEGY.ja.md)
 - [テキスト行列テンプレート](templates/text-matrices/README.ja.md)
 - [プライバシー](PRIVACY.ja.md)
 - [セキュリティ](SECURITY.ja.md)

@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">QR Repair</string>
+    <string name="app_name">QRevy</string>
     <string name="menu">メニュー</string>
     <string name="history">履歴</string>
     <string name="exit">終了</string>
@@ -45,8 +45,8 @@
     <string name="language_english">English</string>
     <string name="language_japanese">日本語</string>
     <string name="close">閉じる</string>
-    <string name="version_info_format">QR Repair\nバージョン %1$s\nビルド番号 %2$d</string>
-    <string name="start_title">QR Repair を開始</string>
+    <string name="version_info_format">QRevy\nバージョン %1$s\nビルド番号 %2$d</string>
+    <string name="start_title">QRevy を開始</string>
     <string name="start_message">画像、カメラ、または0/1/?/*のテキスト行列から入力してください。修復前設定は読込後に利用できます。</string>
     <string name="import_image">画像を読み込む</string>
     <string name="import_text_matrix_long">テキスト行列を読み込む</string>

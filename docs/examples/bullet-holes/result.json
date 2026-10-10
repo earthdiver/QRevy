@@ -3,7 +3,7 @@
   "version": 3,
   "ecc": "M",
   "mask": 3,
-  "payload": "QR Repair: recovered QR.",
+  "payload": "QRevy app: recovered QR.",
   "holes": [
     [
       2,
@@ -70,6 +70,9 @@
   "total_cells": 841,
   "settings": {
     "kind": "matrix",
+    "ecc": "M",
+    "mask": null,
+    "formatBits": 6,
     "limit": "EXACT",
     "fine": false,
     "partialBits": 12,
@@ -81,24 +84,36 @@
     {
       "action": "single-off",
       "single": false,
-      "candidate_count": 0,
+      "candidate_count": 1,
       "search_diagnostic": {
         "inputBlocker": null,
         "candidateRejections": [],
-        "acceptedCandidate": false,
+        "acceptedCandidate": true,
         "unresolvedCalculations": true,
         "unsearched": false,
         "incompleteReasons": [],
         "completedSteps": 35,
         "coverageComplete": true,
         "solverCompleteness": "COMPLETE",
-        "candidateCalculations": 34,
+        "candidateCalculations": 2,
         "candidatesOmitted": false,
         "derivationsOmitted": false,
         "singleSegmentStatuses": [],
-        "priorityHeaderHypotheses": []
+        "priorityHeaderHypotheses": [],
+        "listDecoding": null,
+        "listDecodingExecution": {
+          "stages": {
+            "WITHOUT_ASSIGNMENTS": [
+              "ZERO_ERROR_LIMIT"
+            ],
+            "ADDITIONAL": [
+              "ZERO_ERROR_LIMIT"
+            ]
+          },
+          "newTrials": {}
+        }
       },
-      "failure_reason": "RS_BIT_SPACE_LIMIT"
+      "failure_reason": null
     },
     {
       "action": "single-on",
@@ -111,10 +126,10 @@
         "unresolvedCalculations": true,
         "unsearched": false,
         "incompleteReasons": [],
-        "completedSteps": 34,
+        "completedSteps": 35,
         "coverageComplete": true,
         "solverCompleteness": "COMPLETE",
-        "candidateCalculations": 4,
+        "candidateCalculations": 1,
         "candidatesOmitted": false,
         "derivationsOmitted": false,
         "singleSegmentStatuses": [
@@ -126,7 +141,19 @@
         "priorityHeaderHypotheses": [
           "00011001100001",
           "00010001100001"
-        ]
+        ],
+        "listDecoding": null,
+        "listDecodingExecution": {
+          "stages": {
+            "WITHOUT_ASSIGNMENTS": [
+              "ZERO_ERROR_LIMIT"
+            ],
+            "ADDITIONAL": [
+              "ZERO_ERROR_LIMIT"
+            ]
+          },
+          "newTrials": {}
+        }
       },
       "failure_reason": "RS_BIT_SPACE_LIMIT"
     },
@@ -141,7 +168,7 @@
         "unresolvedCalculations": false,
         "unsearched": false,
         "incompleteReasons": [],
-        "completedSteps": 2,
+        "completedSteps": 3,
         "coverageComplete": true,
         "solverCompleteness": "COMPLETE",
         "candidateCalculations": 0,
@@ -150,7 +177,19 @@
         "singleSegmentStatuses": [
           "INCOMPLETE_HEADER"
         ],
-        "priorityHeaderHypotheses": []
+        "priorityHeaderHypotheses": [],
+        "listDecoding": null,
+        "listDecodingExecution": {
+          "stages": {
+            "WITHOUT_ASSIGNMENTS": [
+              "ZERO_ERROR_LIMIT"
+            ],
+            "ADDITIONAL": [
+              "ZERO_ERROR_LIMIT"
+            ]
+          },
+          "newTrials": {}
+        }
       },
       "failure_reason": "SINGLE_SEGMENT_CONDITION_UNAVAILABLE"
     }
@@ -159,20 +198,20 @@
     "version": 3,
     "ecc": "M",
     "mask": 3,
-    "text": "QR Repair: recovered QR.",
+    "text": "QRevy app: recovered QR.",
     "score": -200332,
     "codewords": [
       65,
       133,
       21,
-      34,
-      5,
       38,
       87,
+      103,
+      146,
       6,
-      22,
-      151,
-      35,
+      23,
+      7,
+      3,
       162,
       7,
       38,
@@ -206,45 +245,45 @@
       17,
       236,
       17,
-      99,
-      16,
-      121,
-      101,
-      143,
-      138,
-      190,
+      127,
       13,
-      61,
-      41,
-      41,
-      51,
       88,
-      105,
-      204,
-      19,
-      23,
-      15,
-      141,
-      130,
+      117,
+      213,
+      238,
+      137,
+      122,
+      240,
       115,
-      191,
-      87,
-      254,
-      12,
-      92
+      123,
+      77,
+      147,
+      205,
+      232,
+      112,
+      220,
+      248,
+      156,
+      132,
+      221,
+      0,
+      253,
+      157,
+      58,
+      39
     ],
     "dataBytes": [
       65,
       133,
       21,
-      34,
-      5,
       38,
       87,
+      103,
+      146,
       6,
-      22,
-      151,
-      35,
+      23,
+      7,
+      3,
       162,
       7,
       38,
@@ -336,7 +375,8 @@
         "blockIndex": 0,
         "bitConstraintSolved": true,
         "rsMargin": null,
-        "guessedBits": 0
+        "guessedBits": 0,
+        "listDecoding": null
       }
     ],
     "searchDiagnostic": {
@@ -346,10 +386,10 @@
       "unresolvedCalculations": true,
       "unsearched": false,
       "incompleteReasons": [],
-      "completedSteps": 34,
+      "completedSteps": 35,
       "coverageComplete": true,
       "solverCompleteness": "COMPLETE",
-      "candidateCalculations": 4,
+      "candidateCalculations": 1,
       "candidatesOmitted": false,
       "derivationsOmitted": false,
       "singleSegmentStatuses": [
@@ -361,7 +401,19 @@
       "priorityHeaderHypotheses": [
         "00011001100001",
         "00010001100001"
-      ]
+      ],
+      "listDecoding": null,
+      "listDecodingExecution": {
+        "stages": {
+          "WITHOUT_ASSIGNMENTS": [
+            "ZERO_ERROR_LIMIT"
+          ],
+          "ADDITIONAL": [
+            "ZERO_ERROR_LIMIT"
+          ]
+        },
+        "newTrials": {}
+      }
     }
   },
   "reader_results": {
@@ -387,18 +439,18 @@
     }
   },
   "original_matrix_match": true,
-  "core_commit": "9f73d310454710e5ffe93ad43aea7733137e59ec",
+  "core_source_sha256": "1c3639f4c5c6ff2d755e6baefefba05898dabbb307b4cafdc0f6daed8cfbf75d",
   "generator_packages": {
     "qrcode": "8.2",
     "Pillow": "11.3.0",
     "zxing-cpp": "3.1.1"
   },
   "sha256": {
-    "before.txt": "bba713aa3fd2fd88c0b042d29b01bf1a080cb264ce6e7599c7441b14c14d07dd",
-    "before.png": "791074cbbc353794d843d3dad00d770d53ef72a98bea7721ac3be16260ef4a31",
-    "input-matrix.png": "402c6fd1158791380bd59494e6beee84c457681ad5f58a6e937a78ccf9b2925a",
-    "after.txt": "065ad082582b3cd1e3bd32bd25279b94c47ef68918d2fdc2f7b235d424e97f92",
-    "after.png": "64cdd21a0a71a97aa35185996f0f59698deb63658b40870aa9ce987c5872db5d",
-    "details.png": "01c2585475ccf73b3d68b0b2c4173be3a84354fcdf14df3c0c965a61b59bac0c"
+    "before.txt": "d3eca2062fe26f6c3749007b82ed6f62234568c9dca1afd6706f8a1488e6e9ad",
+    "before.png": "d1419140d7614fe485d5d700ba91c0425cbbdab59b76763d996f043e255a3629",
+    "input-matrix.png": "0a0458d3b65a607de2551fa669a6bd85224bcb0c2f2fb64154d0172fc2bb5e3e",
+    "after.txt": "5af6efa3a61b53e655b5d8f9f0d91f936f60d4c5ca2ece66888660198f620480",
+    "after.png": "749250568459f92ca3279e127c361a512ab6e4065a8c60f1bc91c46b2ce1a518",
+    "details.png": "8a8cdad51fa37e638f726a66d99d3375fc163b65a56906b62fcfe253b5db1646"
   }
 }

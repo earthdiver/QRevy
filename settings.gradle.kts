@@ -14,6 +14,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "QrRepair"
+rootProject.name = "QRevy"
 include(":androidApp")
 include(":shared")

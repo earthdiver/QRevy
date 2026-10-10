@@ -1,7 +1,7 @@
-# AGENTS.md — QR Repair
+# AGENTS.md — QRevy
 
 ## Mission
-Maintain and extend QR Repair, an offline Android/iOS-oriented tool for recovering damaged QR codes while preserving explainability, reproducibility, and user control.
+Maintain and extend QRevy, an offline Android/iOS-oriented tool for recovering damaged QR codes while preserving explainability, reproducibility, and user control.
 
 ## Repository layout
 - `androidApp/`: Android application, CameraX UI, ZXing adapter, session persistence, Android-specific tests.

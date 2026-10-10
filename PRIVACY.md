@@ -2,7 +2,7 @@
 
 English | [Japanese](PRIVACY.ja.md)
 
-QR Repair processes QR codes locally on your Android device. The app does not request the Internet permission.
+QRevy processes QR codes locally on your Android device. The app does not request the Internet permission.
 
 ## Saved work
 

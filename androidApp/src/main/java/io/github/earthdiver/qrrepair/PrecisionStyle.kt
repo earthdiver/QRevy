@@ -36,7 +36,7 @@ internal object PrecisionStyle {
     fun brand(view: TextView) {
         view.setTextColor(TEXT)
         view.typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
-        view.textSize = 28f
+        view.textSize = 32f
         view.letterSpacing = .025f
         view.includeFontPadding = false
     }

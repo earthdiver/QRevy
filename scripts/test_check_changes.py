@@ -105,7 +105,7 @@ class GitChangeSelectionTest(unittest.TestCase):
         self.root = Path(temp.name)
         self.git("init", "-q", "-b", "main")
         # These disposable fixture commits are synthetic test data, not maintainer commits.
-        self.git("config", "user.name", "QR Repair test")
+        self.git("config", "user.name", "QRevy test")
         self.git("config", "user.email", "test@example.invalid")
         self.git("config", "commit.gpgsign", "false")
         self.git("config", "core.hooksPath", "/dev/null")

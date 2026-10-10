@@ -2,7 +2,7 @@
 
 English | [Japanese](RECOVERY_RESULT_FIELDS.ja.md)
 
-This reference explains results, diagnostics, and the reasons shown for repaired cells. For operations and settings, see the [User Guide](USER_GUIDE.en.md). For search order and when each method applies, see [How QR Repair recovers a code](RECOVERY_STRATEGY.en.md).
+This reference explains results, diagnostics, and the reasons shown for repaired cells. For operations and settings, see the [User Guide](USER_GUIDE.en.md). For search order and when each method applies, see [How QRevy recovers a code](RECOVERY_STRATEGY.en.md).
 
 QR codes include error-correction code (ECC) data to help recover damaged content. Passing Reed–Solomon (RS) checks alone does not prove that the recovered content is correct. Confidence scores are explanatory measures, not probabilities. Independently verify important recovered information.
 
@@ -28,7 +28,7 @@ The distinct-content count compares encoded QR data, rather than displayed text 
 
 Validated candidates can be selected and exported even if final decoding fails. Copying content and candidate-agreement analysis require decoded candidates. The content display and copy action preserve the complete recovered string, including when it is also interpreted as a web address (URL) or contact.
 
-For a message split across several QR symbols (**Structured Append**), the result shows this symbol's position, total count, and parity (a value used to check the complete message). QR Repair handles individual symbols; it does not join them or verify the complete message's parity.
+For a message split across several QR symbols (**Structured Append**), the result shows this symbol's position, total count, and parity (a value used to check the complete message). QRevy handles individual symbols; it does not join them or verify the complete message's parity.
 
 ## Search completion and omissions
 

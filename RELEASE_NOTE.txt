@@ -1,15 +1,19 @@
-QR Repair v0.18.0
+QRevy v0.19.0
 
-QR Repair helps recover damaged QR codes offline on your Android device.
+QRevy, formerly QR Repair, helps recover damaged QR codes offline on your Android device.
 
 WHAT'S NEW
-• Added list decoding to search for additional candidates beyond the usual error-correction range. Candidates must still pass the selected constraints and QR validity checks before their content is reported as decoded.
-• List decoding has a cumulative limit of 10 minutes per repair, excluding ordinary search time. Interrupting a repair or reaching a time or memory limit keeps candidates already found.
-• Text matrix import assigns Finder roles and orientation automatically when the square finder patterns and surrounding structure identify a clear orientation. If roles remain unassigned, assign at least one before repair.
-• Result diagnostics explain how candidates were recovered and whether the search finished, stopped early, or left calculations unresolved.
+• Renamed QR Repair to QRevy, emphasized the app name above its home-screen description, and unified the icon colors with the home screen.
+• Improved list-decoding search order and reuse of completed calculations. Added a GS/Wu extension limit of +1, +2, or +3 codewords per RS block; the default is +1.
+• Increased the cumulative list-decoding time allowance from 5 to 10 minutes per repair, excluding ordinary search time. Candidates already found remain available after interruption or a time or memory limit.
+• Reorganized candidate comparison and diagnostics to clarify recovery methods, input agreement, and incomplete searches. Improved consistency between displayed cells and their repair evidence.
+• Improved import progress, saved-state restoration, language switching, grid alignment after image rotation, and brush editing. Corrected FNC1 second-position decoding and rejection of out-of-range ECI values.
+• Streamlined the English and Japanese documentation, including explanations of recovery methods, result interpretation, and limitations.
 
 SAVED WORK COMPATIBILITY
-Work is saved in QR Repair's QRR format, version 26. Versions 23–26 can be opened. Earlier files use defaults for settings they do not contain: a 12-bit partial-bit search limit for version 23, mirrored input off for versions 23–24, and a list-decoding extension of +1 for versions 23–25. Other format versions cannot be opened.
+The Android app identity and saved-work location are unchanged. Install as an update to keep existing work.
+This release writes QRR format version 26 and reads versions 23–26. Earlier files use defaults for settings they do not contain: a 12-bit partial-bit search limit for version 23, mirrored input off for versions 23–24, and a list-decoding extension of +1 for versions 23–25. Other format versions cannot be opened.
+QR Repair v0.18.0 writes format version 25 and cannot open work saved or resaved in version 26.
 
 REQUIREMENTS AND LIMITS
 • Android 8.0 or later; QR Code Model 2, versions 1–40.
