@@ -15,9 +15,9 @@ data class ListDecodingSummary(
     val hardRadiusTrials: Map<Int, Int> = emptyMap(),
     val completedHardRadiusTrials: Map<Int, Int> = emptyMap(),
 ) {
-    fun description(): String = localizedText(
-        "リスト復号の試行回数（探索全体）: ${trials}回、所要時間: ${if (elapsedMillis < 1000) "1秒未満" else "${elapsedMillis / 1000}秒"}",
-        "List-decoding trials (whole search): $trials, elapsed time: ${if (elapsedMillis < 1000) "less than 1s" else "${elapsedMillis / 1000}s"}",
+    fun description(wholeSearch: Boolean = true): String = localizedText(
+        "リスト復号の試行回数（${if (wholeSearch) "探索全体" else "対象の入力"}）: ${trials}回、所要時間: ${if (elapsedMillis < 1000) "1秒未満" else "${elapsedMillis / 1000}秒"}",
+        "List-decoding trials (${if (wholeSearch) "whole search" else "identified input"}): $trials, elapsed time: ${if (elapsedMillis < 1000) "less than 1s" else "${elapsedMillis / 1000}s"}",
     )
 
     fun mismatchLimitDescription(): String = if (mismatchLimits.isEmpty()) "" else localizedText(
@@ -25,9 +25,9 @@ data class ListDecodingSummary(
         "Known-bit mismatch limit for list decoding: ${mismatchLimits.sorted().joinToString()} bits",
     )
 
-    fun calculationDetails(): String = localizedText(
-        "リスト復号の計算（探索全体）",
-        "List-decoding calculations (whole search)",
+    fun calculationDetails(wholeSearch: Boolean = true): String = localizedText(
+        "リスト復号の計算（${if (wholeSearch) "探索全体" else "対象の入力"}）",
+        "List-decoding calculations (${if (wholeSearch) "whole search" else "identified input"})",
     ) + mismatchLimitDescription().takeIf { it.isNotBlank() }?.let { "\n$it" }.orEmpty() + radiusDetails() +
         (if (reusedTrials == 0) "" else localizedText(
             "\n完了済みのブロック復号結果を再利用: ${reusedTrials}回（新規の試行回数には含めません）",

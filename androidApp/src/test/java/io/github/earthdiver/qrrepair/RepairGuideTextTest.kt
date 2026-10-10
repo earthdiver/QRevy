@@ -259,7 +259,7 @@ class RepairGuideTextTest {
                 originalErasedCodewords = 14, erasedCodewords = 14)
             summary()
             view("diagnosticToggle").performClick()
-            assertEquals(View.VISIBLE, view("diagnosticDetailsText").visibility)
+            assertEquals(View.VISIBLE, diagnosticView(activity).visibility)
 
             setFailure(activity, 0, RsBitDiagnostic(70, 56, null, 0, emptyList()))
             summary()
@@ -272,7 +272,7 @@ class RepairGuideTextTest {
             assertEquals(View.VISIBLE, view("contentPreviewText").visibility)
             assertTrue(view("contentPreviewText").text.contains(if (language == AppLanguage.JAPANESE)
                 "不一致上限（0bit）を満たすRS候補はありません" else "No RS candidate meets the zero-bit mismatch limit"))
-            assertFalse(view("diagnosticDetailsText").text.contains(if (language == AppLanguage.JAPANESE)
+            assertFalse(diagnosticText(activity).contains(if (language == AppLanguage.JAPANESE)
                 "ECCシンボル数: 17" else "ECC symbols in the failing block: 17"))
             assertEquals(View.VISIBLE, view("diagnosticToggle").visibility)
             assertFalse(guide(activity).text.contains(if (language == AppLanguage.JAPANESE)
@@ -283,7 +283,7 @@ class RepairGuideTextTest {
             summary()
             assertEquals(View.VISIBLE, view("contentPreviewText").visibility)
             assertEquals(View.VISIBLE, view("diagnosticToggle").visibility)
-            assertTrue(view("diagnosticDetailsText").text.isNotEmpty())
+            assertTrue(diagnosticText(activity).isNotEmpty())
             activity.finish()
         }
     }
@@ -315,15 +315,16 @@ class RepairGuideTextTest {
                 assertFalse(status.contains("成功"))
                 assertFalse(status.contains("succeeded"))
                 assertTrue(status.contains("1"))
-                val content = text("diagnosticDetailsText")
+                expandDiagnosticSections(activity)
+                val content = diagnosticText(activity)
                 assertTrue(content.contains(if (language == AppLanguage.JAPANESE) "一致を確認できません" else "agreement cannot be checked"))
                 assertTrue(content.contains(if (language == AppLanguage.JAPANESE) "データ・ECC領域" else "Data/ECC region"))
                 assertTrue(content.contains(if (language == AppLanguage.JAPANESE) "形式情報の不一致上限: 0bit" else "Format mismatch limit: 0 bits"))
                 assertTrue(content.contains(if (language == AppLanguage.JAPANESE) "固定セルの0/1と矛盾する復元候補を許容する（仮指定セルと同じ扱い）: ${if (locked) "OFF" else "ON"}" else "Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells): ${if (locked) "OFF" else "ON"}"))
                 if (!locked && limit == 0) assertTrue(content.contains(if (language == AppLanguage.JAPANESE)
                     "この領域の入力済み0/1は変更していません" else "in that region"))
-                if (trust) assertTrue(text("diagnosticDetailsText").contains(if (language == AppLanguage.JAPANESE)
-                    "指定した仮定に基づく構造補完・変更: 12bit" else "Structure-based filling/changes under the specified assumption: 12 bits"))
+                if (trust) assertTrue(diagnosticText(activity).contains(if (language == AppLanguage.JAPANESE)
+                    "指定した仮定に基づく補完・変更: 12bit" else "Filling/changes under the specified assumption: 12 bits"))
             }
             summary(listOf(candidate("one", byteArrayOf(1)), candidate("one", byteArrayOf(1))))
             assertTrue(text("statusText").contains(if (language == AppLanguage.JAPANESE) "データコード語列はすべて同じ" else "all have the same data codeword sequence"))
@@ -410,7 +411,7 @@ class RepairGuideTextTest {
                 assertEquals(io.github.earthdiver.qrrepair.core.DiagnosticStage.entries, report.sections.map { it.stage })
                 assertTrue(report.sections[1].details.contains(if (language == AppLanguage.JAPANESE)
                     "この形式で入力済みの白黒を保つ組合せのすべて" else "Unknown bits with the same value"))
-                assertFalse(text("diagnosticDetailsText").contains(report.sections[1].details))
+                assertFalse(diagnosticText(activity).contains(report.sections[1].details))
 
             }
             // Missing geometry/analysis must not leave empty headings or blank paragraphs.

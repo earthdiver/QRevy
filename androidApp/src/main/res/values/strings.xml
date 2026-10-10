@@ -13,6 +13,12 @@
     <string name="select_result_truncated">Select candidate (top %1$d of %2$d)</string>
     <string name="show_diagnostic_details">Show diagnostics</string>
     <string name="hide_diagnostic_details">Hide diagnostics</string>
+    <string name="diagnostic_open_section">Show details: %1$s</string>
+    <string name="diagnostic_close_section">Hide details: %1$s</string>
+    <string name="diagnostic_open_record">Show: %1$s</string>
+    <string name="diagnostic_close_record">Hide: %1$s</string>
+    <string name="diagnostic_expanded">Expanded</string>
+    <string name="diagnostic_collapsed">Collapsed</string>
     <string name="data">Data</string>
     <string name="save_png">Save PNG</string>
     <string name="select_image_prompt">Select an image.</string>

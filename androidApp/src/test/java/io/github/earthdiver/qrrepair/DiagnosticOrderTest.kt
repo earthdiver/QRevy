@@ -3,8 +3,6 @@ package io.github.earthdiver.qrrepair
 import android.app.AlertDialog
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.text.Spanned
-import android.text.style.ClickableSpan
 import android.view.View
 import android.widget.TextView
 import com.google.zxing.EncodeHintType
@@ -76,8 +74,8 @@ class DiagnosticOrderTest {
             try {
                 install(controller.get(), Fixture("exact-bit", matrix, results, null))
                 val report = field<RecoveryDiagnosticReport>(controller.get(), "diagnosticReport")
-                val input = report.sections.single { it.stage == DiagnosticStage.INPUT }.summary
-                val processing = report.sections.single { it.stage == DiagnosticStage.PROCESSING }.summary
+                val input = report.sections.single { it.stage == DiagnosticStage.INPUT }.details
+                val processing = report.sections.single { it.stage == DiagnosticStage.PROCESSING }.details
                 assertTrue(input.contains(if (language == AppLanguage.JAPANESE) "同じデータ・ECCコード語" else "same data/ECC codewords"))
                 assertTrue(processing.contains(if (language == AppLanguage.JAPANESE) "この候補を得た方法" else "Methods used to obtain this candidate"))
                 assertTrue(processing.contains(if (language == AppLanguage.JAPANESE) "部分bit制約" else "Partial-bit constraints"))
@@ -145,9 +143,9 @@ class DiagnosticOrderTest {
                 val ja = language == AppLanguage.JAPANESE
                 val report = field<RecoveryDiagnosticReport>(activity, "diagnosticReport")
                 assertTrue(report.sections[0].summary.contains(if (ja) "不一致上限: 0bit" else "mismatch limit: 0 bits"))
-                assertTrue(report.sections[2].summary.contains(if (ja) "不一致上限が0bit" else "mismatch limit is zero"))
-                assertFalse(report.sections[2].summary.contains(if (ja) "RS候補はありません" else "No RS candidate"))
-                assertTrue(report.sections[3].summary.contains(if (ja) "探索を完了しました" else "Search completed"))
+                assertTrue(report.sections[2].details.contains(if (ja) "不一致上限が0bit" else "mismatch limit is zero"))
+                assertFalse(report.sections[2].details.contains(if (ja) "RS候補はありません" else "No RS candidate"))
+                assertTrue(report.overview.contains(if (ja) "探索を完了しました" else "Search completed"))
                 val content = field<TextView>(activity, "contentPreviewText").text.toString()
                 assertFalse(content.contains(if (ja) "RS候補はありません" else "No RS candidate"))
                 assertFalse(report.fullText().contains(if (ja) "この試行" else "this attempt"))
@@ -181,10 +179,10 @@ class DiagnosticOrderTest {
                     assertFalse(settings.summary.contains(if (language == AppLanguage.JAPANESE) "との不一致" else "mismatches against"))
                     assertFalse(input.summary.contains(if (language == AppLanguage.JAPANESE) "不一致" else "mismatches"))
                     assertFalse(input.summary.contains(if (language == AppLanguage.JAPANESE) "上限で" else "stopped"))
-                    assertTrue(verification.summary.contains(if (language == AppLanguage.JAPANESE) "比較" else "compar"))
+                    assertTrue(verification.details.contains(if (language == AppLanguage.JAPANESE) "比較" else "compar"))
                     if (fixture.name == "rs") {
                         assertTrue(input.details.contains(if (language == AppLanguage.JAPANESE) "通常RSでは入力済みの誤りを訂正できる" else "Conventional RS may still correct"))
-                        assertTrue(verification.summary.contains(if (language == AppLanguage.JAPANESE) "192bitとの不一致 3bit" else "3 mismatching bits out of 192"))
+                        assertTrue(verification.details.contains(if (language == AppLanguage.JAPANESE) "192bitとの不一致 3bit" else "3 mismatching bits out of 192"))
                     }
                     if (fixture.name == "structure") {
                         assertTrue(processing.summary.contains(if (language == AppLanguage.JAPANESE) "仮定" else "assumption"))
@@ -192,27 +190,33 @@ class DiagnosticOrderTest {
                     }
                     if (fixture.name == "insufficient") {
                         assertTrue(input.summary.contains("192"))
-                        assertTrue(verification.summary.contains(if (language == AppLanguage.JAPANESE) "見つかりませんでした" else "was found"))
+                        assertTrue(verification.details.contains(if (language == AppLanguage.JAPANESE) "見つかりませんでした" else "was found"))
                         assertFalse(report.fullText().contains(if (language == AppLanguage.JAPANESE) "この試行" else "this attempt"))
-                        assertFalse(verification.summary.contains(if (language == AppLanguage.JAPANESE) "データ・ECC領域: 比較対象" else "Data/ECC region: 0 mismatching"))
+                        assertFalse(verification.details.contains(if (language == AppLanguage.JAPANESE) "データ・ECC領域: 比較対象" else "Data/ECC region: 0 mismatching"))
                     }
-                    val view = field<TextView>(activity, "diagnosticDetailsText")
+                    val view = diagnosticView(activity)
                     if (view.visibility != View.VISIBLE) field<View>(activity, "diagnosticToggle").performClick()
-                    val initial = view.text.toString()
+                    val initial = diagnosticText(view)
+                    assertTrue(initial.contains(report.overview))
                     assertFalse(initial.contains(if (language == AppLanguage.JAPANESE) "同じ値になる不明bit" else "Unknown bits with the same value"))
-                    val spans = (view.text as Spanned).getSpans(0, view.text.length, ClickableSpan::class.java)
-                    assertTrue(spans.isNotEmpty())
-                    spans.forEach { it.onClick(view) }
-                    val expanded = view.text.toString()
+                    expandDiagnosticSections(activity)
+                    val expanded = diagnosticText(view)
                     val positions = report.sections.map { expanded.indexOf(it.stage.title()) }
                     assertTrue(positions.zipWithNext().all { (a, b) -> a >= 0 && a < b })
-                    if (input.details.isNotBlank()) {
-                        assertTrue(expanded.contains(input.details))
-                        assertTrue(expanded.indexOf(input.details) < positions[2])
+                    assertTrue(expanded.contains(input.details))
+                    assertTrue(expanded.indexOf(input.details) < positions[2])
+                    DiagnosticStage.entries.forEach { stage ->
+                        val button = diagnosticButton(view, stage)
+                        if (button.visibility == View.VISIBLE) button.performClick()
                     }
-                    spans.forEach { it.onClick(view) }
-                    assertEquals(initial, view.text.toString())
-                    if (style == AppStyle.MODERN) render(view, "diagnostic-${fixture.name}-${language.tag}")
+                    assertEquals(initial, diagnosticText(view))
+                    if (style == AppStyle.MODERN) {
+                        render(view, "diagnostic-${fixture.name}-${language.tag}")
+                        view.showReport(report, resetExpanded = true)
+                        diagnosticButton(view, DiagnosticStage.PROCESSING).performClick()
+                        render(view, "processing-${fixture.name}-${language.tag}")
+                        diagnosticButton(view, DiagnosticStage.PROCESSING).performClick()
+                    }
                 }
             } finally { controller.pause().stop().destroy() }
         }
@@ -231,10 +235,10 @@ class DiagnosticOrderTest {
             ))
             assertEquals(DiagnosticStage.entries, report.sections.map { it.stage })
             val verification = report.sections.last()
-            assertTrue(verification.summary.contains(if (japanese) "3件保持" else "Retained 3"))
-            assertTrue(verification.summary.contains(if (japanese) "未探索" else "remain unchecked"))
+            assertTrue(verification.details.contains(if (japanese) "3件保持" else "Retained 3"))
+            assertTrue(verification.details.contains(if (japanese) "未探索" else "remain unchecked"))
             assertTrue(verification.details.contains("HELLO"))
-            assertEquals(candidate.displayConditions.runSettingsText(), report.sections.first().summary)
+            assertEquals(candidate.displayConditions.runSettingsText(), report.sections.first().details)
         }
     }
 
@@ -248,7 +252,7 @@ class DiagnosticOrderTest {
             assertFalse(settings.contains("ECC M"))
             val initial = initialDiagnosticSection(1, ErrorCorrectionLevel.M, 2, "", RsBitDiagnostic(16, 16, 0, 16, emptyList()), 16, 2)
             assertTrue(initial.summary.contains("ECC M"))
-            assertTrue(initial.details.contains(if (language == AppLanguage.JAPANESE) "この形式と入力済みの白黒を正しいもの" else "assumes the format and entered values are correct"))
+            assertTrue(initial.details.contains(if (language == AppLanguage.JAPANESE) "参考診断のQRバージョン・ECC・マスクと修復開始時の0/1を正しいもの" else "assumes its QR version/ECC/mask and the 0/1 values at repair start are correct"))
         }
     }
 

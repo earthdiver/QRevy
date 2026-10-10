@@ -74,12 +74,6 @@ class ResultScreenTrialTest {
         } finally { controller.pause().stop().destroy() }
     }
 
-    private fun expandDiagnosticDetails(activity: MainActivity) {
-        val view = field<TextView>(activity, "diagnosticDetailsText")
-        (view.text as android.text.Spanned).getSpans(0, view.text.length, android.text.style.ClickableSpan::class.java)
-            .forEach { it.onClick(view) }
-    }
-
     @Test fun resultOrderAndClipboardPreserveFullContentInBothAppearancesAndLanguages() {
         val payload = "ABC-123 " + "1234567890".repeat(24)
         val (matrix, result) = candidate(payload)
@@ -89,7 +83,7 @@ class ResultScreenTrialTest {
             val explanation = field<TextView>(activity, "resultExplanationText")
             val actions = field<View>(activity, "resultActions")
             val savePng = field<View>(activity, "resultSavePngButton")
-            val diagnostics = field<TextView>(activity, "diagnosticDetailsText")
+            val diagnostics = diagnosticView(activity)
             val parent = preview.parent as ViewGroup
             assertTrue(preview.text.contains(payload))
             val styled = preview.text as android.text.Spanned
@@ -107,8 +101,8 @@ class ResultScreenTrialTest {
             assertEquals(payload, clipboard.primaryClip!!.getItemAt(0).text.toString())
             field<Button>(activity, "diagnosticToggle").performClick()
             assertEquals(View.VISIBLE, diagnostics.visibility)
-            expandDiagnosticDetails(activity)
-            assertTrue(diagnostics.text.contains(if (language == AppLanguage.JAPANESE) "符号化モード" else "Encoding mode"))
+            expandDiagnosticSections(activity)
+            assertTrue(diagnosticText(diagnostics).contains(if (language == AppLanguage.JAPANESE) "符号化モード" else "Encoding mode"))
         }
     }
 
@@ -119,9 +113,8 @@ class ResultScreenTrialTest {
         val (_, other) = candidate("CONFIG:T:TYPE;S:Trial2;P:other-value;;")
         withActivity(AppStyle.MODERN, AppLanguage.JAPANESE) { activity ->
             install(activity, matrix, listOf(result, other))
-            expandDiagnosticDetails(activity)
-            for (name in listOf("contentPreviewText", "diagnosticDetailsText")) {
-                val text = field<TextView>(activity, name).text.toString()
+            expandDiagnosticSections(activity)
+            for (text in listOf(field<TextView>(activity, "contentPreviewText").text.toString(), diagnosticText(activity))) {
                 assertTrue(text.contains(payload))
                 assertFalse(text.contains("パスワード: "))
                 assertFalse(text.contains("••••••••"))
@@ -165,6 +158,9 @@ class ResultScreenTrialTest {
             refresh(activity)
             assertEquals(2, state.selectableEntries.size)
             assertTrue(field<TextView>(activity, "statusText").text.contains("2件"))
+            val verification = diagnosticButton(diagnosticView(activity), DiagnosticStage.VERIFICATION)
+            verification.performClick()
+            assertTrue(diagnosticText(activity).contains("ABC-123"))
             val targetIndex = state.recoveries.indexOfFirst { it.text == "ABC-128" }
             fun radios(view: View): List<android.widget.RadioButton> = when (view) {
                 is android.widget.RadioButton -> listOf(view)
@@ -172,6 +168,10 @@ class ResultScreenTrialTest {
                 else -> emptyList()
             }
             radios(field(activity, "upperResultSelector"))[targetIndex].performClick()
+            assertEquals(activity.getString(R.string.diagnostic_close_section, DiagnosticStage.VERIFICATION.label()), verification.text.toString())
+            assertTrue(diagnosticText(activity).contains("候補${targetIndex + 1}の診断（保持中2件）"))
+            assertTrue(diagnosticText(activity).contains("ABC-128"))
+            assertFalse(diagnosticText(activity).contains("ABC-123"))
             assertEquals("ABC-128", state.selectedRecovery!!.text)
             assertEquals(50.0, state.geometry!!.finderCenterX, 0.0)
             assertTrue(state.samplingProfile!!.inverted)
@@ -191,6 +191,10 @@ class ResultScreenTrialTest {
             assertFalse(snapshot.selectedQr.matches(first))
             assertEquals(true, snapshot.samplingInverted)
             assertEquals(1, field<RecoverySessionHistory>(activity, "sessionHistory").entries.size)
+            state.showResults(accumulator.result())
+            refresh(activity)
+            assertEquals(activity.getString(R.string.diagnostic_open_section, DiagnosticStage.VERIFICATION.label()), verification.text.toString())
+            assertFalse(diagnosticText(activity).contains("ABC-128"))
         }
     }
 
@@ -284,12 +288,14 @@ class ResultScreenTrialTest {
         withActivity(AppStyle.MODERN, AppLanguage.JAPANESE) { activity ->
             install(activity, matrix, listOf(result.copy(text = null)))
             assertTrue(field<TextView>(activity, "statusText").text.contains("QRのデータ形式を確認しました"))
-            assertTrue(field<TextView>(activity, "diagnosticDetailsText").text.contains("指定条件を満たす修復候補が1件見つかりました。"))
+            assertTrue(diagnosticText(activity).contains("候補1の診断（保持中1件）"))
             assertEquals(View.GONE, field<View>(activity, "resultCopyButton").visibility)
             assertEquals(View.VISIBLE, field<View>(activity, "resultSavePngButton").visibility)
             install(activity, matrix, listOf(result.copy(text = null, dataBytes = byteArrayOf(0x01))))
             assertTrue(field<TextView>(activity, "contentPreviewText").text.contains("誤り訂正の条件は満たしましたが"))
-            assertTrue(field<TextView>(activity, "diagnosticDetailsText").text.contains("調べた範囲では修復候補は見つかりませんでした。"))
+            assertTrue(diagnosticText(activity).contains("QR構造: 確認できませんでした"))
+            assertTrue(diagnosticText(activity).contains("最終復号: 成功していません"))
+            assertFalse(diagnosticText(activity).contains("候補1の診断"))
             assertEquals(View.GONE, field<View>(activity, "resultCopyButton").visibility)
             assertEquals(View.GONE, field<View>(activity, "resultSavePngButton").visibility)
             MainActivity::class.java.getDeclaredMethod("startSavePng").apply { isAccessible = true }.invoke(activity)

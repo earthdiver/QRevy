@@ -95,13 +95,13 @@ class SingleSegmentProcessingTest {
                 AppLanguageManager.applyTo(RuntimeEnvironment.getApplication(), language)
                 val report = RecoveryDiagnosticPresenter(language == AppLanguage.JAPANESE).failureReport(failure, null,
                     RecoveryDiagnosticContext(0, outcome.searchDiagnostic.unsearched, false, outcome.searchDiagnostic, null))
-                val processing = report.sections.single { it.stage == DiagnosticStage.PROCESSING }.summary
+                val processing = report.sections.single { it.stage == DiagnosticStage.PROCESSING }.details
                 assertTrue(processing.contains(status.trialDescription()))
                 assertTrue(processing.contains("ON"))
                 val off = RecoveryDiagnosticPresenter(language == AppLanguage.JAPANESE).failureReport(
                     failure.copy(displayConditions = failure.displayConditions!!.copy(trustSingleSegment = false)), null,
                     RecoveryDiagnosticContext(0, true, false, outcome.searchDiagnostic, null))
-                assertFalse(off.sections[2].summary.contains(status.trialDescription()))
+                assertFalse(off.sections[2].details.contains(status.trialDescription()))
             }
         }
     }
@@ -228,7 +228,7 @@ class SingleSegmentProcessingTest {
             outcome.searchDiagnostic.singleSegmentStatuses)
         val report = RecoveryDiagnosticPresenter(true).failureReport(requireNotNull(outcome.failure), null,
             RecoveryDiagnosticContext(0, true, false, outcome.searchDiagnostic, null))
-        assertFalse(report.sections[2].summary.contains(SingleSegmentStatus.COUNT_EXCEEDS_CAPACITY.trialDescription()))
+        assertFalse(report.sections[2].details.contains(SingleSegmentStatus.COUNT_EXCEEDS_CAPACITY.trialDescription()))
         var stopped = false
         val interrupted = RecoveryEngine().recoverWithDiagnostics(input, trustKnownPayloadCount = true,
             formatConstraint = format, maxKnownDataEccMismatches = 0, stopRequested = { stopped },

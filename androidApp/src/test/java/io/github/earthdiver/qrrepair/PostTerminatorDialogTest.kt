@@ -115,7 +115,7 @@ class PostTerminatorDialogTest {
                 assertEquals(View.VISIBLE, button.visibility)
                 val panel = button.parent as ViewGroup
                 assertTrue(panel.indexOfChild(field<View>(activity, "diagnosticToggle")) < panel.indexOfChild(button))
-                assertTrue(panel.indexOfChild(field<View>(activity, "diagnosticDetailsText")) < panel.indexOfChild(button))
+                assertTrue(panel.indexOfChild(field<View>(activity, "diagnosticView")) < panel.indexOfChild(button))
                 assertFalse(button.parent === actions)
                 button.performClick()
                 field<ExecutorService>(activity, "ioExecutor").submit {}.get(10, TimeUnit.SECONDS)

@@ -8,7 +8,6 @@ import io.github.earthdiver.qrrepair.core.resultExplanationText
 import io.github.earthdiver.qrrepair.core.candidatePairComparisonText
 import io.github.earthdiver.qrrepair.ui.ResultActionRow
 import io.github.earthdiver.qrrepair.core.RecoveryDiagnosticReport
-import io.github.earthdiver.qrrepair.core.DiagnosticStage
 import io.github.earthdiver.qrrepair.core.codewordCellText
 import io.github.earthdiver.qrrepair.core.RecoveryInputBlocker
 import io.github.earthdiver.qrrepair.core.identity
@@ -193,14 +192,11 @@ class MainActivity : Activity() {
     private lateinit var guideText: TextView
     private lateinit var contentPreviewText: TextView
     private lateinit var diagnosticToggle: Button
-    private lateinit var diagnosticDetailsText: TextView
+    private lateinit var diagnosticView: RecoveryDiagnosticView
     private var diagnosticDetailsExpanded = false
     private var diagnosticReport: RecoveryDiagnosticReport? = null
-    private var diagnosticInput: QrMatrix? = null
-    private var diagnosticGeometry: GridGeometry? = null
-    private var diagnosticRecoveries: List<RecoveryCandidate>? = null
+    private var diagnosticResults: Any? = null
     private var comparisonCandidate: RecoveryCandidate? = null
-    private val expandedDiagnosticStages = mutableSetOf<DiagnosticStage>()
     private lateinit var resultExplanationText: TextView
     private lateinit var resultNextAction: Button
     private lateinit var resultActions: LinearLayout
@@ -393,7 +389,7 @@ class MainActivity : Activity() {
     private fun configureResultLayout() {
         val panel = contentPreviewText.parent as LinearLayout
         val ordered = listOf(statusText, upperResultSelector, contentPreviewText, guideText,
-            mainResultSelector, diagnosticToggle, diagnosticDetailsText)
+            mainResultSelector, diagnosticToggle, diagnosticView)
         ordered.forEach { panel.removeView(it) }
         if (modernStyle) panel.removeView(workspacePreview)
         panel.addView(statusText)
@@ -454,7 +450,7 @@ class MainActivity : Activity() {
         panel.addView(resultActions)
         panel.addView(mainResultSelector)
         panel.addView(diagnosticToggle)
-        panel.addView(diagnosticDetailsText)
+        panel.addView(diagnosticView)
         panel.addView(resultTailAnalysisButton, LinearLayout.LayoutParams(-2, -2))
     }
 
@@ -518,14 +514,8 @@ class MainActivity : Activity() {
         }.apply { visibility = View.GONE }
         resultContent.addView(diagnosticToggle)
 
-        diagnosticDetailsText = TextView(this).apply {
-            textSize = 12f
-            setPadding(dp(8), dp(6), dp(8), dp(8))
-            setTextIsSelectable(true)
-            setBackgroundColor(0xFFF4F4F4.toInt())
-            visibility = View.GONE
-        }
-        resultContent.addView(diagnosticDetailsText)
+        diagnosticView = RecoveryDiagnosticView(this).apply { visibility = View.GONE }
+        resultContent.addView(diagnosticView)
 
         root.addView(ScrollView(this).apply {
             isFillViewport = true
@@ -641,13 +631,8 @@ class MainActivity : Activity() {
             refreshDiagnosticDetailsVisibility()
         }.apply { visibility = View.GONE }
         workspacePanel.addView(diagnosticToggle)
-        diagnosticDetailsText = label("", 12f).apply {
-            setPadding(dp(16), dp(12), dp(16), dp(12))
-            setTextIsSelectable(true)
-            PrecisionStyle.panel(this)
-            visibility = View.GONE
-        }
-        workspacePanel.addView(diagnosticDetailsText)
+        diagnosticView = RecoveryDiagnosticView(this).apply { visibility = View.GONE }
+        workspacePanel.addView(diagnosticView)
         content.addView(homePanel)
         content.addView(workspacePanel)
         root.addView(ScrollView(this).apply {
@@ -699,7 +684,7 @@ class MainActivity : Activity() {
             if (!hasAttempt) {
                 resultExplanationText.visibility = View.GONE
                 resultNextAction.visibility = View.GONE
-                setDiagnosticDetails(null)
+                clearDiagnosticDetails()
                 if (::resultImageLabel.isInitialized) resultImageLabel.visibility = View.GONE
             }
         }
@@ -758,72 +743,37 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun setDiagnosticDetails(text: String?) {
-        if (!::diagnosticToggle.isInitialized || !::diagnosticDetailsText.isInitialized) return
+    private fun clearDiagnosticDetails() {
+        if (!::diagnosticToggle.isInitialized || !::diagnosticView.isInitialized) return
         diagnosticReport = null
-        diagnosticInput = null
-        diagnosticGeometry = null
-        diagnosticRecoveries = null
-        expandedDiagnosticStages.clear()
-        diagnosticDetailsText.text = text.orEmpty()
-        diagnosticToggle.visibility = if (text.isNullOrBlank()) View.GONE else View.VISIBLE
+        diagnosticResults = null
+        diagnosticView.clear()
+        diagnosticToggle.visibility = View.GONE
         refreshDiagnosticDetailsVisibility()
     }
 
     private fun setDiagnosticReport(report: RecoveryDiagnosticReport) {
-        if (diagnosticInput !== recoveryState.sourceMatrix || diagnosticGeometry != recoveryState.geometry ||
-            diagnosticRecoveries !== recoveryState.recoveries) expandedDiagnosticStages.clear()
-        diagnosticInput = recoveryState.sourceMatrix
-        diagnosticGeometry = recoveryState.geometry
-        diagnosticRecoveries = recoveryState.recoveries
+        // Candidate selection may change the sampled input without starting a new run.
+        val results = recoveryState.recoveries.takeIf { it.isNotEmpty() }
+            ?: recoveryState.failure ?: recoveryState.autoResult
+        diagnosticView.showReport(report, resetExpanded = diagnosticResults !== results)
+        diagnosticResults = results
         diagnosticReport = report
-        renderDiagnosticReport()
         diagnosticToggle.visibility = View.VISIBLE
         refreshDiagnosticDetailsVisibility()
     }
 
-    private fun renderDiagnosticReport() {
-        val report = diagnosticReport ?: return
-        val text = android.text.SpannableStringBuilder()
-        text.append(report.scope)
-        report.sections.forEach { section ->
-            text.append("\n\n")
-            val heading = text.length
-            text.append(section.stage.title())
-            text.setSpan(android.text.style.StyleSpan(Typeface.BOLD), heading, text.length,
-                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            text.append('\n').append(section.summary)
-            if (section.details.isNotBlank()) {
-                text.append("\n\n")
-                val start = text.length
-                val expanded = section.stage in expandedDiagnosticStages
-                text.append(if (expanded) "▾ " else "▸ ").append(section.stage.detailsTitle())
-                text.setSpan(object : android.text.style.ClickableSpan() {
-                    override fun onClick(widget: View) {
-                        if (!expandedDiagnosticStages.add(section.stage)) expandedDiagnosticStages.remove(section.stage)
-                        renderDiagnosticReport()
-                    }
-                    override fun updateDrawState(ds: android.text.TextPaint) {
-                        super.updateDrawState(ds)
-                        if (modernStyle) ds.color = PrecisionStyle.ACCENT
-                    }
-                }, start, text.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                if (expanded) text.append('\n').append(section.details)
-            }
-        }
-        diagnosticDetailsText.textSize = 14f
-        diagnosticDetailsText.text = text
-        diagnosticDetailsText.movementMethod = android.text.method.LinkMovementMethod.getInstance()
-    }
-
     private fun refreshDiagnosticDetailsVisibility() {
-        if (!::diagnosticToggle.isInitialized || !::diagnosticDetailsText.isInitialized) return
-        val hasDetails = diagnosticDetailsText.text.isNotBlank()
+        if (!::diagnosticToggle.isInitialized || !::diagnosticView.isInitialized) return
         diagnosticToggle.text = getString(
             if (diagnosticDetailsExpanded) R.string.hide_diagnostic_details
             else R.string.show_diagnostic_details,
         )
-        diagnosticDetailsText.visibility = if (hasDetails && diagnosticDetailsExpanded) View.VISIBLE else View.GONE
+        diagnosticToggle.minHeight = dp(48)
+        diagnosticToggle.minimumHeight = dp(48)
+        androidx.core.view.ViewCompat.setStateDescription(diagnosticToggle,
+            getString(if (diagnosticDetailsExpanded) R.string.diagnostic_expanded else R.string.diagnostic_collapsed))
+        diagnosticView.visibility = if (diagnosticReport != null && diagnosticDetailsExpanded) View.VISIBLE else View.GONE
         refreshTailAnalysisVisibility()
     }
 
@@ -1539,7 +1489,7 @@ class MainActivity : Activity() {
             } else recoveryState.clear()
             refreshMainResultSelector()
             contentPreviewText.text = getString(R.string.no_content_preview)
-            setDiagnosticDetails(null)
+            clearDiagnosticDetails()
             statusText.text = ui("作業は読み込みました。形式情報の指定を修正してから修復してください。", "Work loaded. Correct the format selections before repairing.")
             guideText.text = it.message(changeRejected = false)
             onRestored?.invoke()
@@ -1551,7 +1501,7 @@ class MainActivity : Activity() {
             historyRestoreToken = null
             recoveryState.clear()
             contentPreviewText.text = getString(R.string.no_content_preview)
-            setDiagnosticDetails(null)
+            clearDiagnosticDetails()
             refreshMainResultSelector()
             if (p != null) {
                 guideText.text = ui("案内: 元画像の状態です。「修復する」から設定を確認して修復してください。", "Guide: This is the source image. Review settings under “Repair” to continue.")
@@ -1887,7 +1837,7 @@ class MainActivity : Activity() {
             }
             else -> {
                 contentPreviewText.text = getString(R.string.no_content_preview)
-                setDiagnosticDetails(null)
+                clearDiagnosticDetails()
             }
         }
     }
@@ -1926,6 +1876,8 @@ class MainActivity : Activity() {
         candidatesOmitted = recoveryState.candidatesOmitted,
         searchDiagnostic = recoveryState.searchDiagnostic,
         selectedEntry = recoveryState.autoResult?.entries?.getOrNull(recoveryState.recoveryIndex),
+        selectedCandidateNumber = decodedRecoveryEntries().indexOfFirst { it.first == recoveryState.recoveryIndex }
+            .takeIf { it >= 0 }?.plus(1),
     )
 
     private fun candidateDiagnosticReport(candidate: RecoveryCandidate, geometry: GridGeometry?): RecoveryDiagnosticReport =
@@ -2263,7 +2215,7 @@ class MainActivity : Activity() {
                     recoveryState.clear()
                     guideText.text = ui("案内: 修復前設定で閾値・反転・グリッドを確認してください。", "Guide: Review the threshold, polarity, and grid in the pre-repair settings.")
                     contentPreviewText.text = getString(R.string.no_content_preview)
-                    setDiagnosticDetails(null)
+                    clearDiagnosticDetails()
                     refreshMainResultSelector()
                     statusText.text = ui("画像 ${p.bitmap.width}×${p.bitmap.height}px。修復前設定を確認してください。", "Image ${p.bitmap.width}×${p.bitmap.height}px. Review the pre-repair settings.")
                     if (standardResult != null) {
@@ -2309,7 +2261,7 @@ class MainActivity : Activity() {
             workspaceTitle.text = ui("読み取り結果", "Scan result")
             workspaceStep.text = ui("03 結果  /  内容を確認", "03 Result  /  Review content")
         }
-        setDiagnosticDetails(null)
+        clearDiagnosticDetails()
         refreshMainResultSelector()
         val rawHex = result.rawBytes?.joinToString(" ") { "%02X".format(it.toInt() and 0xFF) }.orEmpty()
         val display = buildString {
@@ -2394,7 +2346,7 @@ class MainActivity : Activity() {
             workGeneration.incrementAndGet()
             refreshMainResultSelector()
             contentPreviewText.text = getString(R.string.no_content_preview)
-            setDiagnosticDetails(null)
+            clearDiagnosticDetails()
             statusText.text = ui("形式情報の指定が矛盾しているため、修復を開始できません。", "Repair cannot start: format selections conflict.")
             showFormatEditError(it, changeRejected = false)
             return

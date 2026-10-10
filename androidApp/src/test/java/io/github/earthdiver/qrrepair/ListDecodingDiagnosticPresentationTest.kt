@@ -76,9 +76,9 @@ class ListDecodingDiagnosticPresentationTest {
                 presenter.failureReport(failure, null, context(diagnostic, 0)))
             for (report in reports) {
                 val processing = report.sections.single { it.stage == DiagnosticStage.PROCESSING }
-                assertFalse(processing.summary.contains(if (ja) "仮置きなしのリスト復号" else "List decoding without tentative assignments"))
-                assertFalse(processing.summary.contains(if (ja) "仮置きも使うリスト復号" else "List decoding including tentative assignments"))
-                assertFalse(processing.summary.contains(if (ja) "試行回数" else "List-decoding trials"))
+                assertFalse(processing.details.contains(if (ja) "仮置きなしのリスト復号" else "List decoding without tentative assignments"))
+                assertFalse(processing.details.contains(if (ja) "仮置きも使うリスト復号" else "List decoding including tentative assignments"))
+                assertFalse(processing.details.contains(if (ja) "試行回数" else "List-decoding trials"))
             }
         }
     }
@@ -101,13 +101,13 @@ class ListDecodingDiagnosticPresentationTest {
         val label = if (ja) "仮置きなしのリスト復号" else "List decoding without tentative assignments"
         for (report in reports) {
             val processing = report.sections.single { it.stage == DiagnosticStage.PROCESSING }
-            assertTrue(processing.summary.contains(if (ja) "試行回数（探索全体）: 0回" else "trials (whole search): 0"))
-            assertFalse(processing.summary.contains(label))
+            assertTrue(processing.details.contains(if (ja) "試行回数（探索全体）: 0回" else "trials (whole search): 0"))
+            assertFalse(processing.details.contains(label))
             val totals = requireNotNull(diagnostic.listDecoding).description()
-            assertTrue(processing.summary.endsWith("$totals\n\n$explanation"))
-            assertEquals(1, processing.summary.split(explanation).size - 1)
-            assertFalse(processing.summary.contains(if (ja) "仮置きも使うリスト復号" else "List decoding including tentative assignments"))
-            assertFalse(processing.summary.contains(if (ja) "適用条件の確認" else "eligibility checks"))
+            assertTrue(processing.details.contains("$totals\n\n$explanation"))
+            assertEquals(1, processing.details.split(explanation).size - 1)
+            assertFalse(processing.details.contains(if (ja) "仮置きも使うリスト復号" else "List decoding including tentative assignments"))
+            assertFalse(processing.details.contains(if (ja) "適用条件の確認" else "eligibility checks"))
         }
     }
 
@@ -132,9 +132,9 @@ class ListDecodingDiagnosticPresentationTest {
             combined.listDecodingExecution.stages[ListDecodingStage.ADDITIONAL])
         val processing = RecoveryDiagnosticPresenter(ja).candidateReport(candidate(false), null, context(combined))
             .sections.single { it.stage == DiagnosticStage.PROCESSING }
-        assertTrue(processing.summary.contains(if (ja) "複数の読み取り試行" else "across sampled inputs"))
-        assertTrue(processing.summary.contains(if (ja) "適用条件を満たさないため" else "eligibility conditions were not met"))
-        assertTrue(processing.summary.contains(if (ja) "試行回数（探索全体）: 1回" else "trials (whole search): 1"))
+        assertTrue(processing.details.contains(if (ja) "複数の読み取り試行" else "across sampled inputs"))
+        assertTrue(processing.details.contains(if (ja) "適用条件を満たさないため" else "eligibility conditions were not met"))
+        assertTrue(processing.details.contains(if (ja) "試行回数（探索全体）: 1回" else "trials (whole search): 1"))
         assertTrue(processing.details.contains(requireNotNull(combined.listDecoding).calculationDetails()))
     }
 
@@ -163,11 +163,11 @@ class ListDecodingDiagnosticPresentationTest {
                     val completed = if (ja) "適用条件の確認と、適用可能な探索を実行しました"
                         else "eligibility checks and applicable searches completed"
                     val totals = requireNotNull(diagnostic.listDecoding).description()
-                    assertTrue(processing.summary.endsWith("$totals\n\n$initialLabel: $completed"))
+                    assertTrue(processing.details.contains("$totals\n\n$initialLabel: $completed"))
                 }
-                assertEquals(initialTrials > 0, processing.summary.contains(initialLabel))
-                assertEquals(additionalTrials > 0, processing.summary.contains(additionalLabel))
-                assertTrue(processing.summary.contains(requireNotNull(diagnostic.listDecoding).description()))
+                assertEquals(initialTrials > 0, processing.details.contains(initialLabel))
+                assertEquals(additionalTrials > 0, processing.details.contains(additionalLabel))
+                assertTrue(processing.details.contains(requireNotNull(diagnostic.listDecoding).description()))
                 assertEquals(processing.summary.trim(), processing.summary)
                 assertTrue(processing.details.contains(if (ja) "復号結果を再利用: 1回" else "results reused: 1"))
                 assertTrue(processing.details.contains(stops.stopReasonsText()))
@@ -181,7 +181,7 @@ class ListDecodingDiagnosticPresentationTest {
             incompleteReasons = setOf(SearchIncompleteReason.LIST_DECODING_TIME_LIMIT))
         val report = RecoveryDiagnosticPresenter(ja).candidateReport(candidate(false), null, context(diagnostic))
         assertFalse(report.fullText().contains(if (ja) "仮置きも使うリスト復号" else "List decoding including tentative assignments"))
-        assertTrue(report.sections.single { it.stage == DiagnosticStage.VERIFICATION }.summary.contains(
+        assertTrue(report.overview.contains(
             if (ja) "リスト復号による追加探索は時間切れで終了しました" else "List-decoding fallback ended at the time limit"))
     }
 
@@ -197,26 +197,26 @@ class ListDecodingDiagnosticPresentationTest {
             val failure = RecoveryFailure(ErrorCorrectionLevel.L, 0, 30, 0, 30, RecoveryFailureStage.REED_SOLOMON)
             for (report in listOf(presenter.candidateReport(candidate(false), null, context(diagnostic)),
                 presenter.failureReport(failure, null, context(diagnostic, 0)))) {
-                val summary = report.sections.single { it.stage == DiagnosticStage.PROCESSING }.summary
-                assertTrue(summary.contains(requireNotNull(diagnostic.listDecoding).description()))
-                assertFalse(summary.contains(if (ja) "適用条件を満たさないため" else "eligibility conditions were not met"))
+                val details = report.sections.single { it.stage == DiagnosticStage.PROCESSING }.details
+                assertTrue(details.contains(requireNotNull(diagnostic.listDecoding).description()))
+                assertFalse(details.contains(if (ja) "適用条件を満たさないため" else "eligibility conditions were not met"))
             }
         }
     }
 
-    @Test fun candidateSummaryKeepsMethodsAndWholeSearchCountsSeparateFromCalculationDetails() = inBothLanguages { ja ->
+    @Test fun candidateSummaryNamesItsMethodsWhileDetailsKeepSearchWideCountsAndCalculations() = inBothLanguages { ja ->
         val report = RecoveryDiagnosticPresenter(ja).candidateReport(candidate(), null, context(wholeSearch))
         val processing = report.sections.single { it.stage == DiagnosticStage.PROCESSING }
-        assertTrue(processing.summary.contains(if (ja) "この候補を得た方法" else "Methods used to obtain this candidate"))
-        assertTrue(processing.summary.contains(if (ja) "ブロック1: Guruswami–Sudan（GS）法によるリスト復号" else "Block 1: Guruswami–Sudan (GS) list decoding"))
-        assertTrue(processing.summary.contains(if (ja) "3回、所要時間: 3秒" else "3, elapsed time: 3s"))
+        assertTrue(processing.details.contains(if (ja) "この候補を得た方法" else "Methods used to obtain this candidate"))
+        assertTrue(processing.details.contains(if (ja) "ブロック1\n方法: Guruswami–Sudan（GS）法によるリスト復号" else "Block 1\nMethod: Guruswami–Sudan (GS) list decoding"))
+        assertTrue(processing.details.contains(if (ja) "3回、所要時間: 3秒" else "3, elapsed time: 3s"))
         val limit = if (ja) "既知ビットの不一致上限:" else "Known-bit mismatch limit"
         assertFalse(processing.summary.contains(limit))
         assertTrue(processing.details.contains(limit))
         assertFalse(processing.summary.contains(if (ja) "11ビット" else "11 bits"))
         assertTrue(processing.details.contains(if (ja) "11ビット" else "11 bits"))
         for (detail in if (ja) listOf("訂正半径", "残存消失", "多重度", "Y次数")
-            else listOf("radius", "erasures", "multiplicity", "Y degree")) {
+            else listOf("radius", "erasures", "Multiplicity", "Y degree")) {
             assertFalse(processing.summary.contains(detail))
             assertTrue(processing.details.contains(detail))
         }
@@ -235,7 +235,7 @@ class ListDecodingDiagnosticPresentationTest {
         val diagnostic = wholeSearch.copy(listDecoding = summary)
         val processing = RecoveryDiagnosticPresenter(ja).candidateReport(candidate(method = ListDecoderMethod.WU),
             null, context(diagnostic)).sections.single { it.stage == DiagnosticStage.PROCESSING }
-        assertTrue(processing.summary.contains(if (ja) "試行回数（探索全体）: 1回" else "trials (whole search): 1"))
+        assertTrue(processing.details.contains(if (ja) "試行回数（探索全体）: 1回" else "trials (whole search): 1"))
         assertTrue(processing.details.contains(if (ja) "復号結果を再利用: 3回" else "results reused: 3"))
         assertTrue(processing.details.contains(if (ja) "新規の試行回数には含めません" else "excluded from new trial counts"))
     }
@@ -246,15 +246,14 @@ class ListDecodingDiagnosticPresentationTest {
             RecoveryFailureStage.PAYLOAD_VALIDATION, searchDiagnostic = diagnostic.copy(listDecoding = localSearch))
         val report = RecoveryDiagnosticPresenter(ja).failureReport(failure, null, context(diagnostic, 0))
         val processing = report.sections.single { it.stage == DiagnosticStage.PROCESSING }
-        val verification = report.sections.single { it.stage == DiagnosticStage.VERIFICATION }
-        assertTrue(processing.summary.contains(if (ja) "3回、所要時間: 3秒" else "3, elapsed time: 3s"))
+        assertTrue(processing.details.contains(if (ja) "3回、所要時間: 3秒" else "3, elapsed time: 3s"))
         assertFalse(processing.summary.contains(if (ja) "11ビット" else "11 bits"))
         assertTrue(processing.details.contains(if (ja) "11ビット" else "11 bits"))
         assertFalse(processing.summary.contains(if (ja) "補間" else "Interpolation"))
         assertTrue(processing.details.contains(if (ja) "一部試行の復号計算を省略" else "Decoding skipped for some trials"))
         assertFalse(processing.summary.contains(if (ja) "時間切れ" else "time limit"))
-        assertTrue(verification.summary.contains(if (ja) "リスト復号による追加探索は時間切れで終了しました" else "List-decoding fallback ended at the time limit"))
-        assertTrue(verification.summary.contains(if (ja) "未探索の組合せ" else "combinations remain unchecked"))
+        assertTrue(report.overview.contains(if (ja) "リスト復号による追加探索は時間切れで終了しました" else "List-decoding fallback ended at the time limit"))
+        assertTrue(report.overview.contains(if (ja) "未探索の組合せ" else "combinations remain unchecked"))
         assertFalse(report.fullText().contains(if (ja) "累計600秒" else "600-second"))
     }
 
@@ -262,9 +261,9 @@ class ListDecodingDiagnosticPresentationTest {
         val presenter = RecoveryDiagnosticPresenter(ja)
         val report = presenter.candidateReport(candidate(listDecoding = false), null, context(wholeSearch))
         val processing = report.sections.single { it.stage == DiagnosticStage.PROCESSING }
-        assertTrue(processing.summary.contains(if (ja) "ブロック1: 通常RS" else "Block 1: Conventional RS"))
+        assertTrue(processing.details.contains(if (ja) "ブロック1\n方法: 通常RS" else "Block 1\nMethod: Conventional RS"))
         assertFalse(processing.summary.contains("Guruswami–Sudan"))
-        assertTrue(processing.summary.contains(if (ja) "リスト復号の試行回数（探索全体）" else "List-decoding trials (whole search)"))
+        assertTrue(processing.details.contains(if (ja) "リスト復号の試行回数（探索全体）" else "List-decoding trials (whole search)"))
         assertFalse(processing.summary.contains(if (ja) "11ビット" else "11 bits"))
         assertTrue(processing.details.contains(if (ja) "11ビット" else "11 bits"))
         assertFalse(processing.details.contains(if (ja) "多重度" else "multiplicity"))
@@ -280,7 +279,7 @@ class ListDecodingDiagnosticPresentationTest {
             combinationSearch = CombinationSearchSummary(stops = setOf(CombinationSearchStop.SUCCESS_WINDOW)))
         val report = RecoveryDiagnosticPresenter(ja).candidateReport(selected, null, context(diagnostic))
         val processing = report.sections.single { it.stage == DiagnosticStage.PROCESSING }
-        assertTrue(processing.summary.contains(if (ja) "1回、所要時間: 1秒未満" else "1, elapsed time: less than 1s"))
+        assertTrue(processing.details.contains(if (ja) "1回、所要時間: 1秒未満" else "1, elapsed time: less than 1s"))
         val stop = if (ja) "以降の組合せの確認" else "checking further combinations"
         assertFalse(processing.summary.contains(stop))
         assertTrue(processing.details.contains(stop))
@@ -296,8 +295,8 @@ class ListDecodingDiagnosticPresentationTest {
             displayConditions = RecoveryDisplayConditions(true, true, null, null, null))
         val processing = RecoveryDiagnosticPresenter(ja).failureReport(failure, null, context(diagnostic, 0))
             .sections.single { it.stage == DiagnosticStage.PROCESSING }
-        val structure = processing.summary.indexOf(SingleSegmentStatus.APPLIED.trialDescription())
-        val totals = processing.summary.indexOf(requireNotNull(diagnostic.listDecoding).description())
+        val structure = processing.details.indexOf(SingleSegmentStatus.APPLIED.trialDescription())
+        val totals = processing.details.indexOf(requireNotNull(diagnostic.listDecoding).description())
         assertTrue(structure >= 0)
         assertTrue(totals > structure)
     }
@@ -311,7 +310,7 @@ class ListDecodingDiagnosticPresentationTest {
             assertTrue(processing.details.contains(if (ja) "Guruswami–Sudan（GS）法によるブロック復号: 1試行" else "Block decoding with Guruswami–Sudan (GS): 1 trials"))
             assertFalse(processing.summary.contains(if (ja) "一致スコア" else "agreement score"))
             if (method == ListDecoderMethod.KOETTER_VARDY) {
-                assertTrue(processing.details.contains(if (ja) "一致スコア: 30／必要スコア: 28" else "agreement score: 30 / required score: 28"))
+                assertTrue(processing.details.contains(if (ja) "一致スコア: 30\n必要スコア: 28" else "Agreement score: 30\nRequired score: 28"))
                 assertFalse(processing.details.contains(if (ja) "訂正半径" else "radius:"))
             }
             if (method == ListDecoderMethod.WU) {

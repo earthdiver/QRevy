@@ -35,14 +35,14 @@ class RecoveryDiagnosticPresentationTest {
         fun section(diagnostic: ConventionalRsDiagnostic?) = initialDiagnosticSection(1, ErrorCorrectionLevel.M, 2,
             "", null, null, null, diagnostic)
         val skipped = conventional(false)
-        assertTrue(section(skipped).summary.contains(if (ja) "訂正計算を省略しました" else "correction was skipped"))
+        assertTrue(section(skipped).details.contains(if (ja) "訂正計算を省略しました" else "correction was skipped"))
         val mixed = skipped.copy(blocks = listOf(skipped.blocks.single(), conventional().blocks.single(),
             skipped.blocks.single().copy(status = ConventionalRsStatus.CORRECTION_FAILED)))
         val report = section(mixed)
-        assertTrue(report.summary.contains(if (ja) "訂正結果あり：1ブロック" else "Correction result: 1 blocks"))
-        assertTrue(report.summary.contains(if (ja) "計算したが訂正結果なし：1ブロック" else "correction attempted without a result: 1 blocks"))
+        assertTrue(report.summary.contains(if (ja) "訂正結果あり 1／計算省略 1／訂正結果なし 1 ブロック" else "1 with a correction result / 1 skipped / 1 without a correction result (blocks)"))
+        assertTrue(report.details.contains(if (ja) "計算したが訂正結果なし：1ブロック" else "correction attempted without a result: 1 blocks"))
         assertTrue(report.details.contains(if (ja) "12個がECCの10個を超える" else "12 codewords contain unknown bits, exceeding 10"))
-        assertTrue(section(null).summary.contains(if (ja) "結果は記録されていません" else "was not recorded"))
+        assertTrue(section(null).summary.contains(if (ja) "記録なし" else "Not recorded"))
         assertFalse(section(null).summary.contains(if (ja) "省略しました" else "was skipped"))
     }
 
@@ -52,7 +52,10 @@ class RecoveryDiagnosticPresentationTest {
         assertTrue(settings.runSettingsText().contains(if (ja) "完全に一致する候補だけ" else "matching every entered"))
         assertTrue(settings.runSettingsText().contains(if (ja) "固定セルとの矛盾を許容していても" else "does not override"))
         val input = initialDiagnosticSection(1, ErrorCorrectionLevel.M, 2, "", null, null, null, conventional(), conditions = settings)
-        assertTrue(input.summary.contains(if (ja) "別に評価しています" else "separately from calculating recovery candidates"))
+        assertTrue(input.summary.contains(if (ja) "修復開始時の入力を対象にした参考診断" else "Reference diagnostic of the input at repair start"))
+        assertTrue(input.details.contains(if (ja) "通常RSだけを適用した参考診断" else "applies conventional RS alone"))
+        assertTrue(input.details.contains(if (ja) "不明セルの白黒の仮置きは加えていません" else "without structure filling or tentative assignments"))
+        assertFalse(input.details.contains(if (ja) "別の計算" else "separate calculation"))
         assertEquals("", settings.copy(dataEccLimit = 1).candidateCalculationPolicyText())
         assertEquals("", (null as RecoveryDisplayConditions?).candidateCalculationPolicyText())
     }
@@ -100,7 +103,7 @@ class RecoveryDiagnosticPresentationTest {
     @Test fun successfulConventionalCalculationKeepsInconsistentBitAnalysisInDetails() = inBothLanguages { ja ->
         val section = initialDiagnosticSection(1, ErrorCorrectionLevel.M, 2, "",
             RsBitDiagnostic(16, 0, null, 0, emptyList()), null, 2, conventional())
-        assertTrue(section.summary.contains(if (ja) "訂正余裕（ブロック最小）: 6" else "minimum across blocks): 6"))
+        assertTrue(section.details.contains(if (ja) "訂正余裕（ブロック最小）: 6" else "minimum across blocks): 6"))
         assertFalse(section.summary.contains(if (ja) "組合せはありません" else "No combination"))
         assertTrue(section.details.contains(if (ja) "自由度0とは異なります" else "not zero free bits"))
         assertFalse(section.details.contains(if (ja) "自由度0（1通り）" else "0 free bits (1 combinations)"))
@@ -108,31 +111,29 @@ class RecoveryDiagnosticPresentationTest {
 
     @Test fun rankIsDistinctFromEquationCountAndBitRouteRemainsVisible() = inBothLanguages { ja ->
         val section = initialDiagnosticSection(1, ErrorCorrectionLevel.L, 2, "",
-            RsBitDiagnostic(20, 20, 0, 20, emptyList()), null, 20,
-            candidateUsesBitConstraints = true)
-        assertTrue(section.summary.contains(if (ja) "不明20bit − 独立な条件20個 = 自由度0" else "20 unknown bits − 20 independent constraints = 0 free bits"))
+            RsBitDiagnostic(20, 20, 0, 20, emptyList()), null, 20)
+        assertTrue(section.details.contains(if (ja) "不明20bit − 独立な条件20個 = 自由度0" else "20 unknown bits − 20 independent constraints = 0 free bits"))
         assertTrue(section.details.contains(if (ja) "RSの式: 56本" else "RS equations: 56"))
         val withConventional = initialDiagnosticSection(1, ErrorCorrectionLevel.M, 2, "",
-            RsBitDiagnostic(60, 56, 4, 0, emptyList()), null, 8, conventional(),
-            candidateUsesBitConstraints = true)
-        assertTrue(withConventional.summary.contains(if (ja) "16通り" else "16 combinations"))
+            RsBitDiagnostic(60, 56, 4, 0, emptyList()), null, 8, conventional())
+        assertTrue(withConventional.details.contains(if (ja) "16通り" else "16 combinations"))
     }
 
     @Test fun failedConventionalBlocksHaveUnknownErrorAndMarginAndLargeSpacesStaySymbolic() = inBothLanguages { ja ->
         val section = initialDiagnosticSection(1, ErrorCorrectionLevel.M, 2, "",
             RsBitDiagnostic(208, 80, 128, 0, emptyList()), null, 26, conventional(false))
-        assertFalse(section.summary.contains(if (ja) "訂正余裕（ブロック最小）" else "Correction margin for this calculation"))
+        assertFalse(section.details.contains(if (ja) "訂正余裕（ブロック最小）" else "RS correction margin in the initial-input reference diagnostic"))
         assertTrue(section.details.contains(if (ja) "誤り— / 余裕—" else "errors — / margin —"))
-        assertTrue(section.summary.contains(if (ja) "2の128乗" else "2^128"))
-        assertTrue(section.summary.contains(if (ja) "データ16 + ECC10" else "16 data + 10 ECC"))
+        assertTrue(section.details.contains(if (ja) "2の128乗" else "2^128"))
+        assertTrue(section.details.contains(if (ja) "データ16 + ECC10" else "16 data + 10 ECC"))
     }
 
     @Test fun independentRsResultDoesNotImplySelectedCandidateOrAllowedSettings() = inBothLanguages { ja ->
         val separate = conventional().copy(knownBitMismatches = 3, knownBitMismatchLimit = 0)
         val section = initialDiagnosticSection(1, ErrorCorrectionLevel.M, 2, "", null, 16, 2,
             separate, intArrayOf(9, 9))
-        assertTrue(section.summary.contains(if (ja) "そのまま採用できません" else "cannot be accepted as-is"))
-        assertTrue(section.summary.contains(if (ja) "選択中の候補とは別" else "differs from the selected candidate"))
+        assertTrue(section.details.contains(if (ja) "そのまま採用できません" else "cannot be accepted as-is"))
+        assertTrue(section.details.contains(if (ja) "選択中の候補とは別" else "differs from the selected candidate"))
     }
 
     @Test fun mixedRepresentativeBlockMethodsAreBothReported() = inBothLanguages { ja ->
@@ -155,7 +156,29 @@ class RecoveryDiagnosticPresentationTest {
         val bit = RecoveryBlockMethod(1, true, null, 4).searchDescription()
         assertTrue(normal.contains(if (ja) "仮置きした不明bit: 3" else "assigned before calculation: 3"))
         assertFalse(normal.contains(if (ja) "自由度" else "degrees of freedom"))
-        assertTrue(bit.contains(if (ja) "自由度: 4" else "degrees of freedom at this calculation stage: 4"))
+        assertTrue(bit.contains(if (ja) "自由度: 4" else "degrees of freedom for this block: 4"))
+    }
+
+    @Test fun referenceConflictsDescribeTheSavedFixedCellSettingWithoutInventingAnAcceptanceResult() = inBothLanguages { ja ->
+        val diagnostic = conventional().copy(manualConflicts = listOf(
+            ManualCellConflict(Coord(10, 10), ModuleValue.ZERO, ModuleValue.ONE)))
+        for (lock in listOf(true, false, null)) {
+            val settings = RecoveryDisplayConditions(false, lock, null, null, null)
+            val text = initialDiagnosticSection(1, ErrorCorrectionLevel.M, 2, "", null, null, null,
+                diagnostic, conditions = settings).details
+            assertTrue(text.contains(if (ja) "固定セル1個の0/1が一致しません" else "conflicts with 1 fixed 0/1 values"))
+            assertEquals(lock == true, text.contains(if (ja) "そのまま採用できません" else "cannot be accepted as-is"))
+            if (lock == false) assertTrue(text.contains(if (ja) "他の採用条件も適用されます" else "other acceptance conditions"))
+            if (lock == null) assertTrue(text.contains(if (ja) "固定セルの扱いは記録されていません" else "setting for handling fixed cells was not recorded"))
+        }
+    }
+
+    @Test fun emptyReferenceRecordsDoNotProduceBlockCalculations() = inBothLanguages { ja ->
+        val section = initialDiagnosticSection(1, ErrorCorrectionLevel.M, 2, "", null, null, null,
+            ConventionalRsDiagnostic(emptyList(), null))
+        assertTrue(section.summary.contains(if (ja) "記録なし" else "Not recorded"))
+        assertFalse(section.details.contains(if (ja) "ブロック別記録" else "Block records"))
+        assertFalse(section.details.contains(if (ja) "訂正余裕 =" else "Margin ="))
     }
 
     @Test fun cellCodewordUsesExtractionOrderAndOneBasedBlockNumbers() = inBothLanguages { ja ->

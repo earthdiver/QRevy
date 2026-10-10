@@ -13,15 +13,26 @@ data class RecoveryDisplayConditions(
     val listDecodingAdditionalErrors: Int = ListDecodingLimit.DEFAULT,
 )
 
-fun inputAgreementText(known: Int, mismatches: Int, format: Boolean): String {
+fun inputAgreementText(known: Int, mismatches: Int, format: Boolean, compact: Boolean = false): String {
+    if (compact) {
+        val regionJa = if (format) "形式情報" else "データ・ECC"
+        val regionEn = if (format) "Format information" else "Data/ECC"
+        return if (known == 0) localizedText(
+            "$regionJa: 比較対象0bit（一致は未確認）",
+            "$regionEn: 0 known bits to compare (agreement unknown)",
+        ) else localizedText(
+            "$regionJa: 不一致${mismatches}bit／比較対象${known}bit",
+            "$regionEn: $mismatches mismatches / $known bits compared",
+        )
+    }
     val regionJa = if (format) "形式情報領域" else "データ・ECC領域"
     val regionEn = if (format) "Format information" else "Data/ECC region"
     return if (known == 0) localizedText(
-        "$regionJa: 比較対象の読み取り済み0bit（一致を確認できません）",
-        "$regionEn: 0 observed bits available for comparison (agreement cannot be checked)",
+        "$regionJa: 修復開始時の比較対象0bit（一致を確認できません）",
+        "$regionEn: 0 known bits from the input at repair start available for comparison (agreement cannot be checked)",
     ) else localizedText(
-        "$regionJa: 比較対象の読み取り済み${known}bitとの不一致 ${mismatches}bit",
-        "$regionEn: $mismatches mismatching bits out of $known observed bits compared",
+        "$regionJa: 修復開始時の比較対象${known}bitとの不一致 ${mismatches}bit",
+        "$regionEn: $mismatches mismatching bits out of $known known bits compared (input at repair start)",
     )
 }
 

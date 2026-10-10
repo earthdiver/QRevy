@@ -107,7 +107,7 @@ QR error correction uses Reed–Solomon (RS) codes.
 | Data/ECC error limit | Candidates that overturn too much known evidence should be restricted | `0 bits` requires exact agreement with every comparable known bit |
 | When the mode and character/byte count are read or assigned by \* trials, assume a single segment and force the following structure. | One segment whose header is known or can be hypothesized using * trials | Do not use with ECI, FNC1, Structured Append, or multiple segments |
 
-Below, the last setting in the table is called **Single-segment assumption**, matching the diagnostic label. When ON, “3. Processing in this run” reports its application. When `*` trials hypothesize multiple mode/count headers, the report summarizes whether any applicable trial was found.
+The last setting is labeled **Single-segment assumption** in diagnostics. Check **Processing in this run** to see whether it was applied to the candidate.
 
 **Partial-bit search / dimension limit** controls how many assignments can be enumerated. Choosing 12, 13, or 14 allows up to 4,096, 8,192, or 16,384 assignments, respectively.
 
@@ -147,7 +147,9 @@ Review results in this order:
 4. Search completion, unchecked combinations, and omitted-candidate notices.
 5. Decoded content and repair reasons for important cells.
 
-Use **Show diagnostics** for the search and candidate report. Open **Show detailed results** for the enlarged QR, then tap a cell to inspect provenance. **Show same codeword** highlights the other cells in its eight-bit codeword. Format-information cells show their role and bit position; calculation details compare both copies before and after repair and after removing the fixed format mask. The button changes to **Show ECC level cells**, **Show mask number cells**, or **Show format correction bits**, highlighting related cells in both copies. When multiple candidates remain, compare their content and candidate-agreement scope.
+Use **Show diagnostics** to review the selected candidate’s QR structure, final decoding, input mismatches, and search-wide completion. Read **Processing in this run** for the methods used, then open each section’s **Show details** for calculation records and HEX. See [Understanding recovery result fields](RECOVERY_RESULT_FIELDS.en.md) for field meanings.
+
+Open **Show detailed results** for the enlarged QR, then tap a cell to inspect provenance. **Show same codeword** highlights the other cells in its eight-bit codeword. Format-information cells show their role and bit position; calculation details compare both copies before and after repair and after removing the fixed format mask. The button changes to **Show ECC level cells**, **Show mask number cells**, or **Show format correction bits**, highlighting related cells in both copies. When multiple candidates remain, compare their content and candidate-agreement scope.
 
 When multiple candidates remain, **Candidate contents** opens a scrollable list of the full decoded text for up to 256 candidates, including text converted from byte payloads using the decoder’s character encoding. You can also check each candidate’s data/ECC-region mismatch count against known input values. Tap a candidate’s text to select it and update the result. The list is also available in the enlarged result.
 

@@ -385,17 +385,21 @@ class PrecisionDesignTest {
                 (0 until footer.childCount).map { (footer.getChildAt(it) as TextView).text.toString() })
             val panel = field<ViewGroup>(activity, "workspacePanel")
             assertFalse(allViews(panel).filterIsInstance<TextView>().any { it.text.toString() == activity.getString(R.string.data) })
-            MainActivity::class.java.getDeclaredMethod("setDiagnosticDetails", String::class.java)
-                .apply { isAccessible = true }.invoke(activity, "Synthetic diagnostic information")
+            val report = io.github.earthdiver.qrrepair.core.RecoveryDiagnosticReport("Synthetic diagnostic information",
+                io.github.earthdiver.qrrepair.core.DiagnosticStage.entries.map {
+                    io.github.earthdiver.qrrepair.core.DiagnosticSection(it, "Recorded summary", "Recorded details")
+                })
+            MainActivity::class.java.getDeclaredMethod("setDiagnosticReport", report.javaClass)
+                .apply { isAccessible = true }.invoke(activity, report)
             val diagnostics = find(main, "診断情報を表示")!!
             val png = find(main, activity.getString(R.string.save_png))!!
             assertTrue(panel.indexOfChild(png.parent as View) < panel.indexOfChild(diagnostics))
             diagnostics.performClick()
             assertEquals("診断情報を閉じる", diagnostics.text.toString())
-            assertTrue(field<View>(activity, "diagnosticDetailsText").isShown)
+            assertTrue(field<View>(activity, "diagnosticView").isShown)
             diagnostics.performClick()
             assertEquals("診断情報を表示", diagnostics.text.toString())
-            assertFalse(field<View>(activity, "diagnosticDetailsText").isShown)
+            assertFalse(field<View>(activity, "diagnosticView").isShown)
             render(main, "aligned-result")
             find(main, activity.getString(R.string.show_detailed_result))!!.performClick()
             val inspector = ShadowDialog.getLatestDialog() as AlertDialog

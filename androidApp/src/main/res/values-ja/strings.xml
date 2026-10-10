@@ -13,6 +13,12 @@
     <string name="select_result_truncated">候補を選択（上位%1$d件／全%2$d件）</string>
     <string name="show_diagnostic_details">診断情報を表示</string>
     <string name="hide_diagnostic_details">診断情報を閉じる</string>
+    <string name="diagnostic_open_section">%1$sの詳細を開く</string>
+    <string name="diagnostic_close_section">%1$sの詳細を閉じる</string>
+    <string name="diagnostic_open_record">%1$sを開く</string>
+    <string name="diagnostic_close_record">%1$sを閉じる</string>
+    <string name="diagnostic_expanded">展開中</string>
+    <string name="diagnostic_collapsed">折りたたみ中</string>
     <string name="data">データ</string>
     <string name="save_png">PNG保存</string>
     <string name="select_image_prompt">画像を選択してください。</string>

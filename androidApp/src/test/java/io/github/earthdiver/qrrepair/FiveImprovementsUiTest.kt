@@ -3,8 +3,6 @@ package io.github.earthdiver.qrrepair
 import android.app.AlertDialog
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.text.Spanned
-import android.text.style.ClickableSpan
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
@@ -80,10 +78,11 @@ class FiveImprovementsUiTest {
                 chooser.listView.performItemClick(chooser.listView.getChildAt(1), 1, 1)
                 assertTrue(descendants(upper).filterIsInstance<TextView>().any {
                     it.text.contains(if (lang == AppLanguage.JAPANESE) "候補1と候補3の比較" else "Compare candidates 1 and 3") })
-                val diagnostic = field<TextView>(a, "diagnosticDetailsText")
-                (diagnostic.text as Spanned).getSpans(0, diagnostic.text.length, ClickableSpan::class.java).first().onClick(diagnostic)
-                val openStages = field<MutableSet<DiagnosticStage>>(a, "expandedDiagnosticStages").toSet()
-                assertTrue(openStages.isNotEmpty())
+                val diagnostic = diagnosticView(a)
+                val inputDetails = diagnosticButton(diagnostic, DiagnosticStage.INPUT)
+                inputDetails.performClick()
+                val expandedLabel = a.getString(R.string.diagnostic_close_section, DiagnosticStage.INPUT.label())
+                assertEquals(expandedLabel, inputDetails.text.toString())
                 call(a, "showZoomableResult")
                 val dialog = ShadowDialog.getLatestDialog() as AlertDialog
                 val decor = dialog.window!!.decorView
@@ -126,7 +125,7 @@ class FiveImprovementsUiTest {
                 technical.performClick()
                 assertEquals(View.VISIBLE, word.visibility)
                 assertEquals(Coord(12,8), QrResultInspectorView::class.java.getDeclaredField("selected").apply { isAccessible = true }.get(view))
-                assertEquals(openStages, field<MutableSet<DiagnosticStage>>(a, "expandedDiagnosticStages").toSet())
+                assertEquals(expandedLabel, inputDetails.text.toString())
                 assertTrue(descendants(decor).filterIsInstance<TextView>().any { it.text.contains(if (lang == AppLanguage.JAPANESE) "セル (12,8)" else "Cell (12,8)") })
                 assertFalse(descendants(decor).filterIsInstance<TextView>().any { it.text.toString() in listOf("入力画面で編集", "Edit in input screen") })
                 assertTrue(view.height >= 160)
@@ -134,7 +133,7 @@ class FiveImprovementsUiTest {
                 state.geometry = state.geometry!!.copy(angleRad = 1.0)
                 descendants(decor).filterIsInstance<RadioButton>().first { it.text.toString() == a.getString(R.string.result_tab, 3) }.performClick()
                 assertNull(QrResultInspectorView::class.java.getDeclaredField("selected").apply { isAccessible = true }.get(view))
-                assertTrue(field<MutableSet<DiagnosticStage>>(a, "expandedDiagnosticStages").isEmpty())
+                assertEquals(expandedLabel, inputDetails.text.toString())
                 dialog.dismiss()
                 measure(root)
                 render(root, "five-result-${style.name}-${lang.tag}")

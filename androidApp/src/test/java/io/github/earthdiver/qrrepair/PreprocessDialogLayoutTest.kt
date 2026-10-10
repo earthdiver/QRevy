@@ -141,6 +141,8 @@ class PreprocessDialogLayoutTest {
             assertEquals(3, saved.listDecodingAdditionalErrors)
             findExactText(decor, "キャンセル")!!.performClick()
             assertFalse(dialog.isShowing)
+            // Finish dismissal callbacks before simulating the next user action.
+            shadowOf(Looper.getMainLooper()).idle()
             open.invoke(activity)
             shadowOf(Looper.getMainLooper()).idle()
             val reopened = ShadowDialog.getLatestDialog() as AlertDialog
@@ -180,9 +182,11 @@ class PreprocessDialogLayoutTest {
             assertEquals(mapOf(FinderRole.BOTTOM_LEFT to PointD(190.0, 50.0)), saved.manualFinders)
             assertEquals(mapOf(io.github.earthdiver.qrrepair.core.Coord(9, 12) to ModuleValue.ONE), saved.fixedPreRecoveryEdits)
             findExactText(decor, "キャンセル")!!.performClick()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse("Saved settings must close without a discard confirmation", dialog.isShowing)
             open.invoke(activity)
             shadowOf(Looper.getMainLooper()).idle()
-            val reopened = ShadowDialog.getLatestDialog() as AlertDialog
+            val reopened = preprocessDialog(activity)
             findText(reopened.window!!.decorView, "詳細設定")!!.performClick()
             val restored = findExactText(reopened.window!!.decorView, "入力画像を鏡像として処理する") as CheckBox
             assertTrue(restored.isChecked)
@@ -923,21 +927,22 @@ class PreprocessDialogLayoutTest {
         assertNotNull(findText(selector, "候補を選択（上限256まで）"))
         assertTrue(status.text.contains("修復候補"))
         assertTrue("共有結果にECCが混在しています", !status.text.contains("ECC"))
-        val settingsText = (field("diagnosticDetailsText") as TextView).text
+        val settingsText = diagnosticText(activity)
         assertTrue(settingsText.contains("ECC M / マスク1"))
-        assertTrue(settingsText.contains("形式情報領域: 比較対象の読み取り済み28bitとの不一致 2bit"))
-        assertTrue(settingsText.contains("データ・ECC領域: 比較対象の読み取り済み100bitとの不一致 4bit"))
+        assertTrue(settingsText.contains("形式情報: 不一致2bit／比較対象28bit"))
+        assertTrue(settingsText.contains("データ・ECC: 不一致4bit／比較対象100bit"))
         assertTrue(!candidateDetails.text.contains("誤り訂正レベル"))
         assertTrue((field("resultExplanationText") as TextView).text.contains("使用した方法"))
         assertFalse((field("resultExplanationText") as TextView).text.contains("100bitと比較"))
         assertTrue(!candidateDetails.text.contains("format誤り"))
 
         val toggle = field("diagnosticToggle") as TextView
-        val diagnostics = field("diagnosticDetailsText") as TextView
+        val diagnostics = diagnosticView(activity)
         assertEquals(View.GONE, diagnostics.visibility)
         toggle.performClick()
         assertEquals(View.VISIBLE, diagnostics.visibility)
-        assertTrue(diagnostics.text.contains("QRの位置・向き: 相似変換 / V1 / 左上基準"))
+        diagnosticButton(diagnostics, io.github.earthdiver.qrrepair.core.DiagnosticStage.INPUT).performClick()
+        assertTrue(diagnosticText(diagnostics).contains("QRの位置・向き: 相似変換 / V1 / 左上基準"))
         val fullDiagnostic = (MainActivity::class.java.getDeclaredField("diagnosticReport").apply { isAccessible = true }.get(activity) as io.github.earthdiver.qrrepair.core.RecoveryDiagnosticReport).fullText()
         assertTrue(fullDiagnostic.contains("ブロック最小）: 2"))
         assertTrue(fullDiagnostic.contains("指定した仮定に基づく補完・変更: 48bit"))
@@ -999,14 +1004,14 @@ class PreprocessDialogLayoutTest {
         assertTrue(!guide.contains("推奨セル"))
         assertTrue(!guide.contains("絞り込めるセル"))
         assertTrue(!guide.contains("探索上限"))
-        assertTrue(diagnostics.contains("形式情報領域: 比較対象の読み取り済み25bitとの不一致 0bit"))
+        assertTrue(diagnostics.contains("形式情報領域: 修復開始時の比較対象25bitとの不一致 0bit"))
         for (message in listOf(status, candidateDetails, diagnostics)) {
             assertTrue(message.contains("未探索の組合せが残っています"))
             assertFalse(message.contains("探索範囲の上限に達しました"))
         }
         assertTrue(diagnostics.contains("追加確認の目安: 81bit"))
-        assertTrue(diagnostics.contains("最初に失敗したRSブロック: 1 / 全1ブロック"))
-        assertTrue(diagnostics.contains("最初に失敗したRSブロック: 1 / 全1ブロック\n失敗ブロックのECCシンボル数: 20\n失敗ブロックの未知bitを含むコード語数（探索前）: 42"))
+        assertTrue(diagnostics.contains("この参考計算で最初に結果を得られなかったRSブロック: 1 / 全1ブロック"))
+        assertTrue(diagnostics.contains("この参考計算で最初に結果を得られなかったRSブロック: 1 / 全1ブロック\n失敗ブロックのECCシンボル数: 20\n失敗ブロックの未知bitを含むコード語数（探索前）: 42"))
     }
 
     @Test
