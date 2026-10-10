@@ -146,6 +146,8 @@ class MainActivity : Activity() {
         val immediateResult: ImmediateQrResult? = null,
     )
     private data class RetainedImageImport(val source: Bitmap, val state: Bundle)
+    private var inputProgressDialog: AlertDialog? = null
+    private var inputProgressGeneration: Int? = null
     private var importEditorDialog: AlertDialog? = null
     private var importEditor: ImageAdjustmentEditor? = null
     private var importSource: Bitmap? = null
@@ -326,6 +328,9 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        inputProgressDialog?.dismiss()
+        inputProgressDialog = null
+        inputProgressGeneration = null
         importEditorDialog?.dismiss()
         closePreprocessEditor()
         workGeneration.incrementAndGet()
@@ -1934,9 +1939,47 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun loadImage(uri: Uri, cleanupFile: File? = null, imageAdjustment: ImageAdjustment = ImageAdjustment()) {
+    private fun beginInputImport(message: String): Int {
         val token = workGeneration.incrementAndGet()
-        statusText.text = ui("画像を読み込み中…", "Loading image…")
+        inputProgressDialog?.dismiss()
+        inputProgressGeneration = token
+        statusText.text = message
+        // Cover the previous work without discarding it before the import succeeds.
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(24), dp(24), dp(24), dp(24))
+            addView(android.widget.ProgressBar(this@MainActivity))
+            addView(TextView(this@MainActivity).apply {
+                text = message
+                gravity = Gravity.CENTER
+                setPadding(0, dp(16), 0, 0)
+            })
+        }
+        inputProgressDialog = AlertDialog.Builder(this)
+            .setView(content)
+            .setCancelable(false)
+            .create().also { dialog ->
+                dialog.show()
+                dialog.window?.apply {
+                    setBackgroundDrawable(android.graphics.drawable.ColorDrawable(
+                        if (modernStyle) PrecisionStyle.BACKGROUND else android.graphics.Color.WHITE))
+                    setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+                }
+            }
+        return token
+    }
+
+    private fun finishInputImport(token: Int) {
+        if (inputProgressGeneration != token) return
+        inputProgressDialog?.dismiss()
+        inputProgressDialog = null
+        inputProgressGeneration = null
+    }
+
+    private fun loadImage(uri: Uri, cleanupFile: File? = null, imageAdjustment: ImageAdjustment = ImageAdjustment()) {
+        val token = beginInputImport(ui("画像を読み込み中…", "Loading image…"))
         executor.execute {
             try {
                 val bitmap = decodeReasonablySized(uri)
@@ -1950,14 +1993,21 @@ class MainActivity : Activity() {
                     if (token != workGeneration.get()) {
                         bitmap.recycle()
                         cleanupFile?.let { runCatching { it.delete() } }
-                    } else if (cleanupFile == null) showImportedImageAdjustment(bitmap)
-                    else acceptDecodedImage(bitmap, cleanupFile, imageAdjustment)
+                    } else {
+                        finishInputImport(token)
+                        if (cleanupFile == null) showImportedImageAdjustment(bitmap)
+                        else acceptDecodedImage(bitmap, cleanupFile, imageAdjustment)
+                    }
                 }
             } catch (t: Throwable) {
-                if (token == workGeneration.get()) runOnUiThread {
+                runOnUiThread {
+                    finishInputImport(token)
+                    if (token != workGeneration.get() || isDestroyed) return@runOnUiThread
                     statusText.text = ui("画像の読み込みに失敗: ${t.message ?: t.javaClass.simpleName}", "Image load failed: ${t.message ?: t.javaClass.simpleName}")
                 }
                 cleanupFile?.let { runCatching { it.delete() } }
+            } finally {
+                runOnUiThread { finishInputImport(token) }
             }
         }
     }
@@ -1971,9 +2021,7 @@ class MainActivity : Activity() {
     }
 
     private fun loadTextMatrix(uri: Uri) {
-        showWorkspace()
-        val token = workGeneration.incrementAndGet()
-        statusText.text = ui("テキスト行列を読み込み中…", "Loading text matrix…")
+        val token = beginInputImport(ui("テキスト行列を読み込み中…", "Loading text matrix…"))
         executor.execute {
             var bitmap: Bitmap? = null
             try {
@@ -2041,6 +2089,7 @@ class MainActivity : Activity() {
                         p.bitmap.recycle()
                         return@runOnUiThread
                     }
+                    finishInputImport(token)
                     immediateResultShown = false
                     prepared = p
                     analysisPrepared = p
@@ -2093,7 +2142,9 @@ class MainActivity : Activity() {
                 bitmap = null // ownership moved to Prepared/UI
             } catch (t: Throwable) {
                 bitmap?.takeIf { !it.isRecycled }?.recycle()
-                if (token == workGeneration.get()) runOnUiThread {
+                runOnUiThread {
+                    finishInputImport(token)
+                    if (token != workGeneration.get() || isDestroyed) return@runOnUiThread
                     AlertDialog.Builder(this@MainActivity)
                         .setTitle(ui("テキスト行列を読み込めません", "Could not import text matrix"))
                         .setMessage(t.message ?: t.javaClass.simpleName)
@@ -2101,6 +2152,8 @@ class MainActivity : Activity() {
                         .show()
                     statusText.text = ui("テキスト行列の読み込みに失敗しました。", "Text matrix import failed.")
                 }
+            } finally {
+                runOnUiThread { finishInputImport(token) }
             }
         }
     }
@@ -2142,9 +2195,7 @@ class MainActivity : Activity() {
     }
 
     private fun acceptDecodedImage(bitmap: Bitmap, cleanupFile: File? = null, imageAdjustment: ImageAdjustment = ImageAdjustment()) {
-        showWorkspace()
-        val token = workGeneration.incrementAndGet()
-        statusText.text = ui("画像を解析用に準備中…", "Preparing image for analysis…")
+        val token = beginInputImport(ui("画像を解析用に準備中…", "Preparing image for analysis…"))
         executor.execute {
             var candidate: BitmapUtils.Prepared? = null
             var adjustedCandidate: BitmapUtils.Prepared? = null
@@ -2172,6 +2223,7 @@ class MainActivity : Activity() {
                         if (adjusted !== p) adjusted.bitmap.recycle()
                         return@runOnUiThread
                     }
+                    finishInputImport(token)
                     immediateResultShown = false
                     prepared = p
                     analysisPrepared = adjusted
@@ -2226,10 +2278,13 @@ class MainActivity : Activity() {
                 }
                 handedToUi = true
             } catch (t: Throwable) {
-                if (token == workGeneration.get()) runOnUiThread {
+                runOnUiThread {
+                    finishInputImport(token)
+                    if (token != workGeneration.get() || isDestroyed) return@runOnUiThread
                     statusText.text = ui("画像の読み込みに失敗: ${t.message ?: t.javaClass.simpleName}", "Image load failed: ${t.message ?: t.javaClass.simpleName}")
                 }
             } finally {
+                runOnUiThread { finishInputImport(token) }
                 if (!handedToUi) {
                     adjustedCandidate?.bitmap?.takeIf { it !== candidate?.bitmap && !it.isRecycled }?.recycle()
                     candidate?.bitmap?.takeIf { !it.isRecycled }?.recycle()
@@ -2332,6 +2387,7 @@ class MainActivity : Activity() {
         FormatEditPolicy.conflict(settings.version, settings.formatConstraint, settings.fixedPreRecoveryEdits)
 
     private fun startAutoRecovery() {
+        if (inputProgressGeneration != null) return
         immediateResultShown = false
         showWorkspace()
         val requestSettings = preprocessSettings.recoverySnapshot()
@@ -2444,6 +2500,7 @@ class MainActivity : Activity() {
     private fun showCellEditor() = showPreprocessPage(PreprocessPage.CELL_EDITOR)
 
     private fun showPreprocessPage(initialPage: PreprocessPage, restoredDraft: PreprocessEditorDraft? = null) {
+        if (inputProgressGeneration != null) return
         showWorkspace()
         val source = prepared ?: run {
             statusText.text = ui("先に画像を選択してください。", "Select an image first.")
