@@ -136,6 +136,17 @@ class QrContentPreviewTest {
     }
 
     @Test
+    fun supplementaryUnicodeCharactersCountOnceWithoutChangingTheRecoveredText() {
+        for ((payload, count) in listOf("😀" to 1, "𠮷" to 1, "A😀𠮷あ" to 4, "😀 😀\n" to 4)) {
+            val preview = QrContentPreviewParser.parse(candidate(payload))!!
+
+            assertEquals(payload, preview.recoveredText)
+            assertEquals(count.toString(), preview.fields.single().value)
+            assertTrue(preview.toDisplayText().contains("\n$payload\n${preview.fields.single().label}: $count"))
+        }
+    }
+
+    @Test
     fun emptyTextDoesNotAddAPayloadLineOrHighlight() {
         val preview = QrContentPreviewParser.parse(candidate(""))!!
         val ranges = mutableListOf<IntRange>()

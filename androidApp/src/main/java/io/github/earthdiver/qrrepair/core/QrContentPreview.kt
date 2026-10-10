@@ -136,7 +136,7 @@ object QrContentPreviewParser {
             QrContentKind.TEXT,
             localizedText("テキスト", "Text"),
             t,
-            listOf(QrContentField(localizedText("文字数", "Characters"), text.length.toString())),
+            listOf(QrContentField(localizedText("文字数", "Characters"), text.codePointCount(0, text.length).toString())),
             contentFormatValid = true,
             utf8Like = true,
         )
