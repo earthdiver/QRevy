@@ -40,16 +40,33 @@ Current shared components include:
 ZXing-backed QR version/format/block interleave and final payload decode remain in `androidApp` until replaced with common implementations.
 
 ## Required checks before completing a code change
-Run the narrowest relevant checks while developing. Before handing off a substantial change, run:
+Choose checks by the complete change set, including callers and shared test fixtures. Use the change-check script for local validation (Python 3.10+):
 
 ```bash
-./bootstrap-wrapper.sh
-./scripts/verify-wrapper.sh
-./gradlew :shared:jvmTest
-./gradlew :androidApp:testDebugUnitTest :androidApp:lint :androidApp:assembleDebug
+python3 -B scripts/check-changes.py --dry-run
+python3 -B scripts/check-changes.py
 ```
 
-For release-affecting changes also run:
+By default, this includes staged, unstaged, and untracked changes relative to `HEAD`. To validate committed work, supply `--base <ref>`; it includes commits since the merge base with that ref and all local edits. A clean working tree without `--base` does not validate the latest commit. Inspect the printed paths, scope, and reasons before relying on a reduced run.
+
+| Changed area | Required local checks |
+| --- | --- |
+| Root/docs/iOS/template Markdown only, excluding this file and `CONTRIBUTING.md` | Whitespace checks; review content, links, and paired translations |
+| Android application/UI/session Kotlin or display resources, including their UI/session tests | All Android unit tests except the two exhaustive geometry studies, lint, and debug build |
+| Shared test sources or fixtures only | Shared JVM tests |
+| Shared production code, Android recovery core or core tests/fixtures, build/dependency/CI/check configuration, manifest/backup rules, or unclassified files | Full checks |
+
+Mixed changes combine the required checks; any full-check path makes the entire run full. The app scope retains session compatibility, source-image integrity, manual-edit, and ordinary geometry tests. It excludes only the exhaustive displacement sweep and expanded width/rotation study. Use `--full` whenever the semantic impact exceeds the path classification. New source areas require full checks until their dependencies are reviewed.
+
+Full development validation is:
+
+```bash
+python3 -B scripts/check-changes.py --full
+```
+
+This runs wrapper/bootstrap verification, the shared boundary check, script regression tests, `:shared:jvmTest`, all `:androidApp:testDebugUnitTest` tests, `:androidApp:lint`, and `:androidApp:assembleDebug`. Full runs on macOS also build `:shared:assembleXCFramework`. Existing Android CI and extended recovery fuzz runs always use full test coverage.
+
+For release-affecting changes, run full development validation and also:
 
 ```bash
 ./gradlew :androidApp:assembleRelease :androidApp:bundleRelease
@@ -57,11 +74,7 @@ For release-affecting changes also run:
 ./scripts/release-audit.sh
 ```
 
-On macOS, shared iOS compatibility must also pass:
-
-```bash
-./gradlew :shared:assembleXCFramework
-```
+The release audit always uses full test coverage. Do not use the reduced app scope to replace release validation.
 
 ## CI rules
 - Keep third-party GitHub Actions pinned to full 40-character commit SHAs.

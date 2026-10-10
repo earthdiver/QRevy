@@ -30,16 +30,41 @@ Maintain dependency versions and license texts in `THIRD_PARTY_NOTICES.md`, then
 
 ## Validation
 
-Run the narrowest relevant tests while developing. Before submitting a substantial change, run:
+Use Python 3.10 or newer to select checks for the complete local change set:
 
 ```bash
-./bootstrap-wrapper.sh
-./scripts/verify-wrapper.sh
-./gradlew :shared:jvmTest
-./gradlew :androidApp:testDebugUnitTest :androidApp:lint :androidApp:assembleDebug
+python3 -B scripts/check-changes.py --dry-run
+python3 -B scripts/check-changes.py
 ```
 
-For release-affecting changes, also run:
+The default includes staged, unstaged, and untracked files. To include committed work, use `--base <ref>`; changes are measured from the merge base with that ref, plus all local edits. For example, `--base HEAD~1` includes the most recent commit. An empty working tree without `--base` selects no tests.
+
+The script prints each changed path, its classification, and the commands it will run. Renames include both the old and new paths. An invalid base or unresolved merge conflict stops validation.
+
+| Changed area | Selected checks |
+| --- | --- |
+| Root/docs/iOS/template Markdown, except validation-policy files | Whitespace checks; manually review content, links, and paired translations |
+| Android Kotlin in the application package or its `ui`/`session` subpackages, their tests, and display resources | Android app scope, lint, debug build |
+| `shared/src/commonTest/` only | All shared JVM tests |
+| Recovery core or its tests/fixtures, shared production code, build/dependency/CI/check configuration, manifest/backup rules, or anything unclassified | Full development validation |
+
+The app scope runs all Android unit tests except the exhaustive geometry displacement sweep and expanded width/rotation study. It retains the remaining geometry tests, the manual-bit comparison in the expanded regression class, UI integration, session compatibility, and source-image validation. The script combines scopes for mixed changes and selects full validation if any path requires it. The rules use repository areas, not a computed call graph; choose full validation when a change affects dependencies beyond its area.
+
+For full development validation, including on a clean working tree:
+
+```bash
+python3 -B scripts/check-changes.py --full
+```
+
+Full validation verifies the wrapper and shared boundary, runs Python script regressions, shared JVM tests, all Android unit tests, lint, and a debug build. On macOS it also builds the shared XCFramework. Android CI and extended recovery fuzz always run the full suites. Direct Gradle test runs default to full coverage; `-Pqr.testScope=app` is the script's explicit opt-in for reduced coverage.
+
+During development, individual tests can also be selected with Gradle, for example:
+
+```bash
+./gradlew :androidApp:testDebugUnitTest --tests '*ButtonLayoutTest'
+```
+
+For release-affecting changes, run full development validation and also:
 
 ```bash
 ./gradlew :androidApp:assembleRelease :androidApp:bundleRelease
@@ -47,7 +72,7 @@ For release-affecting changes, also run:
 ./scripts/release-audit.sh
 ```
 
-Shared iOS compatibility must also be checked on macOS with `./gradlew :shared:assembleXCFramework`.
+The release audit forces full test coverage. Describe the selected scope and base reference in the pull request so reviewers can distinguish reduced checks from a full run.
 
 ## Pull requests
 

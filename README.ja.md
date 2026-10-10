@@ -77,6 +77,8 @@ bash scripts/verify-wrapper.sh
 
 debug APKは`build/androidApp/outputs/apk/debug/androidApp-debug.apk`に生成されます。
 
+変更内容に応じたテストの実行方法は[検証ガイド](CONTRIBUTING.md#validation)を参照してください。
+
 公開用application IDは`io.github.earthdiver.qrrepair`です。リリース署名、ストア識別子、公開Privacy Policy URLはリポジトリに含まれていません。公開前の確認については[リリースチェックリスト](docs/RELEASE_CHECKLIST.md)を参照してください。
 
 ## ドキュメント

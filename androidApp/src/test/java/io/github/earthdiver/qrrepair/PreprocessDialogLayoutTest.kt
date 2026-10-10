@@ -354,7 +354,7 @@ class PreprocessDialogLayoutTest {
             invoke(activity)
         }
         shadowOf(Looper.getMainLooper()).idle()
-        val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+        val dialog = preprocessDialog(activity)
         val decor = dialog.window!!.decorView
         decor.measure(
             View.MeasureSpec.makeMeasureSpec(360, View.MeasureSpec.EXACTLY),
@@ -658,7 +658,7 @@ class PreprocessDialogLayoutTest {
         }
         shadowOf(Looper.getMainLooper()).idle()
 
-        val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+        val dialog = imageAdjustmentDialog(activity)
         val decor = dialog.window!!.decorView
         listOf("回転", "白黒反転", "画像調整", "クロップして解析").forEach { label ->
             assertNotNull("画像ファイルの回転・クロップ画面に$label がありません", findText(decor, label))
@@ -1330,10 +1330,43 @@ class PreprocessDialogLayoutTest {
         }
     }
 
+    @Test
+    fun imageAdjustmentDialogRemainsIdentifiableAfterAnotherDialogOpens() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        try {
+            val bitmap = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
+            MainActivity::class.java.getDeclaredMethod("showImportedImageAdjustment", Bitmap::class.java).apply {
+                isAccessible = true
+                invoke(activity, bitmap)
+            }
+            shadowOf(Looper.getMainLooper()).idle()
+            val editor = imageAdjustmentDialog(activity)
+            val other = AlertDialog.Builder(activity).setMessage("Another dialog").create()
+            try {
+                other.show()
+                shadowOf(Looper.getMainLooper()).idle()
+                assertTrue(ShadowDialog.getLatestDialog() === other)
+                assertTrue(imageAdjustmentDialog(activity) === editor)
+            } finally {
+                other.dismiss()
+                editor.dismiss()
+            }
+        } finally {
+            controller.pause().stop().destroy()
+        }
+    }
+
     private fun preprocessDialog(activity: MainActivity): AlertDialog =
+        dialogContaining(activity, PreprocessOverlayView::class.java)
+
+    private fun imageAdjustmentDialog(activity: MainActivity): AlertDialog =
+        dialogContaining(activity, CropOverlayView::class.java)
+
+    private fun <T : View> dialogContaining(activity: MainActivity, type: Class<T>): AlertDialog =
         ShadowDialog.getShownDialogs().filterIsInstance<AlertDialog>().single { dialog ->
             dialog.isShowing && dialog.window?.decorView?.let { decor ->
-                findViews(decor, PreprocessOverlayView::class.java).any { it.context === activity }
+                findViews(decor, type).any { it.context === activity }
             } == true
         }
 

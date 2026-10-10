@@ -14,11 +14,15 @@
 - [ ] No Android/Java/ZXing APIs were added to `shared/commonMain`
 - [ ] If shared code changed, `:shared:jvmTest` passes
 
-## Android validation
+## Validation
 
-- [ ] `:androidApp:testDebugUnitTest`
-- [ ] `:androidApp:lint`
-- [ ] `:androidApp:assembleDebug`
+- [ ] Selected checks passed with `python3 -B scripts/check-changes.py` (or `--full`)
+- Change base and selected scope:
+- Additional checks / release validation:
+
+<!-- Use --base <ref> for committed changes. A clean tree without --base selects no tests.
+     Full checks are required for recovery, build/check configuration, or unclassified changes.
+     Record any direct Gradle test filters and explain checks that are not applicable. -->
 
 ## Privacy / licensing
 

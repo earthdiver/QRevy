@@ -75,6 +75,8 @@ bash scripts/verify-wrapper.sh
 
 The debug APK is written to `build/androidApp/outputs/apk/debug/androidApp-debug.apk`.
 
+For checks selected by changed files, see the [validation guide](CONTRIBUTING.md#validation).
+
 The permanent application ID is `io.github.earthdiver.qrrepair`. Release signing, store identifiers, and a public privacy-policy URL are not included. See the [release checklist](docs/RELEASE_CHECKLIST.md) before publication.
 
 ## Documentation

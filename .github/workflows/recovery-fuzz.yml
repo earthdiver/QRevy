@@ -26,4 +26,4 @@ jobs:
         with:
           cache-provider: basic
       - name: Extended deterministic fuzz regression
-        run: sh ./gradlew --no-daemon :shared:jvmTest :androidApp:testDebugUnitTest -Dqr.fuzz.iterations=120
+        run: sh ./gradlew --no-daemon :shared:jvmTest :androidApp:testDebugUnitTest -Pqr.testScope=full -Dqr.fuzz.iterations=120
