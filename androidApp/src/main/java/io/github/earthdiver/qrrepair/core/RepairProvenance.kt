@@ -136,8 +136,8 @@ data class ModuleRepairTrace(
             "\n${it.method.displayName()}でこのブロックを復号しました（${it.calculationDescription()}）。",
             "\nThis block used ${it.method.displayName()} list decoding (${it.calculationDescription()}).")) }
         if (bitConstraintSolved) append(localizedText(
-            "\n入力済みのbitを保つ条件で、RS部分bit制約を使用しました。",
-            "\nUsed RS partial-bit constraints while preserving the entered bits.",
+            "\nこのブロックは、RS部分bit制約で誤り訂正の条件を満たす値を求めました。構造補完・変更や仮置きがある場合は、その値も条件に含みます。",
+            "\nThis block used RS partial-bit constraints to find values satisfying the error-correction conditions. Any values filled, changed or tentatively assigned before this calculation are included in those conditions.",
         ))
         priorityAssignment?.let { value ->
             append(localizedText(
