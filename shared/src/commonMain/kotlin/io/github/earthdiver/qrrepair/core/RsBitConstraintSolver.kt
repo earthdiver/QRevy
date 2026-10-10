@@ -36,7 +36,8 @@ class RsBitConstraintSolver(private val rs: ReedSolomonErasures = ReedSolomonEra
         fun restriction(): Restriction = Restriction()
 
         val restrictionWorkingBytes: Long get() = workingBytes + base.size * 32L +
-            (dimension + unknownBits.size) * (48L + ((dimension + 63) / 64) * 8L)
+            (dimension + unknownBits.size) * (48L + ((dimension + 63) / 64) * 8L) +
+            32L + ((dimension + 63) / 64) * 8L
 
         inner class Restriction internal constructor() {
             private val columns = IntArray(base.size * 8) { -1 }.also { lookup ->
@@ -44,6 +45,7 @@ class RsBitConstraintSolver(private val rs: ReedSolomonErasures = ReedSolomonEra
             }
             private val expressions = arrayOfNulls<LongArray>(unknownBits.size)
             private val equations = arrayOfNulls<LongArray>(dimension)
+            private val activePivots = LongArray((dimension + 63) / 64)
             private val constants = BooleanArray(dimension)
             private val added = mutableListOf<Int>()
             val remaining: Int get() = dimension - added.size
@@ -51,7 +53,11 @@ class RsBitConstraintSolver(private val rs: ReedSolomonErasures = ReedSolomonEra
 
             fun restore(checkpoint: Int) {
                 require(checkpoint in 0..added.size)
-                while (added.size > checkpoint) equations[added.removeAt(added.lastIndex)] = null
+                while (added.size > checkpoint) {
+                    val pivot = added.removeAt(added.lastIndex)
+                    equations[pivot] = null
+                    activePivots[pivot / 64] = activePivots[pivot / 64] and (1L shl (pivot % 64)).inv()
+                }
             }
 
             private fun equation(bit: Bit): Pair<LongArray, Boolean> {
@@ -60,10 +66,17 @@ class RsBitConstraintSolver(private val rs: ReedSolomonErasures = ReedSolomonEra
                 if (column < 0) return LongArray((dimension + 63) / 64) to (base[bit.codeword] and (1 shl bit.bit) != 0)
                 val vector = (expressions[column] ?: expression(column).also { expressions[column] = it }).copyOf()
                 var constant = pivotRow[column].let { it >= 0 && rhs[it] }
-                for (i in equations.indices) if (vector.has(i)) {
-                    val row = equations[i] ?: continue
-                    vector.xorWith(row)
-                    constant = constant xor constants[i]
+                for (word in vector.indices) {
+                    var pending = vector[word] and activePivots[word]
+                    while (pending != 0L) {
+                        val pivot = word * 64 + pending.countTrailingZeroBits()
+                        val row = requireNotNull(equations[pivot])
+                        // A row has no coefficients below its pivot. Re-read this word after
+                        // elimination because XOR can expose another pivot in the same word.
+                        for (index in word until vector.size) vector[index] = vector[index] xor row[index]
+                        constant = constant xor constants[pivot]
+                        pending = vector[word] and activePivots[word]
+                    }
                 }
                 return vector to constant
             }
@@ -77,9 +90,10 @@ class RsBitConstraintSolver(private val rs: ReedSolomonErasures = ReedSolomonEra
             fun constrain(bit: Bit, value: Int): Boolean {
                 require(value in 0..1)
                 val (vector, constant) = equation(bit)
-                val pivot = (0 until dimension).firstOrNull { vector.has(it) }
-                    ?: return constant == (value == 1)
+                val pivot = vector.firstSetBit()
+                if (pivot < 0) return constant == (value == 1)
                 equations[pivot] = vector
+                activePivots.set(pivot)
                 constants[pivot] = constant xor (value == 1)
                 added += pivot
                 return true
@@ -234,4 +248,8 @@ class RsBitConstraintSolver(private val rs: ReedSolomonErasures = ReedSolomonEra
 
 private fun LongArray.has(bit: Int): Boolean = (this[bit / 64] and (1L shl (bit % 64))) != 0L
 private fun LongArray.set(bit: Int) { this[bit / 64] = this[bit / 64] or (1L shl (bit % 64)) }
+private fun LongArray.firstSetBit(): Int {
+    for (word in indices) if (this[word] != 0L) return word * 64 + this[word].countTrailingZeroBits()
+    return -1
+}
 private fun LongArray.xorWith(other: LongArray) { for (i in indices) this[i] = this[i] xor other[i] }

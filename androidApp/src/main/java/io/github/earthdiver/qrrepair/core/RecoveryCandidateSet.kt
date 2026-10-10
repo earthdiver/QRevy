@@ -18,6 +18,9 @@ val RecoveryCandidate.isSelectableRecovery: Boolean
 /** Keep the best distinct results throughout the existing search window, not its first results. */
 internal class BoundedRecoveryCandidates(private val budget: RecoveryRetentionBudget) {
     private val entries = linkedMapOf<RecoveryIdentity, RecoveryCandidate>()
+    // Rejected candidates leave the ranking unchanged. Invalidate on every retained-set
+    // mutation, including replacement of an equivalent route, to release old detail too.
+    private var cachedWorst: RecoveryCandidate? = null
     var candidatesOmitted: Boolean = false
         private set
     var derivationsOmitted: Boolean = false
@@ -34,7 +37,7 @@ internal class BoundedRecoveryCandidates(private val budget: RecoveryRetentionBu
             addDerivation(key, previous, candidate)
             return
         }
-        val worst = worstLast()
+        val worst = if (entries.size >= budget.maxCandidates) worstLast() else null
         if (entries.size >= budget.maxCandidates && worst != null &&
             recoveryCandidateComparator.compare(candidate, worst) >= 0) {
             candidatesOmitted = true
@@ -44,6 +47,7 @@ internal class BoundedRecoveryCandidates(private val budget: RecoveryRetentionBu
         val evicted = mutableListOf<RecoveryCandidate>()
         if (entries.size >= budget.maxCandidates && worst != null) {
             entries.remove(worst.identity())
+            cachedWorst = null
             budget.releaseCandidate(worst)
             evicted += worst
         }
@@ -52,6 +56,7 @@ internal class BoundedRecoveryCandidates(private val budget: RecoveryRetentionBu
             val lower = worstLast()
                 ?.takeIf { recoveryCandidateComparator.compare(candidate, it) < 0 } ?: break
             entries.remove(lower.identity())
+            cachedWorst = null
             budget.releaseCandidate(lower)
             evicted += lower
         }
@@ -66,15 +71,18 @@ internal class BoundedRecoveryCandidates(private val budget: RecoveryRetentionBu
             entries.putAll(restored)
             candidatesOmitted = true
         }
+        cachedWorst = null
         if (evicted.isNotEmpty()) candidatesOmitted = true
         if (candidate.derivationsOmitted) derivationsOmitted = true
     }
 
     private fun worstLast(): RecoveryCandidate? {
+        cachedWorst?.let { return it }
         var worst: RecoveryCandidate? = null
         for (candidate in entries.values) {
             if (worst == null || recoveryCandidateComparator.compare(candidate, worst) >= 0) worst = candidate
         }
+        cachedWorst = worst
         return worst
     }
 
@@ -87,11 +95,15 @@ internal class BoundedRecoveryCandidates(private val budget: RecoveryRetentionBu
             entries[key] = candidate.copy(alternativeDerivations = emptyList(), derivationsOmitted = true)
             released = true
         }
-        if (released) derivationsOmitted = true
+        if (released) {
+            cachedWorst = null
+            derivationsOmitted = true
+        }
         return released
     }
 
     private fun addDerivation(key: RecoveryIdentity, previous: RecoveryCandidate, candidate: RecoveryCandidate) {
+        cachedWorst = null
         val routes = (listOf(previous.copy(alternativeDerivations = emptyList())) +
             previous.alternativeDerivations + candidate).sortedWith(recoveryCandidateComparator)
         val chosen = routes.take(1 + budget.maxAlternativeDerivations)
@@ -120,6 +132,7 @@ internal class BoundedRecoveryCandidates(private val budget: RecoveryRetentionBu
     }
 
     fun clear() {
+        cachedWorst = null
         budget.releaseCandidates(entries.values.toList())
         entries.clear()
     }

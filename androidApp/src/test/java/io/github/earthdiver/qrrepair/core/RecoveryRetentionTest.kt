@@ -106,6 +106,40 @@ class RecoveryRetentionTest {
         assertEquals(listOf(4, 1), set.results().map { it.correctedInterleaved.single() })
     }
 
+    @Test fun improvingAnEquivalentRouteChangesWhichDistinctResultIsReplaced() {
+        val prototype = candidate()
+        val budget = RecoveryRetentionBudget(maxCandidates = 2)
+        val set = BoundedRecoveryCandidates(budget)
+        val first = prototype.copy(correctedInterleaved = intArrayOf(1), minRsMargin = 1)
+        val second = prototype.copy(correctedInterleaved = intArrayOf(2), minRsMargin = 2)
+        set.add(first)
+        set.add(second)
+        repeat(10) { set.add(prototype.copy(correctedInterleaved = intArrayOf(10 + it), minRsMargin = 0)) }
+        set.add(first.copy(correctedInterleaved = intArrayOf(1), minRsMargin = 3))
+        set.add(prototype.copy(correctedInterleaved = intArrayOf(3), minRsMargin = 4))
+        val results = set.results()
+        assertEquals(listOf(3, 1), results.map { it.correctedInterleaved.single() })
+        assertEquals(listOf(1), results.last().alternativeDerivations.map { it.minRsMargin })
+        val expectedBudget = budget.fresh()
+        results.forEach { assertTrue(expectedBudget.tryRetain(it)) }
+        assertEquals(expectedBudget.retainedBytes, budget.retainedBytes)
+    }
+
+    @Test fun clearingAFullCandidateSetPreservesTieOrderInTheNextSet() {
+        val prototype = candidate()
+        val budget = RecoveryRetentionBudget(maxCandidates = 2)
+        val set = BoundedRecoveryCandidates(budget)
+        for (index in 1..3) set.add(prototype.copy(correctedInterleaved = intArrayOf(index)))
+        assertEquals(listOf(1, 2), set.results().map { it.correctedInterleaved.single() })
+        set.clear()
+        assertEquals(0L, budget.retainedBytes)
+        for (index in 4..6) set.add(prototype.copy(correctedInterleaved = intArrayOf(index)))
+        set.add(prototype.copy(correctedInterleaved = intArrayOf(7), minRsMargin = 100))
+        assertEquals(listOf(7, 4), set.results().map { it.correctedInterleaved.single() })
+        set.clear()
+        assertEquals(0L, budget.retainedBytes)
+    }
+
     @Test fun equivalentRoutesKeepTheBestExplanationAndReleaseDiscardedDetail() {
         val prototype = candidate()
         val budget = RecoveryRetentionBudget(maxAlternativeDerivations = 2)

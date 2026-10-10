@@ -7,10 +7,10 @@ import com.google.zxing.qrcode.encoder.Encoder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import kotlin.math.abs
 import kotlin.math.sqrt
 
 class GeometryNeighborhoodDisplacementRegressionTest {
+    private val recoveryCache = GeometryRecoveryCache()
     private val widths = (3..8).map { it / 10.0 }
     private val version = 3
     private val text = "GEOMETRY WIDTH REGRESSION"
@@ -37,6 +37,7 @@ class GeometryNeighborhoodDisplacementRegressionTest {
             inverted = false,
         )
         val successes = linkedMapOf<Double, Int>()
+        val exactCorrections = mutableMapOf<Pair<Double, Perturbation>, Boolean>()
 
         for (searchWidth in widths) {
             var recoveredCases = 0
@@ -45,7 +46,9 @@ class GeometryNeighborhoodDisplacementRegressionTest {
                     val input = perturb(truth, injectedWidth, kind)
                     val variants = manualQuadNeighborhood(input, version, searchWidth)
                     assertComparableDisplacements(input, variants, searchWidth)
-                    if (variants.any { candidate -> recovers(image, profile, candidate) }) recoveredCases++
+                    val recovered = variants.any { candidate -> recovers(image, profile, candidate) }
+                    if (recovered) recoveredCases++
+                    if (searchWidth == injectedWidth) exactCorrections[searchWidth to kind] = recovered
                 }
             }
             successes[searchWidth] = recoveredCases
@@ -54,10 +57,9 @@ class GeometryNeighborhoodDisplacementRegressionTest {
         // score map is included in failures so changes to the useful-width plateau are visible.
         for (width in widths) {
             for (kind in Perturbation.entries) {
-                val input = perturb(truth, width, kind)
                 assertTrue(
                     "Exact correction failed width=$width kind=$kind scores=$successes",
-                    manualQuadNeighborhood(input, version, width).any { recovers(image, profile, it) },
+                    exactCorrections.getValue(width to kind),
                 )
             }
         }
@@ -86,7 +88,10 @@ class GeometryNeighborhoodDisplacementRegressionTest {
         val matrix = MatrixSampler(image, profile).sample(geometry).first
         // Compare geometry using the ordinary decoder; the timed list-decoding extension
         // must not change this displacement sweep's recovery threshold.
-        return RecoveryEngine().recover(matrix, maxFormatCandidates = 1, listDecodingBudget = ListDecodingBudget(0)).any { it.text == text }
+        return recoveryCache.getOrPut(matrix, text) {
+            RecoveryEngine().recover(matrix, maxFormatCandidates = 1, listDecodingBudget = ListDecodingBudget(0))
+                .any { it.text == text }
+        }
     }
 
     private fun perturb(quad: ImageQuad, modules: Double, kind: Perturbation): ImageQuad {
