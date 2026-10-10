@@ -380,6 +380,26 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
 
     private fun failureProcessingText(failure: RecoveryFailure): String {
         val processing = buildString {
+            if (failure.manualConflicts.isNotEmpty()) {
+                fun value(value: ModuleValue) = when (value) {
+                    ModuleValue.ZERO -> ui("白（0）", "white (0)")
+                    ModuleValue.ONE -> ui("黒（1）", "black (1)")
+                    ModuleValue.ERASED -> ui("不明（?）", "unknown (?)")
+                }
+                append(ui("固定セルとの矛盾（この参考計算・座標は0から）",
+                    "Fixed-cell conflict details for this reference calculation (zero-based coordinates)"))
+                if (failure.manualConflicts.any { it.expected == null }) append(ui(
+                    "\n固定値の組合せが形式の条件と矛盾しています。必要な値が未確定のセルを、個別に誤りと判定したわけではありません。",
+                    "\nThe combination of fixed values conflicts with the format conditions. Cells with no determined required value have not individually been identified as incorrect."))
+                failure.manualConflicts.forEach { conflict ->
+                    append(ui("\nセル (${conflict.coord.x},${conflict.coord.y}): 固定値 ${value(conflict.actual)}",
+                        "\nCell (${conflict.coord.x},${conflict.coord.y}): fixed value ${value(conflict.actual)}"))
+                    append(conflict.expected?.let { expected -> ui(
+                        " / この参考計算で必要な値: ${value(expected)}",
+                        " / required by this reference calculation: ${value(expected)}") }
+                        ?: ui(" / 必要な値: 未確定", " / required value: not determined"))
+                }
+            }
             if (failure.failedBlockIndex != null) {
                 if (isNotEmpty()) append('\n')
                 append(ui("この参考計算で最初に結果を得られなかったRSブロック: ",
