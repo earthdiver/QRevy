@@ -10,7 +10,7 @@ This study compares the search widths and transformation types used by **Automat
 
 - Geometry-candidate generation: [`FixedGeometryRecovery.kt`](../androidApp/src/main/java/io/github/earthdiver/qrrepair/core/FixedGeometryRecovery.kt)
 - Displacement and single-width regression: [`GeometryNeighborhoodDisplacementRegressionTest.kt`](../androidApp/src/test/java/io/github/earthdiver/qrrepair/core/GeometryNeighborhoodDisplacementRegressionTest.kt)
-- Per-transformation and rotation regression: [`GeometryNeighborhoodExpandedRegressionTest.kt`](../androidApp/src/test/java/io/github/earthdiver/qrrepair/core/GeometryNeighborhoodExpandedRegressionTest.kt)
+- Default-width recovery and detailed transformation/rotation comparison: [`GeometryNeighborhoodExpandedRegressionTest.kt`](../androidApp/src/test/java/io/github/earthdiver/qrrepair/core/GeometryNeighborhoodExpandedRegressionTest.kt)
 - Candidate-count and pivot-rotation unit checks: [`AutoRecoveryOrderingTest.kt`](../androidApp/src/test/java/io/github/earthdiver/qrrepair/core/AutoRecoveryOrderingTest.kt)
 
 ```bash
@@ -21,6 +21,8 @@ This study compares the search widths and transformation types used by **Automat
 ```
 
 The tables record comparison values used when the design decision was made with synthetic fixtures. Current tests detect regressions caused by code changes but do not freeze every historical number. An update to the measured results should also identify the tested commit, fixtures, success criterion, and any changed search limits.
+
+Routine coverage checks the default 0.6-module search width with 36 ordinary cases (2 symbols × 18 transformations) and 12 rotation cases (2 symbols × 3 Finder roles × 2 directions). Each case stops after a candidate recovers the original text. Coordinate checks cover all six widths without decoding. The full comparison also measures the other widths and each transformation family's contribution. Local `--quick` feedback omits that comparison while retaining the displacement sweep; the app scope omits both studies but keeps the 48 default-width cases. Full validation, CI, and release audits include all cases. See the [validation guide](../CONTRIBUTING.md#validation).
 
 ## Ordinary-geometry conditions
 

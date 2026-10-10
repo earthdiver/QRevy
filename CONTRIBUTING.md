@@ -48,7 +48,15 @@ The script prints each changed path, its classification, and the commands it wil
 | `shared/src/commonTest/` only | All shared JVM tests |
 | Recovery core or its tests/fixtures, shared production code, build/dependency/CI/check configuration, manifest/backup rules, or anything unclassified | Full development validation |
 
-The app scope runs all Android unit tests except the exhaustive geometry displacement sweep and expanded width/rotation study. It retains the remaining geometry tests, the manual-bit comparison in the expanded regression class, UI integration, session compatibility, and source-image validation. The script combines scopes for mixed changes and selects full validation if any path requires it. The rules use repository areas, not a computed call graph; choose full validation when a change affects dependencies beyond its area.
+The app scope runs all Android unit tests except the exhaustive geometry displacement sweep and expanded width/rotation study. It retains 48 default-width geometry recovery cases, coordinate checks, the manual-bit comparison, UI integration, session compatibility, and source-image validation. The script combines scopes for mixed changes and selects full validation if any path requires it. The rules use repository areas, not a computed call graph; choose full validation when a change affects dependencies beyond its area.
+
+For intermediate feedback while editing recovery code:
+
+```bash
+python3 -B scripts/check-changes.py --quick
+```
+
+Quick feedback runs the development checks even on a clean tree and omits only the expanded width/rotation study. It keeps the displacement sweep, all 48 default-width cases, and all other checks. Use `--dry-run` to preview it. Before submitting, run without `--quick` using the appropriate base, or use `--full`; quick feedback does not satisfy final validation. `--quick` and `--full` are mutually exclusive.
 
 For full development validation, including on a clean working tree:
 
@@ -56,7 +64,7 @@ For full development validation, including on a clean working tree:
 python3 -B scripts/check-changes.py --full
 ```
 
-Full validation verifies the wrapper and shared boundary, runs Python script regressions, shared JVM tests, all Android unit tests, lint, and a debug build. On macOS it also builds the shared XCFramework. Android CI and extended recovery fuzz always run the full suites. Direct Gradle test runs default to full coverage; `-Pqr.testScope=app` is the script's explicit opt-in for reduced coverage.
+Full validation verifies the wrapper and shared boundary, runs Python script regressions, shared JVM tests, all Android unit tests, lint, and a debug build. On macOS it also builds the shared XCFramework. Android CI and extended recovery fuzz always run the full suites. Direct Gradle test runs default to full coverage; the script selects `-Pqr.testScope=app` for app changes and `-Pqr.testScope=quick` for intermediate feedback.
 
 During development, individual tests can also be selected with Gradle, for example:
 

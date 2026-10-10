@@ -59,18 +59,54 @@ class AutoRecoveryOrderingTest {
         assertTrue(variants.any { it.topLeft != original.topLeft && it.topRight == original.topRight })
     }
 
-    @Test fun oneFinderRotationKeepsItsCornerFixedAndUsesTheRequestedOuterDisplacement() {
-        val variants = manualQuadNeighborhood(quad, version = 7, rotationPivotRole = FinderRole.TOP_LEFT)
-        val pitch = (quad.topLeft.distanceTo(quad.topRight) + quad.topLeft.distanceTo(quad.bottomLeft)) /
-            (2.0 * (17 + 4 * 7 - 1))
-
-        assertEquals(21, variants.size)
-        variants.takeLast(2).forEach { rotated ->
-            assertEquals(quad.topLeft, rotated.topLeft)
-            val maximumDisplacement = quad.asList().zip(rotated.asList()).maxOf { (before, after) ->
-                before.distanceTo(after)
+    @Test fun translationsScalesAndCornerMovesUseComparableDisplacementsAcrossWidths() {
+        for (version in listOf(1, 3, 7)) for (tenths in 3..8) {
+            val width = tenths / 10.0
+            val expected = width * 200.0 / (17 + 4 * version - 1)
+            val variants = manualQuadNeighborhood(quad, version, width)
+            val context = "V$version/width=$width"
+            assertEquals(context, 19, variants.size)
+            assertEquals(context, quad, variants.first())
+            variants.subList(1, 11).forEach { transformed ->
+                val distances = quad.asList().zip(transformed.asList()).map { (before, after) -> before.distanceTo(after) }
+                assertEquals(context, expected, distances.average(), 1e-6)
             }
-            assertEquals(.60 * pitch, maximumDisplacement, 1e-6)
+            variants.drop(11).forEach { transformed ->
+                val distances = quad.asList().zip(transformed.asList()).map { (before, after) -> before.distanceTo(after) }
+                assertEquals(context, 1, distances.count { it > 1e-6 })
+                assertEquals(context, expected, distances.max(), 1e-6)
+            }
+        }
+    }
+
+    @Test fun oneFinderRotationKeepsItsCornerFixedAndUsesTheRequestedOuterDisplacement() {
+        for (version in listOf(1, 3, 7)) for (tenths in 3..8) for (role in FinderRole.entries) {
+            val width = tenths / 10.0
+            val expected = width * 200.0 / (17 + 4 * version - 1)
+            val variants = manualQuadNeighborhood(quad, version, width, role)
+            val context = "V$version/width=$width/pivot=$role"
+            val pivotIndex = when (role) {
+                FinderRole.TOP_LEFT -> 0
+                FinderRole.TOP_RIGHT -> 1
+                FinderRole.BOTTOM_LEFT -> 3
+            }
+            val pivot = quad.asList()[pivotIndex]
+            val farthestIndex = (pivotIndex + 2) % 4
+            assertEquals(context, 21, variants.size)
+            assertEquals(context, quad, variants.first())
+            variants.takeLast(2).forEachIndexed { index, rotated ->
+                assertEquals(context, pivot, rotated.asList()[pivotIndex])
+                val distances = quad.asList().zip(rotated.asList()).map { (before, after) -> before.distanceTo(after) }
+                assertEquals(context, expected, distances.max(), 1e-6)
+                quad.asList().indices.forEach { corner ->
+                    assertEquals(context, quad.asList()[corner].distanceTo(pivot),
+                        rotated.asList()[corner].distanceTo(pivot), 1e-6)
+                }
+                val before = quad.asList()[farthestIndex] - pivot
+                val after = rotated.asList()[farthestIndex] - pivot
+                val cross = before.x * after.y - before.y * after.x
+                assertTrue(context, if (index == 0) cross < 0.0 else cross > 0.0)
+            }
         }
     }
 }

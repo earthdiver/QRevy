@@ -17,6 +17,7 @@ SCOPE_REASONS = {
     "app": "Android UI/session coverage, lint, and debug build",
     "shared-tests": "shared JVM tests",
     "full": "recovery, build/check policy, or an unclassified path",
+    "quick": "development checks except the expanded geometry study; intermediate feedback only",
 }
 
 
@@ -68,9 +69,11 @@ def changed_paths(root: Path, reference: str | None) -> tuple[str, list[str]]:
     return base, sorted(paths)
 
 
-def commands_for(paths: list[str], base: str, full: bool, platform: str) -> tuple[str, list[list[str]]]:
+def commands_for(paths: list[str], base: str, full: bool, platform: str, *, quick: bool = False) -> tuple[str, list[list[str]]]:
+    if full and quick:
+        raise ValueError("Choose either full validation or quick feedback.")
     scopes = {scope_for(path) for path in paths}
-    if full or "full" in scopes:
+    if full or quick or "full" in scopes:
         scopes = {"full"}
     if not scopes:
         return "none", []
@@ -93,39 +96,51 @@ def commands_for(paths: list[str], base: str, full: bool, platform: str) -> tupl
     if shared:
         gradle.append(":shared:jvmTest")
     if android:
-        gradle += [":androidApp:testDebugUnitTest", "-Pqr.testScope=" + ("full" if is_full else "app"),
+        test_scope = "quick" if quick else "full" if is_full else "app"
+        gradle += [":androidApp:testDebugUnitTest", "-Pqr.testScope=" + test_scope,
                    ":androidApp:lint", ":androidApp:assembleDebug"]
     if is_full and platform == "darwin":
         gradle.append(":shared:assembleXCFramework")
     commands.append(gradle)
-    return "full" if is_full else "+".join(sorted(scopes - {"docs"})), commands
+    return "quick" if quick else "full" if is_full else "+".join(sorted(scopes - {"docs"})), commands
 
 
 def main(argv: list[str] | None = None, root: Path = ROOT) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", metavar="REF", help="include commits since the merge base with REF, plus local edits")
-    parser.add_argument("--full", action="store_true", help="run the full development checks even with no changes")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--full", action="store_true", help="run the full development checks even with no changes")
+    mode.add_argument("--quick", action="store_true", help="run development checks except the expanded geometry study, even with no changes; not final validation")
     parser.add_argument("--dry-run", action="store_true", help="print the selected checks without running them")
     args = parser.parse_args(argv)
     try:
         base, paths = changed_paths(root, args.base)
-        scope, commands = commands_for(paths, base, args.full, sys.platform)
+        scope, commands = commands_for(paths, base, args.full, sys.platform, quick=args.quick)
         print("Change base: " + base[:12], flush=True)
         for path in paths:
             print(f"  [{scope_for(path)}] {shlex.quote(path)}", flush=True)
         print("Selected scope: " + scope, flush=True)
-        for selected in sorted({scope_for(path) for path in paths} | ({"full"} if args.full else set())):
+        forced = {"full"} if args.full else {"quick"} if args.quick else set()
+        for selected in sorted({scope_for(path) for path in paths} | forced):
             print(f"  {selected}: {SCOPE_REASONS[selected]}", flush=True)
         if scope == "none":
             print("No changes found. Use --base REF for committed changes, or --full.")
             return 0
         if "app" in scope:
             print("Android checks omit only the two exhaustive geometry studies; all other Android tests remain enabled.", flush=True)
+        if args.quick:
+            print("Quick feedback retains the displacement sweep and all 48 default-width cases; only the expanded geometry study is omitted.", flush=True)
+            print("Run without --quick, or with --full, for final validation.", flush=True)
         for command in commands:
             print("$ " + shlex.join(command), flush=True)
             if not args.dry_run:
                 subprocess.run(command, cwd=root, check=True)
-        print("Plan only; no checks executed." if args.dry_run else "Selected checks passed.", flush=True)
+        if args.dry_run:
+            print("Plan only; no checks executed.", flush=True)
+        elif args.quick:
+            print("Quick feedback passed. Final validation is still required.", flush=True)
+        else:
+            print("Selected checks passed.", flush=True)
         return 0
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         print(f"Change checks failed: {error}", file=sys.stderr)

@@ -5,18 +5,20 @@ plugins {
 // Gradle's JVM properties are not inherited by forked test JVMs. Forward only this
 // supported control and declare it as an input so changing the count reruns tests.
 val recoveryFuzzIterations = providers.systemProperty("qr.fuzz.iterations").orElse("24")
-// Full coverage is the default. The change-check script selects app coverage only
-// when recovery code, geometry fixtures, and build configuration are unchanged.
+// Full coverage is the default. Quick coverage is for intermediate feedback;
+// app coverage is selected only for changes outside recovery/build configuration.
 val changeCheckScope = providers.gradleProperty("qr.testScope").orElse("full")
-require(changeCheckScope.get() in setOf("full", "app")) { "qr.testScope must be full or app" }
+require(changeCheckScope.get() in setOf("full", "app", "quick")) { "qr.testScope must be full, app, or quick" }
 tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
     inputs.property("qr.fuzz.iterations", recoveryFuzzIterations)
     systemProperty("qr.fuzz.iterations", recoveryFuzzIterations.get())
     // Extended CI runs expose the completed-count message as well as retaining it in test reports.
     testLogging.showStandardStreams = providers.systemProperty("qr.fuzz.iterations").isPresent
-    if (name == "testDebugUnitTest" && changeCheckScope.get() == "app") {
+    if (name == "testDebugUnitTest" && changeCheckScope.get() != "full") {
         filter {
-            excludeTestsMatching("io.github.earthdiver.qrrepair.core.GeometryNeighborhoodDisplacementRegressionTest.equalDisplacementSweepRecoversSyntheticQrAndKeepsTransformsComparable")
+            if (changeCheckScope.get() == "app") {
+                excludeTestsMatching("io.github.earthdiver.qrrepair.core.GeometryNeighborhoodDisplacementRegressionTest.equalDisplacementSweepRecoversSyntheticQrAndKeepsTransformsComparable")
+            }
             excludeTestsMatching("io.github.earthdiver.qrrepair.core.GeometryNeighborhoodExpandedRegressionTest.exactWidthCorrectionsAndOneFinderRotationRecoverSupportedPerturbations")
         }
     }

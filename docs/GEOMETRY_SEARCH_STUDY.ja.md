@@ -10,7 +10,7 @@
 
 - 幾何候補生成: [`FixedGeometryRecovery.kt`](../androidApp/src/main/java/io/github/earthdiver/qrrepair/core/FixedGeometryRecovery.kt)
 - 変位と単一幅の回帰: [`GeometryNeighborhoodDisplacementRegressionTest.kt`](../androidApp/src/test/java/io/github/earthdiver/qrrepair/core/GeometryNeighborhoodDisplacementRegressionTest.kt)
-- 変形別・回転候補の回帰: [`GeometryNeighborhoodExpandedRegressionTest.kt`](../androidApp/src/test/java/io/github/earthdiver/qrrepair/core/GeometryNeighborhoodExpandedRegressionTest.kt)
+- 既定幅の復元確認と変形・回転の詳細比較: [`GeometryNeighborhoodExpandedRegressionTest.kt`](../androidApp/src/test/java/io/github/earthdiver/qrrepair/core/GeometryNeighborhoodExpandedRegressionTest.kt)
 - 候補数と支点回転の単体確認: [`AutoRecoveryOrderingTest.kt`](../androidApp/src/test/java/io/github/earthdiver/qrrepair/core/AutoRecoveryOrderingTest.kt)
 
 ```bash
@@ -21,6 +21,8 @@
 ```
 
 表の数値は合成テストデータに対する設計判断時の比較値です。現行テストはコード変更による退行を検出しますが、過去の全数値を固定するものではありません。評価結果を更新する場合は、対象コミット、テストデータ、成功条件、探索上限の変更も併記します。
+
+通常の確認では既定の探索幅0.6モジュールを使い、通常変形36ケース（2 QR × 18変形）と回転12ケース（2 QR × 3位置検出パターン役割 × 2方向）を検証します。各ケースは候補の1つが元の文字列を復元した時点で次へ進みます。座標計算は復号せずに全6幅を確認します。詳細比較では、ほかの探索幅と変形種類ごとの寄与も測定します。ローカルの`--quick`は詳細比較を省き、変位テストを残します。アプリ変更用の範囲では両方の比較を省きますが、既定幅の48ケースは実行します。全体チェック・CI・リリース監査ではすべて実行します。使い方は[検証ガイド](../CONTRIBUTING.md#validation)を参照してください。
 
 ## 通常幾何の条件
 

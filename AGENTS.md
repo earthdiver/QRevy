@@ -56,7 +56,9 @@ By default, this includes staged, unstaged, and untracked changes relative to `H
 | Shared test sources or fixtures only | Shared JVM tests |
 | Shared production code, Android recovery core or core tests/fixtures, build/dependency/CI/check configuration, manifest/backup rules, or unclassified files | Full checks |
 
-Mixed changes combine the required checks; any full-check path makes the entire run full. The app scope retains session compatibility, source-image integrity, manual-edit, and ordinary geometry tests. It excludes only the exhaustive displacement sweep and expanded width/rotation study. Use `--full` whenever the semantic impact exceeds the path classification. New source areas require full checks until their dependencies are reviewed.
+Mixed changes combine the required checks; any full-check path makes the entire run full. The app scope retains session compatibility, source-image integrity, manual-edit, and ordinary geometry tests, including 48 default-width recovery cases. It excludes only the exhaustive displacement sweep and expanded width/rotation study. Use `--full` whenever the semantic impact exceeds the path classification. New source areas require full checks until their dependencies are reviewed.
+
+For intermediate feedback, `python3 -B scripts/check-changes.py --quick` runs the development checks even on a clean tree, omitting only the expanded width/rotation study. It keeps the displacement sweep, the 48 default-width cases, and all other checks. It cannot be combined with `--full` and does not satisfy final validation: before handing off a change, run without `--quick` using the appropriate base, or use `--full`.
 
 Full development validation is:
 

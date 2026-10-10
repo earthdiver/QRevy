@@ -22,8 +22,8 @@ SHARED_TEST = "shared/src/commonTest/kotlin/io/github/earthdiver/qrrepair/core/S
 
 
 class CheckSelectionTest(unittest.TestCase):
-    def plan(self, paths, full=False, platform="linux"):
-        return checks.commands_for(paths, "base-commit", full, platform)
+    def plan(self, paths, full=False, platform="linux", quick=False):
+        return checks.commands_for(paths, "base-commit", full, platform, quick=quick)
 
     def test_documentation_does_not_start_a_build(self):
         scope, commands = self.plan(["README.md", "README.ja.md", "docs/USER_GUIDE.en.md"])
@@ -79,6 +79,23 @@ class CheckSelectionTest(unittest.TestCase):
         self.assertIn(":shared:assembleXCFramework", commands[-1])
         self.assertIn("-Pqr.testScope=full", commands[-1])
         self.assertNotIn(":shared:assembleXCFramework", self.plan([], full=True)[1][-1])
+
+    def test_quick_feedback_keeps_all_full_checks_except_the_android_geometry_scope(self):
+        for paths in ([], ["README.md"], [APP + "AppStyle.kt"], [SHARED_TEST], [CORE], ["unknown-file"]):
+            for platform in ("linux", "darwin"):
+                with self.subTest(paths=paths, platform=platform):
+                    scope, commands = self.plan(paths, platform=platform, quick=True)
+                    self.assertEqual(scope, "quick")
+                    self.assertIn("-Pqr.testScope=quick", commands[-1])
+                    self.assertEqual(
+                        [[arg.replace("-Pqr.testScope=quick", "-Pqr.testScope=full") for arg in command]
+                         for command in commands],
+                        self.plan(paths, full=True, platform=platform)[1],
+                    )
+
+    def test_full_validation_cannot_be_combined_with_quick_feedback(self):
+        with self.assertRaises(ValueError):
+            self.plan([CORE], full=True, quick=True)
 
 
 class GitChangeSelectionTest(unittest.TestCase):
@@ -182,6 +199,46 @@ class GitChangeSelectionTest(unittest.TestCase):
         self.assertIn("-Pqr.testScope=full", output)
         self.assertIn("Plan only; no checks executed.", output)
         self.assertFalse((self.root / "build").exists())
+
+    def test_quick_dry_run_distinguishes_feedback_from_required_full_validation(self):
+        self.write(CORE, "changed core\n")
+        self.commit()
+        result, output = self.run_main("--base", "HEAD~1", "--quick", "--dry-run")
+        self.assertEqual(result, 0)
+        self.assertIn("[full] " + CORE, output)
+        self.assertIn("Selected scope: quick", output)
+        self.assertIn("-Pqr.testScope=quick", output)
+        self.assertIn("Run without --quick, or with --full, for final validation.", output)
+        self.assertIn("Plan only; no checks executed.", output)
+        self.assertFalse((self.root / "build").exists())
+
+    def test_quick_feedback_runs_even_on_a_clean_tree(self):
+        result, output = self.run_main("--quick", "--dry-run")
+        self.assertEqual(result, 0)
+        self.assertIn("Selected scope: quick", output)
+        self.assertIn(":shared:jvmTest", output)
+        self.assertIn("-Pqr.testScope=quick", output)
+        self.assertNotIn("No changes found", output)
+
+    def test_cli_rejects_quick_and_full_together(self):
+        with self.assertRaises(SystemExit) as error:
+            self.run_main("--quick", "--full", "--dry-run")
+        self.assertEqual(error.exception.code, 2)
+
+    def test_successful_quick_feedback_still_requires_final_validation(self):
+        for name in ("bootstrap-wrapper.sh", "scripts/verify-wrapper.sh",
+                     "scripts/check-shared-boundary.sh", "gradlew"):
+            self.write(name, "#!/bin/sh\nexit 0\n")
+            (self.root / name).chmod(0o755)
+        self.write("scripts/test_fixture.py", "import unittest\nfrom pathlib import Path\n\n"
+                   "class WorkspaceTest(unittest.TestCase):\n"
+                   "    def test_uses_repository_as_working_directory(self):\n"
+                   "        self.assertTrue(Path('gradlew').is_file())\n")
+        self.commit()
+        result, output = self.run_main("--quick")
+        self.assertEqual(result, 0, output)
+        self.assertIn("Quick feedback passed. Final validation is still required.", output)
+        self.assertNotIn("Selected checks passed", output)
 
     def test_failed_whitespace_check_stops_before_bootstrapping_or_running_tests(self):
         self.write(APP + "AppStyle.kt", "trailing whitespace  \n")

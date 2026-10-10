@@ -9,7 +9,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 import kotlin.math.sqrt
 
-/** A broader deterministic study than the compact displacement regression. */
+/** Default-width recovery checks and the detailed comparison share the same synthetic fixtures. */
 class GeometryNeighborhoodExpandedRegressionTest {
     private val recoveryCache = GeometryRecoveryCache()
     private val widths = (3..8).map { it / 10.0 }
@@ -19,6 +19,43 @@ class GeometryNeighborhoodExpandedRegressionTest {
         Fixture(1, ErrorCorrectionLevel.H, "WIDTH-V1-H"),
         Fixture(7, ErrorCorrectionLevel.Q, "WIDTH-V7-Q"),
     )
+
+    @Test
+    fun defaultWidthRecoversTranslationsScalesAndCornerDisplacements() {
+        var cases = 0
+        fixtures.forEach { fixture ->
+            val prepared = prepare(fixture)
+            injectedPerturbations(prepared.truth, fixture.version, 0.6).forEach { injected ->
+                val candidates = manualQuadNeighborhood(injected.quad, fixture.version)
+                assertTrue(
+                    "Default-width correction failed: V${fixture.version}/${injected.name}",
+                    candidates.any { recovers(prepared, it) },
+                )
+                cases++
+            }
+        }
+        assertEquals(36, cases)
+    }
+
+    @Test
+    fun defaultWidthRecoversRotationAboutEachFinder() {
+        var cases = 0
+        fixtures.forEach { fixture ->
+            val prepared = prepare(fixture)
+            FinderRole.entries.forEach { role ->
+                for (sign in listOf(-1.0, 1.0)) {
+                    val input = rotateAboutLogicalCorner(prepared.truth, fixture.version, role, 0.6 * sign)
+                    val candidates = manualQuadNeighborhood(input, fixture.version, rotationPivotRole = role)
+                    assertTrue(
+                        "Default-width rotation failed: V${fixture.version}/$role/${if (sign < 0) "CCW" else "CW"}",
+                        candidates.any { recovers(prepared, it) },
+                    )
+                    cases++
+                }
+            }
+        }
+        assertEquals(12, cases)
+    }
 
     @Test
     fun exactWidthCorrectionsAndOneFinderRotationRecoverSupportedPerturbations() {
