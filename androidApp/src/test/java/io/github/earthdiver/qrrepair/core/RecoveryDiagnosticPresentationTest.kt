@@ -60,6 +60,20 @@ class RecoveryDiagnosticPresentationTest {
         assertEquals("", (null as RecoveryDisplayConditions?).candidateCalculationPolicyText())
     }
 
+    @Test fun runSettingsShowTheRecordedPartialBitLimitInSummaryAndDetails() = inBothLanguages { ja ->
+        for (limit in listOf(12, 14)) {
+            val settings = RecoveryDisplayConditions(false, true, null, null, 0, partialBitSearchLimit = limit)
+            val section = settings.runSettingsSection()
+            val expected = if (ja) "部分bit探索・自由度の上限: ${limit}bit／RSブロック"
+                else "Partial-bit search / dimension limit: $limit bits per RS block"
+
+            assertTrue(section.summary, section.summary.contains(expected))
+            assertTrue(section.details, section.details.contains(expected))
+        }
+        val unrecorded = (null as RecoveryDisplayConditions?).runSettingsSection()
+        assertFalse(unrecorded.summary.contains(if (ja) "自由度の上限" else "dimension limit"))
+    }
+
     @Test fun finalResultsSeparateNotFoundFromUnsearchedAndMixedRejectionReasons() = inBothLanguages { ja ->
         val settings = RecoveryDisplayConditions(false, true, null, null, 2)
         val mixed = RecoverySearchDiagnostic(solverCompleteness = SearchCompleteness.COMPLETE, candidateRejections = setOf(
