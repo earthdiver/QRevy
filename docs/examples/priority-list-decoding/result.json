@@ -1,0 +1,947 @@
+{
+  "input_type": "Synthetic PNG and TEXT matrix",
+  "version": 1,
+  "ecc": "L",
+  "mask": 0,
+  "payload": "QRevy repaired.",
+  "unknown_cells": 53,
+  "total_cells": 441,
+  "priority_cells": 1,
+  "priority_coordinates_xy_zero_based": [
+    [
+      19,
+      20
+    ]
+  ],
+  "changed_cells_xy_zero_based": [
+    [
+      19,
+      9
+    ],
+    [
+      17,
+      16
+    ]
+  ],
+  "erased_ecc_codewords_zero_based": [
+    19,
+    20,
+    21,
+    22
+  ],
+  "erroneous_codewords_zero_based": [
+    2,
+    4
+  ],
+  "erased_suffix_bit_range_half_open": [
+    132,
+    152
+  ],
+  "settings": {
+    "single_segment_assumption": true,
+    "ecc": "Automatic",
+    "mask": "Automatic",
+    "format_error_limit": "Automatic (6 bits)",
+    "data_ecc_error_limit": "Automatic (2 bits)",
+    "priority_search_limit": 4,
+    "partial_bit_search_limit": 12,
+    "list_decoding_additional_errors": 1,
+    "image_automatic_thresholds": true,
+    "image_black_max": 64,
+    "image_white_min": 192
+  },
+  "comparison": [
+    {
+      "action": "single-on",
+      "candidate_count": 1,
+      "search_diagnostic": {
+        "inputBlocker": null,
+        "candidateRejections": [
+          "LIST_DECODING_MISMATCH_LIMIT"
+        ],
+        "acceptedCandidate": true,
+        "unresolvedCalculations": true,
+        "unsearched": false,
+        "incompleteReasons": [],
+        "completedSteps": 14,
+        "coverageComplete": true,
+        "solverCompleteness": "COMPLETE",
+        "candidateCalculations": 2,
+        "candidatesOmitted": false,
+        "derivationsOmitted": false,
+        "singleSegmentStatuses": [
+          "INCOMPLETE_HEADER",
+          "UNSUPPORTED_MODE",
+          "APPLIED_WITH_PRIORITY_HEADER"
+        ],
+        "priorityHeaderHypotheses": [
+          "0000",
+          "010000001111"
+        ],
+        "listDecoding": {
+          "trials": 1,
+          "interpolations": 0,
+          "elapsedMillis": 45,
+          "mismatchLimits": [
+            2
+          ],
+          "skipReasons": [],
+          "methodTrials": {
+            "WU": 1
+          },
+          "reusedTrials": 0,
+          "extensionLimits": [
+            1
+          ],
+          "hardRadiusTrials": {
+            "2": 1
+          },
+          "completedHardRadiusTrials": {
+            "2": 1
+          }
+        },
+        "listDecodingExecution": {
+          "stages": {
+            "WITHOUT_ASSIGNMENTS": [
+              "INELIGIBLE"
+            ],
+            "ADDITIONAL": [
+              "COMPLETED"
+            ]
+          },
+          "newTrials": {
+            "WITHOUT_ASSIGNMENTS": 0,
+            "ADDITIONAL": 1
+          }
+        }
+      },
+      "failure_reason": "NO_RS_CONSISTENT_ASSIGNMENT"
+    },
+    {
+      "action": "single-off",
+      "candidate_count": 0,
+      "search_diagnostic": {
+        "inputBlocker": null,
+        "candidateRejections": [
+          "QR_STRUCTURE",
+          "LIST_DECODING_MISMATCH_LIMIT"
+        ],
+        "acceptedCandidate": false,
+        "unresolvedCalculations": true,
+        "unsearched": false,
+        "incompleteReasons": [],
+        "completedSteps": 15,
+        "coverageComplete": true,
+        "solverCompleteness": "COMPLETE",
+        "candidateCalculations": 9,
+        "candidatesOmitted": false,
+        "derivationsOmitted": false,
+        "singleSegmentStatuses": [],
+        "priorityHeaderHypotheses": [],
+        "listDecoding": {
+          "trials": 32,
+          "interpolations": 0,
+          "elapsedMillis": 78,
+          "mismatchLimits": [
+            2
+          ],
+          "skipReasons": [
+            "TOO_MANY_ERASURES",
+            "KV_PARAMETERS_UNAVAILABLE",
+            "NO_ADDITIONAL_RADIUS"
+          ],
+          "methodTrials": {
+            "WU": 32
+          },
+          "reusedTrials": 0,
+          "extensionLimits": [
+            1
+          ],
+          "hardRadiusTrials": {
+            "1": 32
+          },
+          "completedHardRadiusTrials": {
+            "1": 32
+          }
+        },
+        "listDecodingExecution": {
+          "stages": {
+            "WITHOUT_ASSIGNMENTS": [
+              "INELIGIBLE"
+            ],
+            "ADDITIONAL": [
+              "COMPLETED"
+            ]
+          },
+          "newTrials": {
+            "WITHOUT_ASSIGNMENTS": 0,
+            "ADDITIONAL": 32
+          }
+        }
+      },
+      "failure_reason": null
+    },
+    {
+      "action": "list-disabled",
+      "candidate_count": 0,
+      "search_diagnostic": {
+        "inputBlocker": null,
+        "candidateRejections": [],
+        "acceptedCandidate": false,
+        "unresolvedCalculations": true,
+        "unsearched": true,
+        "incompleteReasons": [
+          "LIST_DECODING_TIME_LIMIT"
+        ],
+        "completedSteps": 10,
+        "coverageComplete": true,
+        "solverCompleteness": "COMPLETE",
+        "candidateCalculations": 2,
+        "candidatesOmitted": false,
+        "derivationsOmitted": false,
+        "singleSegmentStatuses": [
+          "INCOMPLETE_HEADER",
+          "UNSUPPORTED_MODE",
+          "APPLIED_WITH_PRIORITY_HEADER"
+        ],
+        "priorityHeaderHypotheses": [
+          "0000",
+          "010000001111"
+        ],
+        "listDecoding": {
+          "trials": 0,
+          "interpolations": 0,
+          "elapsedMillis": 0,
+          "mismatchLimits": [
+            2
+          ],
+          "skipReasons": [],
+          "methodTrials": {},
+          "reusedTrials": 0,
+          "extensionLimits": [
+            1
+          ],
+          "hardRadiusTrials": {},
+          "completedHardRadiusTrials": {}
+        },
+        "listDecodingExecution": {
+          "stages": {
+            "WITHOUT_ASSIGNMENTS": [
+              "TIME_LIMIT"
+            ],
+            "ADDITIONAL": [
+              "TIME_LIMIT"
+            ]
+          },
+          "newTrials": {
+            "WITHOUT_ASSIGNMENTS": 0,
+            "ADDITIONAL": 0
+          }
+        }
+      },
+      "failure_reason": "NO_RS_CONSISTENT_ASSIGNMENT"
+    },
+    {
+      "action": "ordinary-unknowns",
+      "candidate_count": 0,
+      "search_diagnostic": {
+        "inputBlocker": null,
+        "candidateRejections": [],
+        "acceptedCandidate": false,
+        "unresolvedCalculations": false,
+        "unsearched": false,
+        "incompleteReasons": [],
+        "completedSteps": 6,
+        "coverageComplete": true,
+        "solverCompleteness": "COMPLETE",
+        "candidateCalculations": 0,
+        "candidatesOmitted": false,
+        "derivationsOmitted": false,
+        "singleSegmentStatuses": [
+          "INCOMPLETE_HEADER"
+        ],
+        "priorityHeaderHypotheses": [],
+        "listDecoding": {
+          "trials": 0,
+          "interpolations": 0,
+          "elapsedMillis": 2,
+          "mismatchLimits": [
+            2
+          ],
+          "skipReasons": [],
+          "methodTrials": {},
+          "reusedTrials": 0,
+          "extensionLimits": [
+            1
+          ],
+          "hardRadiusTrials": {},
+          "completedHardRadiusTrials": {}
+        },
+        "listDecodingExecution": {
+          "stages": {
+            "WITHOUT_ASSIGNMENTS": [
+              "INELIGIBLE"
+            ],
+            "ADDITIONAL": [
+              "INELIGIBLE"
+            ]
+          },
+          "newTrials": {
+            "WITHOUT_ASSIGNMENTS": 0,
+            "ADDITIONAL": 0
+          }
+        }
+      },
+      "failure_reason": "SINGLE_SEGMENT_CONDITION_UNAVAILABLE"
+    }
+  ],
+  "list_disabled_control": "ListDecodingBudget(0); ordinary stages complete, list stages intentionally skipped; time-limit diagnostics retained",
+  "selected_candidate": {
+    "version": 1,
+    "ecc": "L",
+    "mask": 0,
+    "text": "QRevy repaired.",
+    "score": -199614,
+    "codewords": [
+      64,
+      245,
+      21,
+      38,
+      87,
+      103,
+      146,
+      7,
+      38,
+      87,
+      6,
+      22,
+      151,
+      38,
+      86,
+      66,
+      224,
+      236,
+      17,
+      122,
+      120,
+      92,
+      214,
+      234,
+      66,
+      218
+    ],
+    "dataBytes": [
+      64,
+      245,
+      21,
+      38,
+      87,
+      103,
+      146,
+      7,
+      38,
+      87,
+      6,
+      22,
+      151,
+      38,
+      86,
+      66,
+      224,
+      236,
+      17
+    ],
+    "knownMismatches": 2,
+    "knownCompared": 155,
+    "partialGuessedBits": 0,
+    "constraintFilledBits": 20,
+    "singleSegmentStatus": "APPLIED_WITH_PRIORITY_HEADER",
+    "constraintForcedByUserSetting": true,
+    "priorityAssignments": [
+      [
+        19,
+        20,
+        "1"
+      ]
+    ],
+    "conventionalRs": {
+      "blocks": [
+        {
+          "blockIndex": 0,
+          "totalSymbols": 26,
+          "dataSymbols": 19,
+          "eccSymbols": 7,
+          "erasures": 8,
+          "errors": null,
+          "margin": null,
+          "status": "ERASURE_CAPACITY_EXCEEDED"
+        }
+      ],
+      "correctedInterleaved": null,
+      "knownBitMismatches": null,
+      "knownBitMismatchLimit": 2,
+      "manualConflicts": [],
+      "qrStructureValid": null
+    },
+    "actualBlockMethods": [
+      {
+        "blockIndex": 0,
+        "bitConstraintSolved": false,
+        "rsMargin": null,
+        "guessedBits": 0,
+        "listDecoding": {
+          "radius": 2,
+          "multiplicity": 0,
+          "listDegree": 0,
+          "remainingErasures": 4,
+          "symbolErrors": 2,
+          "assignment": -1,
+          "method": "WU",
+          "score": null,
+          "scoreThreshold": null
+        }
+      }
+    ],
+    "searchDiagnostic": {
+      "inputBlocker": null,
+      "candidateRejections": [
+        "LIST_DECODING_MISMATCH_LIMIT"
+      ],
+      "acceptedCandidate": true,
+      "unresolvedCalculations": true,
+      "unsearched": false,
+      "incompleteReasons": [],
+      "completedSteps": 14,
+      "coverageComplete": true,
+      "solverCompleteness": "COMPLETE",
+      "candidateCalculations": 2,
+      "candidatesOmitted": false,
+      "derivationsOmitted": false,
+      "singleSegmentStatuses": [
+        "INCOMPLETE_HEADER",
+        "UNSUPPORTED_MODE",
+        "APPLIED_WITH_PRIORITY_HEADER"
+      ],
+      "priorityHeaderHypotheses": [
+        "0000",
+        "010000001111"
+      ],
+      "listDecoding": {
+        "trials": 1,
+        "interpolations": 0,
+        "elapsedMillis": 45,
+        "mismatchLimits": [
+          2
+        ],
+        "skipReasons": [],
+        "methodTrials": {
+          "WU": 1
+        },
+        "reusedTrials": 0,
+        "extensionLimits": [
+          1
+        ],
+        "hardRadiusTrials": {
+          "2": 1
+        },
+        "completedHardRadiusTrials": {
+          "2": 1
+        }
+      },
+      "listDecodingExecution": {
+        "stages": {
+          "WITHOUT_ASSIGNMENTS": [
+            "INELIGIBLE"
+          ],
+          "ADDITIONAL": [
+            "COMPLETED"
+          ]
+        },
+        "newTrials": {
+          "WITHOUT_ASSIGNMENTS": 0,
+          "ADDITIONAL": 1
+        }
+      }
+    }
+  },
+  "image_initialization": {
+    "version": 1,
+    "quad": [
+      [
+        54.0,
+        54.0
+      ],
+      [
+        294.0,
+        54.0
+      ],
+      [
+        294.0,
+        294.0
+      ],
+      [
+        54.0,
+        294.0
+      ]
+    ],
+    "source": "ZXING_CPP",
+    "logical_assigned": true,
+    "boundary_adapter": "desktop ZXing Java geometry only; Android JNI not evaluated"
+  },
+  "image_comparison": [
+    {
+      "action": "single-on",
+      "candidate_count": 1,
+      "search_diagnostic": {
+        "inputBlocker": null,
+        "candidateRejections": [
+          "LIST_DECODING_MISMATCH_LIMIT"
+        ],
+        "acceptedCandidate": true,
+        "unresolvedCalculations": true,
+        "unsearched": false,
+        "incompleteReasons": [],
+        "completedSteps": 14,
+        "coverageComplete": true,
+        "solverCompleteness": "COMPLETE",
+        "candidateCalculations": 2,
+        "candidatesOmitted": false,
+        "derivationsOmitted": false,
+        "singleSegmentStatuses": [
+          "INCOMPLETE_HEADER",
+          "UNSUPPORTED_MODE",
+          "APPLIED_WITH_PRIORITY_HEADER"
+        ],
+        "priorityHeaderHypotheses": [
+          "0000",
+          "010000001111"
+        ],
+        "listDecoding": {
+          "trials": 1,
+          "interpolations": 0,
+          "elapsedMillis": 56,
+          "mismatchLimits": [
+            2
+          ],
+          "skipReasons": [],
+          "methodTrials": {
+            "WU": 1
+          },
+          "reusedTrials": 0,
+          "extensionLimits": [
+            1
+          ],
+          "hardRadiusTrials": {
+            "2": 1
+          },
+          "completedHardRadiusTrials": {
+            "2": 1
+          }
+        },
+        "listDecodingExecution": {
+          "stages": {
+            "WITHOUT_ASSIGNMENTS": [
+              "INELIGIBLE"
+            ],
+            "ADDITIONAL": [
+              "COMPLETED"
+            ]
+          },
+          "newTrials": {
+            "WITHOUT_ASSIGNMENTS": 0,
+            "ADDITIONAL": 1
+          }
+        }
+      },
+      "failure_reason": null
+    },
+    {
+      "action": "single-off",
+      "candidate_count": 0,
+      "search_diagnostic": {
+        "inputBlocker": null,
+        "candidateRejections": [
+          "QR_STRUCTURE",
+          "LIST_DECODING_MISMATCH_LIMIT"
+        ],
+        "acceptedCandidate": false,
+        "unresolvedCalculations": true,
+        "unsearched": false,
+        "incompleteReasons": [],
+        "completedSteps": 15,
+        "coverageComplete": true,
+        "solverCompleteness": "COMPLETE",
+        "candidateCalculations": 9,
+        "candidatesOmitted": false,
+        "derivationsOmitted": false,
+        "singleSegmentStatuses": [],
+        "priorityHeaderHypotheses": [],
+        "listDecoding": {
+          "trials": 32,
+          "interpolations": 0,
+          "elapsedMillis": 95,
+          "mismatchLimits": [
+            2
+          ],
+          "skipReasons": [
+            "TOO_MANY_ERASURES",
+            "KV_PARAMETERS_UNAVAILABLE",
+            "NO_ADDITIONAL_RADIUS"
+          ],
+          "methodTrials": {
+            "WU": 32
+          },
+          "reusedTrials": 0,
+          "extensionLimits": [
+            1
+          ],
+          "hardRadiusTrials": {
+            "1": 32
+          },
+          "completedHardRadiusTrials": {
+            "1": 32
+          }
+        },
+        "listDecodingExecution": {
+          "stages": {
+            "WITHOUT_ASSIGNMENTS": [
+              "INELIGIBLE"
+            ],
+            "ADDITIONAL": [
+              "COMPLETED"
+            ]
+          },
+          "newTrials": {
+            "WITHOUT_ASSIGNMENTS": 0,
+            "ADDITIONAL": 32
+          }
+        }
+      },
+      "failure_reason": null
+    },
+    {
+      "action": "list-disabled",
+      "candidate_count": 0,
+      "search_diagnostic": {
+        "inputBlocker": null,
+        "candidateRejections": [],
+        "acceptedCandidate": false,
+        "unresolvedCalculations": true,
+        "unsearched": true,
+        "incompleteReasons": [
+          "LIST_DECODING_TIME_LIMIT"
+        ],
+        "completedSteps": 10,
+        "coverageComplete": true,
+        "solverCompleteness": "COMPLETE",
+        "candidateCalculations": 2,
+        "candidatesOmitted": false,
+        "derivationsOmitted": false,
+        "singleSegmentStatuses": [
+          "INCOMPLETE_HEADER",
+          "UNSUPPORTED_MODE",
+          "APPLIED_WITH_PRIORITY_HEADER"
+        ],
+        "priorityHeaderHypotheses": [
+          "0000",
+          "010000001111"
+        ],
+        "listDecoding": {
+          "trials": 0,
+          "interpolations": 0,
+          "elapsedMillis": 0,
+          "mismatchLimits": [
+            2
+          ],
+          "skipReasons": [],
+          "methodTrials": {},
+          "reusedTrials": 0,
+          "extensionLimits": [
+            1
+          ],
+          "hardRadiusTrials": {},
+          "completedHardRadiusTrials": {}
+        },
+        "listDecodingExecution": {
+          "stages": {
+            "WITHOUT_ASSIGNMENTS": [
+              "TIME_LIMIT"
+            ],
+            "ADDITIONAL": [
+              "TIME_LIMIT"
+            ]
+          },
+          "newTrials": {
+            "WITHOUT_ASSIGNMENTS": 0,
+            "ADDITIONAL": 0
+          }
+        }
+      },
+      "failure_reason": "NO_RS_CONSISTENT_ASSIGNMENT"
+    },
+    {
+      "action": "ordinary-unknowns",
+      "candidate_count": 0,
+      "search_diagnostic": {
+        "inputBlocker": null,
+        "candidateRejections": [],
+        "acceptedCandidate": false,
+        "unresolvedCalculations": false,
+        "unsearched": false,
+        "incompleteReasons": [],
+        "completedSteps": 6,
+        "coverageComplete": true,
+        "solverCompleteness": "COMPLETE",
+        "candidateCalculations": 0,
+        "candidatesOmitted": false,
+        "derivationsOmitted": false,
+        "singleSegmentStatuses": [
+          "INCOMPLETE_HEADER"
+        ],
+        "priorityHeaderHypotheses": [],
+        "listDecoding": {
+          "trials": 0,
+          "interpolations": 0,
+          "elapsedMillis": 1,
+          "mismatchLimits": [
+            2
+          ],
+          "skipReasons": [],
+          "methodTrials": {},
+          "reusedTrials": 0,
+          "extensionLimits": [
+            1
+          ],
+          "hardRadiusTrials": {},
+          "completedHardRadiusTrials": {}
+        },
+        "listDecodingExecution": {
+          "stages": {
+            "WITHOUT_ASSIGNMENTS": [
+              "INELIGIBLE"
+            ],
+            "ADDITIONAL": [
+              "INELIGIBLE"
+            ]
+          },
+          "newTrials": {
+            "WITHOUT_ASSIGNMENTS": 0,
+            "ADDITIONAL": 0
+          }
+        }
+      },
+      "failure_reason": "SINGLE_SEGMENT_CONDITION_UNAVAILABLE"
+    }
+  ],
+  "image_candidate": {
+    "version": 1,
+    "ecc": "L",
+    "mask": 0,
+    "text": "QRevy repaired.",
+    "score": -199614,
+    "codewords": [
+      64,
+      245,
+      21,
+      38,
+      87,
+      103,
+      146,
+      7,
+      38,
+      87,
+      6,
+      22,
+      151,
+      38,
+      86,
+      66,
+      224,
+      236,
+      17,
+      122,
+      120,
+      92,
+      214,
+      234,
+      66,
+      218
+    ],
+    "dataBytes": [
+      64,
+      245,
+      21,
+      38,
+      87,
+      103,
+      146,
+      7,
+      38,
+      87,
+      6,
+      22,
+      151,
+      38,
+      86,
+      66,
+      224,
+      236,
+      17
+    ],
+    "knownMismatches": 2,
+    "knownCompared": 155,
+    "partialGuessedBits": 0,
+    "constraintFilledBits": 20,
+    "singleSegmentStatus": "APPLIED_WITH_PRIORITY_HEADER",
+    "constraintForcedByUserSetting": true,
+    "priorityAssignments": [
+      [
+        19,
+        20,
+        "1"
+      ]
+    ],
+    "conventionalRs": {
+      "blocks": [
+        {
+          "blockIndex": 0,
+          "totalSymbols": 26,
+          "dataSymbols": 19,
+          "eccSymbols": 7,
+          "erasures": 8,
+          "errors": null,
+          "margin": null,
+          "status": "ERASURE_CAPACITY_EXCEEDED"
+        }
+      ],
+      "correctedInterleaved": null,
+      "knownBitMismatches": null,
+      "knownBitMismatchLimit": 2,
+      "manualConflicts": [],
+      "qrStructureValid": null
+    },
+    "actualBlockMethods": [
+      {
+        "blockIndex": 0,
+        "bitConstraintSolved": false,
+        "rsMargin": null,
+        "guessedBits": 0,
+        "listDecoding": {
+          "radius": 2,
+          "multiplicity": 0,
+          "listDegree": 0,
+          "remainingErasures": 4,
+          "symbolErrors": 2,
+          "assignment": -1,
+          "method": "WU",
+          "score": null,
+          "scoreThreshold": null
+        }
+      }
+    ],
+    "searchDiagnostic": {
+      "inputBlocker": null,
+      "candidateRejections": [
+        "LIST_DECODING_MISMATCH_LIMIT"
+      ],
+      "acceptedCandidate": true,
+      "unresolvedCalculations": true,
+      "unsearched": false,
+      "incompleteReasons": [],
+      "completedSteps": 14,
+      "coverageComplete": true,
+      "solverCompleteness": "COMPLETE",
+      "candidateCalculations": 2,
+      "candidatesOmitted": false,
+      "derivationsOmitted": false,
+      "singleSegmentStatuses": [
+        "INCOMPLETE_HEADER",
+        "UNSUPPORTED_MODE",
+        "APPLIED_WITH_PRIORITY_HEADER"
+      ],
+      "priorityHeaderHypotheses": [
+        "0000",
+        "010000001111"
+      ],
+      "listDecoding": {
+        "trials": 1,
+        "interpolations": 0,
+        "elapsedMillis": 56,
+        "mismatchLimits": [
+          2
+        ],
+        "skipReasons": [],
+        "methodTrials": {
+          "WU": 1
+        },
+        "reusedTrials": 0,
+        "extensionLimits": [
+          1
+        ],
+        "hardRadiusTrials": {
+          "2": 1
+        },
+        "completedHardRadiusTrials": {
+          "2": 1
+        }
+      },
+      "listDecodingExecution": {
+        "stages": {
+          "WITHOUT_ASSIGNMENTS": [
+            "INELIGIBLE"
+          ],
+          "ADDITIONAL": [
+            "COMPLETED"
+          ]
+        },
+        "newTrials": {
+          "WITHOUT_ASSIGNMENTS": 0,
+          "ADDITIONAL": 1
+        }
+      }
+    },
+    "inputQuad": [
+      [
+        54.0,
+        54.0
+      ],
+      [
+        294.0,
+        54.0
+      ],
+      [
+        294.0,
+        294.0
+      ],
+      [
+        54.0,
+        294.0
+      ]
+    ]
+  },
+  "sampled_image_matches_text_matrix": true,
+  "original_matrix_match": true,
+  "reader_results": {
+    "before": {
+      "zxing_cpp": false,
+      "zxing_java": false
+    },
+    "after": {
+      "zxing_cpp": true,
+      "zxing_java": true
+    }
+  },
+  "core_source_sha256": "1c3639f4c5c6ff2d755e6baefefba05898dabbb307b4cafdc0f6daed8cfbf75d",
+  "generator_packages": {
+    "qrcode": "8.2",
+    "Pillow": "11.3.0",
+    "zxing-cpp": "3.1.1"
+  },
+  "sha256": {
+    "before.txt": "7c3efd1edc0c70194b35d2474f757aa4a7a091cf86b46e7e7d084f26ea903531",
+    "before.png": "6f4f7346c408e9ca8d1afb4155638ebe2e3c7c81a11fb867ae5d575484aea226",
+    "after.txt": "65cf6edf601cfc5814f9ee02ea5fb99688f41aa1ab5d6554a674ac945ce58a39",
+    "after.png": "b755e0a3b4d8813ffb846a9a4d5c3601c133fd952b2a9c20a7854b4880e42e37",
+    "details.png": "d33658d304963d8a68cee668f090574c7c3869b0ec1e2500b2affda2619573c1"
+  }
+}

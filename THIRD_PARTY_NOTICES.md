@@ -88,6 +88,15 @@ Robolectric has transitive test dependencies with their own license obligations.
 
 Gradle-generated wrapper scripts and wrapper components are licensed under Apache License 2.0. The repository pins Gradle 9.5.0 and verifies the official distribution SHA-256 before bootstrapping.
 
+### Synthetic example verifier
+
+- Scope: the standalone JVM tool in `scripts/example-harness`; it is not packaged into the application APK/AAB or shared framework.
+- ZXing core 3.5.4 and Kotlin stdlib 2.4.10 use the Apache License 2.0; their notices are covered above.
+- Gson 2.13.1 (`com.google.code.gson:gson`) uses the [Apache License 2.0](https://github.com/google/gson/blob/gson-parent-2.13.1/LICENSE).
+- Its transitive Error Prone annotations 2.38.0 (`com.google.errorprone:error_prone_annotations`) use the [Apache License 2.0](https://github.com/google/error-prone/blob/v2.38.0/COPYING).
+- Kotlin stdlib's transitive JetBrains annotations 13.0 (`org.jetbrains:annotations`) use the Apache License 2.0.
+- License copy: `licenses/Apache-2.0.txt`. Resolved runtime artifacts are pinned in the tool's `gradle.lockfile`.
+
 ## QR Code trademark
 
 “QR Code” is a registered trademark of DENSO WAVE INCORPORATED. This project is not affiliated with or endorsed by DENSO WAVE INCORPORATED.
