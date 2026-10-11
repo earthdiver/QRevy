@@ -190,6 +190,9 @@ class DiagnosticOrderTest {
                     }
                     if (fixture.name == "insufficient") {
                         assertTrue(input.summary.contains("192"))
+                        assertTrue(processing.summary.contains(if (language == AppLanguage.JAPANESE)
+                            "調べた範囲では修復候補は見つかりませんでした" else "No recovery candidate was found in the checked range"))
+                        assertFalse(processing.summary.contains(if (language == AppLanguage.JAPANESE) "参考" else "reference"))
                         assertTrue(verification.details.contains(if (language == AppLanguage.JAPANESE) "見つかりませんでした" else "was found"))
                         assertFalse(report.fullText().contains(if (language == AppLanguage.JAPANESE) "この試行" else "this attempt"))
                         assertFalse(verification.details.contains(if (language == AppLanguage.JAPANESE) "データ・ECC領域: 比較対象" else "Data/ECC region: 0 mismatching"))

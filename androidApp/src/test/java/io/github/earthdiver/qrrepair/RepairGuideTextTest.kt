@@ -324,7 +324,7 @@ class RepairGuideTextTest {
                 if (!locked && limit == 0) assertTrue(content.contains(if (language == AppLanguage.JAPANESE)
                     "この領域の入力済み0/1は変更していません" else "in that region"))
                 if (trust) assertTrue(diagnosticText(activity).contains(if (language == AppLanguage.JAPANESE)
-                    "指定した仮定に基づく補完・変更: 12bit" else "Filling/changes under the specified assumption: 12 bits"))
+                    "構造補完（12bit）（指定した仮定）" else "structure filling (12 bits) (specified assumption)"))
             }
             summary(listOf(candidate("one", byteArrayOf(1)), candidate("one", byteArrayOf(1))))
             assertTrue(text("statusText").contains(if (language == AppLanguage.JAPANESE) "データコード語列はすべて同じ" else "all have the same data codeword sequence"))

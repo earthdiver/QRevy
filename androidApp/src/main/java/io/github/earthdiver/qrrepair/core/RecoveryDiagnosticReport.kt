@@ -18,7 +18,7 @@ enum class DiagnosticStage {
     }
 }
 
-enum class DiagnosticDetailId { TEXT, METHODS, CALCULATIONS, DERIVATIONS, SEARCH }
+enum class DiagnosticDetailId { TEXT, METHODS, CALCULATIONS, SINGLE_SEGMENT, SEARCH }
 
 /** Stable identities keep disclosure state independent of translated titles and candidate values. */
 data class DiagnosticDetailGroup(
@@ -286,17 +286,9 @@ fun RecoveryCandidate.processingMethodsText(): String = buildList {
             "Additional error-correction candidates were calculated (${method.displayName()} list decoding)."))
     }
     if (constraintFilledBits > 0) {
-        add((if (constraintForcedByUserSetting) localizedText("指定した仮定に基づく補完・変更: ", "Filling/changes under the specified assumption: ")
-            else localizedText("QRの構造に基づく補完・変更: ", "Filling/changes using QR structure: ")) +
-            localizedText("${constraintFilledBits}bit（終端・埋め草など）", "$constraintFilledBits bits (terminator, padding, etc.)"))
         add(localizedText("補完・変更したbit数は、処理途中の値です。修復開始時の入力との最終的な不一致数とは異なります。",
             "The filled/changed bit count describes intermediate processing, not the final mismatch count against the input at repair start."))
-        add(localizedText("仮定した末尾構造と一致する読み取り済みbit: ${constraintEvidenceBits}bit",
-            "Observed bits matching the assumed suffix structure: $constraintEvidenceBits bits"))
     }
-    if (priorityGuessedBits > 0) add(localizedText(
-        "優先指定した不明セルの白黒を仮置きして探索: ${priorityGuessedBits}bit（入力時は不明）",
-        "Search with tentative values for prioritized unknown cells: $priorityGuessedBits bits (unknown in the input)"))
     if (displayConditions?.trustSingleSegment == true && !constraintForcedByUserSetting) add(localizedText(
         "単一セグメントの仮定はONですが、この候補の補完には使用していません。",
         "The single-segment assumption was ON but was not used to fill this candidate."))

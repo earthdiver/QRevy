@@ -945,7 +945,7 @@ class PreprocessDialogLayoutTest {
         assertTrue(diagnosticText(diagnostics).contains("QRの位置・向き: 相似変換 / V1 / 左上基準"))
         val fullDiagnostic = (MainActivity::class.java.getDeclaredField("diagnosticReport").apply { isAccessible = true }.get(activity) as io.github.earthdiver.qrrepair.core.RecoveryDiagnosticReport).fullText()
         assertTrue(fullDiagnostic.contains("ブロック最小）: 2"))
-        assertTrue(fullDiagnostic.contains("指定した仮定に基づく補完・変更: 48bit"))
+        assertTrue(fullDiagnostic.contains("構造補完（48bit）（指定した仮定）"))
     }
 
     @Test

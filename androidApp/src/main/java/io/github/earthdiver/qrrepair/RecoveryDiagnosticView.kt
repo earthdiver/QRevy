@@ -133,8 +133,13 @@ internal class RecoveryDiagnosticView(context: Context) : LinearLayout(context) 
 
             private fun updateGroupExpansion() {
                 val value = group
-                disclosure.text = context.getString(
+                val calculationDetails = value?.id == DiagnosticDetailId.CALCULATIONS || value?.id == DiagnosticDetailId.SEARCH
+                val recordLabel = context.getString(
                     if (open) R.string.diagnostic_close_record else R.string.diagnostic_open_record, value?.title.orEmpty())
+                disclosure.text = if (calculationDetails) context.getString(
+                    if (open) R.string.diagnostic_close_calculations else R.string.diagnostic_open_calculations)
+                else recordLabel
+                disclosure.contentDescription = if (calculationDetails) recordLabel else null
                 ViewCompat.setStateDescription(disclosure,
                     context.getString(if (open) R.string.diagnostic_expanded else R.string.diagnostic_collapsed))
                 val show = value != null && value.text.isNotBlank() && (!value.collapsible || open)

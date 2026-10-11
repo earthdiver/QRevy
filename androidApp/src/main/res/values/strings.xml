@@ -15,6 +15,8 @@
     <string name="hide_diagnostic_details">Hide diagnostics</string>
     <string name="diagnostic_open_section">Show details: %1$s</string>
     <string name="diagnostic_close_section">Hide details: %1$s</string>
+    <string name="diagnostic_open_calculations">Show calculation details</string>
+    <string name="diagnostic_close_calculations">Hide calculation details</string>
     <string name="diagnostic_open_record">Show: %1$s</string>
     <string name="diagnostic_close_record">Hide: %1$s</string>
     <string name="diagnostic_expanded">Expanded</string>

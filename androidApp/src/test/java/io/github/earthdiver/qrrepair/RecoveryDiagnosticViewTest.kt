@@ -32,23 +32,27 @@ class RecoveryDiagnosticViewTest {
         DiagnosticSection(it, "Summary: ${it.label()}", "Candidate $candidate: ${it.label()}\nDetailed evidence\nHEX: 00 01 02")
     }, "Candidate $candidate: verification\nSearch-wide status")
 
-    private val calculationTitle get() = localizedText("この候補の計算記録", "Calculation record for this candidate")
-    private val alternativesTitle get() = localizedText("同じQRを得た処理の記録", "Records yielding the same QR")
+    private val calculationTitle get() = localizedText("このQRを得た計算方法", "Calculation methods yielding this QR")
+    private val listDecodingTitle get() = localizedText("リスト復号の実行状況（探索全体）", "List decoding execution status (whole search)")
 
-    private fun groupedReport(candidate: Int, alternatives: Boolean = true, omittedOnly: Boolean = false): RecoveryDiagnosticReport = report(candidate).let { base ->
+    private fun groupedReport(candidate: Int, records: Boolean = true, omittedOnly: Boolean = false,
+        singleSegment: Boolean = false): RecoveryDiagnosticReport = report(candidate).let { base ->
         base.copy(sections = base.sections.map { section ->
             if (section.stage != DiagnosticStage.PROCESSING) section else DiagnosticSection(section.stage, section.summary,
                 listOfNotNull(
                     DiagnosticDetailGroup(DiagnosticDetailId.METHODS, localizedText("この候補を得た方法", "Methods used to obtain this candidate"),
                         text = "Candidate $candidate: representative methods"),
-                    DiagnosticDetailGroup(DiagnosticDetailId.CALCULATIONS, calculationTitle,
-                        text = (1..8).joinToString("\n\n") { "Candidate $candidate, block $it\nMethod: partial-bit constraints\nDegrees of freedom: 4\nComplete evidence: ABC-123 日本語" },
-                        collapsible = true),
-                    if (alternatives) DiagnosticDetailGroup(DiagnosticDetailId.DERIVATIONS, alternativesTitle,
-                        summary = "Retained alternative records; some records were omitted.",
-                        text = if (omittedOnly) "" else "Candidate $candidate: alternative evidence", collapsible = true) else null,
-                    DiagnosticDetailGroup(DiagnosticDetailId.SEARCH, localizedText("探索全体の記録", "Search-wide records"),
-                        text = "New trials: 3\nReused results: 2\nThese totals also include trials for other candidates."),
+                    if (records) DiagnosticDetailGroup(DiagnosticDetailId.CALCULATIONS, calculationTitle,
+                        summary = "Method A [used for cell explanations]\nMethod B\nSome records were omitted.",
+                        text = if (omittedOnly) "" else (1..8).joinToString("\n\n") {
+                            "Candidate $candidate, block $it\nMethod: partial-bit constraints\nDegrees of freedom: 4\nComplete evidence: ABC-123 日本語"
+                        } + "\nCandidate $candidate: alternative evidence", collapsible = true) else null,
+                    if (singleSegment) DiagnosticDetailGroup(DiagnosticDetailId.SINGLE_SEGMENT,
+                        localizedText("単一セグメントの仮定の適用状況（探索全体）", "Single-segment assumption application status (whole search)"),
+                        text = "Single-segment application evidence") else null,
+                    DiagnosticDetailGroup(DiagnosticDetailId.SEARCH, listDecodingTitle,
+                        summary = "New trials: 3\nThese totals also include trials for other candidates.",
+                        text = "Reused results: 2", collapsible = true),
                 ))
         })
     }
@@ -61,10 +65,10 @@ class RecoveryDiagnosticViewTest {
         sectionButton.performClick()
         assertTrue(diagnosticText(view).contains("Candidate 1: representative methods"))
         assertTrue(diagnosticText(view).contains("New trials: 3"))
-        assertTrue(diagnosticText(view).contains("some records were omitted"))
+        assertTrue(diagnosticText(view).contains("Some records were omitted"))
         assertFalse(diagnosticText(view).contains("Complete evidence"))
         assertFalse(diagnosticText(view).contains("alternative evidence"))
-        val calculation = diagnosticRecordButton(view, calculationTitle)
+        val calculation = diagnosticCalculationButton(view)
         calculation.performClick()
         assertEquals(view.context.getString(R.string.diagnostic_expanded), ViewCompat.getStateDescription(calculation))
         val body = descendants(view).filterIsInstance<TextView>().single { it.text.startsWith("Candidate 1, block 1") }
@@ -73,10 +77,10 @@ class RecoveryDiagnosticViewTest {
         sectionButton.performClick()
         assertTrue(diagnosticText(view).contains("Complete evidence"))
         view.showReport(groupedReport(2), resetExpanded = false)
-        assertSame(calculation, diagnosticRecordButton(view, calculationTitle))
+        assertSame(calculation, diagnosticCalculationButton(view))
         assertTrue(diagnosticText(view).contains("Candidate 2, block 1"))
         assertFalse(diagnosticText(view).contains("Candidate 1"))
-        assertFalse(diagnosticText(view).contains("alternative evidence"))
+        assertTrue(diagnosticText(view).contains("Candidate 2: alternative evidence"))
         assertFalse(body.hasSelection())
         assertTrue(body.isTextSelectable)
         view.showReport(first, resetExpanded = true)
@@ -94,7 +98,7 @@ class RecoveryDiagnosticViewTest {
             view.showReport(groupedReport(1), resetExpanded = true)
             val sectionButton = diagnosticButton(view, DiagnosticStage.PROCESSING)
             sectionButton.performClick()
-            val alternative = diagnosticRecordButton(view, alternativesTitle)
+            val alternative = diagnosticCalculationButton(view)
             alternative.performClick()
             view.measure(View.MeasureSpec.makeMeasureSpec(320, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
@@ -104,29 +108,59 @@ class RecoveryDiagnosticViewTest {
             assertTrue(alternative.isFocused)
             alternative.performClick()
             assertTrue(alternative.isFocused)
-            view.showReport(groupedReport(2, alternatives = false), resetExpanded = false)
+            view.showReport(groupedReport(2, records = false), resetExpanded = false)
             assertTrue(sectionButton.isFocused)
             assertFalse(diagnosticText(view).contains("alternative evidence"))
             assertEquals(View.GONE, alternative.visibility)
             view.showReport(groupedReport(3), resetExpanded = false)
-            assertSame(alternative, diagnosticRecordButton(view, alternativesTitle))
+            assertSame(alternative, diagnosticCalculationButton(view))
             assertFalse(diagnosticText(view).contains("alternative evidence"))
             alternative.performClick()
             assertTrue(diagnosticText(view).contains("Candidate 3: alternative evidence"))
             val headings = descendants(view).filterIsInstance<TextView>().filter { it.visibility == View.VISIBLE &&
                 ViewCompat.isAccessibilityHeading(it) }.map { it.text.toString() }
             assertTrue(headings.contains(calculationTitle))
-            assertTrue(headings.contains(alternativesTitle))
             assertTrue(alternative.requestFocusFromTouch())
             view.showReport(groupedReport(4, omittedOnly = true), resetExpanded = false)
             assertTrue(sectionButton.isFocused)
             assertEquals(View.GONE, alternative.visibility)
-            assertTrue(diagnosticText(view).contains("some records were omitted"))
+            assertTrue(diagnosticText(view).contains("Some records were omitted"))
             view.showReport(groupedReport(5), resetExpanded = false)
             assertFalse(diagnosticText(view).contains("alternative evidence"))
             view.clear()
             assertFalse(descendants(view).filterIsInstance<TextView>().any { it.text.contains("Candidate") })
         } finally { controller.pause().stop().destroy() }
+    }
+
+    @Test fun calculationDisclosuresHaveIndependentStatesAndAccessibleNames() {
+        val view = RecoveryDiagnosticView(RuntimeEnvironment.getApplication())
+        view.showReport(groupedReport(1), resetExpanded = true)
+        diagnosticButton(view, DiagnosticStage.PROCESSING).performClick()
+        val candidate = diagnosticCalculationButton(view)
+        val listDecoding = diagnosticCalculationButton(view, listDecodingTitle)
+        val openLabel = view.context.getString(R.string.diagnostic_open_calculations)
+        assertEquals(openLabel, candidate.text.toString())
+        assertEquals(openLabel, listDecoding.text.toString())
+        assertNotEquals(candidate.contentDescription, listDecoding.contentDescription)
+        assertEquals(1, diagnosticText(view).split(listDecodingTitle).size - 1)
+        assertTrue(diagnosticText(view).contains("New trials: 3"))
+        assertFalse(diagnosticText(view).contains("Reused results"))
+        candidate.performClick()
+        assertTrue(diagnosticText(view).contains("Complete evidence"))
+        assertFalse(diagnosticText(view).contains("Reused results"))
+        listDecoding.performClick()
+        assertTrue(diagnosticText(view).contains("Reused results: 2"))
+        assertEquals(view.context.getString(R.string.diagnostic_close_record, listDecodingTitle), listDecoding.contentDescription)
+        candidate.performClick()
+        assertFalse(diagnosticText(view).contains("Complete evidence"))
+        assertTrue(diagnosticText(view).contains("Reused results: 2"))
+        view.showReport(groupedReport(2), resetExpanded = false)
+        assertSame(listDecoding, diagnosticCalculationButton(view, listDecodingTitle))
+        assertTrue(diagnosticText(view).contains("Reused results: 2"))
+        view.showReport(groupedReport(2), resetExpanded = true)
+        diagnosticButton(view, DiagnosticStage.PROCESSING).performClick()
+        assertFalse(diagnosticText(view).contains("Reused results"))
+        assertTrue(diagnosticText(view).contains("New trials: 3"))
     }
 
     @Test fun openingDetailsPreservesFocusAndExposesTheirStateToAccessibility() {
@@ -187,11 +221,11 @@ class RecoveryDiagnosticViewTest {
                 val configuration = Configuration(app.resources.configuration).apply { fontScale = scale }
                 val context = ContextThemeWrapper(app.createConfigurationContext(configuration), style.theme)
                 val view = RecoveryDiagnosticView(context)
-                val report = groupedReport(1)
+                val report = groupedReport(1, singleSegment = true)
                 view.showReport(report, resetExpanded = true)
                 DiagnosticStage.entries.forEach { diagnosticButton(view, it).performClick() }
-                diagnosticRecordButton(view, calculationTitle).performClick()
-                diagnosticRecordButton(view, alternativesTitle).performClick()
+                diagnosticCalculationButton(view).performClick()
+                diagnosticCalculationButton(view, listDecodingTitle).performClick()
                 view.measure(View.MeasureSpec.makeMeasureSpec(288, View.MeasureSpec.EXACTLY),
                     View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
                 view.layout(0, 0, view.measuredWidth, view.measuredHeight)

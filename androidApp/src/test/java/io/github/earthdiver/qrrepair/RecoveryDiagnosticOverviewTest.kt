@@ -129,7 +129,9 @@ class RecoveryDiagnosticOverviewTest {
         assertTrue(report.overview.contains(if (ja) "修復処理を実行できませんでした" else "prevented repair from running"))
         assertFalse(report.fullText().contains(if (ja) "探索しました" else "were searched"))
         assertFalse(report.fullText().contains(if (ja) "探索を行いました" else "Searched under"))
-        assertTrue(report.sections[2].summary.contains(if (ja) "記録はありません" else "not recorded"))
+        assertTrue(report.sections[2].summary.contains(if (ja) "修復処理を実行できませんでした" else "prevented repair from running"))
+        assertFalse(report.sections[2].summary.contains(if (ja) "調べた範囲では修復候補は見つかりませんでした"
+            else "No recovery candidate was found in the checked range"))
         assertTrue(report.sections[2].details.isBlank())
         assertTrue(report.sections.last().summary.contains(if (ja) "修復処理を実行できませんでした" else "prevented repair from running"))
     }

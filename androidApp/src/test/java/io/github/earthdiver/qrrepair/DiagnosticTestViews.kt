@@ -30,8 +30,9 @@ internal fun diagnosticButton(view: RecoveryDiagnosticView, stage: DiagnosticSta
         view.context.getString(R.string.diagnostic_close_section, stage.label())) }
 }
 
-internal fun diagnosticRecordButton(view: RecoveryDiagnosticView, title: String): Button =
-    diagnosticButtons(view).single { it.text in listOf(
+internal fun diagnosticCalculationButton(view: RecoveryDiagnosticView,
+    title: String = localizedText("このQRを得た計算方法", "Calculation methods yielding this QR")): Button =
+    diagnosticButtons(view).single { it.contentDescription in listOf(
         view.context.getString(R.string.diagnostic_open_record, title),
         view.context.getString(R.string.diagnostic_close_record, title)) }
 

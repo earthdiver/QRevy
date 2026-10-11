@@ -25,10 +25,7 @@ data class ListDecodingSummary(
         "Known-bit mismatch limit for list decoding: ${mismatchLimits.sorted().joinToString()} bits",
     )
 
-    fun calculationDetails(wholeSearch: Boolean = true): String = localizedText(
-        "リスト復号の計算（${if (wholeSearch) "探索全体" else "対象の入力"}）",
-        "List-decoding calculations (${if (wholeSearch) "whole search" else "identified input"})",
-    ) + mismatchLimitDescription().takeIf { it.isNotBlank() }?.let { "\n$it" }.orEmpty() + radiusDetails() +
+    fun calculationDetails(): String = (mismatchLimitDescription() + radiusDetails() +
         (if (reusedTrials == 0) "" else localizedText(
             "\n完了済みのブロック復号結果を再利用: ${reusedTrials}回（新規の試行回数には含めません）",
             "\nCompleted block-decoding results reused: $reusedTrials (excluded from new trial counts)",
@@ -41,7 +38,7 @@ data class ListDecodingSummary(
                 ListDecodingTrialSkip.MISMATCH_CAP -> localizedText("追加候補は必ず既知ビットの不一致上限を超える", "every additional candidate would exceed the known-bit limit")
                 ListDecodingTrialSkip.UNIQUE_NEARBY_WORD -> localizedText("対象の半径内に別の符号語がないと証明できた", "no other codeword can lie within the selected radius")
                 ListDecodingTrialSkip.KV_PARAMETERS_UNAVAILABLE -> localizedText("KV法の適用条件または計算規模の条件を満たさない", "KV eligibility or computation-size conditions are not met")
-            } }
+            } }).trim()
 
     private fun radiusDetails(): String = buildString {
         if (extensionLimits.isNotEmpty()) append(localizedText(

@@ -82,9 +82,10 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
             geometry?.let(::geometryDiagnosticText).orEmpty(), failure.rsBitDiagnostic, null,
             failure.originalErasedCodewords.takeIf { failure.rsBitDiagnostic != null || failure.failedBlockIndex != null || it > 0 },
             failure.conventionalRsDiagnostic, conditions = failure.displayConditions)
+        val explanation = searchEvidence(context).failureExplanation(failure.displayConditions)
         val processing = buildString {
             append(failure.displayConditions.candidateCalculationPolicyText())
-            context.searchDiagnostic?.failureExplanation(failure.displayConditions)?.takeIf(String::isNotBlank)?.let {
+            explanation.takeIf(String::isNotBlank)?.let {
                 if (isNotEmpty()) append("\n\n")
                 append(it)
             }
@@ -99,7 +100,6 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
                 append(inputAgreementText(failure.knownBitsCompared, failure.knownBitMismatches, false))
             }
         }
-        val explanation = context.searchDiagnostic?.failureExplanation(failure.displayConditions).orEmpty()
         val reference = listOfNotNull(failureProcessingText(failure), combinationStopReasons(failure.combinationSearch))
             .filter(String::isNotBlank).joinToString("\n\n")
         val groups = listOfNotNull(
@@ -111,29 +111,17 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
                     ui("\nこの参考計算の記録です。探索全体の失敗原因を示すものではありません。",
                         "\nThis is one reference calculation, not a diagnosis of why the whole search failed."),
                 it, collapsible = true) },
-            searchProcessingGroup(context.searchDiagnostic ?: failure.searchDiagnostic,
-                if (failure.displayConditions?.trustSingleSegment == true)
-                    (context.searchDiagnostic ?: failure.searchDiagnostic).singleSegmentProcessingText() else "", hasCandidate = false,
+            if (failure.displayConditions?.trustSingleSegment == true)
+                singleSegmentProcessingGroup(context.searchDiagnostic ?: failure.searchDiagnostic,
+                    wholeSearch = context.searchDiagnostic != null) else null,
+            listDecodingProcessingGroup(context.searchDiagnostic ?: failure.searchDiagnostic, hasCandidate = false,
                 wholeSearch = context.searchDiagnostic != null),
         )
         return RecoveryDiagnosticReport(ui("修復結果の診断", "Recovery result diagnostics"), listOf(
             failure.displayConditions.runSettingsSection(),
             input,
             DiagnosticSection(DiagnosticStage.PROCESSING,
-                explanation.ifBlank {
-                    when {
-                        failure.failedBlockIndex != null -> referenceTarget(failure, geometry) + ui(
-                            "\n参考計算では、RSブロック${failure.failedBlockIndex + 1}で結果を得られませんでした。",
-                            "\nThe reference calculation obtained no result for RS block ${failure.failedBlockIndex + 1}.")
-                        processing.isNotBlank() -> processing
-                        failure.originalErasedCodewords > 0 || failure.erasedCodewords > 0 -> referenceTarget(failure, geometry) + ui(
-                            "\n補完・仮置きを反映した不明コード語: ${failure.erasedCodewords}個",
-                            "\nUnknown codewords after filling and tentative assignments: ${failure.erasedCodewords}")
-                        groups.isEmpty() -> ui("計算方法と適用状況の記録はありません。",
-                            "Calculation methods and their applicability were not recorded.")
-                        else -> ui("記録されている内容: ", "Available records: ") + groups.joinToString(ui("、", ", ")) { it.title }
-                    }
-                }, groups),
+                listOf(searchResultDescription(context), explanation).filter(String::isNotBlank).joinToString("\n"), groups),
             DiagnosticSection(DiagnosticStage.VERIFICATION,
                 buildString {
                     append(ui("保持している修復候補: ${context.candidateCount}件", "Retained recovery candidates: ${context.candidateCount}"))
@@ -171,16 +159,19 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
         ).filter(String::isNotBlank).joinToString("\n")
     }
 
+    private fun listDecodingIneligible(diagnostic: RecoverySearchDiagnostic?): Boolean =
+        diagnostic?.listDecoding?.let { summary -> summary.trials == 0 && summary.reusedTrials == 0 &&
+            ListDecodingStage.entries.all { diagnostic.listDecodingExecution?.stages?.get(it) == setOf(ListDecodingStatus.INELIGIBLE) } } == true
+
     private fun listDecodingProcessingText(diagnostic: RecoverySearchDiagnostic?, wholeSearch: Boolean): String {
         val summary = diagnostic?.listDecoding
         val execution = diagnostic?.listDecodingExecution
-        val ineligible = summary?.trials == 0 && summary.reusedTrials == 0 &&
-            ListDecodingStage.entries.all { execution?.stages?.get(it) == setOf(ListDecodingStatus.INELIGIBLE) }
-        val status = if (ineligible) ui(
-            "適用条件を満たさないため、リスト復号の計算は実行しませんでした。",
-            "List-decoding calculations were not run because the eligibility conditions were not met.",
+        val status = if (listDecodingIneligible(diagnostic)) ui(
+            "リスト復号：未実行（適用条件を満たさないため）",
+            "List decoding: not run (eligibility conditions not met)",
         ) else execution?.description()
-        return listOfNotNull(summary?.description(wholeSearch), status).filter(String::isNotBlank).joinToString("\n\n")
+        return listOfNotNull(summary?.description(wholeSearch), status)
+            .filter(String::isNotBlank).joinToString("\n\n")
     }
 
     private fun combinationStopReasons(summary: CombinationSearchSummary): String? = summary.copy(stops = summary.stops.filterTo(linkedSetOf()) {
@@ -194,189 +185,45 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
         return DiagnosticSection(DiagnosticStage.PROCESSING, candidate.compactUsedMethodsText(), listOfNotNull(
             DiagnosticDetailGroup(DiagnosticDetailId.METHODS,
                 ui("この候補を得た方法", "Methods used to obtain this candidate"),
-                text = listOf(candidate.processingMethodsText(), candidate.displayConditions.candidateCalculationPolicyText(),
-                    structureCheckSupplement(methods.first()))
+                text = listOf(candidate.processingMethodsText(), candidate.displayConditions.candidateCalculationPolicyText())
                     .filter(String::isNotBlank).joinToString("\n\n")),
-            DiagnosticDetailGroup(DiagnosticDetailId.CALCULATIONS,
-                ui("この候補の計算記録", "Calculation record for this candidate"),
-                text = listOfNotNull(candidateCalculationText(candidate), combinationStopReasons(candidate.combinationSearch))
-                    .filter(String::isNotBlank).joinToString("\n\n"), collapsible = true),
-            alternativeDerivationsGroup(candidate, methods, context.selectedEntry),
-            searchProcessingGroup(context.searchDiagnostic ?: candidate.searchDiagnostic, wholeSearch = context.searchDiagnostic != null),
+            RecoveryCalculationPresenter(japanese).group(candidate, methods, context.selectedEntry,
+                combinationStopReasons(candidate.combinationSearch)),
+            listDecodingProcessingGroup(context.searchDiagnostic ?: candidate.searchDiagnostic, wholeSearch = context.searchDiagnostic != null),
         ))
     }
 
-    private fun searchProcessingGroup(diagnostic: RecoverySearchDiagnostic?, assumptions: String = "", hasCandidate: Boolean = true,
+    private fun searchRecordScope(wholeSearch: Boolean, hasCandidate: Boolean): String =
+        if (wholeSearch) ui("探索全体", "whole search")
+        else if (hasCandidate) ui("選択候補の入力", "selected candidate's input")
+        else ui("参考診断の入力", "reference diagnostic input")
+
+    private fun searchRecordScopeDescription(wholeSearch: Boolean, hasCandidate: Boolean): String =
+        if (!wholeSearch) ui("対象の入力についての集計です。他の読み取り入力も含む探索全体の集計は記録されていません。",
+            "These totals cover the identified input. Totals across all sampled inputs were not recorded.")
+        else if (hasCandidate) ui("選択中の候補に使わなかった入力・ブロックの試行も含む集計です。",
+            "These totals also include input and block trials that did not produce the selected candidate.")
+        else ui("探索した入力・ブロック全体の集計です。", "These totals cover all searched inputs and blocks.")
+
+    private fun singleSegmentProcessingGroup(diagnostic: RecoverySearchDiagnostic?, wholeSearch: Boolean): DiagnosticDetailGroup {
+        val scope = searchRecordScope(wholeSearch, hasCandidate = false)
+        return DiagnosticDetailGroup(DiagnosticDetailId.SINGLE_SEGMENT,
+            ui("単一セグメントの仮定の適用状況（$scope）", "Single-segment assumption application status ($scope)"),
+            searchRecordScopeDescription(wholeSearch, hasCandidate = false), diagnostic.singleSegmentProcessingText())
+    }
+
+    private fun listDecodingProcessingGroup(diagnostic: RecoverySearchDiagnostic?, hasCandidate: Boolean = true,
         wholeSearch: Boolean = true): DiagnosticDetailGroup? {
-        val text = listOfNotNull(assumptions, listDecodingProcessingText(diagnostic, wholeSearch), diagnostic?.listDecoding?.calculationDetails(wholeSearch))
-            .filter(String::isNotBlank).joinToString("\n\n")
-        return text.takeIf(String::isNotBlank)?.let { DiagnosticDetailGroup(DiagnosticDetailId.SEARCH,
-            if (wholeSearch) ui("探索全体の記録", "Search-wide records")
-            else if (hasCandidate) ui("選択候補を得た入力の探索記録", "Search records for the selected candidate's input")
-            else ui("参考診断の入力の探索記録", "Search records for the reference input"),
-            if (!wholeSearch) ui("対象の入力についての集計です。他の読み取り入力も含む探索全体の集計は記録されていません。",
-                "These totals cover the identified input. Totals across all sampled inputs were not recorded.")
-            else if (hasCandidate) ui("選択中の候補に使わなかった入力・ブロックの試行も含む集計です。",
-                "These totals also include input and block trials that did not produce the selected candidate.")
-            else ui("探索した入力・ブロック全体の集計です。", "These totals cover all searched inputs and blocks."), it) }
+        val status = listDecodingProcessingText(diagnostic, wholeSearch)
+        val details = diagnostic?.listDecoding?.calculationDetails().orEmpty()
+        if (status.isBlank() && details.isBlank()) return null
+        val scope = searchRecordScope(wholeSearch, hasCandidate)
+        return DiagnosticDetailGroup(DiagnosticDetailId.SEARCH,
+            ui("リスト復号の実行状況（$scope）", "List decoding execution status ($scope)"),
+            listOf(searchRecordScopeDescription(wholeSearch, hasCandidate), status)
+                .filter(String::isNotBlank).joinToString("\n\n"),
+            details, collapsible = details.isNotBlank())
     }
-
-    private fun candidateCalculationText(candidate: RecoveryCandidate): String = buildString {
-        append(ui("コード語は8bitのまとまりです。ブロックは誤り訂正を計算する単位です。",
-            "A codeword contains 8 bits. A block is a unit of error-correction calculation."))
-        if (candidate.actualBlockMethods.any { it.bitConstraintSolved }) append(ui(
-            "\n自由度は、誤り訂正の条件を満たす組合せの中で、独立に選べる不明bitの数です。",
-            "\nDegrees of freedom count unknown bits that can be chosen independently among combinations satisfying the error-correction conditions."))
-        candidate.listDecodingMismatchLimit?.let {
-            append(ui("\nこの候補のリスト復号の既知ビットの不一致上限: ${it}ビット",
-                "\nKnown-bit mismatch limit for this candidate's list decoding: $it bits"))
-        }
-        append(ui("\n構造補完・優先セルの仮置きを反映した不明コード語数（全ブロック合計）: ", "\nUnknown codewords after structure filling and priority assignments (all blocks): "))
-            .append(candidate.erasedCodewords)
-
-        append(ui("\n補完・訂正の対象コード語数: ", "\nCodewords targeted for filling/correction: ")).append(candidate.correctedErrataSymbols)
-        if (candidate.repairInfo.none { it.bitConstraintSolved || it.listDecoding != null } &&
-            candidate.actualBlockMethods.none { it.bitConstraintSolved || it.listDecoding != null }) {
-            append(ui("\n通常RSの計算値 ECC−消失数−2×誤りコード語数（ブロック最小）: ",
-                "\nConventional RS calculation, ECC−erasures−2×errors (minimum across blocks): ")).append(candidate.minRsMargin)
-            append(ui("（この補完方法での値。元入力の残り訂正能力や正しさを示しません）",
-                " (for this derivation; not remaining input correction capacity or proof of correctness)"))
-        }
-        candidate.actualBlockMethods.forEach { method ->
-            append("\n\n").append(blockCalculationText(method))
-        }
-    }
-
-    private fun blockCalculationText(method: RecoveryBlockMethod): String = buildString {
-        append(ui("ブロック${method.blockIndex + 1}", "Block ${method.blockIndex + 1}"))
-        val list = method.listDecoding
-        append(ui("\n方法: ", "\nMethod: ")).append(when {
-            list != null -> list.method.displayName() + ui("によるリスト復号", " list decoding")
-            method.bitConstraintSolved -> ui("部分bit制約", "Partial-bit constraints")
-            else -> ui("通常RS", "Conventional RS")
-        })
-        append(if (method.bitConstraintSolved) ui("\nこのブロックの自由度: ", "\nDegrees of freedom for this block: ")
-            else ui("\n計算前に仮置きした不明bit: ", "\nUnknown bits assigned before calculation: ")).append(method.guessedBits)
-        if (list != null) {
-            if (list.method == ListDecoderMethod.KOETTER_VARDY) {
-                append(ui("\n一致スコア: ${list.score}\n必要スコア: ${list.scoreThreshold}",
-                    "\nAgreement score: ${list.score}\nRequired score: ${list.scoreThreshold}"))
-            } else {
-                append(ui("\n訂正半径: ${list.radius}コード語\n残存消失: ${list.remainingErasures}コード語",
-                    "\nCorrection radius: ${list.radius} codewords\nRemaining erasures: ${list.remainingErasures} codewords"))
-            }
-            if (list.method != ListDecoderMethod.WU) {
-                append(if (list.method == ListDecoderMethod.KOETTER_VARDY) ui("\n多重度の基準: ", "\nBase multiplicity: ")
-                    else ui("\n多重度: ", "\nMultiplicity: ")).append(list.multiplicity)
-                append(ui("\nY次数: ", "\nY degree: ")).append(list.listDegree)
-            }
-        } else if (!method.bitConstraintSolved) append(ui("\nこのブロックの通常RS訂正余裕: ${method.rsMargin ?: "—"}",
-            "\nConventional RS correction margin for this block: ${method.rsMargin ?: "—"}"))
-    }
-
-    private fun alternativeDerivationsGroup(candidate: RecoveryCandidate, methods: List<RecoveryMethodRecords>,
-        entry: RecoveryResultEntry?): DiagnosticDetailGroup? {
-        val selectedEntry = entry?.takeIf { it.candidate === candidate }
-        val omitted = methods.any { group -> group.records.any { it.derivationsOmitted } } || selectedEntry?.derivationsOmitted == true
-        val summary = buildList {
-            if (methods.any { it.blockDerivations.isNotEmpty() }) add(ui(
-                "同じブロック値を得た別の方法の記録があります。", "Alternative methods yielding the same block values were recorded."))
-            if (methods.size > 1) add(ui(
-                "保持したQR全体の補完方法: ${methods.size}通り（代表を含む）",
-                "Retained methods for the whole QR: ${methods.size} (including the representative)"))
-            selectedEntry?.alternativeDerivations?.size?.takeIf { it > 0 }?.let { count -> add(ui(
-                "同じQRを得た別の読み取り試行: ${count}件", "Other sampled-input attempts yielding the same QR: $count")) }
-            if (isNotEmpty()) add(ui(
-                "セルの説明には代表の方法を使います。別経路の数は別候補の数ではありません。",
-                "Cell explanations use the representative method. Alternative routes are not additional candidates."))
-            if (omitted) add(ui("保持上限により、同じQRを得た一部の別経路の詳細を省略しています。",
-                "Some alternative derivation details for this QR were omitted at the retention limit."))
-        }.joinToString("\n")
-        if (summary.isBlank()) return null
-        val text = buildString {
-            methods.forEachIndexed { qrIndex, method ->
-                val route = method.representative
-                if (methods.size > 1) {
-                    append(ui("\n補完方法${qrIndex + 1}", "\nMethod ${qrIndex + 1}"))
-                    if (qrIndex == 0) append(ui("（代表）", " (representative)"))
-                    append(ui(": 構造による補完 ${route.constraintFilledBits}bit / 優先探索 ${route.priorityGuessedBits}bit",
-                        ": structure ${route.constraintFilledBits} bits / priority ${route.priorityGuessedBits} bits"))
-                    route.actualBlockMethods.forEach {
-                        append("\n  ").append(it.searchDescription())
-                        if (!it.bitConstraintSolved && it.listDecoding == null) append(ui(
-                            "／通常RS訂正余裕: ${it.rsMargin ?: "—"}", " / conventional RS margin: ${it.rsMargin ?: "—"}"))
-                    }
-                    if (route.priorityAssignments.isNotEmpty()) append(ui("\n  優先セルへの仮置き（座標は0から）: ",
-                        "\n  Tentative values for prioritized cells (zero-based coordinates): "))
-                        .append(route.priorityAssignments.entries.sortedWith(compareBy({ it.key.y }, { it.key.x }))
-                            .joinToString(", ") { (coord, value) -> "(${coord.x},${coord.y})=${value.bitOrNull() ?: "?"}" })
-                    if (qrIndex > 0) append(ui("\n  代表の方法との違い: ", "\n  Differences from the representative: "))
-                        .append(candidate.methodDifferences(route).joinToString(ui("、", ", ")) { it.description() })
-                }
-                if (qrIndex > 0) structureCheckSupplement(method).takeIf(String::isNotBlank)?.let {
-                    append("\n  ").append(it.replace("\n", "\n  "))
-                }
-                method.blockDerivations.forEach { (block, derivations) ->
-                    append('\n')
-                    if (methods.size > 1) append(ui("補完方法${qrIndex + 1}・", "Method ${qrIndex + 1}, "))
-                    append(ui("RSブロック${block + 1}: 同じ補完結果を得た方法: ${derivations.size}通り（代表は1）",
-                        "RS block ${block + 1}: ${derivations.size} derivations of the same values (representative: 1)"))
-                    derivations.forEachIndexed { index, derivation ->
-                        append("\n  ${index + 1}: ").append(derivation.description())
-                    }
-                }
-            }
-            selectedEntry?.alternativeDerivations?.forEachIndexed { index, route ->
-                append(ui("\n同じQRを得た別の試行${index + 1}: ", "\nAnother attempt yielding the same QR ${index + 1}: "))
-                append(route.profile?.label.orEmpty()).append(" / ").append(geometryDiagnosticText(route.hypothesis.geometry))
-                append("\n").append(route.candidate.usedMethodsText())
-                route.samplingStats.thresholds?.let { append(ui("\n閾値: ${it.blackMax} / ${it.whiteMin}",
-                    "\nThresholds: ${it.blackMax} / ${it.whiteMin}")) }
-            }
-        }.trim()
-        return DiagnosticDetailGroup(DiagnosticDetailId.DERIVATIONS,
-            ui("同じQRを得た処理の記録", "Records yielding the same QR"), summary, text, collapsible = true)
-    }
-
-    private fun structureCheckSupplement(method: RecoveryMethodRecords): String {
-        val checks = method.structureChecks
-        if (checks.size <= 1) return ""
-        return buildList {
-            add(ui("補足: QR構造の確認", "Supplement: QR structure checks"))
-            addAll(checks.filter { it.recorded }.map(::structureCheckText).distinct())
-            if (method.representative.constraintFilledBits == 0) add(ui(
-                "構造による補完・変更はありません。", "No values were filled or changed using QR structure."))
-        }.joinToString("\n")
-    }
-
-    private fun RecoveryMethodDifference.description(): String = when (this) {
-        RecoveryMethodDifference.INPUT -> ui("計算に使った入力・QRの形式", "calculation input or QR format")
-        RecoveryMethodDifference.STRUCTURE -> ui("構造による補完・その前提", "structure filling or its assumptions")
-        RecoveryMethodDifference.PRIORITY -> ui("優先セルの位置・仮置きした値", "prioritized cell locations or tentative values")
-        RecoveryMethodDifference.BLOCKS -> ui("ブロックの計算方法・条件", "block calculation methods or parameters")
-        RecoveryMethodDifference.CELL_REPAIRS -> ui("セルごとの補完・訂正の内訳（位置・値・方法）", "repairs to individual cells (locations, values or methods)")
-        RecoveryMethodDifference.ASSUMPTION -> ui("単一セグメントの仮定の適用", "application of the single-segment assumption")
-        RecoveryMethodDifference.LIMIT -> ui("リスト復号の不一致上限", "list-decoding mismatch limit")
-        RecoveryMethodDifference.SETTINGS -> ui("適用した設定・形式の選択", "applied settings or format selection")
-    }
-
-    private fun structureCheckText(check: RecoveryStructureCheck): String = buildList {
-        check.mode?.let { mode ->
-            val name = when (mode) {
-                1 -> ui("数字", "Numeric")
-                2 -> ui("英数字", "Alphanumeric")
-                4 -> ui("バイト", "Byte")
-                8 -> ui("漢字", "Kanji")
-                else -> ui("モード$mode", "Mode $mode")
-            }
-            add(name + (check.count?.let { count ->
-                if (mode == 4) ui(" ${count}バイト", " $count bytes") else ui(" ${count}文字", " $count characters")
-            } ?: ""))
-        }
-        if (check.plans > 1) add(ui("構造の候補: ${check.plans}通り", "Possible structures: ${check.plans}"))
-        add(ui("仮定した末尾構造と一致する読み取り済みbit: ${check.evidenceBits}bit",
-            "Observed bits matching the assumed suffix structure: ${check.evidenceBits} bits"))
-    }.joinToString(" / ")
 
     private fun failureProcessingText(failure: RecoveryFailure): String {
         val processing = buildString {

@@ -15,6 +15,8 @@
     <string name="hide_diagnostic_details">診断情報を閉じる</string>
     <string name="diagnostic_open_section">%1$sの詳細を開く</string>
     <string name="diagnostic_close_section">%1$sの詳細を閉じる</string>
+    <string name="diagnostic_open_calculations">計算の詳細を開く</string>
+    <string name="diagnostic_close_calculations">計算の詳細を閉じる</string>
     <string name="diagnostic_open_record">%1$sを開く</string>
     <string name="diagnostic_close_record">%1$sを閉じる</string>
     <string name="diagnostic_expanded">展開中</string>
