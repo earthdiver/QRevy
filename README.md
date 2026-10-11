@@ -10,11 +10,11 @@ Recovery does not guarantee that the result matches the original content. Indepe
 
 ## Recovery example
 
-| Before repair | After repair | Filled cells |
+| Before repair | After repair | Filled and corrected cells |
 | --- | --- | --- |
-| ![Synthetic QR with irregular holes](docs/examples/bullet-holes/before.png) | ![Recovered QR](docs/examples/bullet-holes/after.png) | ![Filled cells highlighted in blue](docs/examples/bullet-holes/details.png) |
+| ![Synthetic QR with irregular holes and black damage](docs/examples/bullet-holes/before.png) | ![Recovered QR](docs/examples/bullet-holes/after.png) | ![Filled cells in blue and corrected cells in orange](docs/examples/bullet-holes/details.png) |
 
-See the [example input, settings, and result](docs/examples/bullet-holes/README.md) to try this repair.
+The example has 503 of 841 cells erased (59.8%). Enable the single-segment assumption and use one priority bit; all other recovery settings stay at their defaults. See the [image input and steps](docs/examples/bullet-holes/README.md) to try it.
 
 ## Get started
 

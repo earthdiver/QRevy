@@ -10,11 +10,11 @@ Android 8.0以降と、QR Code Model 2のバージョン1～40に対応してい
 
 ## 修復例
 
-| 修復前 | 修復後 | 補完箇所 |
+| 修復前 | 修復後 | 補完・訂正箇所 |
 | --- | --- | --- |
-| ![不規則な穴がある合成QR](docs/examples/bullet-holes/before.png) | ![修復後のQR](docs/examples/bullet-holes/after.png) | ![補完したセルを青色で表示](docs/examples/bullet-holes/details.png) |
+| ![不規則な穴と黒い損傷がある合成QR](docs/examples/bullet-holes/before.png) | ![修復後のQR](docs/examples/bullet-holes/after.png) | ![補完を青色、訂正をオレンジ色で表示](docs/examples/bullet-holes/details.png) |
 
-[入力データ・設定・結果](docs/examples/bullet-holes/README.ja.md)を使って、この修復例を試せます。
+841セル中503セル（59.8%）が消失した例です。単一セグメント仮定をONにして1bitを優先探索に指定し、ほかの修復設定は既定値を使います。[画像入力と試す手順](docs/examples/bullet-holes/README.ja.md)を参照してください。
 
 ## 使い始める
 

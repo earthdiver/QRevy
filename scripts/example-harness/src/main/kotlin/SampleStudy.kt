@@ -98,4 +98,14 @@ private fun run(input:File,out:File) {
   result["elapsedMs"]=(System.nanoTime()-start)/1e6;result["cancellationChecks"]=checks;w.appendLine(gson.toJson(result));w.flush();println(req["id"].asString+" "+req["action"].asString+" "+result["status"])
  }}
 }
-fun main(args:Array<String>){require(args.size==3);when(args[0]){"prepare"->prepare(File(args[1]),File(args[2]));"run"->run(File(args[1]),File(args[2]));else->error("Unknown mode")}}
+fun main(args: Array<String>) {
+ require(args.size == 3)
+ val input = File(args[1]); val output = File(args[2])
+ when (args[0]) {
+  "prepare" -> prepare(input, output)
+  "run" -> run(input, output)
+  "sample" -> inspectExample(input, output)
+  "conventional" -> conventionalExample(input, output)
+  else -> error("Unknown mode")
+ }
+}

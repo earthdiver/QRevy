@@ -1,165 +1,612 @@
 {
-  "input_type": "TEXT matrix (PNG is visualization)",
+  "input_type": "PNG image with visible-color soft edits",
   "version": 3,
   "ecc": "M",
   "mask": 3,
   "payload": "QRevy app: recovered QR.",
+  "scale": 24,
+  "border": 4,
   "holes": [
     [
-      2,
-      2,
-      5.5
+      1.6370006111006983,
+      2.3157925511381676,
+      6.149000000000001
     ],
     [
-      2,
-      26,
-      5.5
+      1.9943490108559894,
+      25.8404790623738,
+      6.149000000000001
     ],
     [
-      11,
-      1,
-      5.5
+      10.68664657498296,
+      1.1630683147060088,
+      6.149000000000001
     ],
     [
-      11,
-      12,
-      5.5
+      10.861888370391702,
+      12.262354342587797,
+      6.149000000000001
     ],
     [
-      13,
-      24,
-      6.5
+      12.976323891975104,
+      23.802268427537022,
+      7.267
     ],
     [
-      22,
-      14,
-      3.5
+      21.923576672470745,
+      13.659819227378733,
+      3.9130000000000003
     ],
     [
-      16,
-      7,
-      3.5
+      15.691467774570395,
+      6.80873117152976,
+      3.9130000000000003
+    ],
+    [
+      17.05440453487911,
+      16.24633984340928,
+      3.9130000000000003
+    ],
+    [
+      28,
+      28,
+      0.85
+    ],
+    [
+      17.5,
+      3.5,
+      2.2
+    ]
+  ],
+  "black_scorch_cells": [
+    [
+      18,
+      11
+    ]
+  ],
+  "geometry_rule": "r(theta)=r*(1+0.045*sin(5*theta+i)+0.03*cos(9*theta-2*i))",
+  "erasure_rule": "All nine 3x3 subcell center pixels are gray; other unknown cells use visible-color soft edits.",
+  "unknown_cells": 502,
+  "priority_cells": 1,
+  "erased_cells_total": 503,
+  "total_cells": 841,
+  "soft_edits": [
+    [
+      17,
+      0,
+      "0",
+      true
     ],
     [
       17,
+      1,
+      "0",
+      true
+    ],
+    [
+      18,
+      1,
+      "0",
+      true
+    ],
+    [
+      19,
+      2,
+      "1",
+      true
+    ],
+    [
+      20,
+      3,
+      "1",
+      true
+    ],
+    [
+      19,
+      5,
+      "1",
+      true
+    ],
+    [
+      7,
+      6,
+      "0",
+      true
+    ],
+    [
+      19,
+      6,
+      "0",
+      true
+    ],
+    [
+      5,
+      7,
+      "0",
+      true
+    ],
+    [
+      8,
+      7,
+      "1",
+      true
+    ],
+    [
+      0,
+      8,
+      "1",
+      true
+    ],
+    [
+      4,
+      8,
+      "0",
+      true
+    ],
+    [
+      7,
+      8,
+      "1",
+      true
+    ],
+    [
+      2,
+      9,
+      "0",
+      true
+    ],
+    [
+      6,
+      9,
+      "0",
+      true
+    ],
+    [
+      19,
+      9,
+      "1",
+      true
+    ],
+    [
+      5,
+      10,
+      "1",
+      true
+    ],
+    [
+      17,
+      10,
+      "0",
+      true
+    ],
+    [
+      18,
+      10,
+      "1",
+      true
+    ],
+    [
+      20,
+      10,
+      "1",
+      true
+    ],
+    [
+      21,
+      10,
+      "1",
+      true
+    ],
+    [
+      22,
+      10,
+      "0",
+      true
+    ],
+    [
+      23,
+      10,
+      "1",
+      true
+    ],
+    [
+      24,
+      10,
+      "1",
+      true
+    ],
+    [
+      17,
+      11,
+      "1",
+      true
+    ],
+    [
+      19,
+      11,
+      "1",
+      true
+    ],
+    [
+      25,
+      11,
+      "0",
+      true
+    ],
+    [
+      5,
+      12,
+      "1",
+      true
+    ],
+    [
+      17,
+      12,
+      "0",
+      true
+    ],
+    [
+      19,
+      12,
+      "0",
+      true
+    ],
+    [
+      5,
+      13,
+      "1",
+      true
+    ],
+    [
+      5,
+      14,
+      "0",
+      true
+    ],
+    [
+      26,
+      15,
+      "0",
+      true
+    ],
+    [
+      6,
       16,
-      3.5
+      "1",
+      true
+    ],
+    [
+      25,
+      16,
+      "0",
+      true
+    ],
+    [
+      7,
+      17,
+      "1",
+      true
+    ],
+    [
+      23,
+      17,
+      "0",
+      true
+    ],
+    [
+      24,
+      17,
+      "0",
+      true
+    ],
+    [
+      8,
+      18,
+      "1",
+      true
+    ],
+    [
+      9,
+      18,
+      "1",
+      true
+    ],
+    [
+      20,
+      18,
+      "0",
+      true
+    ],
+    [
+      21,
+      18,
+      "0",
+      true
+    ],
+    [
+      8,
+      19,
+      "0",
+      true
+    ],
+    [
+      20,
+      19,
+      "1",
+      true
+    ],
+    [
+      0,
+      20,
+      "0",
+      true
+    ],
+    [
+      1,
+      20,
+      "1",
+      true
+    ],
+    [
+      2,
+      20,
+      "0",
+      true
+    ],
+    [
+      3,
+      20,
+      "1",
+      true
+    ],
+    [
+      5,
+      20,
+      "1",
+      true
+    ],
+    [
+      7,
+      20,
+      "1",
+      true
+    ],
+    [
+      20,
+      20,
+      "1",
+      true
+    ],
+    [
+      6,
+      21,
+      "0",
+      true
+    ],
+    [
+      20,
+      21,
+      "1",
+      true
+    ],
+    [
+      20,
+      22,
+      "1",
+      true
+    ],
+    [
+      20,
+      23,
+      "1",
+      true
+    ],
+    [
+      20,
+      24,
+      "1",
+      true
+    ],
+    [
+      20,
+      25,
+      "1",
+      true
+    ],
+    [
+      20,
+      26,
+      "0",
+      true
+    ],
+    [
+      19,
+      27,
+      "0",
+      true
     ],
     [
       28,
+      27,
+      "0",
+      true
+    ],
+    [
+      19,
       28,
-      2.05
+      "1",
+      true
+    ],
+    [
+      27,
+      28,
+      "1",
+      true
     ]
   ],
-  "priority_header_bits": [
-    0,
-    1,
-    2,
-    3,
-    4
-  ],
-  "geometry_rule": "r(theta) = r * (1 + 0.08*sin(5*theta+i) + 0.05*cos(9*theta-2*i)); missing at module center",
-  "function_missing": 145,
-  "function_total": 274,
-  "data_ecc_missing": 333,
-  "remainder_missing": 0,
-  "data_ecc_total": 560,
-  "remainder_total": 7,
-  "unknown_cells": 473,
-  "priority_cells": 5,
-  "total_cells": 841,
   "settings": {
-    "kind": "matrix",
-    "ecc": "M",
-    "mask": null,
-    "formatBits": 6,
-    "limit": "EXACT",
-    "fine": false,
-    "partialBits": 12,
-    "budgetMs": 60000,
-    "maxChecks": 100000000,
-    "edits": []
+    "single_segment": true,
+    "ecc": "Automatic",
+    "mask": "Automatic",
+    "automatic_thresholds": true,
+    "black_max": 4,
+    "white_min": 229,
+    "provisional_black_max": 64,
+    "provisional_white_min": 192,
+    "data_ecc_error_limit": 5,
+    "format_error_limit": 6,
+    "priority_limit": 4,
+    "partial_bit_limit": 12,
+    "list_additional_errors": 1
   },
+  "module_center_quad": [
+    [
+      108,
+      108
+    ],
+    [
+      780,
+      108
+    ],
+    [
+      780,
+      780
+    ],
+    [
+      108,
+      780
+    ]
+  ],
   "comparison": [
     {
-      "action": "single-off",
-      "single": false,
-      "candidate_count": 1,
-      "search_diagnostic": {
-        "inputBlocker": null,
-        "candidateRejections": [],
-        "acceptedCandidate": true,
-        "unresolvedCalculations": true,
-        "unsearched": false,
-        "incompleteReasons": [],
-        "completedSteps": 35,
-        "coverageComplete": true,
-        "solverCompleteness": "COMPLETE",
-        "candidateCalculations": 2,
-        "candidatesOmitted": false,
-        "derivationsOmitted": false,
-        "singleSegmentStatuses": [],
-        "priorityHeaderHypotheses": [],
-        "listDecoding": null,
-        "listDecodingExecution": {
-          "stages": {
-            "WITHOUT_ASSIGNMENTS": [
-              "ZERO_ERROR_LIMIT"
-            ],
-            "ADDITIONAL": [
-              "ZERO_ERROR_LIMIT"
-            ]
-          },
-          "newTrials": {}
-        }
-      },
-      "failure_reason": null
-    },
-    {
       "action": "single-on",
-      "single": true,
       "candidate_count": 1,
       "search_diagnostic": {
         "inputBlocker": null,
-        "candidateRejections": [],
+        "candidateRejections": [
+          "LIST_DECODING_MISMATCH_LIMIT"
+        ],
         "acceptedCandidate": true,
         "unresolvedCalculations": true,
         "unsearched": false,
         "incompleteReasons": [],
-        "completedSteps": 35,
+        "completedSteps": 193,
         "coverageComplete": true,
         "solverCompleteness": "COMPLETE",
-        "candidateCalculations": 1,
+        "candidateCalculations": 6,
         "candidatesOmitted": false,
         "derivationsOmitted": false,
         "singleSegmentStatuses": [
           "INCOMPLETE_HEADER",
-          "COUNT_EXCEEDS_CAPACITY",
           "APPLIED_WITH_PRIORITY_HEADER",
-          "UNSUPPORTED_MODE"
+          "UNSUPPORTED_MODE",
+          "COUNT_EXCEEDS_CAPACITY"
         ],
         "priorityHeaderHypotheses": [
-          "00011001100001",
-          "00010001100001"
+          "010000011000",
+          "0011"
         ],
-        "listDecoding": null,
+        "listDecoding": {
+          "trials": 258,
+          "interpolations": 1,
+          "elapsedMillis": 323,
+          "mismatchLimits": [
+            5
+          ],
+          "skipReasons": [
+            "TOO_MANY_ERASURES",
+            "KV_PARAMETERS_UNAVAILABLE",
+            "NO_ADDITIONAL_RADIUS"
+          ],
+          "methodTrials": {
+            "KOETTER_VARDY": 1,
+            "WU": 257
+          },
+          "reusedTrials": 0,
+          "extensionLimits": [
+            1
+          ],
+          "hardRadiusTrials": {
+            "3": 1,
+            "5": 256
+          },
+          "completedHardRadiusTrials": {
+            "3": 1,
+            "5": 256
+          }
+        },
         "listDecodingExecution": {
           "stages": {
             "WITHOUT_ASSIGNMENTS": [
-              "ZERO_ERROR_LIMIT"
+              "INELIGIBLE"
             ],
             "ADDITIONAL": [
-              "ZERO_ERROR_LIMIT"
+              "COMPLETED"
             ]
           },
-          "newTrials": {}
+          "newTrials": {
+            "WITHOUT_ASSIGNMENTS": 0,
+            "ADDITIONAL": 258
+          }
         }
-      },
-      "failure_reason": "RS_BIT_SPACE_LIMIT"
+      }
     },
     {
-      "action": "ordinary-unknowns",
-      "single": true,
+      "action": "single-off",
+      "candidate_count": 0,
+      "search_diagnostic": {
+        "inputBlocker": null,
+        "candidateRejections": [],
+        "acceptedCandidate": false,
+        "unresolvedCalculations": true,
+        "unsearched": false,
+        "incompleteReasons": [],
+        "completedSteps": 225,
+        "coverageComplete": true,
+        "solverCompleteness": "COMPLETE",
+        "candidateCalculations": 16,
+        "candidatesOmitted": false,
+        "derivationsOmitted": false,
+        "singleSegmentStatuses": [],
+        "priorityHeaderHypotheses": [],
+        "listDecoding": {
+          "trials": 0,
+          "interpolations": 0,
+          "elapsedMillis": 110,
+          "mismatchLimits": [
+            5
+          ],
+          "skipReasons": [
+            "TOO_MANY_ERASURES",
+            "KV_PARAMETERS_UNAVAILABLE",
+            "NO_ADDITIONAL_RADIUS"
+          ],
+          "methodTrials": {},
+          "reusedTrials": 0,
+          "extensionLimits": [
+            1
+          ],
+          "hardRadiusTrials": {},
+          "completedHardRadiusTrials": {}
+        },
+        "listDecodingExecution": {
+          "stages": {
+            "WITHOUT_ASSIGNMENTS": [
+              "INELIGIBLE"
+            ],
+            "ADDITIONAL": [
+              "INELIGIBLE"
+            ]
+          },
+          "newTrials": {
+            "WITHOUT_ASSIGNMENTS": 0,
+            "ADDITIONAL": 0
+          }
+        }
+      }
+    },
+    {
+      "action": "no-priority",
       "candidate_count": 0,
       "search_diagnostic": {
         "inputBlocker": null,
@@ -168,7 +615,7 @@
         "unresolvedCalculations": false,
         "unsearched": false,
         "incompleteReasons": [],
-        "completedSteps": 3,
+        "completedSteps": 81,
         "coverageComplete": true,
         "solverCompleteness": "COMPLETE",
         "candidateCalculations": 0,
@@ -178,20 +625,37 @@
           "INCOMPLETE_HEADER"
         ],
         "priorityHeaderHypotheses": [],
-        "listDecoding": null,
+        "listDecoding": {
+          "trials": 0,
+          "interpolations": 0,
+          "elapsedMillis": 17,
+          "mismatchLimits": [
+            5
+          ],
+          "skipReasons": [],
+          "methodTrials": {},
+          "reusedTrials": 0,
+          "extensionLimits": [
+            1
+          ],
+          "hardRadiusTrials": {},
+          "completedHardRadiusTrials": {}
+        },
         "listDecodingExecution": {
           "stages": {
             "WITHOUT_ASSIGNMENTS": [
-              "ZERO_ERROR_LIMIT"
+              "INELIGIBLE"
             ],
             "ADDITIONAL": [
-              "ZERO_ERROR_LIMIT"
+              "INELIGIBLE"
             ]
           },
-          "newTrials": {}
+          "newTrials": {
+            "WITHOUT_ASSIGNMENTS": 0,
+            "ADDITIONAL": 0
+          }
         }
-      },
-      "failure_reason": "SINGLE_SEGMENT_CONDITION_UNAVAILABLE"
+      }
     }
   ],
   "selected_candidate": {
@@ -199,7 +663,7 @@
     "ecc": "M",
     "mask": 3,
     "text": "QRevy app: recovered QR.",
-    "score": -200332,
+    "score": -199979,
     "codewords": [
       65,
       133,
@@ -318,33 +782,13 @@
       236,
       17
     ],
-    "knownMismatches": 0,
-    "knownCompared": 227,
+    "knownMismatches": 1,
+    "knownCompared": 215,
     "partialGuessedBits": 0,
     "constraintFilledBits": 143,
     "singleSegmentStatus": "APPLIED_WITH_PRIORITY_HEADER",
     "constraintForcedByUserSetting": true,
     "priorityAssignments": [
-      [
-        28,
-        26,
-        "1"
-      ],
-      [
-        27,
-        27,
-        "1"
-      ],
-      [
-        28,
-        27,
-        "0"
-      ],
-      [
-        27,
-        28,
-        "1"
-      ],
       [
         28,
         28,
@@ -358,7 +802,7 @@
           "totalSymbols": 70,
           "dataSymbols": 44,
           "eccSymbols": 26,
-          "erasures": 50,
+          "erasures": 54,
           "errors": null,
           "margin": null,
           "status": "ERASURE_CAPACITY_EXCEEDED"
@@ -366,7 +810,7 @@
       ],
       "correctedInterleaved": null,
       "knownBitMismatches": null,
-      "knownBitMismatchLimit": 0,
+      "knownBitMismatchLimit": 5,
       "manualConflicts": [],
       "qrStructureValid": null
     },
@@ -381,76 +825,178 @@
     ],
     "searchDiagnostic": {
       "inputBlocker": null,
-      "candidateRejections": [],
+      "candidateRejections": [
+        "LIST_DECODING_MISMATCH_LIMIT"
+      ],
       "acceptedCandidate": true,
       "unresolvedCalculations": true,
       "unsearched": false,
       "incompleteReasons": [],
-      "completedSteps": 35,
+      "completedSteps": 193,
       "coverageComplete": true,
       "solverCompleteness": "COMPLETE",
-      "candidateCalculations": 1,
+      "candidateCalculations": 6,
       "candidatesOmitted": false,
       "derivationsOmitted": false,
       "singleSegmentStatuses": [
         "INCOMPLETE_HEADER",
-        "COUNT_EXCEEDS_CAPACITY",
         "APPLIED_WITH_PRIORITY_HEADER",
-        "UNSUPPORTED_MODE"
+        "UNSUPPORTED_MODE",
+        "COUNT_EXCEEDS_CAPACITY"
       ],
       "priorityHeaderHypotheses": [
-        "00011001100001",
-        "00010001100001"
+        "010000011000",
+        "0011"
       ],
-      "listDecoding": null,
+      "listDecoding": {
+        "trials": 258,
+        "interpolations": 1,
+        "elapsedMillis": 323,
+        "mismatchLimits": [
+          5
+        ],
+        "skipReasons": [
+          "TOO_MANY_ERASURES",
+          "KV_PARAMETERS_UNAVAILABLE",
+          "NO_ADDITIONAL_RADIUS"
+        ],
+        "methodTrials": {
+          "KOETTER_VARDY": 1,
+          "WU": 257
+        },
+        "reusedTrials": 0,
+        "extensionLimits": [
+          1
+        ],
+        "hardRadiusTrials": {
+          "3": 1,
+          "5": 256
+        },
+        "completedHardRadiusTrials": {
+          "3": 1,
+          "5": 256
+        }
+      },
       "listDecodingExecution": {
         "stages": {
           "WITHOUT_ASSIGNMENTS": [
-            "ZERO_ERROR_LIMIT"
+            "INELIGIBLE"
           ],
           "ADDITIONAL": [
-            "ZERO_ERROR_LIMIT"
+            "COMPLETED"
           ]
         },
-        "newTrials": {}
+        "newTrials": {
+          "WITHOUT_ASSIGNMENTS": 0,
+          "ADDITIONAL": 258
+        }
       }
-    }
+    },
+    "inputQuad": [
+      [
+        108.0,
+        108.0
+      ],
+      [
+        780.0,
+        108.0
+      ],
+      [
+        780.0,
+        780.0
+      ],
+      [
+        108.0,
+        780.0
+      ]
+    ]
   },
+  "conventional_controls": [
+    {
+      "priorityAssignment": 0,
+      "single": false,
+      "filledBits": 0,
+      "blocks": [
+        {
+          "blockIndex": 0,
+          "erasures": 53,
+          "eccSymbols": 26,
+          "minimumBitsToReachRsErasureCapacity": 136,
+          "ordinaryRsSucceeded": false,
+          "assignedOrdinaryRsCandidates": 0,
+          "assignedOrdinaryRsFailure": "BOUNDED_BIT_SEARCH_LIMIT"
+        }
+      ]
+    },
+    {
+      "priorityAssignment": 0,
+      "single": true,
+      "filledBits": 143,
+      "blocks": [
+        {
+          "blockIndex": 0,
+          "erasures": 35,
+          "eccSymbols": 26,
+          "minimumBitsToReachRsErasureCapacity": 14,
+          "ordinaryRsSucceeded": false,
+          "assignedOrdinaryRsCandidates": 0,
+          "assignedOrdinaryRsFailure": "BOUNDED_BIT_SEARCH_LIMIT"
+        }
+      ]
+    },
+    {
+      "priorityAssignment": 1,
+      "single": false,
+      "filledBits": 0,
+      "blocks": [
+        {
+          "blockIndex": 0,
+          "erasures": 53,
+          "eccSymbols": 26,
+          "minimumBitsToReachRsErasureCapacity": 136,
+          "ordinaryRsSucceeded": false,
+          "assignedOrdinaryRsCandidates": 0,
+          "assignedOrdinaryRsFailure": "BOUNDED_BIT_SEARCH_LIMIT"
+        }
+      ]
+    },
+    {
+      "priorityAssignment": 1,
+      "single": true,
+      "filledBits": 0,
+      "blocks": [
+        {
+          "blockIndex": 0,
+          "erasures": 53,
+          "eccSymbols": 26,
+          "minimumBitsToReachRsErasureCapacity": 136,
+          "ordinaryRsSucceeded": false,
+          "assignedOrdinaryRsCandidates": 0,
+          "assignedOrdinaryRsFailure": "BOUNDED_BIT_SEARCH_LIMIT"
+        }
+      ]
+    }
+  ],
   "reader_results": {
-    "original": {
-      "zxing_cpp": true,
-      "zxing_java": true
-    },
-    "before": {
-      "zxing_cpp": false,
-      "zxing_java": false
-    },
-    "after": {
-      "zxing_cpp": true,
-      "zxing_java": true
-    },
-    "before-gray": {
-      "zxing_cpp": false,
-      "zxing_java": false
-    },
-    "input-matrix": {
-      "zxing_cpp": false,
-      "zxing_java": false
-    }
+    "before": [],
+    "after": [
+      "QRevy app: recovered QR."
+    ]
   },
+  "original_codewords_match": true,
   "original_matrix_match": true,
   "core_source_sha256": "1c3639f4c5c6ff2d755e6baefefba05898dabbb307b4cafdc0f6daed8cfbf75d",
   "generator_packages": {
     "qrcode": "8.2",
-    "Pillow": "11.3.0",
+    "Pillow": "12.3.0",
     "zxing-cpp": "3.1.1"
   },
   "sha256": {
-    "before.txt": "d3eca2062fe26f6c3749007b82ed6f62234568c9dca1afd6706f8a1488e6e9ad",
-    "before.png": "d1419140d7614fe485d5d700ba91c0425cbbdab59b76763d996f043e255a3629",
-    "input-matrix.png": "0a0458d3b65a607de2551fa669a6bd85224bcb0c2f2fb64154d0172fc2bb5e3e",
+    "before.png": "ca853d3fe3fd079823517fad41e1a3448fe6365afc274ba334c093d83a634cc9",
+    "before.txt": "f921989a14655ce0043ac85bd24677f042c6cfaec235289925470930898bcdf8",
+    "after.png": "ff65a26bb516696c2a512bc79f14fb2a9fd11568535d50d74e41ecf46fc87f6a",
     "after.txt": "5af6efa3a61b53e655b5d8f9f0d91f936f60d4c5ca2ece66888660198f620480",
-    "after.png": "749250568459f92ca3279e127c361a512ab6e4065a8c60f1bc91c46b2ce1a518",
-    "details.png": "8a8cdad51fa37e638f726a66d99d3375fc163b65a56906b62fcfe253b5db1646"
+    "details.png": "52f1c12909f9bf2884a82df1893dfd9e99dd1e61d81f732537237f9fc85b4c9a",
+    "soft-edits.json": "0e579496cf2bc70e8ac93007db2e60bbf646aa2a71599f480153c507b347eae0"
   }
 }
