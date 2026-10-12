@@ -1,14 +1,12 @@
-QRevy v0.19.0
+QRevy v0.19.1
 
 QRevy, formerly QR Repair, helps recover damaged QR codes offline on your Android device.
 
 WHAT'S NEW
-• Renamed QR Repair to QRevy, emphasized the app name above its home-screen description, and unified the icon colors with the home screen.
-• Improved list-decoding search order and reuse of completed calculations. Added a GS/Wu extension limit of +1, +2, or +3 codewords per RS block; the default is +1.
-• Increased the cumulative list-decoding time allowance from 5 to 10 minutes per repair, excluding ordinary search time. Candidates already found remain available after interruption or a time or memory limit.
-• Reorganized candidate comparison and diagnostics to clarify recovery methods, input agreement, and incomplete searches. Improved consistency between displayed cells and their repair evidence.
-• Improved import progress, saved-state restoration, language switching, grid alignment after image rotation, and brush editing. Corrected FNC1 second-position decoding and rejection of out-of-range ECI values.
-• Streamlined the English and Japanese documentation, including explanations of recovery methods, result interpretation, and limitations.
+• Clarified recovery calculation records, execution status, and diagnostic explanations in the app and in the English and Japanese guides.
+• Updated the synthetic recovery examples with reproducible priority-assisted list decoding and image-based bullet-hole recovery using priority cells and a single-segment assumption.
+• Restored detailed development history after v0.16.0. Existing version tags are retained with identical file contents at each version, but tags after v0.16.0 now point to newly signed commits. Earlier private history is excluded.
+• Removed earlier GitHub Releases and their attached downloads. Historical source versions remain available through their tags; v0.19.1 is the new release baseline.
 
 SAVED WORK COMPATIBILITY
 The Android app identity and saved-work location are unchanged. Install as an update to keep existing work.
