@@ -55,6 +55,7 @@ class PriorityCellDialogTest {
     private fun withFixture(
         value: ModuleValue = ModuleValue.ZERO,
         settings: PreprocessSettings = PreprocessSettings(version = 2),
+        beforeDialogLookup: (Activity) -> Unit = {},
         block: (Fixture) -> Unit,
     ) {
         val controller = Robolectric.buildActivity(Activity::class.java).setup()
@@ -69,7 +70,12 @@ class PriorityCellDialogTest {
                 PointD(20.0, 20.0), PointD(220.0, 20.0), PointD(220.0, 220.0), PointD(20.0, 220.0))),
             prepared, prepared, null, Executor { it.run() }, AtomicInteger(), RecoveryEngine(), host).show()
         shadowOf(Looper.getMainLooper()).idle()
-        val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+        beforeDialogLookup(controller.get())
+        val dialog = ShadowDialog.getShownDialogs().filterIsInstance<AlertDialog>().single { candidate ->
+            candidate.isShowing && candidate.window?.decorView?.let { root ->
+                views(root).filterIsInstance<PreprocessOverlayView>().any { it.context === controller.get() }
+            } == true
+        }
         try { Fixture(dialog, host).also { it.openEditor(); block(it) } } finally {
             dialog.dismiss()
             AppLanguageManager.applyTo(controller.get(), previousLanguage)
@@ -120,6 +126,21 @@ class PriorityCellDialogTest {
             if (large) dialog.dismiss()
             assertTrue(f.snapshot().settings.preRecoveryPrioritySearch.isEmpty())
         }
+    }
+
+    @Test fun priorityEditorRemainsUsableWhenAnotherDialogIsLatest() {
+        var other: AlertDialog? = null
+        try {
+            withFixture(beforeDialogLookup = { activity ->
+                other = AlertDialog.Builder(activity).setMessage("Another dialog").show()
+                assertSame(other, ShadowDialog.getLatestDialog())
+            }) { f ->
+                val coord = Coord(24, 24)
+                f.select(coord)
+                f.click("*")
+                assertEquals(setOf(coord), f.snapshot().settings.preRecoveryPrioritySearch)
+            }
+        } finally { other?.dismiss() }
     }
 
     @Test fun mixedSelectionIsRejectedWithoutPartiallyAddingPriorityCells() = withFixture { f ->
