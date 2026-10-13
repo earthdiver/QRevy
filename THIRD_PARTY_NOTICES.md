@@ -40,15 +40,15 @@ ZXing upstream NOTICE (release `zxing-3.5.4`):
 >
 > Copyright 2010 Cedric Beust cedric@beust.com
 
-### AndroidX Activity / Core / ExifInterface / CameraX
+### AndroidX
 
-- Artifacts: `androidx.activity:activity-ktx`, `androidx.core:core`, `androidx.exifinterface:exifinterface`, `androidx.camera:*`
+- Artifacts: `androidx.activity:activity-ktx`, `androidx.core:core`, `androidx.exifinterface:exifinterface`, `androidx.camera:*`, and transitive AndroidX components including `androidx.lifecycle:*` and `androidx.savedstate:*`
 - License: Apache License 2.0
 - Upstream: https://github.com/androidx/androidx
 
 A copy of Apache License 2.0 is included at `licenses/Apache-2.0.txt`.
 
-### Kotlin / Kotlin Multiplatform 2.4.20
+### Kotlin / Kotlin Multiplatform 2.4.21
 
 - Component: Kotlin standard/native runtime and Kotlin Multiplatform framework output used by `shared`
 - License: Apache License 2.0
@@ -56,6 +56,14 @@ A copy of Apache License 2.0 is included at `licenses/Apache-2.0.txt`.
 - Kotlin/Native runtime code may be included in `QRRepairCore.xcframework`.
 
 A copy of Apache License 2.0 is included at `licenses/Apache-2.0.txt`.
+
+### Kotlinx Serialization 1.7.3
+
+- Artifacts: `org.jetbrains.kotlinx:kotlinx-serialization-core`, `org.jetbrains.kotlinx:kotlinx-serialization-core-jvm`
+- License: Apache License 2.0
+- Upstream: https://github.com/Kotlin/kotlinx.serialization/tree/v1.7.3
+- Scope: transitive runtime dependency of AndroidX SavedState.
+- License copy: `licenses/Apache-2.0.txt`
 
 ## Build/test-only dependencies
 
@@ -86,12 +94,12 @@ Robolectric has transitive test dependencies with their own license obligations.
 
 ### Gradle Wrapper/bootstrap
 
-Gradle-generated wrapper scripts and wrapper components are licensed under Apache License 2.0. The repository pins Gradle 9.7.1 and verifies the official distribution SHA-256 before bootstrapping.
+Gradle-generated wrapper scripts and wrapper components are licensed under Apache License 2.0. The repository pins Gradle 9.8.1 and verifies the official distribution SHA-256 before bootstrapping.
 
 ### Synthetic example verifier
 
 - Scope: the standalone JVM tool in `scripts/example-harness`; it is not packaged into the application APK/AAB or shared framework.
-- ZXing core 3.5.4 and Kotlin stdlib 2.4.20 use the Apache License 2.0; their notices are covered above.
+- ZXing core 3.5.4 and Kotlin stdlib 2.4.21 use the Apache License 2.0; their notices are covered above.
 - Gson 2.13.1 (`com.google.code.gson:gson`) uses the [Apache License 2.0](https://github.com/google/gson/blob/gson-parent-2.13.1/LICENSE).
 - Its transitive Error Prone annotations 2.38.0 (`com.google.errorprone:error_prone_annotations`) use the [Apache License 2.0](https://github.com/google/error-prone/blob/v2.38.0/COPYING).
 - Kotlin stdlib's transitive JetBrains annotations 13.0 (`org.jetbrains:annotations`) use the Apache License 2.0.
