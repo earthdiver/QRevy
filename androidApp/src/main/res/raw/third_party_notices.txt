@@ -48,7 +48,7 @@ ZXing upstream NOTICE (release `zxing-3.5.4`):
 
 A copy of Apache License 2.0 is included at `licenses/Apache-2.0.txt`.
 
-### Kotlin / Kotlin Multiplatform 2.4.10
+### Kotlin / Kotlin Multiplatform 2.4.20
 
 - Component: Kotlin standard/native runtime and Kotlin Multiplatform framework output used by `shared`
 - License: Apache License 2.0
@@ -59,9 +59,9 @@ A copy of Apache License 2.0 is included at `licenses/Apache-2.0.txt`.
 
 ## Build/test-only dependencies
 
-### Robolectric 4.16.1
+### Robolectric 4.17
 
-- Artifact: `org.robolectric:robolectric:4.16.1`
+- Artifact: `org.robolectric:robolectric:4.17`
 - License: primarily MIT License; a subset of upstream files is Apache License 2.0
 - Upstream: https://github.com/robolectric/robolectric
 - Scope: Android unit tests only; it is not packaged into the application APK/AAB.
@@ -86,7 +86,7 @@ Robolectric has transitive test dependencies with their own license obligations.
 
 ### Gradle Wrapper/bootstrap
 
-Gradle-generated wrapper scripts and wrapper components are licensed under Apache License 2.0. The repository pins Gradle 9.5.0 and verifies the official distribution SHA-256 before bootstrapping.
+Gradle-generated wrapper scripts and wrapper components are licensed under Apache License 2.0. The repository pins Gradle 9.7.1 and verifies the official distribution SHA-256 before bootstrapping.
 
 ## QR Code trademark
 

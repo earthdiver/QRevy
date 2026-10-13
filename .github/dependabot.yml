@@ -8,6 +8,11 @@ updates:
       time: "03:00"
       timezone: "Asia/Tokyo"
     open-pull-requests-limit: 5
+    groups:
+      android-gradle-plugins:
+        patterns:
+          - "com.android.application"
+          - "com.android.kotlin.multiplatform.library"
 
   - package-ecosystem: "github-actions"
     directory: "/"
