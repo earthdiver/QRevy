@@ -32,8 +32,8 @@ fi
 if ! grep -q 'include(":shared")' settings.gradle.kts; then
   blocker 'KMP shared module is not included in settings.gradle.kts.'
 fi
-if ! grep -q 'id("org.jetbrains.kotlin.multiplatform") version "2.4.20"' build.gradle.kts; then
-  blocker 'Kotlin Multiplatform 2.4.20 pin is missing or changed.'
+if ! grep -q 'id("org.jetbrains.kotlin.multiplatform") version "2.4.21"' build.gradle.kts; then
+  blocker 'Kotlin Multiplatform 2.4.21 pin is missing or changed.'
 fi
 if ! grep -q 'id("com.android.kotlin.multiplatform.library") version "9.4.1"' build.gradle.kts; then
   blocker 'Android-KMP library plugin 9.4.1 pin is missing or changed.'
@@ -49,10 +49,10 @@ if [ ! -f LICENSE ] || [ ! -f THIRD_PARTY_NOTICES.md ] || [ ! -f PRIVACY.md ]; t
   blocker 'LICENSE, THIRD_PARTY_NOTICES.md, and PRIVACY.md must be present.'
 fi
 
-EXPECTED_DIST='acd53f1edaf02f1a8ff99879f8a34b302661a057d9b063ae9e35b552f804d20a'
-EXPECTED_WRAPPER='7a9ce74cff467ca1bf60a4fcd9f05185acceda4d0f382434d393e17864262c5d'
+EXPECTED_DIST='dce76f55f8e251a3a1f130eb120f30b3d271de2b76c9b0729d316b5a1b6dc01f'
+EXPECTED_WRAPPER='3b8a25775a69158b5ad2b1d17a80a88dc7b40a352a73eb27d06c612a7ce68e98'
 if ! grep -q "distributionSha256Sum=$EXPECTED_DIST" gradle/wrapper/gradle-wrapper.properties; then
-  blocker 'Gradle 9.7.1 distribution SHA-256 pin is missing or changed.'
+  blocker 'Gradle 9.8.1 distribution SHA-256 pin is missing or changed.'
 fi
 if ! grep -q "WRAPPER_JAR_SHA256=\"$EXPECTED_WRAPPER\"" bootstrap-wrapper.sh; then
   blocker 'Gradle wrapper-JAR SHA-256 verification is missing or changed.'

@@ -1,12 +1,20 @@
 #!/usr/bin/env sh
 set -eu
 
-GRADLE_VERSION="9.7.1"
-DIST_SHA256="acd53f1edaf02f1a8ff99879f8a34b302661a057d9b063ae9e35b552f804d20a"
-WRAPPER_JAR_SHA256="7a9ce74cff467ca1bf60a4fcd9f05185acceda4d0f382434d393e17864262c5d"
+GRADLE_VERSION="9.8.1"
+DIST_SHA256="dce76f55f8e251a3a1f130eb120f30b3d271de2b76c9b0729d316b5a1b6dc01f"
+WRAPPER_JAR_SHA256="3b8a25775a69158b5ad2b1d17a80a88dc7b40a352a73eb27d06c612a7ce68e98"
 DIST_URL="https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+PROPERTIES="$ROOT/gradle/wrapper/gradle-wrapper.properties"
+if [ -f "$PROPERTIES" ]; then
+  if ! grep -Fxq "distributionUrl=https\\://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" "$PROPERTIES" \
+    || ! grep -Fxq "distributionSha256Sum=$DIST_SHA256" "$PROPERTIES"; then
+    echo "Gradle wrapper distribution pins disagree with bootstrap-wrapper.sh; update both together before bootstrapping." >&2
+    exit 1
+  fi
+fi
 CACHE="${TMPDIR:-/tmp}/qr-repair-gradle-${GRADLE_VERSION}"
 ZIP="$CACHE/gradle-${GRADLE_VERSION}-bin.zip"
 HOME_DIR="$CACHE/gradle-${GRADLE_VERSION}"
