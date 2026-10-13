@@ -40,9 +40,9 @@ ZXing upstream NOTICE (release `zxing-3.5.4`):
 >
 > Copyright 2010 Cedric Beust cedric@beust.com
 
-### AndroidX Activity / Core / ExifInterface / CameraX
+### AndroidX
 
-- Artifacts: `androidx.activity:activity-ktx`, `androidx.core:core`, `androidx.exifinterface:exifinterface`, `androidx.camera:*`
+- Artifacts: `androidx.activity:activity-ktx`, `androidx.core:core`, `androidx.exifinterface:exifinterface`, `androidx.camera:*`, and transitive AndroidX components including `androidx.lifecycle:*` and `androidx.savedstate:*`
 - License: Apache License 2.0
 - Upstream: https://github.com/androidx/androidx
 
@@ -56,6 +56,14 @@ A copy of Apache License 2.0 is included at `licenses/Apache-2.0.txt`.
 - Kotlin/Native runtime code may be included in `QRRepairCore.xcframework`.
 
 A copy of Apache License 2.0 is included at `licenses/Apache-2.0.txt`.
+
+### Kotlinx Serialization 1.7.3
+
+- Artifacts: `org.jetbrains.kotlinx:kotlinx-serialization-core`, `org.jetbrains.kotlinx:kotlinx-serialization-core-jvm`
+- License: Apache License 2.0
+- Upstream: https://github.com/Kotlin/kotlinx.serialization/tree/v1.7.3
+- Scope: transitive runtime dependency of AndroidX SavedState.
+- License copy: `licenses/Apache-2.0.txt`
 
 ## Build/test-only dependencies
 
