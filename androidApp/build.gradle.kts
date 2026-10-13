@@ -77,7 +77,7 @@ dependencies {
     implementation("com.google.zxing:core:3.5.4")
     implementation("io.github.zxing-cpp:android:3.1.1")
     implementation("androidx.activity:activity-ktx:1.13.0")
-    implementation("androidx.core:core:1.19.0")
+    implementation("androidx.core:core:1.19.1")
     implementation("androidx.exifinterface:exifinterface:1.4.2")
     implementation("androidx.camera:camera-core:1.6.1")
     implementation("androidx.camera:camera-camera2:1.6.1")
