@@ -32,11 +32,11 @@ fi
 if ! grep -q 'include(":shared")' settings.gradle.kts; then
   blocker 'KMP shared module is not included in settings.gradle.kts.'
 fi
-if ! grep -q 'id("org.jetbrains.kotlin.multiplatform") version "2.4.10"' build.gradle.kts; then
-  blocker 'Kotlin Multiplatform 2.4.10 pin is missing or changed.'
+if ! grep -q 'id("org.jetbrains.kotlin.multiplatform") version "2.4.20"' build.gradle.kts; then
+  blocker 'Kotlin Multiplatform 2.4.20 pin is missing or changed.'
 fi
-if ! grep -q 'id("com.android.kotlin.multiplatform.library") version "9.3.1"' build.gradle.kts; then
-  blocker 'Android-KMP library plugin 9.3.1 pin is missing or changed.'
+if ! grep -q 'id("com.android.kotlin.multiplatform.library") version "9.4.1"' build.gradle.kts; then
+  blocker 'Android-KMP library plugin 9.4.1 pin is missing or changed.'
 fi
 if ! grep -q 'baseName = "QRRepairCore"' shared/build.gradle.kts; then
   blocker 'QRRepairCore iOS framework configuration is missing.'
@@ -49,10 +49,10 @@ if [ ! -f LICENSE ] || [ ! -f THIRD_PARTY_NOTICES.md ] || [ ! -f PRIVACY.md ]; t
   blocker 'LICENSE, THIRD_PARTY_NOTICES.md, and PRIVACY.md must be present.'
 fi
 
-EXPECTED_DIST='553c78f50dafcd54d65b9a444649057857469edf836431389695608536d6b746'
-EXPECTED_WRAPPER='497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7'
+EXPECTED_DIST='acd53f1edaf02f1a8ff99879f8a34b302661a057d9b063ae9e35b552f804d20a'
+EXPECTED_WRAPPER='7a9ce74cff467ca1bf60a4fcd9f05185acceda4d0f382434d393e17864262c5d'
 if ! grep -q "distributionSha256Sum=$EXPECTED_DIST" gradle/wrapper/gradle-wrapper.properties; then
-  blocker 'Gradle 9.5.0 distribution SHA-256 pin is missing or changed.'
+  blocker 'Gradle 9.7.1 distribution SHA-256 pin is missing or changed.'
 fi
 if ! grep -q "WRAPPER_JAR_SHA256=\"$EXPECTED_WRAPPER\"" bootstrap-wrapper.sh; then
   blocker 'Gradle wrapper-JAR SHA-256 verification is missing or changed.'

@@ -1,5 +1,6 @@
 package io.github.earthdiver.qrrepair
 
+import android.app.Activity
 import android.app.AlertDialog
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -792,36 +793,62 @@ class PreprocessDialogLayoutTest {
 
     @Test
     fun pngCandidateSelectionScrollsWithoutHidingDialogActions() {
-        val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
-        shadowOf(Looper.getMainLooper()).idle()
-        val matrix = QrMatrix(21)
-        fun candidate(index: Int) = RecoveryCandidate(
-            1, ErrorCorrectionLevel.M, index % 8, "decoded-$index", byteArrayOf(index.toByte()),
-            15, 0, 0, 0, 0, 0, 8, intArrayOf(), CodewordExtraction(emptyList()),
-        )
-        recoveryState(activity).apply {
-            sourceMatrix = matrix
-            workingMatrix = matrix
-            inspectorMatrix = matrix
-            recoveries = List(40, ::candidate)
-            selectRecovery(0)
+        assertPngCandidateSelectionLayout()
+    }
+
+    @Test
+    fun pngCandidateSelectionRemainsUsableWhenAnotherActivityShowsADialog() {
+        assertPngCandidateSelectionLayout(showUnrelatedDialog = true)
+    }
+
+    private fun assertPngCandidateSelectionLayout(showUnrelatedDialog: Boolean = false) {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        val otherController = if (showUnrelatedDialog) Robolectric.buildActivity(Activity::class.java).setup() else null
+        var otherDialog: AlertDialog? = null
+        var dialog: AlertDialog? = null
+        try {
+            shadowOf(Looper.getMainLooper()).idle()
+            val matrix = QrMatrix(21)
+            fun candidate(index: Int) = RecoveryCandidate(
+                1, ErrorCorrectionLevel.M, index % 8, "decoded-$index", byteArrayOf(index.toByte()),
+                15, 0, 0, 0, 0, 0, 8, intArrayOf(), CodewordExtraction(emptyList()),
+            )
+            recoveryState(activity).apply {
+                sourceMatrix = matrix
+                workingMatrix = matrix
+                inspectorMatrix = matrix
+                recoveries = List(40, ::candidate)
+                selectRecovery(0)
+            }
+
+            MainActivity::class.java.getDeclaredMethod("startSavePng").apply { isAccessible = true }.invoke(activity)
+            shadowOf(Looper.getMainLooper()).idle()
+            otherController?.get()?.let { otherActivity ->
+                otherDialog = AlertDialog.Builder(otherActivity)
+                    .setView(RadioButton(otherActivity).apply { text = "候補40" })
+                    .show()
+                assertEquals(otherDialog, ShadowDialog.getLatestDialog())
+            }
+
+            dialog = dialogContaining(activity, RadioButton::class.java)
+            val decor = dialog.window!!.decorView
+            decor.measure(
+                View.MeasureSpec.makeMeasureSpec(360, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(640, View.MeasureSpec.EXACTLY),
+            )
+            decor.layout(0, 0, 360, 640)
+            val lastCandidate = findViews(decor, RadioButton::class.java).single { it.text == "候補40" }
+
+            assertNotNull("多数のPNG候補をスクロールできません", findAncestor(lastCandidate, ScrollView::class.java))
+            assertTrue("PNG保存ボタンが小画面で見切れています", isInside(decor, dialog.getButton(AlertDialog.BUTTON_POSITIVE)))
+            assertTrue("キャンセルボタンが小画面で見切れています", isInside(decor, dialog.getButton(AlertDialog.BUTTON_NEGATIVE)))
+        } finally {
+            otherDialog?.dismiss()
+            dialog?.dismiss()
+            otherController?.pause()?.stop()?.destroy()
+            controller.pause().stop().destroy()
         }
-
-        MainActivity::class.java.getDeclaredMethod("startSavePng").apply { isAccessible = true }.invoke(activity)
-        shadowOf(Looper.getMainLooper()).idle()
-
-        val dialog = ShadowDialog.getLatestDialog() as AlertDialog
-        val decor = dialog.window!!.decorView
-        decor.measure(
-            View.MeasureSpec.makeMeasureSpec(360, View.MeasureSpec.EXACTLY),
-            View.MeasureSpec.makeMeasureSpec(640, View.MeasureSpec.EXACTLY),
-        )
-        decor.layout(0, 0, 360, 640)
-        val lastCandidate = requireNotNull(findText(decor, "候補40"))
-
-        assertNotNull("多数のPNG候補をスクロールできません", findAncestor(lastCandidate, ScrollView::class.java))
-        assertTrue("PNG保存ボタンが小画面で見切れています", isInside(decor, dialog.getButton(AlertDialog.BUTTON_POSITIVE)))
-        assertTrue("キャンセルボタンが小画面で見切れています", isInside(decor, dialog.getButton(AlertDialog.BUTTON_NEGATIVE)))
     }
 
     @Test

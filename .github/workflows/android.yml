@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
@@ -32,7 +32,7 @@ jobs:
         run: |
           sh ./bootstrap-wrapper.sh
           sh ./scripts/verify-wrapper.sh
-      - uses: gradle/actions/setup-gradle@5e2ebd065dc2488b7a6ad670704656cbbe1e8f60 # v6.1.1
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
         with:
           cache-provider: basic
       - name: Shared JVM tests
@@ -48,21 +48,21 @@ jobs:
           mkdir -p build/androidApp/reports
           sh ./gradlew --no-daemon :androidApp:dependencies --configuration releaseRuntimeClasspath > build/androidApp/reports/release-runtime-dependencies.txt
       - name: Upload debug APK
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: QRevy-debug-apk-${{ github.run_number }}
           retention-days: 7
           if-no-files-found: error
           path: build/androidApp/outputs/apk/debug/*.apk
       - name: Upload unsigned release APK
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: QRevy-release-apk-unsigned-${{ github.run_number }}
           retention-days: 7
           if-no-files-found: error
           path: build/androidApp/outputs/apk/release/*.apk
       - name: Upload unsigned release AAB
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: QRevy-release-aab-unsigned-${{ github.run_number }}
           retention-days: 7
@@ -70,7 +70,7 @@ jobs:
           path: build/androidApp/outputs/bundle/release/*.aab
       - name: Upload reports
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: QRevy-android-reports-${{ github.run_number }}
           retention-days: 7
