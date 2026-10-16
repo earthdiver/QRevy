@@ -1,126 +1,291 @@
-# How QRevy recovers a code
+# QRevy recovery strategy
 
 English | [Japanese](RECOVERY_STRATEGY.ja.md)
 
-QRevy combines image readings, QR structure, and error correction to find candidates for a damaged Model 2 QR code. This document explains how those sources of information work together and where uncertainty remains.
+QRevy combines image readings, QR structure, and error correction to find recovery candidates for damaged Model 2 QR codes. This document explains how candidates are produced and which conditions cause them to be rejected.
 
-For operations and settings, see the [User Guide](USER_GUIDE.en.md). For diagnostic labels and cell evidence, see [Understanding repair results](RECOVERY_RESULT_FIELDS.en.md).
+The processing flow is:
 
-## 1. What the search works with
+`Establish a grid → Read cells → Select a format → Repair codewords → Combine blocks → Validate the complete QR code`
 
-| Term | Meaning |
+For operations, see the [User Guide](USER_GUIDE.en.md). For diagnostic fields and cell explanations, see [Understanding repair results](RECOVERY_RESULT_FIELDS.en.md).
+
+## 1. Readings and assumptions used in calculation
+
+A cell (module) is one square in a QR code. Cell values are stored as `0 / 1 / ?`, where `?` means unknown. Values read from the image may still contain errors.
+
+The image reading or imported matrix with manual edits applied is kept as the input before any values inferred from structure or temporary search assignments are added. Results are compared against this state, called the **starting input**.
+
+A `*` mark prioritizes trying `0 / 1` combinations for the marked unknown cells. Their input values remain `?`; values tried during calculation are excluded from input-agreement comparisons.
+
+### Value sources, fixed cells, and comparison inputs
+
+For each cell, the app distinguishes the input value, intermediate filling and correction, and the final value.
+
+For example, if structure fills a cell with `0` and error correction then changes it to `1`, the record preserves that sequence: “filled with `0` from structure,” then “changed to `1` by error correction.”
+
+A candidate whose value differs from a fixed `0 / 1` cell is rejected unless correction of fixed values is enabled. Tentative edits and image readings can be corrected within the error limits. When correction of fixed values is enabled, the input still records the original values and their Fixed designation.
+
+An **error-correction code (ECC)** provides information for detecting and correcting errors in the data. For data and ECC bits, the app compares candidate values with the starting input.
+
+| Value | Included in comparison? | Reason |
+| --- | --- | --- |
+| Known data/ECC bits in the starting input | Yes | They are input values obtained from image readings or manual edits. |
+| Starting `?` or `*` | No | The input value is unknown. |
+| Values filled from structure | No | They are inferred values, not values in the starting input. |
+| Values tried during search | No | They are temporary assignments used to test combinations. |
+
+If a known starting value is changed during calculation, the comparison still uses the original value. For example, if a starting `0` is changed to `1` to fit the structure and the final result is `1`, that counts as one mismatched bit. If the starting value is `?`, the cell is excluded from comparison even if it is filled with `0` and ends up as `1`.
+
+Raising an error limit alone does not permit correction of fixed values. To include fixed values among those that may be corrected, enable the setting that allows correction of fixed values.
+
+## 2. Establishing the grid and reading cells
+
+When an image is imported, the app estimates the version, which determines the grid size, and the positions of the QR code's four corners in the image. During repair, sampling positions are refined around that grid. The selected version and the assignment of the QR code's top-left, top-right, and bottom-left corners, called its logical orientation, stay unchanged.
+
+Recovery requires at least one finder pattern (**Finder**) to be assigned a top-left, top-right, or bottom-left role. Recovery can be attempted even when only one Finder is visible.
+
+The app samples near each cell's center, shifting the sampling position slightly. If the readings consistently classify as black or white, the cell becomes `0 / 1`. If the classification changes or black and white cannot be distinguished, the cell becomes unknown (`?`).
+
+For a manually edited cell, the entered `0 / 1 / ?` replaces the value sampled from the image.
+
+### Initial grid estimation and sampling refinements
+
+Initial estimation uses the QR detection library ZXing-C++ to detect the QR code's outer boundary in the image. The app builds a grid from that boundary and checks whether Finders and other patterns can be read at their expected positions and with their expected shapes.
+
+If that grid cannot be accepted, the app estimates a grid from the repeating cell spacing, then considers an estimate using two Finders if necessary. It may decline an estimate when, for example, boundaries of different QR codes are detected or normal and inverted readings give conflicting estimates. Text decoded by the detection library is not used as the recovery result.
+
+A projective transformation maps the four corners to cell positions in the image. It describes a flat surface viewed at an angle and cannot accurately represent the distortion of a QR code printed on a curved surface.
+
+The basic refinement candidates are:
+
+| Transformation | Candidate count |
+| --- | ---: |
+| Specified grid | 1 |
+| Horizontal, vertical, and diagonal translations | 8 |
+| Expansion and contraction | 2 |
+| Moving one corner inward or outward | 8 |
+| Total | 19 |
+
+The reference displacement is 0.6 cell widths. When exactly one Finder role is assigned, the app also tries small clockwise and counterclockwise rotations around the corresponding corner. These two additions give at most 21 grid candidates. Each translation, scaling, or rotation is applied separately to the specified grid.
+
+For version 2 and above, an alignment pattern, a small pattern used to align the grid, can add at most one corrected grid for each grid candidate. If its observed position differs from its predicted position by 0.1–1.25 cell widths, the nearest grid corner is moved. Corrections that substantially worsen agreement with the timing pattern, the alternating black and white pattern indicating cell spacing, are rejected. The original grid candidate is also retained.
+
+Including corrected grids, there are at most 38 candidates, or 42 with exactly one assigned Finder role. With refinement disabled, only the specified grid is used.
+
+### Measuring brightness and marking unknown cells
+
+For each cell, brightness is measured at a 3×3 set of points offset by −0.16, 0, and +0.16 cells along each axis, and their mean is calculated. The entire set is then shifted by −0.1, 0, and +0.1 cells along each axis. The app examines the minimum and maximum of the means at these nine positions.
+
+The maximum brightness classified as black and the minimum brightness classified as white are the two thresholds. A cell value is assigned only when the measured minimum and maximum both classify as black or both as white. Values between the thresholds, or classifications that change with small position shifts, produce `?`. A cell is also unknown if fewer than five of the nine points can be measured within the image at a sampling position.
+
+Automatic thresholds use cells with known black or white values in Finders, their surrounding white separators, timing patterns, and alignment patterns. The app checks measurements against these patterns across multiple regions and determines two thresholds shared by the entire grid. If measurements are insufficient or do not fit the patterns, it uses provisional values obtained from the whole image.
+
+When thresholds are set manually, the same thresholds are used during grid refinement.
+
+Enabling the option to treat colored areas as unknown marks cells belonging to automatically detected color groups as `?`. These groups are formed by clustering similar colors in the image.
+
+## 3. From format information to RS blocks
+
+A QR code contains **format information** recording its ECC level and mask number. A mask is a pattern that reverses data-cell colors according to a defined rule. In this document, **format** means the combination of ECC level and mask number.
+
+After selecting a format, the app reads data in QR placement order, excluding non-data cells such as Finders and format information. It reverses the mask and groups the bits into eight-bit codewords. It then separates the interleaved codewords into groups corrected together, called RS blocks. **RS** stands for Reed–Solomon.
+
+If an ECC level or mask number is explicitly selected, only matching formats are tried. Fixed format-information cells are also checked for conflicts with those selections. This check applies even when correction of fixed values is enabled.
+
+A **reading attempt** samples cells and attempts recovery using one grid and one set of reading conditions. If format-information error correction confirms a format and the input conditions are satisfied, that reading attempt uses only the confirmed format. A later recovery failure does not cause other formats to be tried.
+
+### Comparing format information with input values
+
+Format-information values are also compared with the starting input. However, fixed cells whose values are determined solely by explicit ECC/mask selections are excluded. This avoids using values determined by a setting to judge whether that setting agrees with the image. Tentative format-information cells are included in the comparison.
+
+For example, selecting ECC level **M** and mask **0** determines whether each format-information cell is `0` or `1`. Consider a cell whose value is determined to be `1` by those settings.
+
+| Input for that cell | Comparison treatment |
 | --- | --- |
-| Cell (module) | One square in a QR code, read as `0`, `1`, or unknown (`?`). |
-| Codeword | A group of eight bits. QR content and error-correction data are arranged in codewords. |
-| RS block | A group of codewords corrected together using Reed–Solomon (RS) codes. |
-| Error / erasure | An error is a supplied value that needs correction. An erasure has a known location but an incomplete value; a codeword containing `?` is treated as an erasure by conventional RS. |
+| Fixed at `1` | Excluded. Matching the setting does not count as a matching input bit. |
+| Tentative `1` | Included and counted as one bit matching the candidate. |
+| Image reading of `1` | Included and counted as one bit matching the candidate. |
 
-The **starting input** is the image reading or imported matrix with manual edits applied, before inferred structure or temporary values are added. A readable `0` or `1` can still be wrong. `?` keeps that uncertainty explicit. A `*` mark also remains `?`; it asks the search to prioritize trying both values for that cell.
+Conflicts between fixed values and settings are handled by the consistency check described above.
 
-Error-correction code (**ECC**) data provides redundancy used to repair damaged content. It can narrow the possible answers, but cannot establish the author's intended content on its own. Passing RS checks is therefore only one requirement for a recovery candidate.
+### Confirming a format or only prioritizing it
 
-## 2. Choose how to read the image
+There are up to 32 formats: four ECC levels combined with eight masks. A QR code records two copies of the same 15-bit format information.
 
-A reading attempt uses one grid position and one set of reading conditions to obtain cell values.
+Format information uses Bose–Chaudhuri–Hocquenghem (**BCH**) error correction. The main conditions for QRevy to confirm a format are:
 
-1. **Establish the grid.** Automatic estimates provide editable corners and a version, which determines the grid size. At least one finder pattern (**Finder** in the app) must have a logical role assigned. Recovery can proceed with one visible Finder; all three are not required.
-2. **Sample the cells.** Brightness, thresholds, black/white interpretation, and optional exclusion of detected color clusters produce `0 / 1 / ?`. Unstable readings remain unknown. Manual edits override the sampled values.
-3. **Optionally refine the sampling position.** Small changes to position, size, or corners can help when the grid nearly matches the image. With one assigned Finder, small rotations around that corner can also be tried. The selected version and logical orientation stay unchanged.
-4. **Read format information.** Two copies in the QR code identify the ECC level and mask. The mask is the numbered pattern applied to data cells. These choices determine how the data is read and divided into RS blocks.
+- If both copies are fully readable, each can be corrected within three bits to the same format.
+- If only one copy is fully readable, that copy can be corrected and every known bit in the other copy agrees with the corrected format.
 
-Explicit ECC or mask selections restrict the formats considered. Otherwise, a format confirmed by its own error-correction check fixes that format for the reading attempt, provided it satisfies the input constraints. A later RS or content failure does not reopen other ECC/mask combinations. Weaker format evidence only affects the order: other compatible formats remain available if the preferred one fails.
+The app also checks that mismatches against the format-information input are within the error limit and that the format does not conflict with fixed cells whose correction is disallowed. When these conditions are met, the format for that reading attempt is confirmed.
 
-The app checks every format against the format-information error limit. A plausible grid or format is not proof that it belongs to the original QR code.
+Even without confirmation, a format can sometimes be tried first because, for example, the bits identifying its ECC level and mask are available. If that format does not produce decoded content, other formats compatible with the settings and error limit are tried.
 
-## 3. Search order for each reading attempt
+Codeword extraction also preserves the positions of unknown bits. **Deinterleaving** returns the codewords interleaved in the QR code to their original error-correction blocks. The version and ECC level determine the number of data and ECC codewords in each block.
 
-The app first tries to recover content with minimal assumptions, then combines further methods as needed.
+## 4. Search order for each reading attempt
 
-| Stage | What happens |
+| Stage | Processing |
 | --- | --- |
-| 1. Conventional RS on the starting input | Correct errors and erasures without filling structure or trying temporary bit values. |
-| 2. Initial list decoding | Look beyond the conventional RS correction range without temporary bit assignments. Work exceeding this short initial time allowance is deferred to stage 5. |
-| 3. RS partial-bit constraints | Use known bits within incomplete codewords to solve for unknown bits. Apply compatible QR data rules to narrow the remaining possibilities. |
-| 4. Partial-bit search with conventional RS | Try bounded combinations of unknown bits, then use conventional RS on the resulting codewords. |
-| 5. Additional list decoding | Revisit deferred work and, where useful, combine list decoding with temporary bit assignments. |
+| 1 | Conventional RS on the input before filling or temporary assignments |
+| 2 | Initial list decoding with a short time allowance |
+| 3 | RS partial-bit constraints, narrowed using QR structure |
+| 4 | Partial-bit search with conventional RS |
+| 5 | Additional list decoding, combined with temporary assignments where useful |
 
-If stage 1 produces a decoded candidate that satisfies the selected conditions, further stages are skipped for that reading attempt. Merely passing RS checks, or retaining a candidate whose content cannot be decoded, does not trigger this shortcut. Candidates found at later stages are kept while subsequent stages continue.
+If stage 1 passes QR-structure and input-condition checks and decodes the content, that reading attempt ends. Otherwise, processing proceeds to later stages. Candidates found in stage 2 or later are retained while the search continues.
 
-With the data/ECC error limit set to **0 bits**, stages 2, 4, and 5 are skipped. Stage 3 still searches for solutions that preserve every compared known data/ECC bit. Limits and applicability checks can also prevent a method from running; the presence of a method in this table does not mean every repair uses it.
+When the data/ECC error limit is 0 bits, stages 2, 4, and 5 are skipped. The search looks for solutions in which every compared known bit matches the input.
 
-## 4. How the methods help
+## 5. Conventional RS, partial-bit constraints, and partial-bit search
 
-### Conventional RS and partial-bit constraints
+Conventional RS treats a codeword containing even one unknown bit as an **erasure**, meaning that the value of the whole codeword is unknown. Partial-bit constraints also use the known bits remaining in that codeword. Partial-bit search assigns temporary values to unknown bits and retries conventional RS.
 
-Conventional RS treats an incomplete codeword as an erasure. This is useful when enough correction capacity remains, and it can also correct wrong values at unknown locations. Errors consume more correction capacity than erasures. That capacity applies separately to each block, so the distribution of damage matters.
+For example, eight codewords with one unknown bit each become eight erasures for conventional RS. Partial-bit constraints can still use the other 56 known bits.
 
-RS partial-bit constraints retain the known bits inside incomplete codewords. For example, eight codewords with one unknown bit each become eight erasures for conventional RS. A bit-level method can still use the other 56 known bits to constrain those eight unknown bits.
+### Conventional RS calculations and correction range
 
-This method assumes the known values are correct. A wrong known bit may make the conditions inconsistent, or may leave a consistent answer that is still wrong. The app therefore checks QR data structure and input constraints as well. The number of unknown bits that can be chosen independently while satisfying RS conditions is called the **degrees of freedom**. Only a bounded number of their combinations can be examined.
+RS operates on eight-bit values in the finite field GF(256), which contains 256 values. A finite field is a finite set of values supporting addition, subtraction, multiplication, and division by nonzero values. **GF** stands for Galois Field, another name for a finite field.
 
-### Trying unknown bits, including `*`
+The app calculates **syndromes**, values used to check whether the received codeword sequence satisfies RS conditions. The positions of incomplete codewords are known from the input and are used to find error locations and correction values. After correction, all syndromes must be zero.
 
-Partial-bit search assigns `0` and `1` to selected unknown bits and retries correction. It favors codewords with fewer missing bits. The partial-bit search limit also bounds the degrees of freedom examined by RS partial-bit constraints; it is a per-block limit, not a limit on the total number of QR candidates.
+The conventional correction range for each block is:
 
-In stages that use `*` marks, the marked cells are first left unknown. If that does not produce decoded content, their value combinations are tried. Other unknown bits can also be searched within the ordinary bounds.
+`2e + s ≤ r`
 
-For example, two `*` cells allow four combinations: `00`, `01`, `10`, and `11`. These are trial values, not new observations. They do not become known input bits or increase the number of bits used in an input-agreement comparison. The result records which values were tried.
+Here, `e` is the number of erroneous codewords at unknown locations, `s` is the number of erasures, and `r` is the number of ECC codewords. All three are counted in codewords.
 
-### QR structure as a constraint
+With ten ECC codewords, two errors and six erasures are within range, but three errors and six erasures are outside it. If conventional RS cannot recover the data, methods such as partial-bit constraints and list decoding are also tried. If correction succeeds, the resulting codeword sequence is checked against QR structure and input conditions.
 
-QR data records an encoding mode, a character or byte count, the content, and rules for ending the data and filling unused space. Those rules can help infer missing bits and reject impossible candidates. For example, ten bits used for three decimal digits must represent a number below 1,000.
+### Solving for unknown bits with linear equations
 
-Automatic filling can consider a single-segment interpretation and fill values shared by the compatible interpretations it selects. A **segment** is a continuous part of the data using one encoding mode. This inference is conditional; it does not prove that a damaged code has only one segment. When **Single-segment assumption** is off, the search also retains a path without that inferred filling.
+RS partial-bit constraints hold known bits fixed and use only unknown bits as variables.
 
-Enabling that option makes the single-segment interpretation and its required ending mandatory. The app may replace conflicting readings after the declared count, and does not silently drop the condition if it becomes inapplicable. See the [User Guide](USER_GUIDE.en.md#single-segment-assumption) for eligible data and settings.
+Expanding the RS conditions over GF(256) into individual bits gives linear conditions over GF(2), the finite field containing 0 and 1. Addition in GF(2) is exclusive OR: equal values give 0 and different values give 1. The effect of each unknown bit on the syndromes is arranged as a column in a system of linear equations:
 
-### List decoding: GS, KV, and Wu
+`A x = b`
 
-List decoding can return several RS-consistent answers beyond the range where conventional RS finds a single answer. QRevy chooses methods according to the available information, estimated work, and memory. They are not a fixed sequence of three increasingly stronger decoders.
+- `x`: values of the unknown bits
+- `A`: effects of each unknown bit on the RS conditions
+- `b`: values determined by the known bits
 
-| Method | Role in this app |
+The equations are transformed to eliminate variables in turn, identifying contradictions, bits with determined values, and variables that remain free. Incorrect known bits can cause contradictions; this method cannot correct those known bits. With `d` free variables, the RS conditions alone allow `2^d` solutions. The number of free variables is called the **degrees of freedom**.
+
+Encoding mode, character or byte count, terminator, and other QR rules add constraints. The app checks whether the remaining degrees of freedom in each block fit the search limit. It also checks valid value ranges, such as the numbers representable by a group of digits.
+
+With zero degrees of freedom, the selected format and known bits determine one RS solution. That solution undergoes the same QR-structure and input-condition checks as other candidates.
+
+### Reducing erasures by trying temporary values
+
+Partial-bit search selects codewords with one to four unknown bits, prioritizing those with fewer unknown bits. It assigns values within the per-block limit and tries conventional RS.
+
+For example, a codeword with two unknown bits has four possible values. Assigning temporary values completes all eight bits, reducing the erasure count for conventional RS by one. This can make it possible to correct the remaining erasures and errors.
+
+The partial-bit search limit also bounds the degrees of freedom when enumerating solutions from RS partial-bit constraints.
+
+When `*` cells are marked, the app first attempts recovery with those cells left unknown. If the content cannot be decoded, it tries assigning `0 / 1` to the marked cells. Two cells, for example, give four combinations: `00 / 01 / 10 / 11`. The trial values are recorded in the calculation history.
+
+## 6. Using QR data structure
+
+QR data follows rules for encoding mode, character or byte count, content, termination, and filling unused space. QRevy uses these rules both to eliminate impossible solutions during calculation and to validate completed candidates.
+
+A **segment** is a continuous portion of data encoded in one mode. Automatic filling assumes the data consists of one segment and examines structures compatible with the read mode and character or byte count.
+
+When **Single-segment assumption** is off, the app searches both with values filled under this assumption and without that filling. When it is on, the relevant mode and character or byte count, followed by the terminator and padding rules, become conditions that candidates must satisfy. If no structure meeting those conditions can be determined, candidates are not accepted from that input.
+
+### Filling, constraints during search, and final validation
+
+QR structure serves three purposes:
+
+| Purpose | Processing |
 | --- | --- |
-| **[Guruswami–Sudan (GS)](https://ieeexplore.ieee.org/document/782097/)** | Extends the search using complete codeword values and known erasure positions. It is one of two alternatives for a given error range. |
-| **[Wu](https://arxiv.org/abs/cs/0703105)** | Covers the same error range as GS. The app selects one of the two methods according to estimated work and available memory. |
-| **[Koetter–Vardy (KV)](https://www.site.uottawa.ca/~zhcheng/RS_soft_decision.pdf)** | Uses known bits within partial codewords before trying their unknown-bit combinations. Compatible values receive equal weights; overly ambiguous codewords contribute no weight. |
+| Filling before error correction | Derive unknown bit values from an assumed mode and character or byte count. |
+| Narrowing the search | Add conditions on RS free variables and combinations of block candidates. |
+| Validating completed candidates | Check that the complete data stream follows QR rules. |
 
-GS and Wu can work directly on the input, or after unknown bits have been assigned trial values. Codewords that still contain unknown bits are treated as erasures. The list-decoding extension controls their additional error range; it does not change KV's score requirement.
+For example, three decimal digits use ten bits and must represent a value from 0 to 999. Even if the bits satisfy RS conditions, a value of 1,000 or more is invalid for three decimal digits.
 
-KV is considered when partial codewords provide useful information and its computation fits the available limits. In this app, its weights come from bit compatibility, not image brightness, image-confidence scores, or probabilities of correctness. If it does not produce new decoded content, bounded assignment searches can continue.
+After the terminator marking the end of the data, zero bits align the stream to the next eight-bit boundary. The remaining space is filled with alternating hexadecimal `EC` and `11` padding codewords. At the end of the available capacity, the app also checks cases where the terminator is shortened or omitted according to the remaining bit count.
 
-All three methods must satisfy their mathematical checks and the same QR and input validation used for other candidates. For the meaning of radius, agreement scores, and related diagnostic fields, see [Methods shown in diagnostics](RECOVERY_RESULT_FIELDS.en.md#methods-shown-in-diagnostics).
+If several mode and character/byte-count candidates remain, the app can fill bits that have the same value under every one of those candidates. For example, if a particular bit is a zero after the terminator under every candidate being considered, it can be filled with `0`.
 
-## 5. Conditions that every method must respect
+When **Single-segment assumption** is on, the app uses the character or byte count recorded in the QR data to locate the end of the content and forces the following values to match the terminator and padding rules. Known values before this change remain part of the input comparison; a different final value counts as a mismatch.
 
-| Condition | Effect on the search |
-| --- | --- |
-| Selected version and logical orientation | Sampling refinements do not switch to another version or orientation. |
-| Explicit ECC level or mask | Candidates must use the selected values. |
-| Fixed `0 / 1` cells | Conflicting candidates are rejected unless the user enables the explicit exception allowing correction of fixed values. |
-| Tentative edits and image readings | They may be corrected within the applicable error limits. Their starting values remain available for comparison. |
-| Error limits | Candidates exceeding the allowed disagreements with compared known input bits are rejected. Unknown and temporary trial values are not counted as known evidence. |
-| Single-segment assumption, when enabled | Accepted candidates must retain the specified mode/count interpretation and its required ending. |
+The final QR-structure check also supports data streams containing multiple segments. When **Single-segment assumption** is on, it additionally verifies that there is exactly one segment.
 
-The fixed-cell exception preserves the original entered values and their Fixed designation. It does **not** remove explicit ECC/mask selections or the separate consistency check between those selections and fixed format cells. Raising an error limit also does not remove fixed-cell protection.
+## 7. List decoding
 
-For example, a candidate that changes a protected fixed `0` to `1` is rejected even if only one bit differs and the error limit allows more. If that cell is tentative, the change may be allowed, but the candidate must still pass every other check.
+List decoding searches for multiple candidates beyond the conventional RS correction range. QRevy uses Guruswami–Sudan (**GS**), Koetter–Vardy (**KV**), and Wu decoding.
 
-Input-agreement counts use the starting input, including manual edits. Values inferred from structure or assigned during a search do not become independent confirmation of the result. Details of excluded format cells are in [Understanding repair results](RECOVERY_RESULT_FIELDS.en.md#input-agreement-and-qr-settings).
+The **correction radius** is the maximum number of codewords allowed to differ from the values supplied to that trial, excluding erasures. For the same correction radius, the app estimates work and memory for GS and Wu and selects one of them. KV uses weights to make use of partially known codewords.
 
-## 6. Validate, retain, and explain candidates
+### GS/Wu correction radii and candidate generation
 
-A candidate must satisfy the RS checks, QR data structure, selected settings, protected cells, and applicable error limits. Passing these checks does not guarantee the original content.
+Let `n` be the number of codewords used after excluding erasures and `k` the number of data codewords. The conventional RS error-correction radius is `floor((n − k) / 2)`, where `floor` rounds down to an integer.
 
-The app ranks candidates using successful decoding, agreement with the input, and correction evidence. This is a way to review plausible results first, not a probability of correctness. Identical recovered QR codes are merged into one candidate even when different reading attempts or methods find them; their alternative explanations can be retained separately.
+GS and Wu consider radii one, two, or three codewords beyond the conventional RS radius, up to the selected extension limit. The app also applies a mathematical condition called the Johnson bound, allowing only radii `t` that satisfy:
 
-For result statuses and cell evidence, see [Understanding repair results](RECOVERY_RESULT_FIELDS.en.md).
+`(n − t)² > n(k − 1)`
 
-## 7. What completion and stopping mean
+Even when the mathematical conditions hold, work or memory limits can prevent a trial from running.
 
-Search is finite. Limits apply to bit combinations, candidate combinations, working memory, and retained results. A completed search means the app finished its defined search policy, not that it examined every mathematically possible QR code.
+GS represents codeword positions and values with two variables and builds a polynomial satisfying specified conditions at the read positions and values. This operation is called **interpolation**. It then finds relationships that make the polynomial zero, called roots, and constructs candidate codeword sequences.
 
-List decoding has a shared cumulative allowance of **10 minutes per repair**, excluding ordinary search time. It also limits disagreements with known data/ECC bits to 5% of all data/ECC bits, rounded up, or the selected data/ECC error limit if smaller. Increasing a search setting cannot bypass these limits.
+Wu uses an error-location polynomial to find possible error positions and calculates correction values.
 
-Interrupting repair, reaching the time allowance, or running out of working memory retains validated candidates already found and reports unfinished work. Candidate retention limits are separate: some candidates may have been found but omitted from the selectable list. See [Understanding repair results](RECOVERY_RESULT_FIELDS.en.md#search-completion-and-omissions) for the distinction.
+Both methods recheck that the number of codewords differing from the trial input is within the correction radius and that the RS conditions hold.
 
-Severe blur, glare, missing cell centers, or incorrect grid settings can prevent recovery. No candidate means that the performed search found none; one candidate does not prove uniqueness. Verify important recovered information independently.
+These methods can also be applied after assigning temporary values to unknown bits. Codewords still containing unknown bits are erasures. Differences here are measured against the values supplied to that trial. Since those may include temporary assignments, this count is distinct from mismatches against the starting input.
+
+### How KV uses partially known codewords
+
+For a codeword with `u` unknown bits, KV gives equal weight to the `2^u` values compatible with its known bits.
+
+For example, `1010?011` is compatible with `10100011` and `10101011`. Each receives half the base weight.
+
+Codewords with at most four unknown bits receive weights; those with five or more receive zero weight. These calculation weights are called **multiplicities**. The app interpolates a polynomial satisfying conditions determined by the multiplicities and obtains candidate sequences from its roots. Whenever a candidate codeword agrees with the known input bits, its assigned weight contributes to the agreement score. The score must exceed the required value based on the interpolation polynomial's degree, and the RS conditions are checked as well.
+
+The extension limit restricts the GS/Wu correction radius. KV uses an agreement-score condition.
+
+## 8. Validating the complete QR code and merging candidates
+
+Solutions from individual blocks are combined into a data stream. If blocks have multiple solutions, their combinations are examined. When a partially assembled stream already violates QR structure, the app stops exploring continuations of that combination.
+
+The completed data stream is checked against QR structure. If **Single-segment assumption** is on, that condition is checked too. The codewords are then returned to their QR positions to check agreement with fixed cells whose correction is disallowed and to check that input mismatches stay within the error limit. Candidates failing any condition are rejected.
+
+Candidates that pass validation undergo final content decoding. Even when the content cannot be decoded, a structurally validated candidate can be retained.
+
+### Candidate identity and ranking
+
+Results with the same version, ECC level, mask, and corrected codewords are merged into one candidate. Even if their text is the same, results differing in any of these properties remain separate candidates.
+
+Candidates are compared in this order, using the next criterion when the preceding ones tie:
+
+1. Successfully decoded content.
+2. Fewer format-information mismatches.
+3. More format-information matches.
+4. Fewer mismatches with known data/ECC bits.
+5. More known bits compared.
+6. A larger minimum conventional RS margin across blocks.
+7. Fewer bits assigned trial values during search.
+8. Fewer codewords affected by correction.
+9. Fewer erased codewords.
+
+The conventional RS margin for a calculation is `ECC codewords − erasures − 2 × erroneous codewords`. A margin calculated after filling or temporary assignments differs from the margin obtained by applying conventional RS directly to the starting input. Candidates using partial-bit constraints or list decoding are treated as having a margin of zero for ranking.
+
+Cell confidence is an explanatory indicator based on value sources, image assessments, and agreement among the compared candidates.
+
+The app separately records calculation methods that produced the same candidate, alternative calculations on the same input, and different reading attempts. One candidate can have several calculation records.
+
+## 9. Search limits and the meaning of results
+
+Search limits apply to the number of unknown bits assigned at once, combinations examined across blocks, calculation time, working memory, and the number of candidates and calculation records retained.
+
+List decoding has a total allowance of ten minutes across all list-decoding calculations in one repair. Time spent on other methods is excluded. The allowed number of mismatches with known data/ECC bits for list decoding is the smaller of the selected error limit and 5% of the total data/ECC bit count, rounded up.
+
+If the search is interrupted, reaches the time limit, or runs out of memory, validated candidates already obtained remain in the results. The app distinguishes stopping an unfinished search from omitting found candidates or calculation records because of retention limits.
+
+Search completion means the planned processing has finished under the settings and limits. Some combinations may remain unexamined because of those limits. Finding no candidates therefore does not establish that recovery is impossible, and finding one does not establish that no other solution exists.
+
+Passing RS, QR-structure, and input-condition checks and decoding the content does not guarantee that it matches the original QR code. Candidate ranking and cell confidence help compare and review results. Neither these measures nor KV weights are probabilities of correctness.
