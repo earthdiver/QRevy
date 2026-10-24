@@ -660,7 +660,7 @@ internal class PreprocessDialogController(
                 revalidatePrioritySearch()
                 refreshLabels()
                 cellEditState.selectedCells.firstOrNull()?.let(overlay::selectEditCell)
-                overlay.setCellSelection(cellEditState.selectedCells)
+                overlay.setCellSelection(cellEditState.selectedCells, cellEditState.selection.isRectangle, cellEditState.selection.focus)
                 refreshSelectedCellStatus(null)
                 noteDraftChange("mirrored-input", getString(R.string.mirrored_input), if (checked) "ON" else "OFF")
             }
@@ -688,7 +688,6 @@ internal class PreprocessDialogController(
                 },
             ),
         ).view
-        var singleCellEditMode = true
         fun geometrySnapshot() = PreprocessGeometrySnapshot(
             logicalGridAssigned = overlay.isLogicalGridAssigned(),
             quad = overlay.imageQuad(),
@@ -733,7 +732,9 @@ internal class PreprocessDialogController(
             refreshSourceControls()
             refreshPreRecoveryMatrix()?.let { (geometry, matrix) ->
                 overlay.setCellEditPreview(geometry, matrix)
+                overlay.setCellSelection(cellEditState.selectedCells, cellEditState.selection.isRectangle, cellEditState.selection.focus)
                 dedicatedEditor?.setDocument(editor.working.bitmap, geometry, matrix, keepViewport = true)
+                dedicatedEditor?.setSelection(cellEditState.selectedCells, cellEditState.selection.isRectangle, cellEditState.selection.focus)
             }
         }
         val refreshDraggedGrid = Runnable { if (overlay.isAttachedToWindow) refreshClassificationMatrix() }
@@ -763,7 +764,7 @@ internal class PreprocessDialogController(
                 val label = if (coord in cellEditState.prioritySearch) "*" else when (value) { ModuleValue.ZERO -> "0"; ModuleValue.ONE -> "1"; else -> "?" }
                 preEditStatus?.text = ui("選択: ($x,$y) / $kind / 値=$label", "Selected: ($x,$y) / $kind / value=$label")
                 dedicatedEditStatus?.text = preEditStatus?.text
-                dedicatedEditor?.setSelection(cellEditState.selectedCells)
+                dedicatedEditor?.setSelection(cellEditState.selectedCells, cellEditState.selection.isRectangle, cellEditState.selection.focus)
             }
         }
         overlay.onEditCellSelected = { x, y -> selectPreEditCell(x, y) }
@@ -783,16 +784,18 @@ internal class PreprocessDialogController(
                 override fun hasLogicalGrid() = overlay.isLogicalGridAssigned()
                 override fun regions(): QrCellRegions = cellRegions()
                 override fun regionLabel(coord: Coord): String = cellRegionLabel(coord)
-                override fun refreshClassification() = refreshClassificationMatrix()
-                override fun refreshEditedCells(changed: Set<Coord>, preserveFocus: Boolean) {
+                override fun refreshSelection() {
+                    val selection = cellEditState.selection
+                    overlay.setCellSelection(selection.cells, selection.isRectangle, selection.focus)
+                    dedicatedEditor?.setSelection(selection.cells, selection.isRectangle, selection.focus)
+                    refreshSourceControls()
+                }
+                override fun refreshEditedCells(changed: Set<Coord>) {
                     refreshPreRecoveryMatrix()?.let { (geometry, matrix) ->
-                        val focus = if (singleCellEditMode && !preserveFocus) changed.first()
-                            else overlay.selectedEditCell() ?: changed.first()
-                        overlay.setCellEditing(geometry, matrix, focus)
-                        overlay.setCellSelection(changed)
+                        overlay.setCellEditing(geometry, matrix, cellEditState.selection.focus)
                         dedicatedEditor?.setDocument(editor.working.bitmap, geometry, matrix, keepViewport = true)
-                        dedicatedEditor?.setSelection(changed)
                     }
+                    refreshSelection()
                 }
                 override fun showStatus(text: String) {
                     preEditStatus?.text = text
@@ -802,15 +805,19 @@ internal class PreprocessDialogController(
                 override fun recordChange(key: String, label: String, detail: String) =
                     noteDraftChange(key, label, detail)
             })
-        overlay.onCellBrushApplied = { coords, value -> cellCommands.setValues(coords, value) }
+        fun isStamp(tool: EditorTool) = tool in setOf(EditorTool.STAMP_ERASURE_SMALL,
+            EditorTool.STAMP_ERASURE_MEDIUM, EditorTool.STAMP_ERASURE_LARGE)
+        overlay.onCellBrushApplied = { coords, value ->
+            cellCommands.setValues(coords, value, asRectangle = isStamp(overlay.cellEditorTool))
+        }
         overlay.onCellRangeSelected = { coords ->
-            cellEditState.select(coords)
+            cellEditState.select(coords, asRectangle = true)
             overlay.setCellSelection(coords, asRectangle = true)
+            dedicatedEditor?.setSelection(coords, asRectangle = true)
             preEditStatus?.text = ui("矩形選択 ${coords.size}セル。0/1/?で一括変更できます。", "Selected ${coords.size} cells. Use 0/1/? to change them together.")
             refreshSourceControls()
         }
         fun showSingleCellEditor() {
-            singleCellEditMode = true
             cellEditState.clearSelection()
             refreshSourceControls()
             overlay.visibility = View.VISIBLE
@@ -822,7 +829,6 @@ internal class PreprocessDialogController(
             }
         }
         fun showBulkEditor(tool: EditorTool) {
-            singleCellEditMode = false
             overlay.visibility = View.VISIBLE
             refreshPreRecoveryMatrix()?.let { (geometry, matrix) ->
                 overlay.setCellEditing(geometry, matrix, null)
@@ -880,12 +886,14 @@ internal class PreprocessDialogController(
                 }
                 val label = if (Coord(x, y) in cellEditState.prioritySearch) "*" else when (value) { ModuleValue.ZERO -> "0"; ModuleValue.ONE -> "1"; else -> "?" }
                 largePage.status.text = ui("選択: ($x,$y) / $kind / 値=$label", "Selected: ($x,$y) / $kind / value=$label")
-                overlay.setCellSelection(cellEditState.selectedCells)
+                overlay.setCellSelection(cellEditState.selectedCells, cellEditState.selection.isRectangle, cellEditState.selection.focus)
                 refreshSourceControls()
             }
-            largeEditor.onBrushApplied = { coords, value -> cellCommands.setValues(coords, value) }
+            largeEditor.onBrushApplied = { coords, value ->
+                cellCommands.setValues(coords, value, asRectangle = isStamp(largeEditor.editorTool))
+            }
             largeEditor.onRangeSelected = { coords ->
-                cellEditState.select(coords)
+                cellEditState.select(coords, asRectangle = true)
                 largeEditor.setSelection(coords, asRectangle = true)
                 overlay.setCellSelection(coords, asRectangle = true)
                 largePage.status.text = ui("矩形選択 ${coords.size}セル。0/1/?で一括変更できます。", "Selected ${coords.size} cells. Use 0/1/? to change them together.")
@@ -936,7 +944,7 @@ internal class PreprocessDialogController(
                 dedicatedEditCountStatus = null
                 refreshPreRecoveryMatrix()?.let { (geometry, matrix) ->
                     overlay.setCellEditing(geometry, matrix, overlay.selectedEditCell())
-                    overlay.setCellSelection(cellEditState.selectedCells)
+                    overlay.setCellSelection(cellEditState.selectedCells, cellEditState.selection.isRectangle, cellEditState.selection.focus)
                 }
                 updatePreEditCountStatus()
             }

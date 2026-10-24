@@ -14,6 +14,7 @@ import io.github.earthdiver.qrrepair.core.*
 import io.github.earthdiver.qrrepair.ui.BitmapUtils
 import io.github.earthdiver.qrrepair.ui.PreprocessOverlayView
 import io.github.earthdiver.qrrepair.ui.QrEditorView
+import io.github.earthdiver.qrrepair.ui.EditorTool
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import org.junit.Assert.*
 import org.junit.Test
@@ -59,7 +60,11 @@ class CellSourceDialogTest {
     ) {
         val controller = Robolectric.buildActivity(Activity::class.java).setup()
         val prepared = BitmapUtils.prepare(Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888).apply {
-            eraseColor(if (value == ModuleValue.ONE) Color.BLACK else Color.WHITE)
+            eraseColor(when (value) {
+                ModuleValue.ONE -> Color.BLACK
+                ModuleValue.ZERO -> Color.WHITE
+                ModuleValue.ERASED -> Color.GRAY
+            })
         })
         val host = Host()
         PreprocessDialogController(controller.get(), settings.copy(version = 1, polarity = PolarityMode.NORMAL,
@@ -242,6 +247,58 @@ class CellSourceDialogTest {
             assertEquals("固定（訂正不可） ▾", sourceButton(f.root).text.toString())
             assertEquals(ModuleValue.ONE, protected.preRecoveryEdits[coord])
         }
+    }
+
+    @Test fun unchangedStampKeepsAllCellsSelectedForSourceChangesInBothEditors() {
+        for (largeMode in listOf(false, true)) withFixture(ModuleValue.ERASED) { f ->
+            val targets = (9..11).flatMap { y -> (9..11).map { x -> Coord(x, y) } }.toSet()
+            val large = if (largeMode) {
+                f.click("大きな編集画面を開く")
+                ShadowDialog.getLatestDialog() as AlertDialog
+            } else null
+            try {
+                val root = large?.window?.decorView ?: f.root
+                if (large != null) {
+                    val editor = views(root).filterIsInstance<QrEditorView>().single()
+                    editor.editorTool = EditorTool.STAMP_ERASURE_SMALL
+                    editor.onBrushApplied!!.invoke(targets, ModuleValue.ERASED)
+                } else {
+                    f.overlay.cellEditorTool = EditorTool.STAMP_ERASURE_SMALL
+                    f.overlay.onCellBrushApplied!!.invoke(targets, ModuleValue.ERASED)
+                }
+                fun assertSummary(expected: String) = assertTrue(views(root).filterIsInstance<TextView>().any { it.text.toString() == expected })
+                assertSummary("選択9 / 画像9・仮0・固定0")
+                assertTrue(views(root).filterIsInstance<TextView>().any { it.text.startsWith("変更操作: 0回") })
+                chooseSource(root, CellEditSource.TENTATIVE)
+                assertSummary("選択9 / 画像0・仮9・固定0")
+                text(root, "Undo").performClick()
+                assertSummary("選択9 / 画像9・仮0・固定0")
+                text(root, "Redo").performClick()
+                assertSummary("選択9 / 画像0・仮9・固定0")
+                large?.dismiss()
+                val saved = f.snapshot()
+                assertEquals(targets, saved.settings.preRecoverySoftEdits)
+                assertEquals(targets, saved.settings.preRecoveryEdits.keys)
+            } finally { large?.dismiss() }
+        }
+    }
+
+    @Test fun partialRectangleEditsKeepUnchangedImageCellsSelectedThroughUndoAndRedo() = withFixture { f ->
+        val targets = (9..11).flatMap { y -> (9..11).map { x -> Coord(x, y) } }.toSet()
+        f.select(Coord(10, 10))
+        f.click("1")
+        f.overlay.onCellRangeSelected!!.invoke(targets)
+        f.click("0")
+        fun assertSummary() = assertTrue(views(f.root).filterIsInstance<TextView>().any {
+            it.text.toString() == "選択9 / 画像8・仮0・固定1"
+        })
+        assertSummary()
+        f.click("Undo")
+        assertSummary()
+        f.click("Redo")
+        assertSummary()
+        f.choose(CellEditSource.TENTATIVE)
+        assertEquals(targets, f.snapshot().settings.preRecoverySoftEdits)
     }
 
     companion object {

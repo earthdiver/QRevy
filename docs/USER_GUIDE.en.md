@@ -74,7 +74,7 @@ Choose how the selected values should be treated:
 
 Changing an image-derived value to a different `0` or `1`, or changing `?` or `*` to `0` or `1`, makes it Fixed. For an uncertain value, enter it and then choose **Tentative (correctable)**. Editing an existing tentative `0` or `1` keeps it tentative. To remove an edit, choose **From image**; entering the image value again does not remove it. Unknown values cannot be Fixed.
 
-Cyan solid squares mark fixed cells; dashed squares mark tentative cells; yellow circles mark selections. **Highlight edited cells** changes only the display. Edits are preserved when thresholds change and when work is saved and reopened.
+Cyan solid squares mark fixed cells; dashed squares mark tentative cells; yellow circles mark selections, with a frame around rectangle and stamp selections. The full selection remains after editing, including unchanged cells. **Highlight edited cells** changes only the display. Edits are preserved when thresholds change and when work is saved and reopened.
 
 **Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)** in **Details** is off by default. Turning it on allows recovery to correct fixed values while preserving their entered values and Fixed designation. Turning it off protects them again. Error limits and explicitly selected version, error-correction level, and mask still apply, including consistency checks between fixed cells and explicit selections.
 
