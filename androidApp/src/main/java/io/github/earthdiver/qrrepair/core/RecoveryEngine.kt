@@ -640,11 +640,18 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
             val constraints = if (!preserveObservations || trackSingleSegment) {
                 // The first RS/list passes validate the assumption without changing observations.
                 val result = PayloadConstraintSolver.apply(inferred, version, trustKnownCount = trustKnownPayloadCount,
-                    cancellation = run.cancellation, evidenceInput = if (priorityAssignments.isEmpty()) null
+                    cancellation = run.cancellation, maxSuffixMismatches = maxKnownDataEccMismatches,
+                    evidenceInput = if (priorityAssignments.isEmpty()) null
                         else QrBlockInterleaver.deinterleave(evidenceExtraction, version, format.ecLevel))
                 if (preserveObservations) result.copy(filledBits = 0, filled = emptyList()) else result
             } else {
                 PayloadConstraintSolver.Result(0, 0, null, null)
+            }
+            if (!trackSingleSegment && run.phase == RecoveryPhase.BIT_CONSTRAINTS &&
+                constraints.suffixBlocked && !run.singleSegmentRetryAvailable) {
+                run.singleSegmentRetryAvailable = SingleSegmentRetryProbe.canDecode(
+                    de, version, format, matrix, run.diagnosticInput, extraction, evidenceExtraction,
+                    maxKnownDataEccMismatches, run.cancellation)
             }
             val singleSegmentStatus = if (trackSingleSegment) {
                 val originalDe = if (priorityAssignments.isNotEmpty())

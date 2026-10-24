@@ -63,6 +63,8 @@ object PayloadConstraintSolver {
         /** True when an explicitly trusted, fully observed mode/count header forced the suffix. */
         val forcedByTrustedHeader: Boolean = false,
         val trustedStructure: TrustedStructure? = null,
+        /** A suffix hypothesis was withheld by the evidence or mismatch gate. */
+        val suffixBlocked: Boolean = false,
     )
 
     private data class Ref(val blockIndex: Int, val block: RsBlockWork, val byteIndex: Int)
@@ -87,7 +89,10 @@ object PayloadConstraintSolver {
         trustKnownCount: Boolean = false,
         cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
         evidenceInput: DeinterleavedQr? = null,
+        /** Null permits unlimited ordinary suffix errors; final validation must use original observations. */
+        maxSuffixMismatches: Int? = 0,
     ): Result {
+        require(maxSuffixMismatches == null || maxSuffixMismatches >= 0)
         cancellation.check()
         val refs = buildList {
             for ((blockIndex, block) in de.blocks.withIndex()) {
@@ -323,10 +328,16 @@ object PayloadConstraintSolver {
         val trustedHeaderPlan = if (trustKnownCount) plans.singleOrNull { plan ->
             (0 until plan.headerBits).all { known[it] >= 0 }
         } else null
-        val zeroMismatch = if (trustedHeaderPlan == null) {
+        val boundedHeaderPlan = if (!trustKnownCount) plans.singleOrNull { plan ->
+            (0 until plan.headerBits).all { known[it] >= 0 }
+        }?.takeIf { plan ->
+            plan.mismatches > 0 && (maxSuffixMismatches == null || plan.mismatches <= maxSuffixMismatches) &&
+                payloadValuesCompatible(plan)
+        } else null
+        val zeroMismatch = if (boundedHeaderPlan != null) listOf(boundedHeaderPlan) else if (trustedHeaderPlan == null) {
             val minMismatch = plans.minOf { it.mismatches }
-            // Without explicit trust, never force speculative structure over observed data.
-            if (minMismatch != 0) return Result(0, 0, null, null, 0)
+            // Unresolved headers cannot justify replacing observed suffix bits.
+            if (minMismatch != 0) return Result(0, 0, null, null, 0, suffixBlocked = true)
             plans.filter { it.mismatches == 0 && payloadValuesCompatible(it) }
                 .also { if (it.isEmpty()) return Result(0, 0, null, null, 0) }
         } else emptyList()
@@ -343,7 +354,7 @@ object PayloadConstraintSolver {
         val inferredMode = viable.map { it.mode }.distinct().singleOrNull()
         val inferredCount = viable.map { it.count }.distinct().singleOrNull()
         if (trustedHeaderPlan == null && bestEvidence < 6) {
-            return Result(0, viable.size, inferredMode, inferredCount, reportedEvidence)
+            return Result(0, viable.size, inferredMode, inferredCount, reportedEvidence, suffixBlocked = true)
         }
 
         val filledTrace = mutableListOf<FilledBit>()
@@ -368,10 +379,11 @@ object PayloadConstraintSolver {
             val wasUnknown = (ref.block.unknownMasks[ref.byteIndex] and mask) != 0
             val observed = (ref.block.codewords[ref.byteIndex] shr bit) and 1
             if (!wasUnknown) {
-                // Only the explicitly trusted plan may replace a known image-derived suffix bit.
+                // Only a resolved header may justify replacing an observed suffix bit.
                 // Header and payload values remain untouched. Platform-level USER pins are
                 // validated separately and reject a candidate when manual-bit locking is enabled.
-                if (trustedHeaderPlan == null || bitIndex < trustedHeaderPlan.payloadEnd || observed == first.value) return
+                val suffixPlan = trustedHeaderPlan ?: boundedHeaderPlan
+                if (suffixPlan == null || bitIndex < suffixPlan.payloadEnd || observed == first.value) return
             }
             if (first.value == 1) ref.block.codewords[ref.byteIndex] = ref.block.codewords[ref.byteIndex] or mask
             else ref.block.codewords[ref.byteIndex] = ref.block.codewords[ref.byteIndex] and mask.inv()

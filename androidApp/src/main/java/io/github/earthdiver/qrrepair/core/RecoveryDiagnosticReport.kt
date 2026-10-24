@@ -65,7 +65,7 @@ fun RecoveryDisplayConditions?.runSettingsSection(): DiagnosticSection {
                 false -> "ON"
                 null -> localizedText("記録なし", "Not recorded")
             })
-        append(localizedText("\n単一セグメントの仮定: ", "\nSingle-segment assumption: "))
+        append(localizedText("\n単一セグメントの終端後構造の強制: ", "\nSingle-segment terminator and padding forcing: "))
             .append(if (settings.trustSingleSegment) "ON" else "OFF")
     } } ?: localizedText("実行時点の設定は記録されていません。", "The settings for this run were not recorded.")
     return DiagnosticSection(DiagnosticStage.SETTINGS, summary, runSettingsText().takeIf { this != null }.orEmpty())
@@ -83,7 +83,7 @@ fun RecoveryDisplayConditions?.runSettingsText(): String = this?.let { settings 
     settings.lockManualBits?.let { locked ->
         append(localizedText("\n固定セルの0/1と矛盾する復元候補を許容する（仮指定セルと同じ扱い）: ", "\nAllow recovery candidates that conflict with fixed 0/1 values (as for tentative cells): ")).append(if (locked) "OFF" else "ON")
     }
-    append(localizedText("\n単一セグメントの仮定: ", "\nSingle-segment assumption: "))
+    append(localizedText("\n単一セグメントの終端後構造の強制: ", "\nSingle-segment terminator and padding forcing: "))
         .append(if (settings.trustSingleSegment) "ON" else "OFF")
     append('\n').append(settings.limitText(true)).append('\n').append(settings.limitText(false))
     append(localizedText("\n部分bit探索・自由度の上限: ${settings.partialBitSearchLimit}bit／RSブロック",
@@ -290,9 +290,9 @@ fun RecoveryCandidate.processingMethodsText(): String = buildList {
             "The filled/changed bit count describes intermediate processing, not the final mismatch count against the input at repair start."))
     }
     if (displayConditions?.trustSingleSegment == true && !constraintForcedByUserSetting) add(localizedText(
-        "単一セグメントの仮定はONですが、この候補の補完には使用していません。",
+        "単一セグメントの終端後構造の強制はONですが、この候補の補完には使用していません。",
         "The single-segment assumption was ON but was not used to fill this candidate."))
-    if (constraintForcedByUserSetting) add(localizedText("単一セグメントの仮定: この候補に適用", "Single-segment assumption: applied to this candidate"))
+    if (constraintForcedByUserSetting) add(localizedText("単一セグメントの終端後構造の強制: この候補に適用", "Single-segment terminator and padding forcing: applied to this candidate"))
     if (displayConditions?.trustSingleSegment == true) singleSegmentStatus?.let {
         add(it.description() + if (constraintForcedByUserSetting && constraintFilledBits == 0)
             localizedText("（補完・変更は0bit）", " (0 bits filled/changed)") else "")
@@ -318,7 +318,7 @@ fun RecoveryCandidate.usedMethodsText(): String = buildString {
         localizedText("\n通常RSによる確認・補完・訂正を使いました。", "\nConventional RS was used to check, fill or correct values.")
         else localizedText("\n通常RSで条件を確認しました。", "\nConventional RS checked the conditions."))
     if (displayConditions?.trustSingleSegment == true && !constraintForcedByUserSetting) append(localizedText(
-        "\n単一セグメントの仮定はONですが、この候補の補完には使用していません。",
+        "\n単一セグメントの終端後構造の強制はONですが、この候補の補完には使用していません。",
         "\nThe single-segment assumption was ON but was not used to fill this candidate."))
     if (displayConditions?.trustSingleSegment == true) singleSegmentStatus?.let {
         append('\n').append(it.description())

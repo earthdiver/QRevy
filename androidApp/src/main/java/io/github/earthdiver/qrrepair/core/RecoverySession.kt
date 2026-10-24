@@ -64,6 +64,8 @@ data class RecoverySnapshot(
     val selectedQr: RecoverySelectionIdentity? = null,
     /** Actual sampling polarity, independent of the saved automatic-search preference. */
     val samplingInverted: Boolean? = null,
+    /** Runtime override; the editable preference remains unchanged. */
+    val oneTimeSingleSegment: Boolean = false,
 )
 
 data class RecoveryHistoryEntry(

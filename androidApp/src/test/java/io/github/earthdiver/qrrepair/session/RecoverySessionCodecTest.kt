@@ -23,6 +23,17 @@ class RecoverySessionCodecTest {
         return RecoveryHistoryEntry(kind = HistoryEventKind.USER_EDIT, label = label, snapshot = snapshot)
     }
 
+    @Test fun oneTimeForcingSurvivesHistoryRoundTripWithoutChangingThePreference() {
+        val settings = PreprocessSettings(trustKnownPayloadCount = false)
+        val history = entry().let { it.copy(snapshot = it.snapshot.copy(
+            preprocessSettings = settings, oneTimeSingleSegment = true)) }
+        val original = RecoverySessionCodec.Payload("one-time", 1L, UiMode.ANALYSIS, listOf(history), 0)
+        val restored = RecoverySessionCodec.decode(RecoverySessionCodec.encode(original)).historyEntries.single().snapshot
+        assertTrue(restored.oneTimeSingleSegment)
+        assertEquals(settings, restored.preprocessSettings)
+        assertEquals(false, restored.preprocessSettings!!.trustKnownPayloadCount)
+    }
+
     @Test fun roundTripPreservesHistory() {
         val original = RecoverySessionCodec.Payload(
             id = "123e4567-e89b-12d3-a456-426614174000",

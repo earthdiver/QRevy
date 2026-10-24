@@ -21,6 +21,7 @@ import io.github.earthdiver.qrrepair.core.RecoverySearchDiagnostic
  * inspector matrix, or recommendation from leaking into a newly selected geometry.
  */
 internal class RecoveryUiState {
+    var oneTimeSingleSegment = false
     var autoResult: AutoRecoveryResult? = null
     var attemptIndex: Int = -1
     var geometry: GridGeometry? = null
@@ -65,6 +66,7 @@ internal class RecoveryUiState {
             else failure?.searchDiagnostic
 
     fun clear() {
+        oneTimeSingleSegment = false
         directSearchDiagnostic = null
         directDiscoveredCandidates = null
         autoResult = null

@@ -154,7 +154,7 @@ internal class PreprocessDialogController(
             isChecked = preprocessSettings.searchQuadNeighborhood
         }
         val trustKnownPayloadCount = CheckBox(this).apply {
-            text = ui("種類・文字数／バイト数を読み取り、または * の試行で仮定できる場合に、単一セグメントを仮定して後続構造を強制する。", "When the mode and character/byte count are read or assigned by * trials, assume a single segment and force the following structure.")
+            text = ui("単一セグメントの終端後構造を強制する", "Force single-segment terminator and padding")
             isChecked = preprocessSettings.trustKnownPayloadCount
         }
         val allowFixedCorrections = CheckBox(this).apply {

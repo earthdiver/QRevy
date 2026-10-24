@@ -52,6 +52,9 @@ internal class RecoveryRunState(
     val candidateRejections = linkedSetOf<RecoveryCandidateRejection>()
     val singleSegmentStatuses = linkedSetOf<SingleSegmentStatus>()
     val priorityHeaderHypotheses = linkedSetOf<String>()
+    var singleSegmentRetryAvailable = false
+    var decodedCandidate = false
+        private set
     var acceptedCandidate = false
         private set
     var unresolvedCalculations = false
@@ -67,6 +70,7 @@ internal class RecoveryRunState(
         is RecoveryCandidateEvaluation.Accepted -> {
             if (evaluation.decoderFailed) incompleteReasons += SearchIncompleteReason.INTERNAL_ERROR
             acceptedCandidate = true
+            decodedCandidate = decodedCandidate || evaluation.candidate.payloadParsed
             discoveryCounter.record(evaluation.candidate)
             val alreadyParsed = candidates.containsParsed(evaluation.candidate)
             candidates.add(evaluation.candidate)
@@ -116,6 +120,8 @@ internal class RecoveryRunState(
             singleSegmentStatuses = singleSegmentStatuses.toSet(),
             priorityHeaderHypotheses = priorityHeaderHypotheses.toSet(),
             acceptedCandidate = acceptedCandidate,
+            decodedCandidate = decodedCandidate,
+            singleSegmentRetryAvailable = singleSegmentRetryAvailable,
             unresolvedCalculations = unresolvedCalculations,
             unsearched = incompleteReasons.isNotEmpty() || combinationSearch.unsearched,
             incompleteReasons = incompleteReasons + combinationSearch.incompleteReasons,

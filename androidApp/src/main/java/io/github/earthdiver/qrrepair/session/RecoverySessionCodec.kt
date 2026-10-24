@@ -12,7 +12,7 @@ import java.util.zip.GZIPOutputStream
 
 /** Android-independent, bounded and checksummed persistence codec for repair sessions. */
 object RecoverySessionCodec {
-    const val CURRENT_VERSION = 26
+    const val CURRENT_VERSION = 27
     const val MAX_HISTORY_ENTRIES = 40
     const val MAX_SESSION_PAYLOAD_BYTES = 16 * 1024 * 1024
     const val MAX_SESSION_FILE_BYTES = 20 * 1024 * 1024
@@ -239,6 +239,7 @@ object RecoverySessionCodec {
         }
         out.writeBoolean(snapshot.samplingInverted != null)
         snapshot.samplingInverted?.let(out::writeBoolean)
+        out.writeBoolean(snapshot.oneTimeSingleSegment)
     }
 
     private fun readSnapshot(input: DataInputStream, formatVersion: Int): RecoverySnapshot {
@@ -272,7 +273,12 @@ object RecoverySessionCodec {
             RecoverySelectionIdentity(version, ecLevel, mask, codewords)
         } else null
         val samplingInverted = if (input.readBoolean()) input.readBoolean() else null
-        return RecoverySnapshot(geometry, source, working, recoveryIndex, settings, selectedQr, samplingInverted)
+        val oneTimeSingleSegment = if (formatVersion >= 27) {
+            val flag = input.readUnsignedByte()
+            requireCorrupt(flag in 0..1, "invalid runtime single-segment flag")
+            flag == 1
+        } else false
+        return RecoverySnapshot(geometry, source, working, recoveryIndex, settings, selectedQr, samplingInverted, oneTimeSingleSegment)
     }
 
     private fun validateSnapshot(snapshot: RecoverySnapshot) {

@@ -1136,7 +1136,7 @@ class PreprocessDialogLayoutTest {
         assertNotNull("固定幾何の説明がありません", fixedGeometry)
         val geometrySearch = findText(decor, "サンプリング位置を自動微調整する")
         val geometrySearchNote = findText(decor, "ONでは0.6モジュールの位置・大きさ・一隅のずれを試します")
-        val payloadTrust = findText(decor, "種類・文字数／バイト数を読み取り、または * の試行")
+        val payloadTrust = findText(decor, "単一セグメントの終端後構造を強制する")
         val payloadTrustNote = findText(decor, "数字・英数字・バイト・漢字のいずれか1種類")
         assertNull("Global locking is replaced by per-cell modes", findText(decor, "手動指定した0/1と矛盾する"))
         assertNotNull("四隅近傍探索の説明がありません", geometrySearchNote)

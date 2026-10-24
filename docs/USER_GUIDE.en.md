@@ -76,7 +76,7 @@ Changing an image-derived value to a different `0` or `1`, or changing `?` or `*
 
 Cyan solid squares mark fixed cells; dashed squares mark tentative cells; yellow circles mark selections, with a frame around rectangle and stamp selections. The full selection remains after editing, including unchanged cells. **Highlight edited cells** changes only the display. Edits are preserved when thresholds change and when work is saved and reopened.
 
-**Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)** in **Details** is off by default. Turning it on allows recovery to correct fixed values while preserving their entered values and Fixed designation. Turning it off protects them again. Error limits and explicitly selected version, error-correction level, and mask still apply, including consistency checks between fixed cells and explicit selections.
+**Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)** in **Details** is off by default. Turning it on allows recovery to correct fixed values while preserving their entered values and Fixed designation. Turning it off protects them again. Error limits and explicitly selected version, error-correction level, and mask apply, including consistency checks between fixed cells and explicit selections.
 
 ### Priority search with `*`
 
@@ -111,11 +111,15 @@ Presets recalculate when the version changes. Manual keeps the entered number; i
 
 List decoding explores alternatives beyond conventional RS correction. It also limits known data/ECC bit disagreements to 5% of all data/ECC bits, rounded up, or the selected data/ECC limit if smaller. A zero data/ECC limit disables list decoding.
 
-### Single-segment assumption
+### Force single-segment terminator and padding
 
-A segment is a continuous part of QR data using one encoding mode. The option beginning **When the mode and character/byte count are read or assigned by \* trials…** assumes exactly one Numeric, Alphanumeric, Byte, or Kanji segment. Diagnostics call it **Single-segment assumption**.
+A segment is a continuous part of QR data using one encoding mode. **Force single-segment terminator and padding** uses a single Numeric, Alphanumeric, Byte, or Kanji segment to determine the suffix.
 
 Enable it only when that structure is known. It treats data as ending at the declared count and may replace conflicting observations after that point. The mode and count must be readable or assigned through `*` trials. Do not use it for multiple segments, messages split across QR codes (**Structured Append**), or data requiring additional control headers. Leave it off when uncertain.
+
+When this option is off, ordinary suffix correction can still use the selected data/ECC error allowance. All final errors are counted against the original input, including any suffix bits corrected first. Six matching known suffix bits are required for automatic propagation.
+
+If no candidate decodes and a separate feasibility check succeeds with forcing, the app offers **Retry this time only**. This does not change the advanced setting. The runtime condition is saved with the history for reproducibility. The offer is not repeated for the same input and settings, or shown after you interrupt a search.
 
 ## 6. Repair and inspect results
 
@@ -145,13 +149,14 @@ Tap an entry in **Saved work** or **Recent work** to reopen it. Long-press to de
 
 ### Saved-work compatibility
 
-QRR is the app’s saved-work format. The app writes format version **26** and reads versions **23–26**; other versions are rejected. Older files restore settings they did not store as follows:
+QRR is the app’s saved-work format. The app writes format version **27** and reads versions **23–27**; other versions are rejected. Older files restore settings they did not store as follows:
 
 | File version | Restored defaults |
 | --- | --- |
-| 25 | List-decoding extension: +1 |
-| 24 | List-decoding extension: +1; mirrored input: off |
-| 23 | List-decoding extension: +1; mirrored input: off; partial-bit search / dimension limit: 12 |
+| 26 | No one-time forcing override; the saved option still applies |
+| 25 | No one-time forcing override; list-decoding extension: +1 |
+| 24 | No one-time forcing override; list-decoding extension: +1; mirrored input: off |
+| 23 | No one-time forcing override; list-decoding extension: +1; mirrored input: off; partial-bit search / dimension limit: 12 |
 
 ### Export and privacy
 
