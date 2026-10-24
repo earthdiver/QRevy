@@ -157,6 +157,8 @@ class PreprocessDialogLayoutTest {
     @Test fun mirroredInputCanBeToggledSavedAndReopenedWithoutMovingImageEdits() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
+        val otherController = Robolectric.buildActivity(Activity::class.java).setup()
+        var otherDialog: AlertDialog? = null
         try {
             val bitmap = Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.WHITE) }
             val prepared = BitmapUtils.prepare(bitmap)
@@ -170,7 +172,9 @@ class PreprocessDialogLayoutTest {
             val open = MainActivity::class.java.getDeclaredMethod("showPreprocessDialog").apply { isAccessible = true }
             open.invoke(activity)
             shadowOf(Looper.getMainLooper()).idle()
-            val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+            otherDialog = AlertDialog.Builder(otherController.get()).setMessage("Unrelated dialog").show()
+            assertEquals(otherDialog, ShadowDialog.getLatestDialog())
+            val dialog = preprocessDialog(activity)
             val decor = dialog.window!!.decorView
             findText(decor, "詳細設定")!!.performClick()
             val mirror = findExactText(decor, "入力画像を鏡像として処理する") as CheckBox
@@ -200,7 +204,11 @@ class PreprocessDialogLayoutTest {
             assertEquals(initial.fixedPreRecoveryEdits, normal.fixedPreRecoveryEdits)
             assertEquals(Color.WHITE, prepared.bitmap.getPixel(0, 0))
             reopened.dismiss()
-        } finally { controller.pause().stop().destroy() }
+        } finally {
+            otherDialog?.dismiss()
+            otherController.pause().stop().destroy()
+            controller.pause().stop().destroy()
+        }
     }
 
     @Test fun perspectiveCorrectionKeepsMirrorInTheGridAndPreservesFixedEdits() {
