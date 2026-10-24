@@ -27,7 +27,7 @@ In Classic, choose **Repair** to open the settings. In Modern, use **01 Repair s
 3. Check **QR Version** and align the orange corner handles with the centers of the outermost cells. Version 1 has 21 cells per side; each subsequent version adds four.
 4. Review the cell values in the preview. Adjust the white/unknown/black thresholds if damaged areas are being read as definite `0` or `1` values.
 
-Automatic estimates may need correction. If only an outline appears, select **QR Version**, even if the displayed value is already correct, to show a grid. Adjust the corners and assign a Finder role as described below. **Rectify selection to a square** clears Finder roles and orientation; assign a role again afterward.
+Automatic estimates may need correction. If only an outline appears, select **QR Version**, even if the displayed value is already correct, to show a grid. Until a Finder role is assigned, provisional alignment guides appear at all four corners and along all four sides, with dashed outlines. Adjust the corners and assign a Finder role as described below. **Rectify selection to a square** clears Finder roles and orientation; assign a role again afterward.
 
 **Set thresholds automatically** starts enabled for image imports. It recalculates thresholds when the grid changes. Moving a slider switches to manual thresholds; turning the option off keeps the current values. Manual thresholds stay unchanged during corner adjustment and sampling fine-tuning. Turn the option on to recalculate them. Saved work retains the mode and values.
 
