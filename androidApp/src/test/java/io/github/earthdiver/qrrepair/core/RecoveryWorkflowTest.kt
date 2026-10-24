@@ -72,4 +72,33 @@ class RecoveryWorkflowTest {
         assertEquals(setOf(SearchIncompleteReason.USER_INTERRUPTED), result.searchDiagnostic!!.incompleteReasons)
     }
 
+    @Test fun workflowPublishesDiscoveryBeforeTheGridFinishesAndCarriesItAcrossProfiles() {
+        val qr = com.google.zxing.qrcode.encoder.Encoder.encode("DISCOVERY", com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.L)
+        val d = qr.matrix.width
+        val width = (d + 8) * 8
+        val pixels = IntArray(width * width) { i ->
+            val x = i % width / 8 - 4
+            val y = i / width / 8 - 4
+            if (x in 0 until d && y in 0 until d && qr.matrix.get(x, y).toInt() == 1) 0 else 255
+        }
+        val start = 35.5
+        val end = start + (d - 1) * 8
+        val input = settings.copy(version = (d - 17) / 4,
+            formatConstraint = QrFormatConstraint(com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.L, qr.maskPattern),
+            manualQuad = ImageQuad(PointD(start, start), PointD(end, start), PointD(end, end), PointD(start, end)))
+        val events = mutableListOf<RecoveryDiscoveryCount>()
+        var completedGrids = 0
+        val counter = RecoveryDiscoveryCounter(onChanged = {
+            assertEquals("Discovery must precede grid completion", 0, completedGrids)
+            events += it
+        })
+        val result = RecoveryWorkflow(RecoveryEngine()).run(LumaImage(width, width, pixels), input,
+            RecoveryRetentionBudget(), discoveryCounter = counter,
+            onProgress = { if (it.done == it.total) completedGrids++ })
+        assertEquals(2, result.attemptedGeometries)
+        assertTrue(result.entries.any { it.candidate.text == "DISCOVERY" })
+        assertEquals(listOf(RecoveryDiscoveryCount.Exact(1)), events)
+        assertEquals(events.last(), result.discoveredCandidates)
+    }
+
 }

@@ -123,7 +123,7 @@ Choose **Save & repair** in Classic or **Repair** in Modern to save the current 
 
 A **validated candidate** passes QR structure and input checks; content decoding can still fail.
 
-The progress dialog shows elapsed time. **Interrupt repair** stops the repair and retains validated candidates already found. List decoding has a cumulative limit of **10 minutes per repair**, excluding ordinary search time, so the whole repair can take longer. Validated candidates remain available after a timeout or insufficient memory.
+The progress dialog shows elapsed time and the number of candidates found. **Interrupt repair** stops the repair and retains validated candidates already found. List decoding has a cumulative limit of **10 minutes per repair**, excluding ordinary search time, so the whole repair can take longer. Validated candidates remain available after a timeout or insufficient memory.
 
 1. Review the recovered content. If several candidates remain, open **Candidate contents** to compare their full text and tap one to select it.
 2. Open **Show diagnostics** to check input disagreements, search completion, and omitted-candidate notices. One candidate or a completed search does not prove the result is correct.

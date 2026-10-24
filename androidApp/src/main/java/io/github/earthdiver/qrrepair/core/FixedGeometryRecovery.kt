@@ -44,6 +44,7 @@ data class AutoRecoveryResult(
     val attemptedGeometries: Int = attempts.size,
     val testedHypotheses: List<GeometryHypothesis> = attempts.map { it.hypothesis },
     val interrupted: Boolean = false,
+    val discoveredCandidates: RecoveryDiscoveryCount? = null,
 ) {
     val candidatesTruncated: Boolean get() = searchDiagnostic?.candidatesOmitted == true
     val successfulAttempts: List<GeometryAttempt>
@@ -116,12 +117,14 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
         stopRequested: () -> Boolean = { false },
         onPriorityProgress: ((done: Int, total: Int) -> Unit)? = null,
         listDecodingBudget: ListDecodingBudget = ListDecodingBudget(),
+        discoveryCounter: RecoveryDiscoveryCounter = RecoveryDiscoveryCounter(),
         onProgress: ((done: Int, total: Int, message: String) -> Unit)? = null,
     ): AutoRecoveryResult {
         cancellation.check()
         require(maxFinders >= 0) { "maxFinders must be non-negative" }
         require(maxGeometryAttempts >= 0) { "maxGeometryAttempts must be non-negative" }
-        val settings = profile?.settings ?: return AutoRecoveryResult(emptyList(), emptyList(), profile)
+        val settings = profile?.settings ?: return AutoRecoveryResult(emptyList(), emptyList(), profile,
+            discoveredCandidates = discoveryCounter.snapshot)
         val seeds = manualGeometrySeeds(settings)
         val selectedSeeds = seeds.take(maxGeometryAttempts)
         val baseHypotheses = selectedSeeds.mapNotNull { (version, quad) ->
@@ -194,6 +197,7 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
                     cancellation = cancellation,
                     stopRequested = stopRequested,
                     listDecodingBudget = listDecodingBudget,
+                    discoveryCounter = discoveryCounter,
                 ) { done, total ->
                     onPriorityProgress?.invoke(done, total)
                 }
@@ -210,7 +214,7 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
         if (!interrupted) resultAccumulator.completePolicy(hasExcludedInputs =
             seeds.size > selectedSeeds.size || selectedSeeds.size != baseHypotheses.size ||
                 baseHypotheses.size + refinedHypotheses.size > hypotheses.size)
-        val result = resultAccumulator.result(finders)
+        val result = resultAccumulator.result(finders).copy(discoveredCandidates = discoveryCounter.snapshot)
         val unfinished = result.searchDiagnostic?.completeness != SearchCompleteness.COMPLETE
         onProgress?.invoke(completed, hypotheses.size, if (unfinished)
             localizedText("試行終了（完了状況は結果を確認してください）", "Trials ended; see results for completion status")

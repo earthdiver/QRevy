@@ -13,6 +13,7 @@ import io.github.earthdiver.qrrepair.core.displayedModuleValue
 import io.github.earthdiver.qrrepair.core.RecoveryInputBlocker
 import io.github.earthdiver.qrrepair.core.identity
 import io.github.earthdiver.qrrepair.core.isSelectableRecovery
+import io.github.earthdiver.qrrepair.core.RecoveryDiscoveryCounter
 import io.github.earthdiver.qrrepair.core.RecoveryMemoryPolicy
 import io.github.earthdiver.qrrepair.core.ListDecodingBudget
 import io.github.earthdiver.qrrepair.core.RecoveryRetentionBudget
@@ -1590,6 +1591,7 @@ class MainActivity : Activity() {
                         onProgress = progressDialog::listDecodingProgress,
                         onIdle = progressDialog::listDecodingIdle,
                     ),
+                    discoveryCounter = RecoveryDiscoveryCounter(onChanged = progressDialog::candidatesFound),
                     onPriorityProgress = progressDialog::priorityProgress,
                 )
             },
@@ -1602,6 +1604,7 @@ class MainActivity : Activity() {
                         ?: preferredRecoveryIndex(ranked, snapshot.recoveryIndex),
                     failure,
                     outcome.searchDiagnostic,
+                    outcome.discoveredCandidates,
                 )
                 refreshInspector()
                 updateSummary(if (snapshot.selectedQr != null && recoveryState.selectedRecovery == null)
@@ -1884,6 +1887,7 @@ class MainActivity : Activity() {
 
     private fun diagnosticContext() = RecoveryDiagnosticContext(
         candidateCount = searchCandidateCount(),
+        discoveredCandidates = recoveryState.discoveredCandidates,
         unsearched = searchHasUncheckedCombinations(),
         candidatesOmitted = recoveryState.candidatesOmitted,
         searchDiagnostic = recoveryState.searchDiagnostic,
@@ -2445,6 +2449,7 @@ class MainActivity : Activity() {
                         onProgress = progressDialog::listDecodingProgress,
                         onIdle = progressDialog::listDecodingIdle,
                     ),
+                    discoveryCounter = RecoveryDiscoveryCounter(onChanged = progressDialog::candidatesFound),
                     onPriorityProgress = progressDialog::priorityProgress,
                     onProgress = { progress ->
                         progressDialog.phase("${progress.profile.label}: ${progress.message} (${progress.done}/${progress.total})")

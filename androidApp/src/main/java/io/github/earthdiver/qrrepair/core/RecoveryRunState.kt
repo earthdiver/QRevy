@@ -24,6 +24,7 @@ internal class RecoveryRunState(
     val partialBitSearchLimit: Int,
     val listDecodingBudget: ListDecodingBudget,
     val listDecodingAdditionalErrors: Int = ListDecodingLimit.DEFAULT,
+    private val discoveryCounter: RecoveryDiscoveryCounter = RecoveryDiscoveryCounter(),
 ) {
     var phase = RecoveryPhase.ORIGINAL_RS
     val listDecodingPhase: Boolean get() = phase.isListDecoding
@@ -66,6 +67,7 @@ internal class RecoveryRunState(
         is RecoveryCandidateEvaluation.Accepted -> {
             if (evaluation.decoderFailed) incompleteReasons += SearchIncompleteReason.INTERNAL_ERROR
             acceptedCandidate = true
+            discoveryCounter.record(evaluation.candidate)
             val alreadyParsed = candidates.containsParsed(evaluation.candidate)
             candidates.add(evaluation.candidate)
             when {

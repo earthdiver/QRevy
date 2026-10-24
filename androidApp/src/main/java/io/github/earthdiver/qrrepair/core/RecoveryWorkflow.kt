@@ -19,6 +19,7 @@ internal class RecoveryWorkflow(private val engine: RecoveryEngine) {
         stopRequested: () -> Boolean = { false },
         onPriorityProgress: (Int, Int) -> Unit = { _, _ -> },
         listDecodingBudget: ListDecodingBudget = ListDecodingBudget(),
+        discoveryCounter: RecoveryDiscoveryCounter = RecoveryDiscoveryCounter(),
         onProgress: (RecoveryProgress) -> Unit = {},
     ): AutoRecoveryResult {
         require(settings.preRecoveryPrioritySearch.size <= settings.prioritySearchLimit) { "Priority marks exceed the configured limit" }
@@ -38,6 +39,7 @@ internal class RecoveryWorkflow(private val engine: RecoveryEngine) {
                     stopRequested = stopRequested,
                     onPriorityProgress = onPriorityProgress,
                     listDecodingBudget = listDecodingBudget,
+                    discoveryCounter = discoveryCounter,
                     onProgress = { done, total, message ->
                         onProgress(RecoveryProgress(profile, index, variants.size, done, total, message))
                     },
@@ -49,7 +51,7 @@ internal class RecoveryWorkflow(private val engine: RecoveryEngine) {
             }
         }
         val result = accumulator.result(finders)
-        return result.copy(interrupted = SearchIncompleteReason.USER_INTERRUPTED in
+        return result.copy(discoveredCandidates = discoveryCounter.snapshot, interrupted = SearchIncompleteReason.USER_INTERRUPTED in
             result.searchDiagnostic?.incompleteReasons.orEmpty())
     }
 }

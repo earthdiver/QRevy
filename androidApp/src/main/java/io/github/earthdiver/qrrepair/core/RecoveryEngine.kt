@@ -248,6 +248,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         partialBitSearchLimit: Int = PartialBitSearchLimit.DEFAULT,
         listDecodingAdditionalErrors: Int = ListDecodingLimit.DEFAULT,
         listDecodingBudget: ListDecodingBudget = ListDecodingBudget(),
+        discoveryCounter: RecoveryDiscoveryCounter = RecoveryDiscoveryCounter(),
         onPriorityProgress: ((done: Int, total: Int) -> Unit)? = null,
     ): RecoveryOutcome {
         require(partialBitSearchLimit in PartialBitSearchLimit.supported)
@@ -264,7 +265,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         val run = RecoveryRunState(matrix, retentionBudget, RecoveryCancellation {
             cancellation.check()
             stopRequested()
-        }, partialBitSearchLimit, listDecodingBudget, listDecodingAdditionalErrors)
+        }, partialBitSearchLimit, listDecodingBudget, listDecodingAdditionalErrors, discoveryCounter)
         val conditions = RecoveryDisplayConditions(trustKnownPayloadCount, displayLockManualBits,
             formatConstraint, maxFormatMismatches, maxKnownDataEccMismatches, partialBitSearchLimit, listDecodingAdditionalErrors)
         val manual = buildMap {
@@ -399,6 +400,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 searchDiagnostic = publishedDiagnostic),
             searchDiagnostic = publishedDiagnostic,
             formatAttempts = run.formatAttempts,
+            discoveredCandidates = discoveryCounter.snapshot,
         )
     }
 
