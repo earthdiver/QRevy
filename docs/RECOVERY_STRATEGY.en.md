@@ -192,8 +192,6 @@ QR data follows rules for encoding mode, character or byte count, content, termi
 
 A **segment** is a continuous portion of data encoded in one mode. Automatic filling assumes the data consists of one segment and examines structures compatible with the read mode and character or byte count.
 
-When **Single-segment assumption** is off, the app searches both with values filled under this assumption and without that filling. When it is on, the relevant mode and character or byte count, followed by the terminator and padding rules, become conditions that candidates must satisfy. If no structure meeting those conditions can be determined, candidates are not accepted from that input.
-
 ### Filling, constraints during search, and final validation
 
 QR structure serves three purposes:
@@ -210,9 +208,22 @@ After the terminator marking the end of the data, zero bits align the stream to 
 
 If several mode and character/byte-count candidates remain, the app can fill bits that have the same value under every one of those candidates. For example, if a particular bit is a zero after the terminator under every candidate being considered, it can be filled with `0`.
 
-When **Single-segment assumption** is on, the app uses the character or byte count recorded in the QR data to locate the end of the content and forces the following values to match the terminator and padding rules. Known values before this change remain part of the input comparison; a different final value counts as a mismatch.
+### Terminator and padding filling and error limits
 
-The final QR-structure check also supports data streams containing multiple segments. When **Single-segment assumption** is on, it additionally verifies that there is exactly one segment.
+Here, **suffix** means the region from the terminator through the padding. **Force single-segment terminator and padding** changes the conditions for filling it.
+
+| Setting | Behavior |
+| --- | --- |
+| Off | Tries suffix filling only when at least six known suffix bits match its rules. Also searches without filling and supports candidates with multiple segments. |
+| On | Corrects the suffix using the mode and character or byte count read from the input or assumed through `*` trials. Rejects candidates if correction changes those values. |
+
+Even with forcing off, suffix errors can be corrected within the **Known data/ECC bit error limit** when the mode and character or byte count are known. With either setting, errors are counted **against the input before repair**, including suffix corrections. For example, two suffix corrections, two payload corrections and two ECC corrections total six bits, so a five-bit limit excludes that candidate. Fixed-cell protection and specified ECC, mask and other conditions also apply.
+
+### Retry with forcing for this run only
+
+If no candidate decodes and forcing the suffix appears to allow decoding, the app offers **Retry this time only**. Accepting enables forcing for that run. The advanced setting stays off, and the runtime condition is recorded in history and saved work.
+
+The offer is not shown after you interrupt a search or repeated for the same input and settings. You can also enable forcing manually in advanced settings when no offer appears.
 
 ## 7. List decoding
 
@@ -252,7 +263,7 @@ The extension limit restricts the GS/Wu correction radius. KV uses an agreement-
 
 Solutions from individual blocks are combined into a data stream. If blocks have multiple solutions, their combinations are examined. When a partially assembled stream already violates QR structure, the app stops exploring continuations of that combination.
 
-The completed data stream is checked against QR structure. If **Single-segment assumption** is on, that condition is checked too. The codewords are then returned to their QR positions to check agreement with fixed cells whose correction is disallowed and to check that input mismatches stay within the error limit. Candidates failing any condition are rejected.
+The completed data stream is checked against QR structure. If **Force single-segment terminator and padding** is on, that condition is checked too. The codewords are then returned to their QR positions to check agreement with fixed cells whose correction is disallowed and to check that input mismatches stay within the error limit. Candidates failing any condition are rejected.
 
 Candidates that pass validation undergo final content decoding. Even when the content cannot be decoded, a structurally validated candidate can be retained.
 

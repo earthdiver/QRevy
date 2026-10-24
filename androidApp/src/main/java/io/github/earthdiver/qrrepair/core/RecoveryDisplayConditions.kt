@@ -73,13 +73,13 @@ fun RecoveryCandidate.conditionText(): String = buildString {
         }
     }
     if (constraintForcedByUserSetting) {
-        append(localizedText("\n単一セグメントの仮定: この候補の補完に使用しました。",
-            "\nSingle-segment assumption: used to fill this candidate."))
+        append(localizedText("\n単一セグメントの終端後構造の強制: この候補の補完に使用しました。",
+            "\nSingle-segment terminator and padding forcing: used to fill this candidate."))
     } else if (conditions != null) {
         append(if (conditions.trustSingleSegment) localizedText(
-            "\n単一セグメントの仮定: 設定はONですが、この候補の補完には使用していません。",
-            "\nSingle-segment assumption: enabled, but not used to fill this candidate.",
-        ) else localizedText("\n単一セグメントの仮定: 使用していません。",
-            "\nSingle-segment assumption: not used."))
+            "\n単一セグメントの終端後構造の強制: 設定はONですが、この候補の補完には使用していません。",
+            "\nSingle-segment terminator and padding forcing: enabled, but not used to fill this candidate.",
+        ) else localizedText("\n単一セグメントの終端後構造の強制: 使用していません。",
+            "\nSingle-segment terminator and padding forcing: not used."))
     }
 }.trim()

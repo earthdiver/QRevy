@@ -57,6 +57,49 @@ class PayloadConstraintEvidenceTest {
         assertEquals(0x91, observedBlock.codewords[4])
     }
 
+    @Test
+    fun suffixErrorsUseTheBudgetWithoutBecomingTrustedConstraints() {
+        val input = bytePayload()
+        input.blocks.single().codewords[4] = input.blocks.single().codewords[4] xor 3
+        val rejected = input.copyDeep()
+        assertTrue(PayloadConstraintSolver.apply(rejected, 1, maxSuffixMismatches = 1).suffixBlocked)
+        assertBlocksEqual(input, rejected)
+        for (limit in listOf(2, null)) {
+            val corrected = input.copyDeep()
+            val result = PayloadConstraintSolver.apply(corrected, 1, maxSuffixMismatches = limit)
+            assertEquals(2, result.filledBits)
+            assertEquals(false, result.forcedByTrustedHeader)
+            assertEquals(null, result.trustedStructure)
+            assertBlocksEqual(bytePayload(), corrected)
+        }
+    }
+
+    @Test
+    fun boundedErrorsStillRequireSixMatchingSuffixBits() {
+        for (matching in listOf(5, 6)) {
+            val input = bytePayload()
+            val block = input.blocks.single()
+            block.codewords[2] = block.codewords[2] xor 8
+            for (bit in 20 + matching + 1 until 128) {
+                block.unknownMasks[bit / 8] = block.unknownMasks[bit / 8] or (1 shl (7 - bit % 8))
+            }
+            val result = PayloadConstraintSolver.apply(input, 1, maxSuffixMismatches = 1)
+            assertEquals(matching, result.evidenceBits)
+            assertEquals(matching < 6, result.suffixBlocked)
+            assertEquals(matching >= 6, result.filledBits > 0)
+        }
+    }
+
+    @Test
+    fun unresolvedHeaderNeverAuthorizesReplacingKnownSuffixErrors() {
+        val input = bytePayload()
+        input.blocks.single().unknownMasks[0] = 0xF0
+        input.blocks.single().codewords[4] = input.blocks.single().codewords[4] xor 3
+        val result = PayloadConstraintSolver.apply(input, 1, maxSuffixMismatches = null)
+        assertTrue(result.filled.none { it.localByteIndex == 4 })
+        assertEquals(0x12, input.blocks.single().codewords[4])
+    }
+
     private fun bytePayload(): DeinterleavedQr {
         // Version 1-M data for byte-mode "A": 4 mode bits, 8 count bits, 8 payload bits,
         // four terminator bits, then alternating pad bytes.

@@ -57,7 +57,7 @@ Mismatch counts compare the candidate with known `0 / 1` values at repair start,
 
 Format comparison also excludes **fixed 0/1 cells whose values are determined by explicit ECC/mask selections alone**. Tentative edits remain in the comparison. This exclusion still applies when the setting allowing correction of fixed values is enabled.
 
-An error limit of **0 bits** requires agreement at every compared known bit. Increasing an error limit does not permit changes to protected fixed cells. Explicit version, ECC, and mask selections remain enforced.
+An error limit of **0 bits** requires agreement at every compared known bit. Increasing an error limit does not permit changes to protected fixed cells. Explicit version, ECC, and mask selections are enforced.
 
 ## Diagnostic details
 
@@ -65,8 +65,10 @@ An error limit of **0 bits** requires agreement at every compared known bit. Inc
 | --- | --- |
 | Settings for this run | The settings used for this repair |
 | Input before repair | The starting input and its conventional RS reference check |
-| Processing in this run | Candidate methods and calculation records, list-decoding execution status, and single-segment assumption application status |
+| Processing in this run | Candidate methods and calculation records, list-decoding execution status, and single-segment forcing application status |
 | Verification results | Structure checks, final decoding, input mismatches, search completion, and omissions |
+
+Results from **Retry this time only** show the runtime forcing condition. It applies to this run and its history restoration even while the saved advanced setting remains off.
 
 The conventional RS reference check uses the input before structure-based filling or temporary assignments. Reference calculations describe their own input and conditions; one failed calculation does not establish why the whole search failed.
 
@@ -98,7 +100,7 @@ A method marked **same QR without filling** has a recorded alternative that obta
 
 **List decoding execution status** keeps recorded status, trial counts, and elapsed time visible. **Show calculation details** reveals method/radius breakdowns, reused results, and skip reasons; these details start closed regardless of execution status. Counts and elapsed time concern list decoding. Trial and completion counts describe block calculations rather than repaired QR candidates.
 
-When no candidate is found and the single-segment assumption was ON, **Single-segment assumption application status** separately reports whether that assumption could be applied.
+When no candidate is found and single-segment forcing was ON, **Single-segment terminator and padding forcing application status** separately reports whether that assumption could be applied.
 
 The scope in these headings matters: **whole search** includes trials that did not produce the selected candidate. **Selected candidate's input** and **reference diagnostic input** cover only the named input because search-wide records are unavailable. A skipped calculation and an interrupted calculation have different meanings; read their reasons together with search completion.
 
@@ -133,7 +135,7 @@ A cell's details distinguish its input value, final value, main reason, and supp
 
 **Supporting evidence** supports the final value. For example, if a structure rule fills `0` and RS later changes it to `1`, the earlier `0` appears only as intermediate history.
 
-**Single-segment assumption** reports whether that setting was enabled and applied to this candidate. A segment is QR data encoded in one mode. A generic **Repair** reason means that no more specific category is available. Relabeling a cell's source without changing its value does not highlight it as changed.
+**Single-segment terminator and padding forcing** reports whether that setting was enabled and applied to this candidate. A segment is QR data encoded in one mode. A generic **Repair** reason means that no more specific category is available. Relabeling a cell's source without changing its value does not highlight it as changed.
 
 Cell coordinates `(x,y)` start at zero. Codeword numbers, RS block numbers, positions within a block, and bit positions start at one; bit 1 is the leftmost bit. **After removing the QR mask** shows before/after codeword values, with `?` for unknown bits and brackets around the selected bit.
 

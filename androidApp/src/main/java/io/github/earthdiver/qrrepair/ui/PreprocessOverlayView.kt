@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Rect
@@ -85,6 +86,9 @@ class PreprocessOverlayView(context: Context) : View(context) {
     private val finderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = dp(3f); color = Color.YELLOW }
     private val autoFinderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = dp(4f); color = 0xFFFF8C00.toInt() }
     private val structurePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = dp(2f); color = 0xAA00FF66.toInt() }
+    private val provisionalStructurePaint = Paint(structurePaint).apply {
+        pathEffect = DashPathEffect(floatArrayOf(dp(5f), dp(4f)), 0f)
+    }
     private val expectedDarkPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; color = 0x4439FF88 }
     private val expectedLightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; color = 0x22FFFFFF }
     private val expectedOutlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = dp(.7f); color = 0x887CFFB2.toInt() }
@@ -319,10 +323,11 @@ class PreprocessOverlayView(context: Context) : View(context) {
         editSelectionIsRectangle = false
         invalidate()
     }
-    fun setCellSelection(coords: Collection<Coord>, asRectangle: Boolean = false) {
+    fun setCellSelection(coords: Collection<Coord>, asRectangle: Boolean = false, focus: Coord? = coords.firstOrNull()) {
         val matrix = editMatrix ?: return
         editSelection = coords.filter { it.x in 0 until matrix.dimension && it.y in 0 until matrix.dimension }.toSet()
         editSelectionIsRectangle = asRectangle && editSelection.isNotEmpty()
+        editCell = focus?.takeIf { it in editSelection } ?: editSelection.firstOrNull()
         invalidate()
     }
     fun clearCornerSelection() {
@@ -459,6 +464,20 @@ class PreprocessOverlayView(context: Context) : View(context) {
                     drawFinderBox(canvas, ::modulePoint, 0, 0)
                     drawFinderBox(canvas, ::modulePoint, dimension - 7, 0)
                     drawFinderBox(canvas, ::modulePoint, 0, dimension - 7)
+                } else if (!highlightManualOnly) {
+                    drawExpectedStructures(canvas, geometry, scale, ox, oy, provisional = true)
+                    fun modulePoint(x: Double, y: Double) = v(geometry.moduleToImage(x, y))
+                    for (offset in listOf(6.0, dimension - 7.0)) {
+                        for ((start, end) in listOf(
+                            modulePoint(0.0, offset) to modulePoint(dimension - 1.0, offset),
+                            modulePoint(offset, 0.0) to modulePoint(offset, dimension - 1.0),
+                        )) {
+                            canvas.drawLine(start.x.toFloat(), start.y.toFloat(), end.x.toFloat(), end.y.toFloat(), provisionalStructurePaint)
+                        }
+                    }
+                    for (y in listOf(0, dimension - 7)) for (x in listOf(0, dimension - 7)) {
+                        drawFinderBox(canvas, ::modulePoint, x, y, provisionalStructurePaint)
+                    }
                 }
             }
         }
@@ -528,7 +547,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
     }
 
     /** Draws the ideal fixed QR modules lightly, so alignment can be judged against the image. */
-    private fun drawExpectedStructures(canvas: Canvas, geometry: GridGeometry, fitScale: Double, ox: Double, oy: Double) {
+    private fun drawExpectedStructures(canvas: Canvas, geometry: GridGeometry, fitScale: Double, ox: Double, oy: Double, provisional: Boolean = false) {
         val dimension = geometry.dimension
         fun screen(p: PointD) = PointD(ox + p.x * fitScale, oy + p.y * fitScale)
         fun module(mx: Int, my: Int, black: Boolean) {
@@ -555,11 +574,16 @@ class PreprocessOverlayView(context: Context) : View(context) {
         finder(0, 0)
         finder(dimension - 7, 0)
         finder(0, dimension - 7)
+        if (provisional) finder(dimension - 7, dimension - 7)
         for (k in 8..dimension - 9) {
             module(k, 6, (k and 1) == 0)
             module(6, k, (k and 1) == 0)
+            if (provisional) {
+                module(k, dimension - 7, (k and 1) == 0)
+                module(dimension - 7, k, (k and 1) == 0)
+            }
         }
-        module(8, dimension - 8, black = true)
+        if (!provisional) module(8, dimension - 8, black = true)
     }
 
     private fun drawClassificationPreview(canvas: Canvas, fitScale: Double, ox: Double, oy: Double) {
@@ -601,7 +625,11 @@ class PreprocessOverlayView(context: Context) : View(context) {
             }
         }
         val legend = localizedText("判定: 1=$ones  0=$zeros  ?=$unknown  *=$priority", "Classification: 1=$ones  0=$zeros  ?=$unknown  *=$priority") +
-            if (step > 1) localizedText("（間引き表示）", " (sampled view)") else ""
+            (if (step > 1) localizedText("（間引き表示）", " (sampled view)") else "") +
+            (if (!logicalGridAssigned && !highlightManualOnly) localizedText(
+                "\n向き未確定・位置合わせ用の仮ガイド",
+                "\nOrientation unassigned · provisional alignment guides",
+            ) else "")
         if (legend != lastClassificationSummary) {
             lastClassificationSummary = legend
             post { if (lastClassificationSummary == legend) onClassificationSummaryChanged?.invoke(legend) }
@@ -748,10 +776,10 @@ class PreprocessOverlayView(context: Context) : View(context) {
         canvas.restoreToCount(saved)
     }
 
-    private fun drawFinderBox(canvas: Canvas, map: (Double, Double) -> PointD, moduleX: Int, moduleY: Int) {
+    private fun drawFinderBox(canvas: Canvas, map: (Double, Double) -> PointD, moduleX: Int, moduleY: Int, paint: Paint = structurePaint) {
         val pts = listOf(map(moduleX.toDouble(), moduleY.toDouble()), map((moduleX + 6).toDouble(), moduleY.toDouble()), map((moduleX + 6).toDouble(), (moduleY + 6).toDouble()), map(moduleX.toDouble(), (moduleY + 6).toDouble()))
         val path = Path().apply { moveTo(pts[0].x.toFloat(), pts[0].y.toFloat()); for (i in 1..3) lineTo(pts[i].x.toFloat(), pts[i].y.toFloat()); close() }
-        canvas.drawPath(path, structurePaint)
+        canvas.drawPath(path, paint)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -787,10 +815,10 @@ class PreprocessOverlayView(context: Context) : View(context) {
             val size = cellEditorTool.editBrushSize() ?: return
             for (index in 0 until event.historySize) {
                 editCoord(event.getHistoricalX(index), event.getHistoricalY(index))?.let {
-                    editStroke += editFootprint(it, size); editCell = it
+                    editStroke += editFootprint(it, size)
                 }
             }
-            editCoord()?.let { editStroke += editFootprint(it, size); editCell = it }
+            editCoord()?.let { editStroke += editFootprint(it, size) }
         }
         if (cellEditInteractive && cellEditorTool != EditorTool.NAVIGATE) {
             if (event.actionMasked == MotionEvent.ACTION_POINTER_DOWN || event.pointerCount > 1) {
@@ -819,15 +847,12 @@ class PreprocessOverlayView(context: Context) : View(context) {
                         }
                         EditorTool.BRUSH_ZERO, EditorTool.BRUSH_ONE, EditorTool.BRUSH_ERASURE, EditorTool.BRUSH_ERASURE_WIDE -> {
                             editStroke.clear(); appendBrushSamples()
-                            editSelectionIsRectangle = false
                         }
                         EditorTool.STAMP_ERASURE_SMALL, EditorTool.STAMP_ERASURE_MEDIUM, EditorTool.STAMP_ERASURE_LARGE -> {
-                            editStroke.clear(); editStroke += editFootprint(cell, cellEditorTool.editStampSize() ?: 3); editCell = cell
-                            editSelectionIsRectangle = false
+                            editStroke.clear(); editStroke += editFootprint(cell, cellEditorTool.editStampSize() ?: 3)
                         }
                         EditorTool.RECT_SELECT -> {
-                            editRangeStart = cell; editRangeEnd = cell; editCell = cell
-                            editSelection = emptySet(); editSelectionIsRectangle = false
+                            editRangeStart = cell; editRangeEnd = cell
                         }
                     }
                     invalidate()
@@ -899,9 +924,9 @@ class PreprocessOverlayView(context: Context) : View(context) {
                         when (cellEditorTool) {
                             EditorTool.BRUSH_ZERO, EditorTool.BRUSH_ONE, EditorTool.BRUSH_ERASURE, EditorTool.BRUSH_ERASURE_WIDE -> Unit
                             EditorTool.STAMP_ERASURE_SMALL, EditorTool.STAMP_ERASURE_MEDIUM, EditorTool.STAMP_ERASURE_LARGE -> {
-                                editStroke.clear(); editStroke += editFootprint(cell, cellEditorTool.editStampSize() ?: 3); editCell = cell
+                                editStroke.clear(); editStroke += editFootprint(cell, cellEditorTool.editStampSize() ?: 3)
                             }
-                            EditorTool.RECT_SELECT -> { editRangeEnd = cell; editCell = cell }
+                            EditorTool.RECT_SELECT -> { editRangeEnd = cell }
                             EditorTool.NAVIGATE -> Unit
                         }
                     }
@@ -935,6 +960,10 @@ class PreprocessOverlayView(context: Context) : View(context) {
                 if (editGeometry != null && cellEditInteractive) {
                     if (event.actionMasked == MotionEvent.ACTION_UP) {
                         appendBrushSamples()
+                        if (cellEditorTool.editStampSize() != null) {
+                            editStroke.clear()
+                            editCoord()?.let { editStroke += editFootprint(it, cellEditorTool.editStampSize()!!) }
+                        }
                         if (cellEditorTool == EditorTool.NAVIGATE) performClick()
                         val brushValue = when (cellEditorTool) {
                             EditorTool.BRUSH_ZERO -> ModuleValue.ZERO
@@ -947,8 +976,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
                             else -> null
                         }
                         if (brushValue != null && editStroke.isNotEmpty()) {
-                            editSelection = editStroke.toSet()
-                            editSelectionIsRectangle = false
+                            setCellSelection(editStroke.toSet(), asRectangle = cellEditorTool.editStampSize() != null)
                             onCellBrushApplied?.invoke(editSelection, brushValue)
                         }
                         if (cellEditorTool == EditorTool.RECT_SELECT) {
@@ -961,6 +989,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
                                     }
                                 }
                                 editSelectionIsRectangle = true
+                                editCell = editSelection.firstOrNull()
                                 onCellRangeSelected?.invoke(editSelection)
                             }
                         }

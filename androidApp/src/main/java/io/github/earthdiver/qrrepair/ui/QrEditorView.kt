@@ -205,9 +205,9 @@ class QrEditorView(context: Context) : View(context) {
     fun updateGeometryAndMatrix(geometry: GridGeometry, matrix: QrMatrix) { this.geometry = geometry; this.matrix = matrix; invalidate() }
     fun previewGeometry(geometry: GridGeometry) { this.geometry = geometry; invalidate() }
     fun setSelected(x: Int, y: Int) { selected = x to y; selectedCells = setOf(Coord(x, y)); selectionIsRectangle = false; invalidate() }
-    fun setSelection(coords: Collection<Coord>, asRectangle: Boolean = false) {
+    fun setSelection(coords: Collection<Coord>, asRectangle: Boolean = false, focus: Coord? = coords.firstOrNull()) {
         selectedCells = coords.toSet()
-        selected = coords.firstOrNull()?.let { it.x to it.y }
+        selected = (focus?.takeIf { it in selectedCells } ?: coords.firstOrNull())?.let { it.x to it.y }
         selectionIsRectangle = asRectangle && selectedCells.isNotEmpty()
         invalidate()
     }
@@ -655,8 +655,10 @@ class QrEditorView(context: Context) : View(context) {
                                 else -> ModuleValue.ERASED
                             }
                             val changed = activeStroke.toSet(); activeStroke.clear(); parent?.requestDisallowInterceptTouchEvent(false)
-                            selectionIsRectangle = false
-                            if (changed.isNotEmpty()) onBrushApplied?.invoke(changed, value)
+                            if (changed.isNotEmpty()) {
+                                setSelection(changed)
+                                onBrushApplied?.invoke(changed, value)
+                            }
                             invalidate(); return true
                         }
                         MotionEvent.ACTION_CANCEL -> { activeStroke.clear(); parent?.requestDisallowInterceptTouchEvent(false); invalidate(); return true }
@@ -675,8 +677,10 @@ class QrEditorView(context: Context) : View(context) {
                             activeStroke.clear()
                             val changed = cell?.let { footprint(it, stampSize) }.orEmpty()
                             parent?.requestDisallowInterceptTouchEvent(false)
-                            selectionIsRectangle = false
-                            if (changed.isNotEmpty()) onBrushApplied?.invoke(changed, ModuleValue.ERASED)
+                            if (changed.isNotEmpty()) {
+                                setSelection(changed, asRectangle = true)
+                                onBrushApplied?.invoke(changed, ModuleValue.ERASED)
+                            }
                             invalidate(); return true
                         }
                         MotionEvent.ACTION_CANCEL -> { activeStroke.clear(); parent?.requestDisallowInterceptTouchEvent(false); invalidate(); return true }

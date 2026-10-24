@@ -188,4 +188,17 @@ class RecoveryDiagnosticOverviewTest {
             assertFalse(diagnosticText(view).contains(verification.details))
         }
     }
+    @Test fun discoveryLowerBoundAndRetainedResultsRemainSeparateFromSearchCompleteness() {
+        inBothLanguages { ja ->
+            val context = RecoveryDiagnosticContext(2, false, true,
+                RecoverySearchDiagnostic(coverageComplete = true, solverCompleteness = SearchCompleteness.COMPLETE,
+                    candidatesOmitted = true), null, discoveredCandidates = RecoveryDiscoveryCount.AtLeast(7))
+            val text = RecoveryDiagnosticPresenter(ja).searchResultDescription(context)
+            assertTrue(text.contains(if (ja) "見つかった候補: 7件以上" else "Candidates found: at least 7"))
+            assertTrue(text.contains(if (ja) "結果一覧: 2件" else "Results available: 2"))
+            assertTrue(text.contains(if (ja) "保持上限" else "retention limit"))
+            assertFalse(text.contains(if (ja) "未探索の組合せ" else "combinations remain unchecked"))
+        }
+    }
+
 }

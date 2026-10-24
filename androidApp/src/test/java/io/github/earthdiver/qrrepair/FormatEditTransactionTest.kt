@@ -6,7 +6,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class FormatEditTransactionTest {
-    @Test fun rejectedBatchChangesNeitherEditsNorUndoRedoOrSelection() {
+    @Test fun rejectedBatchSelectsItsTargetsWithoutChangingEditsOrUndoRedo() {
         val constraint = QrFormatConstraint(ErrorCorrectionLevel.L, 0)
         val fixed = FormatEditPolicy.fixedValues(1, constraint)
         val a = fixed.keys.first { fixed[it] == ModuleValue.ZERO }
@@ -23,7 +23,8 @@ class FormatEditTransactionTest {
         assertTrue(state.edits.isEmpty())
         assertEquals(0, state.undoCount)
         assertEquals(0, state.redoCount)
-        assertEquals(setOf(a), state.selectedCells)
+        assertEquals(setOf(a, b), state.selectedCells)
+        assertEquals(CellEditOutcome.REJECTED, state.lastEditOutcome)
     }
 
     @Test fun redoIsValidatedAgainstNewSelectionAndCanBeRetriedAfterReturningToAuto() {

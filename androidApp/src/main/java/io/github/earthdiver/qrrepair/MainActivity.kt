@@ -13,6 +13,7 @@ import io.github.earthdiver.qrrepair.core.displayedModuleValue
 import io.github.earthdiver.qrrepair.core.RecoveryInputBlocker
 import io.github.earthdiver.qrrepair.core.identity
 import io.github.earthdiver.qrrepair.core.isSelectableRecovery
+import io.github.earthdiver.qrrepair.core.RecoveryDiscoveryCounter
 import io.github.earthdiver.qrrepair.core.RecoveryMemoryPolicy
 import io.github.earthdiver.qrrepair.core.ListDecodingBudget
 import io.github.earthdiver.qrrepair.core.RecoveryRetentionBudget
@@ -1334,6 +1335,7 @@ class MainActivity : Activity() {
         preprocessSettings = preprocessSettings,
         selectedQr = recoveryState.selectedRecovery?.takeIf { it.isSelectableRecovery }?.let(RecoverySelectionIdentity::from),
         samplingInverted = recoveryState.samplingProfile?.inverted,
+        oneTimeSingleSegment = recoveryState.oneTimeSingleSegment,
     )
 
     private fun preparedFor(settings: PreprocessSettings): BitmapUtils.Prepared? {
@@ -1372,7 +1374,8 @@ class MainActivity : Activity() {
                 kind = HistoryEventKind.AUTO_RECOVERY,
                 label = label,
                 detail = detail,
-                snapshot = RecoverySnapshot(null, null, null, -1, preprocessSettings),
+                snapshot = RecoverySnapshot(null, null, null, -1, preprocessSettings,
+                    oneTimeSingleSegment = recoveryState.oneTimeSingleSegment),
             ),
         )
         persistSessionAsync()
@@ -1548,12 +1551,15 @@ class MainActivity : Activity() {
             return
         }
         val source = snapshot.sourceMatrix?.copy() ?: matrix.copy()
-        val requestSettings = preprocessSettings.recoverySnapshot()
+        recoveryState.oneTimeSingleSegment = snapshot.oneTimeSingleSegment
+        val requestSettings = preprocessSettings.recoverySnapshot().let {
+            if (snapshot.oneTimeSingleSegment) it.copy(trustKnownPayloadCount = true) else it
+        }
         val token = workGeneration.incrementAndGet()
         historyRestoreToken = token
         // A restored snapshot represents one concrete saved geometry even though auto recovery is not persisted.
         recoveryState.restoreAttempt(geometry, source, matrix,
-            snapshot.samplingInverted?.let { SamplingProfile(preprocessSettings, it) })
+            snapshot.samplingInverted?.let { SamplingProfile(requestSettings, it) })
         if (maxOf(requestSettings.preRecoveryPrioritySearch.size, matrix.prioritySearchCoordinates().size) > requestSettings.prioritySearchLimit) {
             historyRestoreToken = null
             refreshMainResultSelector()
@@ -1590,6 +1596,7 @@ class MainActivity : Activity() {
                         onProgress = progressDialog::listDecodingProgress,
                         onIdle = progressDialog::listDecodingIdle,
                     ),
+                    discoveryCounter = RecoveryDiscoveryCounter(onChanged = progressDialog::candidatesFound),
                     onPriorityProgress = progressDialog::priorityProgress,
                 )
             },
@@ -1602,6 +1609,7 @@ class MainActivity : Activity() {
                         ?: preferredRecoveryIndex(ranked, snapshot.recoveryIndex),
                     failure,
                     outcome.searchDiagnostic,
+                    outcome.discoveredCandidates,
                 )
                 refreshInspector()
                 updateSummary(if (snapshot.selectedQr != null && recoveryState.selectedRecovery == null)
@@ -1884,6 +1892,7 @@ class MainActivity : Activity() {
 
     private fun diagnosticContext() = RecoveryDiagnosticContext(
         candidateCount = searchCandidateCount(),
+        discoveredCandidates = recoveryState.discoveredCandidates,
         unsearched = searchHasUncheckedCombinations(),
         candidatesOmitted = recoveryState.candidatesOmitted,
         searchDiagnostic = recoveryState.searchDiagnostic,
@@ -2393,11 +2402,17 @@ class MainActivity : Activity() {
     private fun settingsFormatConflict(settings: PreprocessSettings): FormatEditConflict? =
         FormatEditPolicy.conflict(settings.version, settings.formatConstraint, settings.fixedPreRecoveryEdits)
 
-    private fun startAutoRecovery() {
+    private val singleSegmentRetryPolicy = SingleSegmentRetryPolicy()
+
+    private fun startAutoRecovery() = startAutoRecovery(oneTimeSingleSegment = false)
+
+    private fun startAutoRecovery(oneTimeSingleSegment: Boolean) {
         if (inputProgressGeneration != null) return
         immediateResultShown = false
         showWorkspace()
-        val requestSettings = preprocessSettings.recoverySnapshot()
+        val savedSettings = preprocessSettings.recoverySnapshot()
+        val requestSettings = if (oneTimeSingleSegment) savedSettings.copy(trustKnownPayloadCount = true) else savedSettings
+        val inputSource = prepared
         if (requestSettings.preRecoveryPrioritySearch.size > requestSettings.prioritySearchLimit) {
             AlertDialog.Builder(this).setMessage(ui(
                 "*の指定数が上限${requestSettings.prioritySearchLimit}を超えています。詳細設定で上限を戻すか、指定数を減らしてください。既存の指定は保持されています。",
@@ -2422,6 +2437,7 @@ class MainActivity : Activity() {
         analysisPrepared = p
         val token = workGeneration.incrementAndGet()
         recoveryState.clear()
+        recoveryState.oneTimeSingleSegment = oneTimeSingleSegment
         updateContentPreview()
         contentPreviewText.text = ""
         guideText.text = ""
@@ -2445,6 +2461,7 @@ class MainActivity : Activity() {
                         onProgress = progressDialog::listDecodingProgress,
                         onIdle = progressDialog::listDecodingIdle,
                     ),
+                    discoveryCounter = RecoveryDiscoveryCounter(onChanged = progressDialog::candidatesFound),
                     onPriorityProgress = progressDialog::priorityProgress,
                     onProgress = { progress ->
                         progressDialog.phase("${progress.profile.label}: ${progress.message} (${progress.done}/${progress.total})")
@@ -2453,6 +2470,20 @@ class MainActivity : Activity() {
             },
             onResult = onResult@{ result ->
                 recoveryState.autoResult = result
+                if (workGeneration.get() == token && prepared === inputSource &&
+                    preprocessSettings.recoverySnapshot() == savedSettings && inputSource != null &&
+                    singleSegmentRetryPolicy.claim(inputSource, requestSettings,
+                        result.searchDiagnostic, progressDialog.stopped.get())) {
+                    AlertDialog.Builder(this)
+                        .setMessage(ui("単一セグメントの終端・埋め草を強制すると、内容を復号できる可能性があります。この条件で今回だけ再実行しますか？",
+                            "Forcing a single segment’s terminator and padding may allow the content to decode. Retry with this condition for this run only?"))
+                        .setPositiveButton(ui("今回だけ再実行", "Retry this time only")) { _, _ ->
+                            if (workGeneration.get() == token && prepared === inputSource &&
+                                preprocessSettings.recoverySnapshot() == savedSettings) startAutoRecovery(oneTimeSingleSegment = true)
+                        }
+                        .setNegativeButton(ui("再実行しない", "Do not retry"), null)
+                        .show()
+                }
                 if (result.searchDiagnostic?.completeness == SearchCompleteness.UNSEARCHED && result.attempts.isEmpty()) {
                     statusText.text = searchResultDescription()
                     guideText.text = ui("保持された候補はありません。復元不能を意味しません。", "No candidates were retained. This does not establish that recovery is impossible.")
@@ -2483,7 +2514,8 @@ class MainActivity : Activity() {
                 showAttempt(recoveryState.attemptIndex)
                 recordHistory(
                     HistoryEventKind.AUTO_RECOVERY,
-                    ui("修復処理", "Repair"),
+                    if (oneTimeSingleSegment) ui("修復処理（今回だけ終端後構造を強制）", "Repair (single-segment forcing for this run only)")
+                    else ui("修復処理", "Repair"),
                     ui("試行 ${result.attemptedGeometries}件 / 保持候補 ${recoveryState.selectableEntries.size}件", "${result.attemptedGeometries} attempts / ${recoveryState.selectableEntries.size} retained candidates"),
                 )
             },
