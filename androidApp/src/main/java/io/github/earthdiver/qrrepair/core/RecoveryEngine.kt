@@ -813,8 +813,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                         val nonEnumerable = priorityRawIndices.mapNotNullTo(hashSetOf()) { raw ->
                             de.rawLocations.getOrNull(raw)?.takeIf { it.blockIndex == blockIndex }?.localIndex
                         }
-                        val space = if (basicOnly) null else if (constraints.filledBits == 0) originalSpaces[blockIndex]
-                            else bitSolver.analyze(block, de.ecSymbolsPerBlock, run.cancellation)
+                        val space = if (basicOnly) null else trialSpaces[blockIndex]
                         val requiredBytes = blockCandidateWorkingBytes(block, space?.dimension,
                             trialBitEnumeration, nonEnumerable, exactOnly,
                             de.ecSymbolsPerBlock, conventionalDiagnostic.blocks.getOrNull(blockIndex)?.margin
