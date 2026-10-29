@@ -32,7 +32,8 @@ class RsBitConstraintSolver(
         val dimension: Int get() = free.size
         /** Conservative live storage estimate, including binary rows and coordinate metadata. */
         val workingBytes: Long get() = 1024L + base.size * 8L + unknownBits.size * 64L +
-            rows.sumOf { 32L + it.size * 8L } + rhs.size * 8L + free.size * 8L
+            rows.sumOf { 32L + it.size * 8L } + rhs.size * 8L + free.size * 8L +
+            if (dimension in 1..20) (dimension + 1L) * (32L + base.size * 4L) else 0L
         private val pivotRow = IntArray(unknownBits.size) { -1 }.also { index ->
             pivots.forEachIndexed { row, column -> index[column] = row }
         }
@@ -200,20 +201,35 @@ class RsBitConstraintSolver(
             require(maxDimension in 0..20)
             if (dimension > maxDimension) return emptySequence()
             return sequence {
+                cancellation.check()
+                val current = base.copyOf()
+                pivots.forEachIndexed { row, column ->
+                    val bit = unknownBits[column]
+                    if (rhs[row]) current[bit.codeword] = current[bit.codeword] or (1 shl bit.bit)
+                }
+                val deltas = free.map { column ->
+                    cancellation.check()
+                    IntArray(base.size).also { delta ->
+                        val freeBit = unknownBits[column]
+                        delta[freeBit.codeword] = 1 shl freeBit.bit
+                        pivots.forEachIndexed { row, pivot ->
+                            if (rows[row].has(column)) {
+                                val bit = unknownBits[pivot]
+                                delta[bit.codeword] = delta[bit.codeword] xor (1 shl bit.bit)
+                            }
+                        }
+                    }
+                }
+                // Preserve binary enumeration order; a carry can toggle several basis vectors.
                 for (assignment in 0 until (1 shl dimension)) {
                     cancellation.check()
-                    val values = BooleanArray(unknownBits.size)
-                    free.forEachIndexed { i, column -> values[column] = (assignment and (1 shl i)) != 0 }
-                    pivots.forEachIndexed { row, column ->
-                        var value = rhs[row]
-                        for (f in free) if (rows[row].has(f) && values[f]) value = !value
-                        values[column] = value
+                    var changed = if (assignment == 0) 0 else assignment xor (assignment - 1)
+                    while (changed != 0) {
+                        val delta = deltas[changed.countTrailingZeroBits()]
+                        for (i in current.indices) current[i] = current[i] xor delta[i]
+                        changed = changed and (changed - 1)
                     }
-                    val corrected = base.copyOf()
-                    unknownBits.forEachIndexed { i, bit ->
-                        if (values[i]) corrected[bit.codeword] = corrected[bit.codeword] or (1 shl bit.bit)
-                    }
-                    yield(corrected)
+                    yield(current.copyOf())
                 }
             }
         }
