@@ -140,6 +140,44 @@ class ResultScreenTrialTest {
     }
 
 
+    @Test fun selectingCandidatesPreservesBothHorizontalScrollPositions() {
+        val (matrix, result) = candidate("ABC-123")
+        val results = List(40) { result.copy(text = "Candidate ${it + 1}") }
+        for (style in AppStyle.entries) withActivity(style, AppLanguage.JAPANESE) { activity ->
+            install(activity, matrix, results)
+            val selectors = listOf("upperResultSelector", "mainResultSelector")
+                .map { field<ViewGroup>(activity, it) }
+            fun scroll(selector: ViewGroup) =
+                descendants(selector).filterIsInstance<android.widget.HorizontalScrollView>().single()
+            fun layoutRows() {
+                selectors.forEach { selector ->
+                    selector.measure(
+                        View.MeasureSpec.makeMeasureSpec(320, View.MeasureSpec.EXACTLY),
+                        View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+                    )
+                    selector.layout(0, 0, 320, selector.measuredHeight)
+                }
+            }
+            layoutRows()
+            selectors.forEachIndexed { index, selector -> scroll(selector).scrollTo(900 + index * 200, 0) }
+            val positions = selectors.map { scroll(it).scrollX }
+            assertTrue(positions.all { it > 0 })
+            for ((selectorIndex, candidateIndex) in listOf(0 to 12, 1 to 15, 0 to 13)) {
+                descendants(selectors[selectorIndex]).filterIsInstance<android.widget.RadioButton>()
+                    .get(candidateIndex).performClick()
+                shadowOf(Looper.getMainLooper()).idle()
+                layoutRows()
+                assertEquals(positions, selectors.map { scroll(it).scrollX })
+                assertEquals(candidateIndex, field<RecoveryUiState>(activity, "recoveryState").recoveryIndex)
+                selectors.forEach { selector ->
+                    val buttons = descendants(selector).filterIsInstance<android.widget.RadioButton>()
+                    assertEquals(listOf(candidateIndex), buttons.indices.filter { buttons[it].isChecked })
+                }
+                assertTrue(field<TextView>(activity, "contentPreviewText").text.contains("Candidate ${candidateIndex + 1}"))
+            }
+        }
+    }
+
     @Test fun candidateSelectionAcrossAttemptsUpdatesInputCopyPngAndSavedIdentity() {
         val (firstMatrix, first) = candidate("ABC-123")
         val (secondMatrix, second) = candidate("ABC-128")

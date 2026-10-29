@@ -1022,18 +1022,33 @@ class MainActivity : Activity() {
         val results = allResults.take(MAX_DISPLAYED_RECOVERY_CANDIDATES)
         if (results.size <= 1) comparisonCandidate = null
         for (selector in listOf(upperResultSelector, mainResultSelector)) {
-            selector.removeAllViews()
+            // Keep the candidate row attached while selecting within the same result set.
+            // Replacing it also discards its horizontal scroll position and focus.
+            val candidateScroll = (0 until selector.childCount)
+                .map { selector.getChildAt(it) }
+                .filterIsInstance<HorizontalScrollView>()
+                .firstOrNull { it.tag == results }
+            for (childIndex in selector.childCount - 1 downTo 0) {
+                if (selector.getChildAt(childIndex) !== candidateScroll) selector.removeViewAt(childIndex)
+            }
             selector.visibility = if (results.size > 1) View.VISIBLE else View.GONE
             if (results.size <= 1) continue
             selector.addView(TextView(this).apply {
                 text = candidateSelectionLabel(allResults.size)
                 textSize = 12f
                 setPadding(dp(8), dp(4), dp(8), 0)
-            })
-            selector.addView(HorizontalScrollView(this).apply {
-                isHorizontalScrollBarEnabled = false
-                addView(resultRadioGroup(results) { renderMainResultSelection() })
-            })
+            }, 0)
+            if (candidateScroll == null) {
+                selector.addView(HorizontalScrollView(this).apply {
+                    tag = results
+                    isHorizontalScrollBarEnabled = false
+                    addView(resultRadioGroup(results))
+                })
+            } else {
+                val group = candidateScroll.getChildAt(0) as RadioGroup
+                val selected = results.indexOfFirst { it.first == recoveryState.recoveryIndex }
+                if (selected >= 0) group.check(group.getChildAt(selected).id) else group.clearCheck()
+            }
             selector.addView(button(ui("候補の内容一覧", "Candidate contents")) {
                 CandidateContentsDialog(this, results, recoveryState.recoveryIndex,
                     candidateSelectionLabel(allResults.size)) { index ->
@@ -1064,10 +1079,6 @@ class MainActivity : Activity() {
                 })
             }
         }
-    }
-
-    private fun renderMainResultSelection() {
-        refreshMainResultSelector()
     }
 
     private fun resultRadioGroup(
