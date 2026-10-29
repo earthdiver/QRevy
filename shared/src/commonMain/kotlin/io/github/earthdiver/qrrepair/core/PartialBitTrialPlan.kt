@@ -24,6 +24,15 @@ internal class PartialBitTrialPlan(
         remainingErasures = erased.filterNot { it in chosen }.toIntArray()
     }
 
+    fun cursor(rs: ReedSolomonErasures, ecSymbols: Int): ReedSolomonErasures.BitTrials {
+        val coordinates = buildList {
+            for (position in selected) for (bit in 0..7)
+                if (block.unknownMasks[position] and (1 shl bit) != 0)
+                    add(RsBitConstraintSolver.Bit(position, bit))
+        }
+        return rs.BitTrials(assignment(0), ecSymbols, remainingErasures, coordinates)
+    }
+
     fun assignment(index: Int): IntArray {
         require(index in 0 until (1 shl bitCount))
         val guessed = block.codewords.copyOf()
@@ -37,3 +46,7 @@ internal class PartialBitTrialPlan(
         return guessed
     }
 }
+
+/** Fixed workspace bound, independent of the number of assignments or recovered candidates. */
+fun partialBitTrialWorkingBytes(length: Int, ecSymbols: Int, bits: Int): Long =
+    512L + length * 16L + ecSymbols * 8L + bits * (128L + ecSymbols * 4L)

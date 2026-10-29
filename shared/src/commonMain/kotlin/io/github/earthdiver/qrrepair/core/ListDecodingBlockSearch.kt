@@ -20,6 +20,7 @@ class ListDecodingBlockSearch(
     private val nsym = block.codewords.size - block.numDataCodewords
     private val decoder by lazy { GuruswamiSudanDecoder(block.codewords.size, block.numDataCodewords) }
     private val rs = ReedSolomonErasures()
+    private val bitTrials by lazy { plan.cursor(rs, nsym) }
     private val accumulated = BlockCandidateAccumulator()
     private var basePending = true
     private var baseExtra = 1
@@ -49,7 +50,8 @@ class ListDecodingBlockSearch(
     val methodTrials: Map<ListDecoderMethod, Int> get() = methods.toMap()
     val skipReasons: Set<ListDecodingTrialSkip> get() = skipped.toSet()
     val hasNext: Boolean get() = basePending || softPending || assignment < assignments
-    val workingBytes: Long get() = 8192L + block.codewords.size * 64L + accumulated.workingBytes
+    val workingBytes: Long get() = 8192L + block.codewords.size * 64L + accumulated.workingBytes +
+        if (assignments > 0) partialBitTrialWorkingBytes(block.codewords.size, nsym, plan.bitCount) else 0L
     val candidates: List<PartialCodewordSolver.Result> get() = accumulated.results()
 
     init {
@@ -91,7 +93,7 @@ class ListDecodingBlockSearch(
             else { assignment = index + 1; assignmentExtra = 1 }
             return false
         }
-        val guessed = if (base) block.codewords.copyOf() else plan.assignment(index)
+        val guessed = if (base) block.codewords.copyOf() else bitTrials.assignment(index)
         val before = accumulated.workingBytes
         val beforeCount = accumulated.size
         val key = if (base && cache != null) ListDecodingTrialCache.Key(block,
@@ -128,7 +130,7 @@ class ListDecodingBlockSearch(
             trials++
             // Triangle inequality proves a close ordinary result is the only codeword in this
             // hard-decision ball. Healthy blocks and already-disproved QR payloads need no interpolation.
-            val ordinary = try { rs.decode(guessed, nsym, erased) } catch (_: ReedSolomonErasures.DecodeException) { null }
+            val ordinary = try { if (base) rs.decode(guessed, nsym, erased) else bitTrials.decode() } catch (_: ReedSolomonErasures.DecodeException) { null }
             if (ordinary != null) {
                 val errors = guessed.indices.count { it !in erased && ordinary.corrected[it] != guessed[it] }
                 offer(ordinary.corrected, ordinary.errataPositions, null)

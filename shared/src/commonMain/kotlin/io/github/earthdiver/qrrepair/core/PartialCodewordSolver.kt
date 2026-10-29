@@ -152,10 +152,11 @@ class PartialCodewordSolver(private val rs: ReedSolomonErasures) {
         val trials = minOf(1 shl totalBits, maxTrials)
         val candidates = BlockCandidateAccumulator()
         erasureOnlyResult?.let(candidates::add)
+        val cursor = plan.cursor(rs, nsym)
         for (assignment in 0 until trials) {
             cancellation.check()
-            val guessed = plan.assignment(assignment)
-            val r = try { rs.decode(guessed, nsym, remainingErase) } catch (_: ReedSolomonErasures.DecodeException) { continue }
+            val guessed = cursor.assignment(assignment)
+            val r = try { cursor.decode() } catch (_: ReedSolomonErasures.DecodeException) { continue }
             var guessMismatch = 0
             for (pos in selected) if (r.corrected[pos] != guessed[pos]) guessMismatch++
             var knownBitMismatch = 0
