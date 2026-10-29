@@ -724,7 +724,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                     val radiusCounts = Array(de.blocks.size) { emptyMap<Int, Int>() }
                     val completedRadiusCounts = Array(de.blocks.size) { emptyMap<Int, Int>() }
                     val foundListDecoded = ListDecodingQrSearch(rs).run(de, original, matrix, extraction, priorityAssignments.keys, version, requireNotNull(listDecodingLimit),
-                        trialBitEnumeration, nonEnumerable, run.partialBitSearchLimit, run.retentionBudget.workingLimitBytes,
+                        trialBitEnumeration, nonEnumerable, run.partialBitSearchLimit, run.listSearchWorkingBytes,
                         run.cancellation, baseOnly = run.phase == RecoveryPhase.EARLY_LIST || basicOnly,
                         cache = run.listDecodingCache, additionalErrors = run.listDecodingAdditionalErrors,
                         onRejection = { run.candidateRejections += it },
