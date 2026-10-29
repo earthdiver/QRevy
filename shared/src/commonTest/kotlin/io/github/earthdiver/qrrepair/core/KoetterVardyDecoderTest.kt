@@ -36,6 +36,46 @@ class KoetterVardyDecoderTest {
         assertEquals(actual, alternateList, "Unknown placeholders must not affect multiplicities or results")
     }
 
+    @Test fun sparseAndHighBitInputsRetainEveryAboveThresholdCodewordInStableOrder() {
+        val masksToTest = listOf(
+            intArrayOf(1, 3, 1, 0, 0, 0, 0, 255),
+            intArrayOf(128, 1, 0, 0, 0, 0, 0, 255),
+            intArrayOf(3, 0, 0, 0, 0, 0, 0, 0),
+        )
+        for ((index, masks) in masksToTest.withIndex()) {
+            val data = listOf(intArrayOf(0, 0), intArrayOf(255, 255), intArrayOf(37, 113))[index]
+            val received = rs.encode(data, 6).also { it[4] = it[4] xor 128 }
+            val decoder = KoetterVardyDecoder(8, 2)
+            val parameters = assertNotNull(decoder.parameters(masks, 1, memory))
+            fun score(word: IntArray): Int = word.indices.sumOf {
+                if (masks[it].countOneBits() <= 4 &&
+                    (word[it] xor received[it]) and masks[it].inv() and 255 == 0)
+                    parameters.multiplicity shr masks[it].countOneBits() else 0
+            }
+            val expected = buildSet {
+                for (a in 0..255) for (b in 0..255) {
+                    val word = rs.encode(intArrayOf(a, b), 6)
+                    if (score(word) > parameters.degreeBound) add(word.toList())
+                }
+            }
+            fun decoded(input: IntArray) = buildList {
+                decoder.decode(input, masks, parameters, memory) { word, value ->
+                    assertEquals(score(word), value)
+                    add(word.toList())
+                }
+            }
+            val actual = decoded(received)
+            assertEquals(expected, actual.toSet())
+            assertEquals(actual, decoded(IntArray(8) { received[it] xor masks[it] }),
+                "Unknown placeholders cannot change candidate order")
+            assertEquals(parameters, decoder.parameters(masks, 1, parameters.workingBytes))
+            assertNull(decoder.parameters(masks, 1, parameters.workingBytes - 1))
+            assertFailsWith<ListDecodingWorkingMemoryException> {
+                decoder.decode(received, masks, parameters, parameters.workingBytes - 1) { _, _ -> }
+            }
+        }
+    }
+
     @Test fun usesManyPartialBytesWithoutEnumeratingTheirUnknownBitAssignments() {
         val word = rs.encode(IntArray(9) { (it * 17 + 23) and 255 }, 17)
         val masks = IntArray(26) { if (it < 18) 1 else 0 }

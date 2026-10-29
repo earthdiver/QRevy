@@ -54,7 +54,9 @@ class KoetterVardyDecoder(private val length: Int, private val dataLength: Int) 
             val width = ell + 1L
             val polynomial = 32L + 4L * (low + 2L)
             val roots = listDecodingWork(2, dataLength + 2L, width, 32L + 4L * (low + dataLength.toLong() * ell + 2))
-            val bytes = listDecodingMemory(32_768L + length * 256L, listDecodingWork(2, width, width, polynomial), roots)
+            val componentDegreesBytes = 32L + listDecodingWork(width, 32L + 4L * width)
+            val bytes = listDecodingMemory(32_768L + length * 256L, listDecodingWork(2, width, width, polynomial),
+                roots, componentDegreesBytes)
             val work = listDecodingWork(constraints, width, width, low + 1L)
             if (bytes > workingLimitBytes || work > maximumWork) return null
             return Parameters(quantum * scale, ell, low, targetErrors, constraints.toInt(), bytes, work)
@@ -91,10 +93,12 @@ class KoetterVardyDecoder(private val length: Int, private val dataLength: Int) 
         val enabled = BooleanArray(size) { true }
         val degrees = IntArray(size) { it * (dataLength - 1) }
         val leadingY = IntArray(size) { it }
+        // Fixed-size metadata for the interpolation basis, independent of emitted candidates.
+        val componentDegrees = Array(size) { row -> IntArray(size) { y -> if (row == y) 0 else -1 } }
         fun updateDegree(row: Int) {
             var best = -1
             for (j in 0 until size) {
-                val x = rows[row][j].indexOfLast { it != 0 }
+                val x = componentDegrees[row][j]
                 val degree = if (x < 0) -1 else x + j * (dataLength - 1)
                 if (degree >= best && x >= 0) { best = degree; leadingY[row] = j }
             }
@@ -103,6 +107,7 @@ class KoetterVardyDecoder(private val length: Int, private val dataLength: Int) 
             // cannot participate in a solution within the chosen weighted-degree bound.
             if (best > p.degreeBound) enabled[row] = false
         }
+        val discrepancies = IntArray(size)
         for (position in received.indices) {
             val m = multiplicities[position]
             if (m == 0) continue
@@ -115,38 +120,54 @@ class KoetterVardyDecoder(private val length: Int, private val dataLength: Int) 
                 val yp = IntArray(size).also { it[0] = 1; for (i in 1 until it.size) it[i] = F.multiply(it[i - 1], y) }
                 for (a in 0 until m) for (b in 0 until m - a) {
                     check()
-                    val discrepancies = IntArray(size)
+                    discrepancies.fill(0)
                     for (row in 0 until size) if (enabled[row]) {
                         var delta = 0
                         for (j in b until size) if ((j and b) == b) {
                             var part = 0
-                            for (i in a until capacity) if ((i and a) == a && rows[row][j][i] != 0) {
+                            for (i in a..componentDegrees[row][j]) if ((i and a) == a && rows[row][j][i] != 0) {
                                 part = part xor F.multiply(rows[row][j][i], xp[i - a])
                             }
                             delta = delta xor F.multiply(part, yp[j - b])
                         }
                         discrepancies[row] = delta
                     }
-                    val pivot = (0 until size).filter { enabled[it] && discrepancies[it] != 0 }
-                        .minWithOrNull(compareBy<Int> { degrees[it] }.thenBy { leadingY[it] }) ?: continue
+                    var pivot = -1
+                    for (row in 0 until size) if (enabled[row] && discrepancies[row] != 0 &&
+                        (pivot < 0 || degrees[row] < degrees[pivot] ||
+                            (degrees[row] == degrees[pivot] && leadingY[row] < leadingY[pivot]))) pivot = row
+                    if (pivot < 0) continue
                     for (row in 0 until size) if (row != pivot && enabled[row] && discrepancies[row] != 0) {
                         check()
                         val factor = F.divide(discrepancies[row], discrepancies[pivot])
-                        for (j in 0 until size) for (i in 0 until capacity) {
-                            rows[row][j][i] = rows[row][j][i] xor F.multiply(factor, rows[pivot][j][i])
+                        for (j in 0 until size) {
+                            val pivotDegree = componentDegrees[pivot][j]
+                            if (pivotDegree < 0) continue
+                            for (i in 0..pivotDegree)
+                                rows[row][j][i] = rows[row][j][i] xor F.multiply(factor, rows[pivot][j][i])
+                            var degree = maxOf(componentDegrees[row][j], pivotDegree)
+                            while (degree >= 0 && rows[row][j][degree] == 0) degree--
+                            componentDegrees[row][j] = degree
                         }
                         updateDegree(row)
                     }
                     for (j in 0 until size) {
                         val poly = rows[pivot][j]
-                        for (i in poly.lastIndex downTo 1) poly[i] = poly[i - 1] xor F.multiply(x, poly[i])
+                        val last = componentDegrees[pivot][j]
+                        if (last < 0) continue
+                        for (i in minOf(poly.lastIndex, last + 1) downTo 1)
+                            poly[i] = poly[i - 1] xor F.multiply(x, poly[i])
                         poly[0] = F.multiply(x, poly[0])
+                        componentDegrees[pivot][j] = last + 1
                     }
-                    updateDegree(pivot)
+                    // Multiplication by (X - x) raises the leading degree by exactly one
+                    // and preserves its Y component; no coefficient scan is necessary.
+                    degrees[pivot]++
+                    if (degrees[pivot] > p.degreeBound) enabled[pivot] = false
                 }
             }
         }
         val best = (0 until size).filter { enabled[it] }.minBy { degrees[it] }
-        return Array(size) { rows[best][it].copyOf(rows[best][it].indexOfLast { v -> v != 0 } + 1) }
+        return Array(size) { rows[best][it].copyOf(componentDegrees[best][it] + 1) }
     }
 }
