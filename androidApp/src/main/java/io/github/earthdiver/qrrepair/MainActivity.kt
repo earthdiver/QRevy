@@ -1596,6 +1596,7 @@ class MainActivity : Activity() {
                     trustKnownPayloadCount = requestSettings.trustKnownPayloadCount,
                     partialBitSearchLimit = requestSettings.partialBitSearchLimit,
                     listDecodingAdditionalErrors = requestSettings.listDecodingAdditionalErrors,
+                    knownBitErrorLimit = requestSettings.knownBitErrorLimit,
                     formatConstraint = requestSettings.formatConstraint,
                     maxFormatMismatches = requestSettings.effectiveFormatMismatchLimit,
                     maxKnownDataEccMismatches = requestSettings.effectiveDataEccMismatchLimit,

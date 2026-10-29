@@ -57,6 +57,8 @@ data class ModuleRepairTrace(
     /** Confidence stored on the input cell, including manual edits; never a correction-assigned value. */
     val originalConfidence: Float = 0f,
     val bitConstraintSolved: Boolean = false,
+    val knownBitSearch: Boolean = false,
+    val knownBitError: Boolean = false,
     val listDecoding: ListDecodingDerivation? = null,
     /** Present only for this coordinate when an explicit priority trial assigned it. */
     val priorityAssignment: ModuleValue? = null,
@@ -152,6 +154,8 @@ data class ModuleRepairTrace(
                 "\nThe trial ${reasonLabelJa(it)} assigned unmasked bit=$overturnedConstraintValue, which RS later corrected. It is not supporting evidence for the final value.",
             ))
         }
+        if (knownBitSearch) append(localizedText("\n方法: 既知bit誤りの追加探索", "\nMethod: known-bit error search"))
+        if (knownBitError) append(localizedText("（このセルを誤り位置として変更）", " (this cell was changed as a hypothesized error position)"))
         if (supportingReasons.isNotEmpty()) {
             append(localizedText("\n補助根拠: ", "\nSupporting evidence: "))
             append(supportingReasons.distinct().joinToString(" / ") { reasonLabelJa(it) })
@@ -288,6 +292,8 @@ object RepairTraceBuilder {
                 partialEnumerated = info?.partialEnumerated == true,
                 originalConfidence = original.confidence,
                 bitConstraintSolved = info?.bitConstraintSolved == true,
+                knownBitSearch = info?.knownBitSearch == true,
+                knownBitError = cwBit?.second in info?.knownBitErrorBits.orEmpty(),
                 listDecoding = info?.listDecoding,
                 priorityAssignment = priorityAssignment,
                 overturnedConstraint = attemptedConstraint?.takeIf { overturned }?.toReasonKind(),

@@ -264,6 +264,7 @@ internal object RecoverySessionPayloadCodec {
         out.writeInt(settings.partialBitSearchLimit)
         out.writeBoolean(settings.mirroredInput)
         out.writeInt(settings.listDecodingAdditionalErrors)
+        out.writeInt(settings.knownBitErrorLimit)
     }
 
     private fun readPreprocessSettings(input: DataInputStream, formatVersion: Int): PreprocessSettings {
@@ -389,6 +390,7 @@ internal object RecoverySessionPayloadCodec {
                     value == 1
                 } else false,
                 listDecodingAdditionalErrors = if (formatVersion >= 26) input.readInt() else ListDecodingLimit.DEFAULT,
+                knownBitErrorLimit = if (formatVersion >= 28) input.readInt() else 0,
                 rotationDegrees = rotation,
                 polarity = polarity,
                 automaticThresholds = automaticThresholds,
@@ -437,6 +439,7 @@ internal object RecoverySessionPayloadCodec {
         require(settings.prioritySearchLimit in 4..14)
         require(settings.partialBitSearchLimit in PartialBitSearchLimit.supported)
         require(settings.listDecodingAdditionalErrors in ListDecodingLimit.supported)
+        require(settings.knownBitErrorLimit in 0..2)
         require(settings.preRecoveryPrioritySearch.size <= 14)
         require(settings.preRecoveryPrioritySearch.all { settings.preRecoveryEdits[it] == ModuleValue.ERASED })
         require(settings.formatMismatchLimit == null || settings.formatMismatchLimit in 0..30)

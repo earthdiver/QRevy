@@ -19,6 +19,7 @@ internal class RecoveryWorkflow(private val engine: RecoveryEngine) {
         stopRequested: () -> Boolean = { false },
         onPriorityProgress: (Int, Int) -> Unit = { _, _ -> },
         listDecodingBudget: ListDecodingBudget = ListDecodingBudget(),
+        knownBitErrorBudget: KnownBitErrorBudget = KnownBitErrorBudget(),
         discoveryCounter: RecoveryDiscoveryCounter = RecoveryDiscoveryCounter(),
         onProgress: (RecoveryProgress) -> Unit = {},
     ): AutoRecoveryResult {
@@ -38,7 +39,7 @@ internal class RecoveryWorkflow(private val engine: RecoveryEngine) {
                     cancellation = cancellation,
                     stopRequested = stopRequested,
                     onPriorityProgress = onPriorityProgress,
-                    listDecodingBudget = listDecodingBudget,
+                    listDecodingBudget = listDecodingBudget, knownBitErrorBudget = knownBitErrorBudget,
                     discoveryCounter = discoveryCounter,
                     onProgress = { done, total, message ->
                         onProgress(RecoveryProgress(profile, index, variants.size, done, total, message))

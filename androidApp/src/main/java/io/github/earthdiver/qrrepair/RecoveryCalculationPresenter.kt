@@ -114,7 +114,7 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
                             else {
                                 add(blockCalculationText(RecoveryBlockMethod(block, derivation.bitConstraintSolved,
                                     derivation.rsMargin.takeUnless { derivation.bitConstraintSolved || derivation.listDecoding != null },
-                                    derivation.guessedBits, derivation.listDecoding), derivation.errataPositions.size))
+                                    derivation.guessedBits, derivation.listDecoding, derivation.knownBitErrors.takeIf { derivation.knownBitSearch }), derivation.errataPositions.size))
                                 if (selected?.errataPositions != derivation.errataPositions)
                                     add(positionsText("補完・訂正対象", "Target", derivation.errataPositions))
                                 if (derivation.guessedPositions.isNotEmpty())
@@ -124,7 +124,7 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
                     }
                 }
             }
-            if (methods.any { it.representative.actualBlockMethods.any { block -> !block.bitConstraintSolved && block.listDecoding == null } })
+            if (methods.any { it.representative.actualBlockMethods.any { block -> !block.bitConstraintSolved && block.listDecoding == null && block.knownBitErrors == null } })
                 add(ui("通常RS訂正余裕 = ECC数 − 消失数 − 2 × 誤りコード語数。その計算での値であり、元入力の残り訂正能力や正しさを示しません。",
                     "Conventional RS margin = ECC − erasures − 2 × errors. This describes that calculation, not remaining input correction capacity or proof of correctness."))
             stopReasons?.let(::add)
@@ -158,6 +158,7 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
     private fun compactBlock(method: RecoveryBlockMethod, showBlock: Boolean): String =
         (if (showBlock) ui("ブロック${method.blockIndex + 1}: ", "Block ${method.blockIndex + 1}: ") else "") + when {
             method.listDecoding != null -> method.listDecoding.method.displayName() + ui("によるリスト復号", " list decoding")
+            method.knownBitErrors != null -> ui("既知bit誤り探索：${method.knownBitErrors.size}bit変更", "Known-bit error search: ${method.knownBitErrors.size} changed bits")
             method.bitConstraintSolved -> ui("部分bit制約：自由度${method.guessedBits}", "Partial-bit constraints: ${method.guessedBits} degrees of freedom")
             else -> (if (method.guessedBits == 0) "" else ui("不明${method.guessedBits}bitの仮置き＋", "Assign ${method.guessedBits} unknown bits + ")) +
                 ui("通常RS：訂正余裕${method.rsMargin ?: "—"}", "Conventional RS: margin ${method.rsMargin ?: "—"}")
@@ -246,6 +247,7 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
         val list = method.listDecoding
         append(ui("\n方法: ", "\nMethod: ")).append(when {
             list != null -> list.method.displayName() + ui("によるリスト復号", " list decoding")
+            method.knownBitErrors != null -> ui("既知bit誤り探索：${method.knownBitErrors.size}bit変更", "Known-bit error search: ${method.knownBitErrors.size} changed bits")
             method.bitConstraintSolved -> ui("部分bit制約", "Partial-bit constraints")
             else -> ui("通常RS", "Conventional RS")
         })
@@ -264,6 +266,9 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
                     else ui("\n多重度: ", "\nMultiplicity: ")).append(list.multiplicity)
                 append(ui("\nY次数: ", "\nY degree: ")).append(list.listDegree)
             }
+        } else if (method.knownBitErrors != null) {
+            append(ui("\n変更位置（ブロック内コード語、LSB=0のbit）: ", "\nChanged positions (block codeword, LSB=0 bit): "))
+            append(method.knownBitErrors.joinToString { "${it.codeword + 1}:${it.bit}" })
         } else if (!method.bitConstraintSolved) append(ui("\nこのブロックの通常RS訂正余裕: ${method.rsMargin ?: "—"}",
             "\nConventional RS correction margin for this block: ${method.rsMargin ?: "—"}"))
     }

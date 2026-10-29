@@ -7,7 +7,7 @@ enum class RecoveryInputBlocker { FORMAT_SELECTION, FORMAT_LIMIT, STRUCTURAL_FIX
 
 enum class RecoveryCandidateRejection { FIXED_CELLS, MISMATCH_LIMIT, QR_STRUCTURE, SINGLE_SEGMENT_STRUCTURE, LIST_DECODING_MISMATCH_LIMIT }
 
-enum class SearchIncompleteReason { USER_INTERRUPTED, WORKING_MEMORY_LIMIT, LIST_DECODING_TIME_LIMIT, INTERNAL_ERROR }
+enum class SearchIncompleteReason { USER_INTERRUPTED, WORKING_MEMORY_LIMIT, LIST_DECODING_TIME_LIMIT, KNOWN_BIT_SEARCH_LIMIT, KNOWN_BIT_SEARCH_TIME_LIMIT, INTERNAL_ERROR }
 
 /** Evidence from the whole search, independent of the representative candidate or failure. */
 data class RecoverySearchDiagnostic(
@@ -33,6 +33,8 @@ data class RecoverySearchDiagnostic(
     /** At most two distinct mode/count bit patterns, to distinguish multiple hypotheses. */
     val priorityHeaderHypotheses: Set<String> = emptySet(),
     val listDecoding: ListDecodingSummary? = null,
+    val knownBitSearchAttempted: Boolean = false,
+    val knownBitTrials: Long = 0,
     val listDecodingExecution: ListDecodingExecution? = null,
 ) {
     val completeness: SearchCompleteness get() = when {
@@ -45,7 +47,10 @@ data class RecoverySearchDiagnostic(
     fun withUnsearched() = copy(unsearched = true)
 
     fun completionReasonsText(): String = buildList {
+        if (knownBitSearchAttempted) add(localizedText("既知bit誤り探索: $knownBitTrials 試行（設定範囲内の探索）", "Known-bit error search: $knownBitTrials trials (within the configured scope)"))
         incompleteReasons.forEach { reason -> add(when (reason) {
+            SearchIncompleteReason.KNOWN_BIT_SEARCH_TIME_LIMIT -> localizedText("既知bit誤り探索が時間切れで終了しました。", "Known-bit error search reached its time limit.")
+            SearchIncompleteReason.KNOWN_BIT_SEARCH_LIMIT -> localizedText("既知bit誤り探索が試行数の上限に達しました。", "Known-bit error search reached its trial limit.")
             SearchIncompleteReason.USER_INTERRUPTED -> localizedText("利用者が探索を中断しました。", "Search was interrupted by the user.")
             SearchIncompleteReason.WORKING_MEMORY_LIMIT -> localizedText(
                 "計算用メモリの上限により、一部または全部の探索を実行できませんでした。",
@@ -79,6 +84,8 @@ data class RecoverySearchDiagnostic(
                     parts.all { it?.inputBlocker == blocker && it.coverageComplete }
                 },
                 listDecoding = ListDecodingSummary.combine(known.mapNotNull { it.listDecoding }),
+                knownBitSearchAttempted = known.any { it.knownBitSearchAttempted },
+                knownBitTrials = known.sumOf { it.knownBitTrials },
                 listDecodingExecution = ListDecodingExecution.combine(known.mapNotNull { it.listDecodingExecution }),
                 candidateRejections = known.flatMapTo(linkedSetOf()) { it.candidateRejections },
                 singleSegmentStatuses = known.flatMapTo(linkedSetOf()) { it.singleSegmentStatuses },

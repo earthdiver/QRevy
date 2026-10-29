@@ -11,6 +11,7 @@ data class RecoveryDisplayConditions(
     val dataEccLimit: Int?,
     val partialBitSearchLimit: Int = PartialBitSearchLimit.DEFAULT,
     val listDecodingAdditionalErrors: Int = ListDecodingLimit.DEFAULT,
+    val knownBitErrorLimit: Int = 0,
 )
 
 fun inputAgreementText(known: Int, mismatches: Int, format: Boolean, compact: Boolean = false): String {
@@ -47,6 +48,7 @@ fun RecoveryDisplayConditions.limitText(formatRegion: Boolean): String {
 fun RecoveryCandidate.conditionText(): String = buildString {
     val conditions = displayConditions
     conditions?.let {
+        append(localizedText("既知bit誤り探索: ${it.knownBitErrorLimit}bit（0はOFF）\n", "Known-bit error search: ${it.knownBitErrorLimit} bits (0 is off)\n"))
         append(it.limitText(true)).append('\n').append(it.limitText(false))
         append(localizedText("\n部分bit探索・自由度の上限: ${it.partialBitSearchLimit}bit／RSブロック",
             "\nPartial-bit search / dimension limit: ${it.partialBitSearchLimit} bits per RS block"))

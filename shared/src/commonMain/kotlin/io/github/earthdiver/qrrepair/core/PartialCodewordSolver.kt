@@ -12,6 +12,8 @@ class PartialCodewordSolver(private val rs: ReedSolomonErasures) {
         val searchPenalty: Int,
         val bitConstraintSolved: Boolean,
         val listDecoding: ListDecodingDerivation? = null,
+        val knownBitErrors: List<RsBitConstraintSolver.Bit> = emptyList(),
+        val knownBitSearch: Boolean = false,
     )
 
     data class Result(
@@ -30,11 +32,13 @@ class PartialCodewordSolver(private val rs: ReedSolomonErasures) {
         /** Lowest traversal penalty across all retained routes; not a property of the representative route. */
         val orderingPenalty: Int = searchPenalty,
         val listDecoding: ListDecodingDerivation? = null,
+        val knownBitErrors: List<RsBitConstraintSolver.Bit> = emptyList(),
+        val knownBitSearch: Boolean = false,
         /** Original pre-inference observation; populated by the list-decoding integration. */
         val originalKnownMismatches: Int? = null,
     ) {
         fun derivation() = Derivation(errataPositions.toList(), guessedBits, guessedBytes,
-            guessedPositions.toList(), rsMargin, searchPenalty, bitConstraintSolved, listDecoding)
+            guessedPositions.toList(), rsMargin, searchPenalty, bitConstraintSolved, listDecoding, knownBitErrors, knownBitSearch)
     }
 
     /** Supplement, never replace, errors+erasures decoding when observed-bit errors are allowed. */

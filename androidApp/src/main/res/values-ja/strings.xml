@@ -218,4 +218,9 @@
     <string name="list_decoding_limit_title">通常RSからの追加探索上限</string>
     <string name="list_decoding_limit_choice">RSブロックごとに＋%1$d語</string>
     <string name="list_decoding_limit_note">初期値は＋1語です。GS・Wu法が小さい訂正半径から上限まで探索します。Johnson境界と共通の時間・メモリ上限により制限され、＋2・＋3語では時間が大幅に増える場合があります。KV法は独自の一致スコアで判定します。</string>
+    <string name="known_bit_title">既知bit誤りの追加探索</string>
+    <string name="known_bit_off">既知bit誤りの追加探索: OFF</string>
+    <string name="known_bit_one">既知bit誤りの追加探索: 最大1bit</string>
+    <string name="known_bit_two">既知bit誤りの追加探索: 最大2bit</string>
+    <string name="known_bit_note">欠損と誤りが混在するときの追加探索です。上限はRSブロックごとではなくQR全体に適用されます。操作全体で30秒・100万試行まで。固定セルと信頼したヘッダーの条件を維持します。</string>
 </resources>

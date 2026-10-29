@@ -64,8 +64,26 @@ internal class PreprocessSearchControls(
         setSingleLine(false)
         maxLines = Int.MAX_VALUE
     }
+    private val knownBitButton = button("", {}).apply {
+        setSingleLine(false)
+        setOnClickListener {
+            val choices = arrayOf(activity.getString(R.string.known_bit_off), activity.getString(R.string.known_bit_one), activity.getString(R.string.known_bit_two))
+            android.app.AlertDialog.Builder(activity).setTitle(R.string.known_bit_title)
+                .setSingleChoiceItems(choices, searchSettings.knownBitErrorLimit) { dialog, which ->
+                    searchSettings.knownBitErrorLimit = which
+                    text = choices[which]
+                    noteDraftChange("known-bit-error-limit", activity.getString(R.string.known_bit_title), choices[which])
+                    dialog.dismiss()
+                }.show()
+        }
+        text = activity.getString(when (searchSettings.knownBitErrorLimit) {
+            1 -> R.string.known_bit_one; 2 -> R.string.known_bit_two; else -> R.string.known_bit_off
+        })
+    }
     val listDecodingControl = LinearLayout(activity).apply {
         orientation = LinearLayout.VERTICAL
+        addView(knownBitButton)
+        addView(TextView(activity).apply { setText(R.string.known_bit_note); textSize = 12f })
         addView(listLimitButton, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         addView(TextView(activity).apply {

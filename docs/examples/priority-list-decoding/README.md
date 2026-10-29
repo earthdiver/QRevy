@@ -20,8 +20,8 @@ All other recovery settings keep their initial values:
 
 | Setting | Value |
 | --- | --- |
-| Format bit error limit | Automatic (6 bits) |
-| Known data/ECC bit error limit | Automatic (2 bits for version 1) |
+| Format bit error limit | Default (6 bits) |
+| Known data/ECC bit error limit | Default (2 bits for version 1) |
 | Priority search cell limit | 4; this input uses only 1 |
 | Partial-bit search / dimension limit | 12 bits |
 | List-decoding extension limit | +1 symbol per RS block |
@@ -30,7 +30,7 @@ You can also import [before.png](before.png) as an image. Keep automatic thresho
 
 In the details image, blue identifies the 53 filled cells and orange identifies the two corrected known cells. The changed known cells are column 20 / row 10 and column 18 / row 17.
 
-## Why the three methods are needed
+## Recovery method 1
 
 The priority cell is an unknown mode-header bit. Its tentative assignment allows single-segment terminator and padding forcing; this is a hypothesis, not an image observation. Forcing fills 20 missing terminator/alignment/padding bits. Four whole ECC codewords remain erased, and two payload codewords each contain one incorrect bit. Ordinary errors-and-erasures RS needs `2 × 2 + 4 = 8` ECC symbols, exceeding this QR's 7. Wu list decoding recovers the original at radius 2, one symbol beyond the ordinary radius of 1, while respecting the default two-bit mismatch cap.
 
@@ -42,3 +42,9 @@ The recorded controls use the same input and default limits:
 | Force single-segment terminator and padding off | 0 | 0 |
 | List stages deliberately disabled | 0 | 0 |
 | Priority mark removed | 0 | 0 |
+
+## Recovery method 2
+
+For the TEXT input, replace the `*` with `?`, leave **Force single-segment terminator and padding** off, and set **Known-bit error search** to **up to 2 bits** in Detailed settings. Leave the known data/ECC error limit at **Default** (2 bits for version 1). This also recovers `QRevy repaired.` without the priority mark or forced suffix.
+
+The recorded images, result JSON and controls above describe the original route with known-bit error search **off**. They are not measurements of this alternative route.

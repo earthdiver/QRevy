@@ -85,7 +85,7 @@ class RecoveryPhaseRunnerTest {
         val found = RecoveryPhaseRunner(run, 3, RecoveryCancellation.NONE, { false }, searchPhase = {
             visited += run.phase
             when (run.phase) {
-                RecoveryPhase.ORIGINAL_RS -> Unit
+                RecoveryPhase.ORIGINAL_RS, RecoveryPhase.KNOWN_BIT_ERRORS -> Unit
                 RecoveryPhase.EARLY_LIST, RecoveryPhase.ADDITIONAL_LIST -> {
                     val summary = requireNotNull(run.listDecodingSummary)
                     run.listDecodingSummary = summary.copy(trials = summary.trials + 1)

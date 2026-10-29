@@ -96,6 +96,7 @@ If you know the error-correction level or mask, choose it under **ECC: Auto** or
 | --- | --- |
 | **Automatically fine-tune sampling position** | Use when the corners are close but readings may miss cell centers. It adds work while preserving the selected version and orientation. |
 | **Partial-bit search / dimension limit** | Choose 12, 13, or 14 bits per RS block; the default is 12. Each extra bit doubles the maximum number of combinations. |
+| **Known-bit error search** | Off by default. Choose up to 1 or 2 incorrect known bits across the whole QR. Runs as a fallback with a shared 30-second / 1,000,000-trial allowance, plus existing memory and candidate limits. Fixed cells, trusted headers and the data/ECC mismatch limit remain enforced. |
 | **List-decoding extension (symbols)** | Open this control to choose **Extra errors beyond conventional RS**: +1, +2, or +3 codewords per block; the default is +1. A higher limit can take much longer and may not find more candidates. |
 | **Treat input image as mirrored** | Enable for a mirrored QR image. The top-right and bottom-left Finder roles exchange; the displayed image is unchanged and edits stay on the same image cells. It defaults to off and is saved with the work. |
 
@@ -149,10 +150,11 @@ Tap an entry in **Saved work** or **Recent work** to reopen it. Long-press to de
 
 ### Saved-work compatibility
 
-QRR is the app’s saved-work format. The app writes format version **27** and reads versions **23–27**; other versions are rejected. Older files restore settings they did not store as follows:
+QRR is the app’s saved-work format. The app writes format version **28** and reads versions **23–28**; other versions are rejected. Older files restore settings they did not store as follows: Known-bit error search is off for all versions 23–27.
 
 | File version | Restored defaults |
 | --- | --- |
+| 27 | Known-bit error search: off |
 | 26 | No one-time forcing override; the saved option still applies |
 | 25 | No one-time forcing override; list-decoding extension: +1 |
 | 24 | No one-time forcing override; list-decoding extension: +1; mirrored input: off |

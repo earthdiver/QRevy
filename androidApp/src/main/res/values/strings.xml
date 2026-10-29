@@ -222,4 +222,9 @@
     <string name="list_decoding_limit_title">Extra errors beyond conventional RS</string>
     <string name="list_decoding_limit_choice">Extra symbols per RS block: +%1$d</string>
     <string name="list_decoding_limit_note">Default: +1. GS/Wu try increasing radii up to this limit within the Johnson bound and the shared time and memory limits. +2 and +3 may take much longer. KV uses its own agreement score.</string>
+    <string name="known_bit_title">Known-bit error search</string>
+    <string name="known_bit_off">Known-bit error search: Off</string>
+    <string name="known_bit_one">Known-bit error search: up to 1 bit</string>
+    <string name="known_bit_two">Known-bit error search: up to 2 bits</string>
+    <string name="known_bit_note">Optional fallback for mixed missing and incorrect cells. The limit applies to the whole QR, not each RS block. Shares a 30-second / 1,000,000-trial allowance across the operation. Fixed cells and trusted header conditions remain enforced.</string>
 </resources>

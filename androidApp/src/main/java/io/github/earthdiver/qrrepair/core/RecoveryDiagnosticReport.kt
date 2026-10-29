@@ -57,6 +57,7 @@ fun RecoveryDisplayConditions?.runSettingsSection(): DiagnosticSection {
         append(localizedText(" / マスク: ", " / Mask: "))
             .append(settings.format?.dataMask?.toString() ?: localizedText("自動", "Automatic"))
         append('\n').append(settings.limitText(true)).append('\n').append(settings.limitText(false))
+        append(localizedText("\n既知bit誤り探索: ${settings.knownBitErrorLimit}bit（0はOFF）", "\nKnown-bit error search: ${settings.knownBitErrorLimit} bits (0 is off)"))
         append(localizedText("\n部分bit探索・自由度の上限: ${settings.partialBitSearchLimit}bit／RSブロック",
             "\nPartial-bit search / dimension limit: ${settings.partialBitSearchLimit} bits per RS block"))
         append(localizedText("\n固定セルとの矛盾を許容: ", "\nAllow conflicts with fixed cells: "))
@@ -86,6 +87,7 @@ fun RecoveryDisplayConditions?.runSettingsText(): String = this?.let { settings 
     append(localizedText("\n単一セグメントの終端後構造の強制: ", "\nSingle-segment terminator and padding forcing: "))
         .append(if (settings.trustSingleSegment) "ON" else "OFF")
     append('\n').append(settings.limitText(true)).append('\n').append(settings.limitText(false))
+    append(localizedText("\n既知bit誤り探索: ${settings.knownBitErrorLimit}bit（0はOFF）", "\nKnown-bit error search: ${settings.knownBitErrorLimit} bits (0 is off)"))
     append(localizedText("\n部分bit探索・自由度の上限: ${settings.partialBitSearchLimit}bit／RSブロック",
         "\nPartial-bit search / dimension limit: ${settings.partialBitSearchLimit} bits per RS block"))
     append(localizedText("\n通常RSからの追加探索上限: ＋${settings.listDecodingAdditionalErrors}語／RSブロック（GS・Wu）",

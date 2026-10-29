@@ -85,6 +85,7 @@ data class PreprocessSettings(
     val prioritySearchLimit: Int = 4,
     val partialBitSearchLimit: Int = PartialBitSearchLimit.DEFAULT,
     val listDecodingAdditionalErrors: Int = ListDecodingLimit.DEFAULT,
+    val knownBitErrorLimit: Int = 0,
 ) {
     val effectiveFormatMismatchLimit: Int?
         get() = ErrorLimitPolicy.format(formatMismatchLimitMode, formatMismatchLimit)
@@ -128,6 +129,7 @@ data class PreprocessSettings(
         require(prioritySearchLimit in 4..14)
         require(partialBitSearchLimit in PartialBitSearchLimit.supported)
         require(listDecodingAdditionalErrors in ListDecodingLimit.supported)
+        require(knownBitErrorLimit in 0..2)
         require(preRecoveryPrioritySearch.size <= 14)
         require(preRecoveryPrioritySearch.all { preRecoveryEdits[it] == ModuleValue.ERASED })
         require(formatMismatchLimit == null || formatMismatchLimit in 0..30)

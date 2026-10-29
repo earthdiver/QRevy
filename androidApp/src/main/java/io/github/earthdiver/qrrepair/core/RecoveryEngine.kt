@@ -14,6 +14,8 @@ data class CodewordRepairInfo(
     /** bit index is 0=MSB .. 7=LSB */
     val constraintKindsByBit: Map<Int, PayloadConstraintSolver.ConstraintKind> = emptyMap(),
     val bitConstraintSolved: Boolean = false,
+    val knownBitSearch: Boolean = false,
+    val knownBitErrorBits: Set<Int> = emptySet(),
     val listDecoding: ListDecodingDerivation? = null,
     /** Unmasked values assigned by structure constraints, before any later RS correction. */
     val constraintValuesByBit: Map<Int, Int> = emptyMap(),
@@ -223,11 +225,13 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         displayLockManualBits: Boolean? = null,
         partialBitSearchLimit: Int = PartialBitSearchLimit.DEFAULT,
         listDecodingAdditionalErrors: Int = ListDecodingLimit.DEFAULT,
+        knownBitErrorLimit: Int = 0,
         listDecodingBudget: ListDecodingBudget = ListDecodingBudget(),
+        knownBitErrorBudget: KnownBitErrorBudget = KnownBitErrorBudget(),
         onPriorityProgress: ((done: Int, total: Int) -> Unit)? = null,
     ): List<RecoveryCandidate> = recoverWithDiagnostics(
         matrix, maxFormatCandidates, trustKnownPayloadCount, formatConstraint, maxFormatMismatches,
-        maxKnownDataEccMismatches, manualEdits, retentionBudget, cancellation, displayLockManualBits, partialBitSearchLimit = partialBitSearchLimit, listDecodingAdditionalErrors = listDecodingAdditionalErrors, listDecodingBudget = listDecodingBudget, onPriorityProgress = onPriorityProgress,
+        maxKnownDataEccMismatches, manualEdits, retentionBudget, cancellation, displayLockManualBits, partialBitSearchLimit = partialBitSearchLimit, listDecodingAdditionalErrors = listDecodingAdditionalErrors, knownBitErrorLimit = knownBitErrorLimit, listDecodingBudget = listDecodingBudget, knownBitErrorBudget = knownBitErrorBudget, onPriorityProgress = onPriorityProgress,
     ).candidates
 
     /** Returns the candidates and diagnostic evidence from this invocation as one value. */
@@ -245,12 +249,15 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         stopRequested: () -> Boolean = { false },
         partialBitSearchLimit: Int = PartialBitSearchLimit.DEFAULT,
         listDecodingAdditionalErrors: Int = ListDecodingLimit.DEFAULT,
+        knownBitErrorLimit: Int = 0,
         listDecodingBudget: ListDecodingBudget = ListDecodingBudget(),
+        knownBitErrorBudget: KnownBitErrorBudget = KnownBitErrorBudget(),
         discoveryCounter: RecoveryDiscoveryCounter = RecoveryDiscoveryCounter(),
         onPriorityProgress: ((done: Int, total: Int) -> Unit)? = null,
     ): RecoveryOutcome {
         require(partialBitSearchLimit in PartialBitSearchLimit.supported)
         require(listDecodingAdditionalErrors in ListDecodingLimit.supported)
+        require(knownBitErrorLimit in 0..2)
         require(maxFormatMismatches == null || maxFormatMismatches in 0..30)
         require(maxKnownDataEccMismatches == null || maxKnownDataEccMismatches in 0..MAX_QR_DATA_ECC_BITS)
         val priority = matrix.prioritySearchCoordinates()
@@ -271,9 +278,9 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         val run = RecoveryRunState(matrix, retentionBudget, RecoveryCancellation {
             cancellation.check()
             stopRequested()
-        }, partialBitSearchLimit, listDecodingBudget, listDecodingAdditionalErrors, discoveryCounter)
+        }, partialBitSearchLimit, listDecodingBudget, listDecodingAdditionalErrors, discoveryCounter, knownBitErrorLimit, knownBitErrorBudget)
         val conditions = RecoveryDisplayConditions(trustKnownPayloadCount, displayLockManualBits,
-            formatConstraint, maxFormatMismatches, maxKnownDataEccMismatches, partialBitSearchLimit, listDecodingAdditionalErrors)
+            formatConstraint, maxFormatMismatches, maxKnownDataEccMismatches, partialBitSearchLimit, listDecodingAdditionalErrors, knownBitErrorLimit)
         val publisher = RecoveryOutcomePublisher(matrix, manualEdits, conditions, cancellation)
         val found = RecoveryPhaseRunner(
             run = run,
@@ -595,6 +602,25 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                     maxAlternativeDerivations = run.retentionBudget.maxAlternativeDerivations,
                     listDecodingMismatchLimit = listDecodingLimit,
                 )
+
+                if (run.phase == RecoveryPhase.KNOWN_BIT_ERRORS) {
+                    val pins = de.blocks.map { mutableSetOf<RsBitConstraintSolver.Bit>() }
+                    extraction.codewords.forEachIndexed { raw, word ->
+                        val loc = requireNotNull(de.rawLocations[raw])
+                        word.coordinates.forEachIndexed { bit, coord ->
+                            if (matrix[coord.x, coord.y].source == ModuleSource.USER && matrix[coord.x, coord.y].value != ModuleValue.ERASED)
+                                pins[loc.blockIndex] += RsBitConstraintSolver.Bit(loc.localIndex, 7 - bit)
+                        }
+                    }
+                    val stops = KnownBitQrSearch.run(de, version,
+                        minOf(run.knownBitErrorLimit, maxKnownDataEccMismatches ?: run.knownBitErrorLimit),
+                        pins, run.partialBitSearchLimit, run.availableWorkingBytes, run.knownBitErrorBudget, run.cancellation) { combination ->
+                        run.candidateCalculations++
+                        parsedFound = run.recordEvaluation(evaluator.evaluate(combination)).parsed || parsedFound
+                    }
+                    run.combinationSearch = run.combinationSearch.afterPass(stops)
+                    continue
+                }
 
                 if (run.listDecodingPhase) {
                     val original = QrBlockInterleaver.deinterleave(evidenceExtraction, version, format.ecLevel)

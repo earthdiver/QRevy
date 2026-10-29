@@ -36,11 +36,11 @@ class RecoverySessionContainerTest {
         }
     }.toByteArray()
 
-    @Test fun schema27KeepsTheBinaryLayoutAndHashesTheUncompressedPayload() {
+    @Test fun currentWriterPreservesSettingsFreePayloadAndReadsSchema27() {
         val encoded = RecoverySessionCodec.encode(payload)
         val header = ByteBuffer.wrap(encoded)
         assertEquals(0x5152523A, header.getInt(0))
-        assertEquals(27, header.getInt(4))
+        assertEquals(28, header.getInt(4))
         val raw = GZIPInputStream(ByteArrayInputStream(encoded, 48, encoded.size - 48)).use { it.readBytes() }
         assertArrayEquals(rawFixture(), raw)
         assertEquals(raw.size, header.getInt(8))

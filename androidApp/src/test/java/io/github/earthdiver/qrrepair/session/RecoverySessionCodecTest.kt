@@ -111,8 +111,37 @@ class RecoverySessionCodecTest {
             .historyEntries.single().snapshot.preprocessSettings)
     }
 
+    @Test fun knownBitSearchSettingsRoundTripAndValidateRange() {
+        for (limit in 0..2) {
+            val settings=PreprocessSettings(knownBitErrorLimit=limit)
+            assertEquals(settings, RecoverySessionCodec.decode(RecoverySessionCodec.encode(settingsPayload(settings)))
+                .historyEntries.single().snapshot.preprocessSettings)
+        }
+        assertThrows(IllegalArgumentException::class.java) { PreprocessSettings(knownBitErrorLimit=3) }
+    }
+
+    @Test fun olderSettingsDefaultOffAndMalformedNewLimitIsRejected() {
+        fun raw(limit:Int):ByteArray {
+            val encoded=RecoverySessionCodec.encode(settingsPayload(PreprocessSettings(knownBitErrorLimit=limit)))
+            return GZIPInputStream(ByteArrayInputStream(encoded,48,encoded.size-48)).use { it.readBytes() }
+        }
+        fun container(raw:ByteArray,version:Int):ByteArray {
+            val compressed=java.io.ByteArrayOutputStream().also { out -> java.util.zip.GZIPOutputStream(out).use { it.write(raw) } }.toByteArray()
+            return java.io.ByteArrayOutputStream().also { out -> java.io.DataOutputStream(out).use {
+                it.writeInt(0x5152523A);it.writeInt(version);it.writeInt(raw.size);it.writeInt(compressed.size)
+                it.write(java.security.MessageDigest.getInstance("SHA-256").digest(raw));it.write(compressed)
+            } }.toByteArray()
+        }
+        val zero=raw(0);val two=raw(2)
+        val changed=zero.indices.filter { zero[it]!=two[it] }.single()
+        val old=zero.copyOfRange(0,changed-3)+zero.copyOfRange(changed+1,zero.size)
+        assertEquals(0,RecoverySessionCodec.decode(container(old,27)).historyEntries.single().snapshot.preprocessSettings!!.knownBitErrorLimit)
+        two[changed]=3
+        assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(container(two,28)) }
+    }
+
     private fun settingsPayload(settings: PreprocessSettings) = RecoverySessionCodec.Payload(
-        "threshold-settings", 2L, UiMode.ANALYSIS, listOf(RecoveryHistoryEntry(kind = HistoryEventKind.SETTINGS,
+        "threshold-settings", 2L, UiMode.ANALYSIS, listOf(RecoveryHistoryEntry(id = "settings-entry", timestampMs = 0L, kind = HistoryEventKind.SETTINGS,
             label = "thresholds", snapshot = RecoverySnapshot(null, null, null, -1, settings))), 0)
 
     @Test fun unsupportedSchemaVersionsAreRejected() {

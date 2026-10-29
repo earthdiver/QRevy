@@ -68,4 +68,5 @@ data class RecoveryBlockMethod(
     val rsMargin: Int?,
     val guessedBits: Int,
     val listDecoding: ListDecodingDerivation? = null,
+    val knownBitErrors: List<RsBitConstraintSolver.Bit>? = null,
 )

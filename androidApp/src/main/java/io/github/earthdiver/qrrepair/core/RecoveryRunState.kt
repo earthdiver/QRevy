@@ -10,7 +10,7 @@ internal enum class RecordedRecoveryCandidate(val parsed: Boolean) {
 }
 
 internal enum class RecoveryPhase {
-    ORIGINAL_RS, EARLY_LIST, BIT_CONSTRAINTS, PARTIAL_RS, ADDITIONAL_LIST;
+    ORIGINAL_RS, EARLY_LIST, BIT_CONSTRAINTS, PARTIAL_RS, ADDITIONAL_LIST, KNOWN_BIT_ERRORS;
 
     val isListDecoding: Boolean get() = this == EARLY_LIST || this == ADDITIONAL_LIST
     val usesAssignments: Boolean get() = this == BIT_CONSTRAINTS || this == PARTIAL_RS || this == ADDITIONAL_LIST
@@ -25,7 +25,11 @@ internal class RecoveryRunState(
     val listDecodingBudget: ListDecodingBudget,
     val listDecodingAdditionalErrors: Int = ListDecodingLimit.DEFAULT,
     private val discoveryCounter: RecoveryDiscoveryCounter = RecoveryDiscoveryCounter(),
+    val knownBitErrorLimit: Int = 0,
+    val knownBitErrorBudget: KnownBitErrorBudget = KnownBitErrorBudget(),
 ) {
+    val knownBitTrialsAtStart = knownBitErrorBudget.trials
+    var knownBitSearchAttempted = false
     var phase = RecoveryPhase.ORIGINAL_RS
     val listDecodingPhase: Boolean get() = phase.isListDecoding
     var listDecodingSummary: ListDecodingSummary? = null
@@ -117,6 +121,8 @@ internal class RecoveryRunState(
             inputBlocker = earlyBlocker ?: blockers.singleOrNull()?.takeIf { allInputsChecked },
             candidateRejections = candidateRejections.toSet(),
             listDecoding = listDecodingSummary,
+            knownBitSearchAttempted = knownBitSearchAttempted,
+            knownBitTrials = knownBitErrorBudget.trials - knownBitTrialsAtStart,
             listDecodingExecution = ListDecodingExecution(listDecodingStatuses.mapValues { setOf(it.value) },
                 newTrials = listDecodingNewTrials.toMap()),
             singleSegmentStatuses = singleSegmentStatuses.toSet(),
