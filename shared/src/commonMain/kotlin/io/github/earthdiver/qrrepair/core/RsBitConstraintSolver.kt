@@ -1,7 +1,22 @@
 package io.github.earthdiver.qrrepair.core
 
 /** Exact known-bit constraints, not an unknown-error decoder or proof of payload correctness. */
-class RsBitConstraintSolver(private val rs: ReedSolomonErasures = ReedSolomonErasures()) {
+class RsBitConstraintSolver(
+    private val rs: ReedSolomonErasures = ReedSolomonErasures(),
+    private val maximumCacheBytes: Long = 0,
+) {
+    init { require(maximumCacheBytes >= 0) }
+    private class Shape(val masks: IntArray, val ecSymbols: Int,
+        val rows: Array<LongArray>, val transform: Array<LongArray>, val pivots: IntArray,
+        val free: IntArray, val bytes: Long)
+    private val shapes = mutableListOf<Shape>()
+    val cacheWorkingBytes: Long get() = shapes.sumOf { it.bytes }
+    private fun retain(shape: Shape) {
+        while (shapes.isNotEmpty() && (shapes.size >= 4 || cacheWorkingBytes + shape.bytes > maximumCacheBytes))
+            shapes.removeAt(0)
+        if (shape.bytes <= maximumCacheBytes) shapes += shape
+    }
+
     /** Bit positions use the numeric (LSB=0) convention, unlike QR extraction coordinates. */
     data class Bit(val codeword: Int, val bit: Int)
 
@@ -218,6 +233,29 @@ class RsBitConstraintSolver(private val rs: ReedSolomonErasures = ReedSolomonEra
         }
         val base = IntArray(block.codewords.size) { block.codewords[it] and block.unknownMasks[it].inv() and 255 }
         val syndrome = rs.calcSyndromes(base, ecSymbols)
+        val cached = shapes.firstOrNull { it.ecSymbols == ecSymbols && it.masks.contentEquals(block.unknownMasks) }
+        if (cached != null) {
+            val packed = LongArray((ecSymbols * 8 + 63) / 64)
+            for (bit in 0 until ecSymbols * 8)
+                if (syndrome[bit / 8 + 1] and (1 shl (bit % 8)) != 0) packed.set(bit)
+            val transformed = BooleanArray(cached.rows.size) { row ->
+                if (row % 16 == 0) cancellation.check()
+                var parity = 0
+                for (word in packed.indices) parity = parity xor (packed[word] and cached.transform[row][word]).countOneBits()
+                parity and 1 != 0
+            }
+            if ((cached.pivots.size until transformed.size).any { transformed[it] }) return null
+            return Space(unknown, cached.pivots.size, base, cached.pivots, cached.rows, transformed, cached.free)
+        }
+        val equationCount = ecSymbols * 8
+        val cacheBytes = 2048L + block.codewords.size * 8L + unknown.size * 96L +
+            equationCount * (96L + ((unknown.size + 63) / 64) * 8L + ((equationCount + 63) / 64) * 8L)
+        val cacheable = maximumCacheBytes > 0 && cacheBytes <= maximumCacheBytes
+        // Make room before allocating the new transform, not only before retaining it.
+        if (cacheable) while (shapes.isNotEmpty() &&
+            (shapes.size >= 4 || cacheWorkingBytes + cacheBytes > maximumCacheBytes)) shapes.removeAt(0)
+        val transform = if (cacheable)
+            Array(equationCount) { row -> LongArray((equationCount + 63) / 64).also { it.set(row) } } else null
         val rows = Array(ecSymbols * 8) { LongArray((unknown.size + 63) / 64) }
         val rhs = BooleanArray(rows.size) { (syndrome[it / 8 + 1] and (1 shl (it % 8))) != 0 }
         for ((column, bit) in unknown.withIndex()) {
@@ -231,18 +269,25 @@ class RsBitConstraintSolver(private val rs: ReedSolomonErasures = ReedSolomonEra
             val rank = pivots.size
             val selected = (rank until rows.size).firstOrNull { rows[it].has(column) } ?: continue
             val temp = rows[rank]; rows[rank] = rows[selected]; rows[selected] = temp
+            if (transform != null) {
+                val old = transform[rank]; transform[rank] = transform[selected]; transform[selected] = old
+            }
             val tempRhs = rhs[rank]; rhs[rank] = rhs[selected]; rhs[selected] = tempRhs
             for (row in rows.indices) if (row != rank && rows[row].has(column)) {
                 rows[row].xorWith(rows[rank])
+                if (transform != null) transform[row].xorWith(transform[rank])
                 rhs[row] = rhs[row] xor rhs[rank]
             }
             pivots += column
             if (pivots.size == rows.size) break
         }
-        if ((pivots.size until rows.size).any { rhs[it] }) return null
         val pivotSet = pivots.toSet()
-        return Space(unknown, pivots.size, base, pivots.toIntArray(), rows, rhs,
-            unknown.indices.filter { it !in pivotSet }.toIntArray())
+        val pivotArray = pivots.toIntArray()
+        val free = unknown.indices.filter { it !in pivotSet }.toIntArray()
+        if (transform != null) retain(Shape(block.unknownMasks.copyOf(), ecSymbols,
+            rows, transform, pivotArray, free, cacheBytes))
+        if ((pivots.size until rows.size).any { rhs[it] }) return null
+        return Space(unknown, pivots.size, base, pivotArray, rows, rhs, free)
     }
 }
 

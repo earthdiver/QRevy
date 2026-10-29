@@ -144,7 +144,6 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
     }
 
     private val partialSolver = PartialCodewordSolver(rs)
-    private val bitSolver = RsBitConstraintSolver(rs)
 
     /** General diagnostic recognition includes control prefixes and Hanzi. */
     fun hasCompletePayloadHeader(
@@ -616,7 +615,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 extraction.codewords[raw].coordinates.any { (it.x to it.y) in priorityCoordinates }
             }
 
-            val originalSpaces = de.blocks.map { bitSolver.analyze(it, de.ecSymbolsPerBlock, run.cancellation) }
+            val originalSpaces = de.blocks.map { run.bitSolver.analyze(it, de.ecSymbolsPerBlock, run.cancellation) }
             val bitDiagnostic = run.bitDiagnostics.getOrPut(format.ecLevel to format.dataMask) {
                 if (matrix === run.diagnosticInput) RsBitDiagnostic.build(matrix, extraction, de, originalSpaces, run.cancellation)
                 else {
@@ -625,7 +624,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                     val originalExtraction = CodewordExtractor.extract(run.diagnosticInput, version, format.dataMask)
                     val originalDe = QrBlockInterleaver.deinterleave(originalExtraction, version, format.ecLevel)
                     RsBitDiagnostic.build(run.diagnosticInput, originalExtraction, originalDe,
-                        originalDe.blocks.map { bitSolver.analyze(it, originalDe.ecSymbolsPerBlock, run.cancellation) }, run.cancellation)
+                        originalDe.blocks.map { run.bitSolver.analyze(it, originalDe.ecSymbolsPerBlock, run.cancellation) }, run.cancellation)
                 }
             }
             // This proof uses the original observation, never forced suffixes or priority guesses.
@@ -767,7 +766,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 }
 
                 val trialSpaces = if (constraints.filledBits == 0) originalSpaces else
-                    de.blocks.map { bitSolver.analyze(it, de.ecSymbolsPerBlock, run.cancellation) }
+                    de.blocks.map { run.bitSolver.analyze(it, de.ecSymbolsPerBlock, run.cancellation) }
                 val exactOnly = maxKnownDataEccMismatches == 0 || run.phase == RecoveryPhase.BIT_CONSTRAINTS
                 if (!basicOnly && run.phase != RecoveryPhase.ORIGINAL_RS && trialSpaces.any { (it?.dimension ?: 0) > 0 }) {
                     val nonEnumerable = de.blocks.indices.map { index ->
