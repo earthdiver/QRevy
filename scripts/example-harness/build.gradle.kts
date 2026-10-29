@@ -24,3 +24,18 @@ sourceSets {
 
 application { mainClass.set("evaluation.SampleStudyKt") }
 dependencyLocking { lockAllConfigurations() }
+
+// Opt-in synthetic recovery baseline; the normal example verifier remains unchanged.
+tasks.register<JavaExec>("recoveryBenchmark") {
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("evaluation.RecoveryBenchmarkKt")
+    maxHeapSize = "768m"
+    args(providers.gradleProperty("benchmarkArgs").orElse("").map { it.split(" ").filter(String::isNotBlank) }.get())
+}
+
+// Compare equivalent hard-decision balls before calibrating planner heuristics.
+tasks.register<JavaExec>("plannerCalibration") {
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("evaluation.PlannerCalibrationKt")
+    maxHeapSize = "768m"
+}

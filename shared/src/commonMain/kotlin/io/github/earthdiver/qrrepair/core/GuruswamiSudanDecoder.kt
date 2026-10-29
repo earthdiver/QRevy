@@ -6,20 +6,19 @@ package io.github.earthdiver.qrrepair.core
  * References: Guruswami/Sudan (1999), Nielsen/Zeh, arXiv:1404.3022, sections 2--3.
  * Polynomial coefficients in this implementation are stored in increasing degree order.
  */
-class GuruswamiSudanDecoder(val length: Int, val dataLength: Int) {
+class GuruswamiSudanDecoder internal constructor(val length: Int, val dataLength: Int,
+    coordinateFactory: () -> ListDecodingCoordinates) {
+    constructor(length: Int, dataLength: Int) : this(length, dataLength, { ListDecodingCoordinates(length) })
+    private val coordinates by lazy(coordinateFactory)
+    private val parameterCache = mutableListOf<Pair<Pair<Int, Int>, Parameters>>()
     init { require(dataLength in 2 until length && length <= 255) }
 
     data class Parameters(val points: Int, val radius: Int, val multiplicity: Int, val listDegree: Int,
         val degreeBound: Int, val workingBytes: Long)
 
-    private val points by lazy { IntArray(length) { Field.power(2, length - 1 - it) } }
-    // For H[j,i] = a_i^j, c_i = f(a_i) / product_{h != i}(a_i - a_h).
-    // Keep these ORIGINAL coordinates and multipliers when puncturing erased positions.
-    private val denominators by lazy { IntArray(length) { i ->
-        var product = 1
-        for (j in points.indices) if (i != j) product = Field.multiply(product, points[i] xor points[j])
-        product
-    } }
+    // Keep original shortened-code coordinates when puncturing erasures.
+    private val points get() = coordinates.points
+    private val denominators get() = coordinates.denominators
 
     fun parameters(erasures: Int, workingLimitBytes: Long, check: () -> Unit = {}): Parameters? =
         parameters(erasures, workingLimitBytes, ListDecodingLimit.DEFAULT, check)
@@ -28,6 +27,11 @@ class GuruswamiSudanDecoder(val length: Int, val dataLength: Int) {
     fun parameters(erasures: Int, workingLimitBytes: Long, additionalErrors: Int, check: () -> Unit = {}): Parameters? {
         require(erasures in 0..length)
         require(additionalErrors in ListDecodingLimit.supported)
+        parameterCache.firstOrNull { it.first == (erasures to additionalErrors) }?.second?.let {
+            check()
+            if (it.workingBytes > workingLimitBytes) throw ListDecodingWorkingMemoryException()
+            return it
+        }
         val n = length - erasures
         if (n < dataLength) return null
         val radius = (n - dataLength) / 2 + additionalErrors
@@ -48,7 +52,10 @@ class GuruswamiSudanDecoder(val length: Int, val dataLength: Int) {
                 val degree = maxOf(m * n, m * (n - 1) + (ell - m) * weight)
                 val bytes = workspaceBytes(m, ell, degree)
                 if (bytes > workingLimitBytes) throw ListDecodingWorkingMemoryException()
-                return Parameters(n, radius, m, ell, degree, bytes)
+                return Parameters(n, radius, m, ell, degree, bytes).also {
+                    if (parameterCache.size == 4) parameterCache.removeAt(0)
+                    parameterCache += (erasures to additionalErrors) to it
+                }
             }
         }
         error("No GS parameters despite a strict Johnson inequality")

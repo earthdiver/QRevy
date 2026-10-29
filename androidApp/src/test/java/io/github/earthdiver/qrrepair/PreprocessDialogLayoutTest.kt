@@ -111,6 +111,8 @@ class PreprocessDialogLayoutTest {
     fun listDecodingExtensionCanBeSelectedSavedAndReopened() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
+        val otherController = Robolectric.buildActivity(Activity::class.java).setup()
+        var otherDialog: AlertDialog? = null
         try {
             val bitmap = Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.WHITE) }
             MainActivity::class.java.getDeclaredField("prepared").apply {
@@ -120,7 +122,9 @@ class PreprocessDialogLayoutTest {
             val open = MainActivity::class.java.getDeclaredMethod("showPreprocessDialog").apply { isAccessible = true }
             open.invoke(activity)
             shadowOf(Looper.getMainLooper()).idle()
-            val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+            otherDialog = AlertDialog.Builder(otherController.get()).setMessage("Unrelated dialog").show()
+            assertEquals(otherDialog, ShadowDialog.getLatestDialog())
+            val dialog = preprocessDialog(activity)
             val decor = dialog.window!!.decorView
             findText(decor, "詳細設定")!!.performClick()
             val control = findText(decor, "通常RSからの追加探索上限:")!!
@@ -146,12 +150,16 @@ class PreprocessDialogLayoutTest {
             shadowOf(Looper.getMainLooper()).idle()
             open.invoke(activity)
             shadowOf(Looper.getMainLooper()).idle()
-            val reopened = ShadowDialog.getLatestDialog() as AlertDialog
+            val reopened = preprocessDialog(activity)
             findText(reopened.window!!.decorView, "詳細設定")!!.performClick()
             assertEquals("通常RSからの追加探索上限: ＋3語",
                 findText(reopened.window!!.decorView, "通常RSからの追加探索上限:")!!.text.toString())
             reopened.dismiss()
-        } finally { controller.pause().stop().destroy() }
+        } finally {
+            otherDialog?.dismiss()
+            otherController.pause().stop().destroy()
+            controller.pause().stop().destroy()
+        }
     }
 
     @Test fun mirroredInputCanBeToggledSavedAndReopenedWithoutMovingImageEdits() {

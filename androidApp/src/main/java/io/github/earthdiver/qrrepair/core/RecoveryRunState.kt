@@ -30,7 +30,9 @@ internal class RecoveryRunState(
     val listDecodingPhase: Boolean get() = phase.isListDecoding
     var listDecodingSummary: ListDecodingSummary? = null
     val listDecodingCache = ListDecodingTrialCache(minOf(256L * 1024, retentionBudget.workingLimitBytes / 16))
-    val availableWorkingBytes: Long get() = retentionBudget.workingLimitBytes - listDecodingCache.workingBytes
+    val bitSolver = RsBitConstraintSolver(maximumCacheBytes = minOf(128L * 1024, retentionBudget.workingLimitBytes / 32))
+    val listSearchWorkingBytes: Long get() = retentionBudget.workingLimitBytes - bitSolver.cacheWorkingBytes
+    val availableWorkingBytes: Long get() = listSearchWorkingBytes - listDecodingCache.workingBytes
     val listDecodingStatuses = ListDecodingStage.entries.associateWith { ListDecodingStatus.NOT_REACHED }.toMutableMap()
     val listDecodingNewTrials = mutableMapOf<ListDecodingStage, Int>()
     val listDecodingStops = linkedSetOf<CombinationSearchStop>()

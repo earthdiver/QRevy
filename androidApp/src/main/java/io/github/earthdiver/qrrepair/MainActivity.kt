@@ -26,8 +26,6 @@ import android.content.res.Resources
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Matrix
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
@@ -42,7 +40,6 @@ import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
-import androidx.exifinterface.media.ExifInterface
 import io.github.earthdiver.qrrepair.core.CodewordHex
 import io.github.earthdiver.qrrepair.core.CodewordExtractor
 import io.github.earthdiver.qrrepair.core.Coord
@@ -59,7 +56,6 @@ import com.google.zxing.qrcode.decoder.Version
 import io.github.earthdiver.qrrepair.core.PolarityMode
 import io.github.earthdiver.qrrepair.core.PartialPayloadAnalyzer
 import io.github.earthdiver.qrrepair.core.PreprocessSettings
-import io.github.earthdiver.qrrepair.core.StandardQrDecoder
 import io.github.earthdiver.qrrepair.core.searchSummary
 import io.github.earthdiver.qrrepair.core.QrMatrix
 import io.github.earthdiver.qrrepair.core.QrFunctionMask
@@ -216,6 +212,13 @@ class MainActivity : Activity() {
     private val executor = Executors.newSingleThreadExecutor()
     private val ioExecutor = Executors.newSingleThreadExecutor()
     private val workGeneration = AtomicInteger(0)
+    private val imageImports by lazy {
+        ImageImportController(contentResolver, executor, { runOnUiThread(it) }, workGeneration::get,
+            { isDestroyed }, ::finishInputImport, { error ->
+                statusText.text = ui("画像の読み込みに失敗: ${error.message ?: error.javaClass.simpleName}",
+                    "Image load failed: ${error.message ?: error.javaClass.simpleName}")
+            })
+    }
     private val recoveryTasks = RecoveryTaskRunner(executor, { runOnUiThread(it) }, workGeneration::get)
     private var recoveryProgressDialog: RecoveryProgressDialog? = null
     private val sessionSaves = SessionSaveQueue(
@@ -1996,35 +1999,9 @@ class MainActivity : Activity() {
 
     private fun loadImage(uri: Uri, cleanupFile: File? = null, imageAdjustment: ImageAdjustment = ImageAdjustment()) {
         val token = beginInputImport(ui("画像を読み込み中…", "Loading image…"))
-        executor.execute {
-            try {
-                val bitmap = decodeReasonablySized(uri)
-                    ?: throw IllegalArgumentException(ui("画像をデコードできません", "Could not decode the image"))
-                if (token != workGeneration.get()) {
-                    bitmap.recycle()
-                    cleanupFile?.let { runCatching { it.delete() } }
-                    return@execute
-                }
-                runOnUiThread {
-                    if (token != workGeneration.get()) {
-                        bitmap.recycle()
-                        cleanupFile?.let { runCatching { it.delete() } }
-                    } else {
-                        finishInputImport(token)
-                        if (cleanupFile == null) showImportedImageAdjustment(bitmap)
-                        else acceptDecodedImage(bitmap, cleanupFile, imageAdjustment)
-                    }
-                }
-            } catch (t: Throwable) {
-                runOnUiThread {
-                    finishInputImport(token)
-                    if (token != workGeneration.get() || isDestroyed) return@runOnUiThread
-                    statusText.text = ui("画像の読み込みに失敗: ${t.message ?: t.javaClass.simpleName}", "Image load failed: ${t.message ?: t.javaClass.simpleName}")
-                }
-                cleanupFile?.let { runCatching { it.delete() } }
-            } finally {
-                runOnUiThread { finishInputImport(token) }
-            }
+        imageImports.load(token, uri, cleanupFile) { bitmap ->
+            if (cleanupFile == null) showImportedImageAdjustment(bitmap)
+            else acceptDecodedImage(bitmap, cleanupFile, imageAdjustment)
         }
     }
 
@@ -2212,112 +2189,57 @@ class MainActivity : Activity() {
 
     private fun acceptDecodedImage(bitmap: Bitmap, cleanupFile: File? = null, imageAdjustment: ImageAdjustment = ImageAdjustment()) {
         val token = beginInputImport(ui("画像を解析用に準備中…", "Preparing image for analysis…"))
-        executor.execute {
-            var candidate: BitmapUtils.Prepared? = null
-            var adjustedCandidate: BitmapUtils.Prepared? = null
-            var handedToUi = false
-            try {
-                val p = BitmapUtils.prepare(bitmap)
-                candidate = p
-                if (p.bitmap !== bitmap) bitmap.recycle()
-                val adjusted = BitmapUtils.adjust(p, imageAdjustment)
-                adjustedCandidate = adjusted
-                val standardResult = decodeStandardQr(adjusted.bitmap)
-                val initialEstimate = InitialThresholdEstimator.estimate(adjusted.bitmap)
-                val originalEstimate = if (adjusted === p) initialEstimate else InitialThresholdEstimator.estimate(p.bitmap)
-                val initialGrid = io.github.earthdiver.qrrepair.core.InitialGridEstimator.estimate(
-                    adjusted.luma, io.github.earthdiver.qrrepair.core.ZxingCppGridDetector.detect(adjusted.bitmap),
-                )
-                if (token != workGeneration.get()) {
-                    p.bitmap.recycle()
-                    if (adjusted !== p) adjusted.bitmap.recycle()
-                    return@execute
+        imageImports.prepare(token, bitmap, cleanupFile, imageAdjustment) { result ->
+            val p = result.source
+            val adjusted = result.adjusted
+            val initialGrid = result.initialGrid
+            val standardResult = result.standardResult
+            immediateResultShown = false
+            prepared = p
+            analysisPrepared = adjusted
+            savedCellEditState = null
+            preprocessSettings = result.settings
+            sessionId = sessionStore.newId()
+            sessionHistory.clear()
+            val newSessionId = sessionId!!
+            ioExecutor.execute {
+                try {
+                    sessionStore.saveSourceBitmap(newSessionId, p.bitmap)
+                } catch (t: Throwable) {
+                    reportPersistenceFailure(ui("元画像の保存に失敗", "Source image save failed"), t)
                 }
-                runOnUiThread {
-                    if (token != workGeneration.get()) {
-                        p.bitmap.recycle()
-                        if (adjusted !== p) adjusted.bitmap.recycle()
-                        return@runOnUiThread
-                    }
-                    finishInputImport(token)
-                    immediateResultShown = false
-                    prepared = p
-                    analysisPrepared = adjusted
-                    savedCellEditState = null
-                    preprocessSettings = PreprocessSettings(
-                        imageAdjustment = imageAdjustment,
-                        automaticThresholds = true,
-                        blackMax = initialEstimate?.blackMax ?: 96,
-                        whiteMin = initialEstimate?.whiteMin ?: 160,
-                        unknownColorClusters = originalEstimate?.unknownColorClusters.orEmpty(),
-                        lockCorners = true,
-                    ).withInitialGrid(initialGrid).withInitialErrorLimits()
-                    sessionId = sessionStore.newId()
-                    sessionHistory.clear()
-                    val newSessionId = sessionId!!
-                    ioExecutor.execute {
-                        try {
-                            sessionStore.saveSourceBitmap(newSessionId, p.bitmap)
-                        } catch (t: Throwable) {
-                            reportPersistenceFailure(ui("元画像の保存に失敗", "Source image save failed"), t)
-                        }
-                    }
-                    sessionHistory.record(
-                        RecoveryHistoryEntry(
-                            kind = HistoryEventKind.IMPORT,
-                            label = ui("画像を読み込み", "Imported image"),
-                            detail = "${p.bitmap.width}×${p.bitmap.height}px" +
-                                (initialGrid?.let {
-                                    val method = when (it.source) {
-                                        io.github.earthdiver.qrrepair.core.InitialGridSource.ZXING_CPP -> "ZXing-C++"
-                                        io.github.earthdiver.qrrepair.core.InitialGridSource.PERIODICITY -> ui("周期推定", "periodicity")
-                                        io.github.earthdiver.qrrepair.core.InitialGridSource.TWO_FINDER -> ui("2つのFinderから推定", "two-Finder estimate")
-                                    }
-                                    ui("; 格子推定: $method / V${it.version}", "; Grid estimate: $method / V${it.version}") +
-                                        if (it.autoAssignedFinders.isNotEmpty()) ui("; Finder位置・役割を自動設定", "; Finder positions and roles assigned automatically") else ""
-                                } ?: ""),
-                            snapshot = RecoverySnapshot(null, null, null, -1, preprocessSettings),
-                        ),
-                    )
-                    persistSessionAsync()
-                    recoveryState.clear()
-                    guideText.text = ui("案内: 修復前設定で閾値・反転・グリッドを確認してください。", "Guide: Review the threshold, polarity, and grid in the pre-repair settings.")
-                    contentPreviewText.text = getString(R.string.no_content_preview)
-                    clearDiagnosticDetails()
-                    refreshMainResultSelector()
-                    statusText.text = ui("画像 ${p.bitmap.width}×${p.bitmap.height}px。修復前設定を確認してください。", "Image ${p.bitmap.width}×${p.bitmap.height}px. Review the pre-repair settings.")
-                    if (standardResult != null) {
-                        showImmediateQrResult(standardResult)
-                    } else {
-                        showPreprocessDialog()
-                    }
-                }
-                handedToUi = true
-            } catch (t: Throwable) {
-                runOnUiThread {
-                    finishInputImport(token)
-                    if (token != workGeneration.get() || isDestroyed) return@runOnUiThread
-                    statusText.text = ui("画像の読み込みに失敗: ${t.message ?: t.javaClass.simpleName}", "Image load failed: ${t.message ?: t.javaClass.simpleName}")
-                }
-            } finally {
-                runOnUiThread { finishInputImport(token) }
-                if (!handedToUi) {
-                    adjustedCandidate?.bitmap?.takeIf { it !== candidate?.bitmap && !it.isRecycled }?.recycle()
-                    candidate?.bitmap?.takeIf { !it.isRecycled }?.recycle()
-                    bitmap.takeIf { it !== candidate?.bitmap && !it.isRecycled }?.recycle()
-                }
-                // CameraActivity hands us a private lossless cache image. It is only a hand-off artifact;
-                // the durable session copy is lossless PNG under noBackupFilesDir.
-                cleanupFile?.let { runCatching { it.delete() } }
+            }
+            sessionHistory.record(
+                RecoveryHistoryEntry(
+                    kind = HistoryEventKind.IMPORT,
+                    label = ui("画像を読み込み", "Imported image"),
+                    detail = "${p.bitmap.width}×${p.bitmap.height}px" +
+                        (initialGrid?.let {
+                            val method = when (it.source) {
+                                io.github.earthdiver.qrrepair.core.InitialGridSource.ZXING_CPP -> "ZXing-C++"
+                                io.github.earthdiver.qrrepair.core.InitialGridSource.PERIODICITY -> ui("周期推定", "periodicity")
+                                io.github.earthdiver.qrrepair.core.InitialGridSource.TWO_FINDER -> ui("2つのFinderから推定", "two-Finder estimate")
+                            }
+                            ui("; 格子推定: $method / V${it.version}", "; Grid estimate: $method / V${it.version}") +
+                                if (it.autoAssignedFinders.isNotEmpty()) ui("; Finder位置・役割を自動設定", "; Finder positions and roles assigned automatically") else ""
+                        } ?: ""),
+                    snapshot = RecoverySnapshot(null, null, null, -1, preprocessSettings),
+                ),
+            )
+            persistSessionAsync()
+            recoveryState.clear()
+            guideText.text = ui("案内: 修復前設定で閾値・反転・グリッドを確認してください。", "Guide: Review the threshold, polarity, and grid in the pre-repair settings.")
+            contentPreviewText.text = getString(R.string.no_content_preview)
+            clearDiagnosticDetails()
+            refreshMainResultSelector()
+            statusText.text = ui("画像 ${p.bitmap.width}×${p.bitmap.height}px。修復前設定を確認してください。", "Image ${p.bitmap.width}×${p.bitmap.height}px. Review the pre-repair settings.")
+            if (standardResult != null) {
+                showImmediateQrResult(standardResult)
+            } else {
+                showPreprocessDialog()
             }
         }
     }
-
-    private fun decodeStandardQr(bitmap: Bitmap): Result? = runCatching {
-        val pixels = IntArray(bitmap.width * bitmap.height)
-        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-        StandardQrDecoder.decode(bitmap.width, bitmap.height, pixels)
-    }.getOrNull()
 
     private fun immediateQrResult(result: Result) = ImmediateQrResult(
         sessionId, sessionHistory.current?.id, preprocessSettings, result.text, result.rawBytes?.copyOf())
@@ -2350,45 +2272,6 @@ class MainActivity : Activity() {
             .setNegativeButton(R.string.repair) { _, _ -> showPreprocessDialog() }
             .setPositiveButton(R.string.close, null)
             .show()
-    }
-
-    private fun decodeReasonablySized(uri: Uri): Bitmap? {
-        val orientation = contentResolver.openInputStream(uri)?.use { stream ->
-            runCatching {
-                ExifInterface(stream).getAttributeInt(
-                    ExifInterface.TAG_ORIENTATION,
-                    ExifInterface.ORIENTATION_NORMAL,
-                )
-            }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
-        } ?: ExifInterface.ORIENTATION_NORMAL
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-        var sample = 1
-        val maxSide = maxOf(bounds.outWidth, bounds.outHeight)
-        while (maxSide / sample > 2600) sample *= 2
-        val options = BitmapFactory.Options().apply {
-            inSampleSize = sample
-            inPreferredConfig = Bitmap.Config.ARGB_8888
-        }
-        val decoded = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
-            ?: return null
-        val spec = imageOrientationTransform(orientation)
-        val transform = Matrix().apply {
-            setRotate(spec.rotationDegrees)
-            if (spec.scaleX != 1f || spec.scaleY != 1f) postScale(spec.scaleX, spec.scaleY)
-        }
-        if (orientation == ExifInterface.ORIENTATION_NORMAL || orientation == ExifInterface.ORIENTATION_UNDEFINED) {
-            return decoded
-        }
-        return try {
-            Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, transform, true).also {
-                if (it !== decoded) decoded.recycle()
-            }
-        } catch (t: Throwable) {
-            decoded.recycle()
-            throw t
-        }
     }
 
     private fun showFormatEditError(conflict: FormatEditConflict, changeRejected: Boolean = true) {

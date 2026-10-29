@@ -18,8 +18,10 @@ class ListDecodingBlockSearch(
 ) {
     private val plan = PartialBitTrialPlan(block, maxEnumeratedBits, nonEnumerablePositions = nonEnumerablePositions)
     private val nsym = block.codewords.size - block.numDataCodewords
-    private val decoder by lazy { GuruswamiSudanDecoder(block.codewords.size, block.numDataCodewords) }
+    private val coordinates by lazy { ListDecodingCoordinates(block.codewords.size) }
+    private val decoder by lazy { GuruswamiSudanDecoder(block.codewords.size, block.numDataCodewords) { coordinates } }
     private val rs = ReedSolomonErasures()
+    private val bitTrials by lazy { plan.cursor(rs, nsym) }
     private val accumulated = BlockCandidateAccumulator()
     private var basePending = true
     private var baseExtra = 1
@@ -49,8 +51,12 @@ class ListDecodingBlockSearch(
     val methodTrials: Map<ListDecoderMethod, Int> get() = methods.toMap()
     val skipReasons: Set<ListDecodingTrialSkip> get() = skipped.toSet()
     val hasNext: Boolean get() = basePending || softPending || assignment < assignments
-    val workingBytes: Long get() = 8192L + block.codewords.size * 64L + accumulated.workingBytes
+    val workingBytes: Long get() = 9216L + block.codewords.size * 64L + accumulated.workingBytes +
+        if (assignments > 0) partialBitTrialWorkingBytes(block.codewords.size, nsym, plan.bitCount) else 0L
     val candidates: List<PartialCodewordSolver.Result> get() = accumulated.results()
+    val candidateCount: Int get() = accumulated.size
+    val routeRevision: Long get() = accumulated.routeRevision
+    fun admittedAfter(result: PartialCodewordSolver.Result, count: Int): Boolean = accumulated.admittedAfter(result, count)
 
     init {
         require(block.codewords.size == original.codewords.size && mismatchLimit >= 0)
@@ -91,9 +97,10 @@ class ListDecodingBlockSearch(
             else { assignment = index + 1; assignmentExtra = 1 }
             return false
         }
-        val guessed = if (base) block.codewords.copyOf() else plan.assignment(index)
+        val guessed = if (base) block.codewords.copyOf() else bitTrials.assignment(index)
         val before = accumulated.workingBytes
         val beforeCount = accumulated.size
+        val beforeRevision = accumulated.routeRevision
         val key = if (base && cache != null) ListDecodingTrialCache.Key(block,
             if (extra == 1) intArrayOf() else intArrayOf(extra)) else null
         var collected: ListDecodingTrialCache.Collector? = null
@@ -123,18 +130,18 @@ class ListDecodingBlockSearch(
                     val positions = guessed.indices.filter { it in erased || candidate.corrected[it] != guessed[it] }.toIntArray()
                     offer(candidate.corrected, positions, candidate.derivation)
                 }
-                return accumulated.size != beforeCount
+                return accumulated.size != beforeCount || accumulated.routeRevision != beforeRevision
             }
             trials++
             // Triangle inequality proves a close ordinary result is the only codeword in this
             // hard-decision ball. Healthy blocks and already-disproved QR payloads need no interpolation.
-            val ordinary = try { rs.decode(guessed, nsym, erased) } catch (_: ReedSolomonErasures.DecodeException) { null }
+            val ordinary = try { if (base) rs.decode(guessed, nsym, erased) else bitTrials.decode() } catch (_: ReedSolomonErasures.DecodeException) { null }
             if (ordinary != null) {
                 val errors = guessed.indices.count { it !in erased && ordinary.corrected[it] != guessed[it] }
                 offer(ordinary.corrected, ordinary.errataPositions, null)
                 if (errors + radius < n - k + 1) {
                     skipped += ListDecodingTrialSkip.UNIQUE_NEARBY_WORD
-                    return accumulated.size != beforeCount
+                    return accumulated.size != beforeCount || accumulated.routeRevision != beforeRevision
                 }
             }
             // Earlier shells and ordinary RS cover the smaller distances. A new word
@@ -144,11 +151,11 @@ class ListDecodingBlockSearch(
                 (original.unknownMasks[it] != 0 || guessed[it] != original.codewords[it]) }
             if (radius - freeErrorSymbols > mismatchLimit) {
                 skipped += ListDecodingTrialSkip.MISMATCH_CAP
-                return accumulated.size != beforeCount
+                return accumulated.size != beforeCount || accumulated.routeRevision != beforeRevision
             }
             val available = availableBytes - (accumulated.workingBytes - before)
-            val choice = ListDecodingPlanner.hard(block.codewords.size, k, erased.size, available, extra, check)
-                ?: return accumulated.size != beforeCount
+            val choice = ListDecodingPlanner.hard(block.codewords.size, k, erased.size, available, extra, check, decoder)
+                ?: return accumulated.size != beforeCount || accumulated.routeRevision != beforeRevision
             val parameters = choice.parameters
             methods[choice.method] = (methods[choice.method] ?: 0) + 1
             radiusTrials[radius] = (radiusTrials[radius] ?: 0) + 1
@@ -179,21 +186,22 @@ class ListDecodingBlockSearch(
             memoryLimited = true
             if (base) basePending = false else assignment = assignments
         }
-        return accumulated.size != beforeCount
+        return accumulated.size != beforeCount || accumulated.routeRevision != beforeRevision
     }
 
     /** Optional KV pass before enumerating partial-bit assignments. Null means it adds no useful plan. */
     private fun advanceSoft(availableBytes: Long): Boolean? {
         val k = block.numDataCodewords
-        val hard = ListDecodingPlanner.hard(block.codewords.size, k, plan.remainingErasures.size, Long.MAX_VALUE, check)
+        val hard = ListDecodingPlanner.hard(block.codewords.size, k, plan.remainingErasures.size, Long.MAX_VALUE, ListDecodingLimit.DEFAULT, check, decoder)
         val maximumWork = hard?.estimatedWork?.let { listDecodingWork(it, assignments.coerceAtLeast(1).toLong()) } ?: Long.MAX_VALUE
-        val decoder = KoetterVardyDecoder(block.codewords.size, k)
+        val decoder = KoetterVardyDecoder(block.codewords.size, k) { coordinates }
         val targetErrors = maxOf(1, (softMasks.count { it == 0 } - k) / 2 + 1)
         val parameters = decoder.parameters(softMasks, targetErrors, availableBytes, maximumWork, check) ?: run {
             skipped += ListDecodingTrialSkip.KV_PARAMETERS_UNAVAILABLE
             return null
         }
         val beforeCount = accumulated.size
+        val beforeRevision = accumulated.routeRevision
         val before = accumulated.workingBytes
         val key = cache?.let { ListDecodingTrialCache.Key(block,
             softMasks + intArrayOf(parameters.multiplicity, parameters.listDegree, parameters.degreeBound)) }
@@ -216,7 +224,7 @@ class ListDecodingBlockSearch(
             if (cached != null) {
                 reusedTrials++
                 cached.forEach { offer(it.corrected, requireNotNull(it.derivation), 0) }
-                return accumulated.size != beforeCount
+                return accumulated.size != beforeCount || accumulated.routeRevision != beforeRevision
             }
             trials++
             interpolations++
@@ -236,6 +244,6 @@ class ListDecodingBlockSearch(
         } catch (_: ListDecodingWorkingMemoryException) {
             memoryLimited = true
         }
-        return accumulated.size != beforeCount
+        return accumulated.size != beforeCount || accumulated.routeRevision != beforeRevision
     }
 }
