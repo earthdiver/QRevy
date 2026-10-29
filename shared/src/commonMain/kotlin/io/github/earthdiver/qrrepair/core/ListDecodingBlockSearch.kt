@@ -18,7 +18,8 @@ class ListDecodingBlockSearch(
 ) {
     private val plan = PartialBitTrialPlan(block, maxEnumeratedBits, nonEnumerablePositions = nonEnumerablePositions)
     private val nsym = block.codewords.size - block.numDataCodewords
-    private val decoder by lazy { GuruswamiSudanDecoder(block.codewords.size, block.numDataCodewords) }
+    private val coordinates by lazy { ListDecodingCoordinates(block.codewords.size) }
+    private val decoder by lazy { GuruswamiSudanDecoder(block.codewords.size, block.numDataCodewords) { coordinates } }
     private val rs = ReedSolomonErasures()
     private val bitTrials by lazy { plan.cursor(rs, nsym) }
     private val accumulated = BlockCandidateAccumulator()
@@ -50,7 +51,7 @@ class ListDecodingBlockSearch(
     val methodTrials: Map<ListDecoderMethod, Int> get() = methods.toMap()
     val skipReasons: Set<ListDecodingTrialSkip> get() = skipped.toSet()
     val hasNext: Boolean get() = basePending || softPending || assignment < assignments
-    val workingBytes: Long get() = 8192L + block.codewords.size * 64L + accumulated.workingBytes +
+    val workingBytes: Long get() = 9216L + block.codewords.size * 64L + accumulated.workingBytes +
         if (assignments > 0) partialBitTrialWorkingBytes(block.codewords.size, nsym, plan.bitCount) else 0L
     val candidates: List<PartialCodewordSolver.Result> get() = accumulated.results()
 
@@ -149,7 +150,7 @@ class ListDecodingBlockSearch(
                 return accumulated.size != beforeCount
             }
             val available = availableBytes - (accumulated.workingBytes - before)
-            val choice = ListDecodingPlanner.hard(block.codewords.size, k, erased.size, available, extra, check)
+            val choice = ListDecodingPlanner.hard(block.codewords.size, k, erased.size, available, extra, check, decoder)
                 ?: return accumulated.size != beforeCount
             val parameters = choice.parameters
             methods[choice.method] = (methods[choice.method] ?: 0) + 1
@@ -187,9 +188,9 @@ class ListDecodingBlockSearch(
     /** Optional KV pass before enumerating partial-bit assignments. Null means it adds no useful plan. */
     private fun advanceSoft(availableBytes: Long): Boolean? {
         val k = block.numDataCodewords
-        val hard = ListDecodingPlanner.hard(block.codewords.size, k, plan.remainingErasures.size, Long.MAX_VALUE, check)
+        val hard = ListDecodingPlanner.hard(block.codewords.size, k, plan.remainingErasures.size, Long.MAX_VALUE, ListDecodingLimit.DEFAULT, check, decoder)
         val maximumWork = hard?.estimatedWork?.let { listDecodingWork(it, assignments.coerceAtLeast(1).toLong()) } ?: Long.MAX_VALUE
-        val decoder = KoetterVardyDecoder(block.codewords.size, k)
+        val decoder = KoetterVardyDecoder(block.codewords.size, k) { coordinates }
         val targetErrors = maxOf(1, (softMasks.count { it == 0 } - k) / 2 + 1)
         val parameters = decoder.parameters(softMasks, targetErrors, availableBytes, maximumWork, check) ?: run {
             skipped += ListDecodingTrialSkip.KV_PARAMETERS_UNAVAILABLE

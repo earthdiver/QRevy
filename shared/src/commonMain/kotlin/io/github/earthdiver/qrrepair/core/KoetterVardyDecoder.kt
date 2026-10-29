@@ -9,7 +9,12 @@ import io.github.earthdiver.qrrepair.core.ListDecodingField as F
  * enumerated. Incorrect known bits can still be corrected by the resulting codewords.
  * Interpolation: https://arxiv.org/abs/1005.5734, section III (Koetter's algorithm).
  */
-class KoetterVardyDecoder(private val length: Int, private val dataLength: Int) {
+class KoetterVardyDecoder internal constructor(private val length: Int, private val dataLength: Int,
+    coordinateFactory: () -> ListDecodingCoordinates) {
+    constructor(length: Int, dataLength: Int) : this(length, dataLength, { ListDecodingCoordinates(length) })
+    private val coordinates by lazy(coordinateFactory)
+    private var cachedMasks: IntArray? = null
+    private var cachedParameters: Parameters? = null
     init { require(dataLength in 2 until length && length <= 255) }
     data class Parameters(val multiplicity: Int, val listDegree: Int, val degreeBound: Int,
         val targetErrors: Int, val constraints: Int, val workingBytes: Long, val estimatedWork: Long)
@@ -21,6 +26,10 @@ class KoetterVardyDecoder(private val length: Int, private val dataLength: Int) 
     fun parameters(unknownMasks: IntArray, targetErrors: Int, workingLimitBytes: Long,
         maximumWork: Long = Long.MAX_VALUE, check: () -> Unit = {}): Parameters? {
         require(unknownMasks.size == length && unknownMasks.all { it in 0..255 } && targetErrors >= 0)
+        cachedParameters?.takeIf { it.targetErrors == targetErrors && cachedMasks?.contentEquals(unknownMasks) == true }?.let {
+            check()
+            return it.takeIf { p -> p.workingBytes <= workingLimitBytes && p.estimatedWork <= maximumWork }
+        }
         val uncertain = unknownMasks.filter { ambiguity(it) in 1..4 }
         if (uncertain.isEmpty()) return null
         val quantum = 1 shl uncertain.maxOf(::ambiguity)
@@ -59,7 +68,10 @@ class KoetterVardyDecoder(private val length: Int, private val dataLength: Int) 
                 roots, componentDegreesBytes)
             val work = listDecodingWork(constraints, width, width, low + 1L)
             if (bytes > workingLimitBytes || work > maximumWork) return null
-            return Parameters(quantum * scale, ell, low, targetErrors, constraints.toInt(), bytes, work)
+            return Parameters(quantum * scale, ell, low, targetErrors, constraints.toInt(), bytes, work).also {
+                cachedMasks = unknownMasks.copyOf()
+                cachedParameters = it
+            }
         }
         error("No KV assignment despite a positive score margin")
     }
@@ -70,7 +82,6 @@ class KoetterVardyDecoder(private val length: Int, private val dataLength: Int) 
         require(p == parameters(unknownMasks, p.targetErrors, Long.MAX_VALUE, check = check))
         if (p.workingBytes > workingLimitBytes) throw ListDecodingWorkingMemoryException()
         check()
-        val coordinates = ListDecodingCoordinates(length)
         val multiplicities = IntArray(length) { if (active(unknownMasks[it])) p.multiplicity shr ambiguity(unknownMasks[it]) else 0 }
         val q = interpolate(received, unknownMasks, multiplicities, coordinates, p, check)
         listDecodingRoots(q, dataLength, check) { coefficients ->
