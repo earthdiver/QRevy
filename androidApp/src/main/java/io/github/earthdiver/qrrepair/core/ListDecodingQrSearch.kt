@@ -23,6 +23,8 @@ internal class ListDecodingQrSearch(private val rs: ReedSolomonErasures) {
         onStops: (Set<CombinationSearchStop>) -> Unit,
         evaluate: (List<PartialCodewordSolver.Result>) -> Boolean,
     ): Boolean {
+        val prefixCacheBudget = minOf(32L * 1024, workingLimitBytes / 64)
+        val prefixCache = QrPrefixValidationCache(version, prefixCacheBudget)
         val searches = mutableListOf<ListDecodingBlockSearch>()
         val spaces = mutableListOf<RsBitConstraintSolver.Space?>()
         val stops = linkedSetOf<CombinationSearchStop>()
@@ -50,7 +52,7 @@ internal class ListDecodingQrSearch(private val rs: ReedSolomonErasures) {
             }
             pinValues[location.blockIndex][location.localIndex] = word.value
         }
-        fun used() = (cache?.workingBytes ?: 0L) + searches.sumOf { it.workingBytes } + spaces.sumOf { it?.restrictionWorkingBytes ?: 0L } +
+        fun used() = prefixCacheBudget + (cache?.workingBytes ?: 0L) + searches.sumOf { it.workingBytes } + spaces.sumOf { it?.restrictionWorkingBytes ?: 0L } +
             de.blocks.sumOf { 256L + it.codewords.size * 28L } +
             if (spaces.any { it != null }) 16_384L + de.blocks.sumOf {
                 2048L + it.codewords.size * 64L + it.numDataCodewords * 4096L
@@ -130,7 +132,7 @@ internal class ListDecodingQrSearch(private val rs: ReedSolomonErasures) {
                         val data = prefix.flatMapIndexed { index, result ->
                             result.corrected.take(de.blocks[index].numDataCodewords).map { it.toByte() }
                         }.toByteArray()
-                        StrictQrPayloadValidator.canBePrefix(data, version).also {
+                        prefixCache.canBePrefix(data).also {
                             if (!it) onRejection(RecoveryCandidateRejection.QR_STRUCTURE)
                         }
                     }
