@@ -13,6 +13,7 @@ import android.widget.TextView
 import io.github.earthdiver.qrrepair.core.*
 import io.github.earthdiver.qrrepair.ui.BitmapUtils
 import io.github.earthdiver.qrrepair.ui.PreprocessOverlayView
+import io.github.earthdiver.qrrepair.ui.QrEditorView
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -661,6 +662,40 @@ class PreprocessDialogControllerTest {
                 q, GeometryModel.MANUAL_PROJECTIVE).reanchored()
             val expected = MatrixSampler(working.luma, settings.variants().single()).sample(geometry).first
             for (y in 0 until 21) for (x in 0 until 21) assertEquals(expected[x, y].value, matrix[x, y].value)
+        }
+    }
+
+    @Test fun expandedEditorSharesUndoHistoryAndPreservesEditsAfterReopening() = withDialog { dialog, host, _, _ ->
+        val coord = Coord(10, 10)
+        val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
+        overlay.onCellBrushApplied!!.invoke(setOf(coord), ModuleValue.ERASED)
+        overlay.onCellBrushApplied!!.invoke(setOf(coord), ModuleValue.ONE)
+        click(dialog, "大きな編集画面を開く")
+        shadowOf(Looper.getMainLooper()).idle()
+        val expanded = ShadowDialog.getLatestDialog() as AlertDialog
+        try {
+            val editor = views(expanded.window!!.decorView).filterIsInstance<QrEditorView>().single()
+            editor.onBrushApplied!!.invoke(setOf(coord), ModuleValue.ZERO)
+            click(expanded, "Undo")
+            expanded.dismiss()
+            shadowOf(Looper.getMainLooper()).idle()
+            click(dialog, "保存")
+            assertEquals(ModuleValue.ONE, host.saves.last().settings.preRecoveryEdits[coord])
+            click(dialog, "大きな編集画面を開く")
+            shadowOf(Looper.getMainLooper()).idle()
+            val reopened = ShadowDialog.getLatestDialog() as AlertDialog
+            try {
+                click(reopened, "Redo")
+            } finally {
+                reopened.dismiss()
+                shadowOf(Looper.getMainLooper()).idle()
+            }
+            click(dialog, "保存")
+            assertEquals(ModuleValue.ZERO, host.saves.last().settings.preRecoveryEdits[coord])
+            assertEquals(ModuleValue.ONE, host.saves.first().settings.preRecoveryEdits[coord])
+        } finally {
+            expanded.dismiss()
+            shadowOf(Looper.getMainLooper()).idle()
         }
     }
 
