@@ -44,40 +44,65 @@ class WuDecoder(private val length: Int, private val dataLength: Int) {
         val rs = ReedSolomonErasures()
         val omitted = BooleanArray(length).also { flags -> erased.forEach { flags[it] = true } }
         val input = received.copyOf().also { values -> erased.forEach { values[it] = 0 } }
-        var syndromes = rs.calcSyndromes(input, length - dataLength).drop(1).toIntArray()
+        val syndromes = rs.calcSyndromes(input, length - dataLength).copyOfRange(1, length - dataLength + 1)
+        var syndromeSize = syndromes.size
         for (position in erased) {
             check()
             val x = F.power(2, length - 1 - position)
-            syndromes = IntArray(syndromes.size - 1) { F.multiply(syndromes[it], x) xor syndromes[it + 1] }
+            for (i in 0 until syndromeSize - 1)
+                syndromes[i] = F.multiply(syndromes[i], x) xor syndromes[i + 1]
+            syndromeSize--
         }
-        var locator = intArrayOf(1)
-        var auxiliary = intArrayOf(1)
+        // Reuse a fixed polynomial workspace; logical sizes retain the original update order.
+        var locator = IntArray(parity + 2).also { it[0] = 1 }
+        val auxiliary = IntArray(parity + 2).also { it[0] = 1 }
+        var next = IntArray(parity + 2)
+        var locatorSize = 1
+        var auxiliarySize = 1
         var locatorLength = 0
         var auxiliaryLength = 0
-        for (r in syndromes.indices) {
+        for (r in 0 until syndromeSize) {
             check()
             var discrepancy = syndromes[r]
-            for (j in 1..minOf(r, locator.lastIndex)) discrepancy = discrepancy xor F.multiply(locator[j], syndromes[r - j])
-            val next = locator.copyOf(maxOf(locator.size, auxiliary.size + 1))
-            for (j in auxiliary.indices) next[j + 1] = next[j + 1] xor F.multiply(discrepancy, auxiliary[j])
+            for (j in 1..minOf(r, locatorSize - 1)) discrepancy = discrepancy xor F.multiply(locator[j], syndromes[r - j])
+            next.fill(0)
+            locator.copyInto(next, endIndex = locatorSize)
+            var nextSize = maxOf(locatorSize, auxiliarySize + 1)
+            for (j in 0 until auxiliarySize) next[j + 1] = next[j + 1] xor F.multiply(discrepancy, auxiliary[j])
             if (discrepancy != 0 && 2 * locatorLength <= r) {
-                auxiliary = IntArray(locator.size) { F.divide(locator[it], discrepancy) }
+                auxiliary.fill(0)
+                for (j in 0 until locatorSize) auxiliary[j] = F.divide(locator[j], discrepancy)
+                auxiliarySize = locatorSize
                 val oldLength = locatorLength
                 locatorLength = auxiliaryLength + 1
                 auxiliaryLength = oldLength
             } else {
-                auxiliary = intArrayOf(0) + auxiliary
+                for (j in auxiliarySize downTo 1) auxiliary[j] = auxiliary[j - 1]
+                auxiliary[0] = 0
+                auxiliarySize++
                 auxiliaryLength++
             }
-            locator = next.copyOf(next.indexOfLast { it != 0 } + 1)
+            while (nextSize > 0 && next[nextSize - 1] == 0) nextSize--
+            val old = locator
+            locator = next
+            next = old
+            locatorSize = nextSize
         }
         if (locatorLength > radius) return
         val lambdaDegree = radius - locatorLength
         val bDegree = radius - auxiliaryLength - 1
-        val positions = received.indices.filterNot { omitted[it] }
+        val positions = IntArray(length - erased.size)
+        var positionCount = 0
+        for (position in received.indices) if (!omitted[position]) positions[positionCount++] = position
         val xs = IntArray(positions.size) { F.power(2, -(length - 1 - positions[it])) }
         val a = IntArray(xs.size) { F.evaluate(locator, xs[it]) }
         val b = IntArray(xs.size) { F.multiply(xs[it], F.evaluate(auxiliary, xs[it])) }
+        val rootBuffer = IntArray(positions.size)
+        fun collectRoots(predicate: (Int) -> Boolean): IntArray {
+            var count = 0
+            for (i in positions.indices) if (predicate(i)) rootBuffer[count++] = positions[i]
+            return rootBuffer.copyOf(count)
+        }
         fun offer(roots: IntArray) {
             check()
             if (roots.size > radius || roots.size + erased.size > length - dataLength) return
@@ -88,7 +113,7 @@ class WuDecoder(private val length: Int, private val dataLength: Int) {
             if (if (radius > parity / 2 + 1) errors == radius else errors <= radius) emit(corrected)
         }
         if (bDegree < 0) {
-            val roots = positions.indices.filter { a[it] == 0 }.map { positions[it] }.toIntArray()
+            val roots = collectRoots { a[it] == 0 }
             if (roots.size == locatorLength) offer(roots)
             return
         }
@@ -121,7 +146,7 @@ class WuDecoder(private val length: Int, private val dataLength: Int) {
             for (u in uRange) if (counts[u] + common == radius) {
                 // Exclude the non-coprime b=0, lambda!=1 representation.
                 if (lambdaDegree == 1 && v == 0 && u != 0) continue
-                val roots = positions.indices.filter { required[it] == -1 || required[it] == u }.map { positions[it] }.toIntArray()
+                val roots = collectRoots { required[it] == -1 || required[it] == u }
                 offer(roots)
             }
         }
