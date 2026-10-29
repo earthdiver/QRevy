@@ -69,3 +69,15 @@ Execution percentages are sampled Java execution shares, not exact wall-clock fr
 Allocation weights estimate allocation pressure, not exact allocated or retained bytes. A sample's weight can cover allocations since an earlier sample outside its decoder interval; window filtering therefore does not provide exact per-invocation byte accounting. Cross-check this estimate with the benchmark's decoder-thread allocation counter. GC, safepoints, JIT and recording overhead can change sample distributions and elapsed time. Compare retained candidates, derivations and full search diagnostics against the control before interpreting the profile. Use the unprofiled control for latency, and do not present a more thoroughly warmed run as a production-code speedup.
 
 These small mixed cases identify optimization targets, not universal hotspots across all QR versions or damage patterns. Repeated profiles should support the same broad ranking before selecting a change. Finding an expensive fallback is not authorization to remove it: preserve supported candidate sets, constraints and provenance in any later optimization.
+
+## GS/Wu planner calibration
+
+Run `./gradlew -p scripts/example-harness plannerCalibration --offline` to compare
+both decoders on the same hard-decision balls. The synthetic study covers six block
+shapes, up to two erasures, and three seeds. Unsupported radii are skipped. Each
+input has 25 warmups and 100 timed calls per decoder, with alternating execution
+order. Every call must recover the original and produce equal candidate sets.
+CSV output includes the uncalibrated work estimates and median nanoseconds.
+This desktop JVM study does not establish Android device costs or calibrate the
+wider two/three-extra-error shells. Warmup-sensitive rankings do not justify a
+planner change; retain existing heuristics until stable measurements support one.
