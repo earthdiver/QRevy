@@ -69,6 +69,11 @@ object PayloadConstraintSolver {
 
     private data class Ref(val blockIndex: Int, val block: RsBlockWork, val byteIndex: Int)
     private data class Forced(val value: Int, val kind: ConstraintKind)
+    private val forcedBits = Array(ConstraintKind.entries.size) { kind ->
+        Array(2) { value -> Forced(value, ConstraintKind.entries[kind]) }
+    }
+    private fun forced(value: Int, kind: ConstraintKind): Forced = forcedBits[kind.ordinal][value]
+
     private data class Plan(
         val mode: Int,
         val count: Int,
@@ -244,27 +249,27 @@ object PayloadConstraintSolver {
         fun forcedAt(plan: Plan, bitIndex: Int): Forced? {
             if (bitIndex !in 0 until totalBits) return null
             if (bitIndex < 4) {
-                return Forced(bitPatternValue(plan.mode, 4, bitIndex), ConstraintKind.MODE)
+                return forced(bitPatternValue(plan.mode, 4, bitIndex), ConstraintKind.MODE)
             }
             if (bitIndex < plan.headerBits) {
                 val offset = bitIndex - 4
-                return Forced(bitPatternValue(plan.count, plan.countBits, offset), ConstraintKind.COUNT)
+                return forced(bitPatternValue(plan.count, plan.countBits, offset), ConstraintKind.COUNT)
             }
             if (bitIndex < plan.payloadEnd) return null
 
             var cursor = plan.payloadEnd
             val terminatorEnd = min(totalBits, cursor + 4)
-            if (bitIndex < terminatorEnd) return Forced(0, ConstraintKind.TERMINATOR)
+            if (bitIndex < terminatorEnd) return forced(0, ConstraintKind.TERMINATOR)
             cursor = terminatorEnd
             val alignmentEnd = min(totalBits, ((cursor + 7) / 8) * 8)
-            if (bitIndex < alignmentEnd) return Forced(0, ConstraintKind.BYTE_ALIGNMENT)
+            if (bitIndex < alignmentEnd) return forced(0, ConstraintKind.BYTE_ALIGNMENT)
             cursor = alignmentEnd
             if (bitIndex < cursor || cursor >= totalBits) return null
 
             val byteOffset = (bitIndex - cursor) / 8
             val bitFromMsb = (bitIndex - cursor) % 8
             val padByte = if ((byteOffset and 1) == 0) 0xEC else 0x11
-            return Forced((padByte shr (7 - bitFromMsb)) and 1, ConstraintKind.PAD)
+            return forced((padByte shr (7 - bitFromMsb)) and 1, ConstraintKind.PAD)
         }
 
         val plans = ArrayList<Plan>(min(maxPlans, 4096))
@@ -351,8 +356,8 @@ object PayloadConstraintSolver {
         // Keep the trial score above for eligibility and report only the original known suffix.
         val reportedEvidence = if (evidenceInput == null) bestEvidence
             else viable.maxOf { observedFillerMatches(it.payloadEnd) }
-        val inferredMode = viable.map { it.mode }.distinct().singleOrNull()
-        val inferredCount = viable.map { it.count }.distinct().singleOrNull()
+        val inferredMode = viable[0].mode.takeIf { mode -> viable.all { it.mode == mode } }
+        val inferredCount = viable[0].count.takeIf { count -> viable.all { it.count == count } }
         if (trustedHeaderPlan == null && bestEvidence < 6) {
             return Result(0, viable.size, inferredMode, inferredCount, reportedEvidence, suffixBlocked = true)
         }
@@ -407,18 +412,30 @@ object PayloadConstraintSolver {
         if (inferredMode != null && inferredCount != null && inferredMode in setOf(1, 2)) {
             for (group in dataGroups(viable[0])) {
                 cancellation.check()
-                val values = (0..group.maxValue).filter { value ->
-                    (0 until group.width).all { offset ->
-                        val observed = known[group.start + offset]
-                        observed < 0 || observed == bitPatternValue(value, group.width, offset)
+                var observedMask = 0
+                var observedValue = 0
+                for (offset in 0 until group.width) {
+                    val observed = known[group.start + offset]
+                    if (observed >= 0) {
+                        val bit = 1 shl (group.width - 1 - offset)
+                        observedMask = observedMask or bit
+                        if (observed == 1) observedValue = observedValue or bit
                     }
                 }
-                if (values.isEmpty()) continue
+                var commonOnes = (1 shl group.width) - 1
+                var anyOnes = 0
+                var found = false
+                for (value in 0..group.maxValue) if (value and observedMask == observedValue) {
+                    found = true
+                    commonOnes = commonOnes and value
+                    anyOnes = anyOnes or value
+                }
+                if (!found) continue
                 for (offset in 0 until group.width) {
                     val bitIndex = group.start + offset
                     if (known[bitIndex] >= 0) continue
-                    val value = bitPatternValue(values[0], group.width, offset)
-                    if (values.all { bitPatternValue(it, group.width, offset) == value }) {
+                    val value = bitPatternValue(commonOnes, group.width, offset)
+                    if (bitPatternValue(commonOnes xor anyOnes, group.width, offset) == 0) {
                         val ref = refs[bitIndex / 8]
                         val bit = 7 - bitIndex % 8
                         val mask = 1 shl bit
