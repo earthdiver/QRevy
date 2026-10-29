@@ -1158,6 +1158,7 @@ internal fun <T> bestFirstCartesianProductSequence(
     rank: (T) -> Int,
     maxExpandedNodes: Int = Int.MAX_VALUE,
     onLimitReached: () -> Unit = {},
+    isRelevantPrefix: (List<T>) -> Boolean = { true },
     canExtend: (List<T>) -> Boolean = { true },
 ): Sequence<List<T>> = sequence {
     require(maxExpandedNodes > 0)
@@ -1173,7 +1174,6 @@ internal fun <T> bestFirstCartesianProductSequence(
     queue += Node(initial, ordered.indices.sumOf { rank(ordered[it][0]).toLong() }, serial++)
     var expanded = 0
     while (queue.isNotEmpty()) {
-        if (expanded++ == maxExpandedNodes) { onLimitReached(); return@sequence }
         val node = queue.remove()
         val depth = node.indices.lastIndex
         val oldIndex = node.indices[depth]
@@ -1184,6 +1184,8 @@ internal fun <T> bestFirstCartesianProductSequence(
             queue += Node(sibling, node.totalRank - rank(ordered[depth][oldIndex]) + rank(ordered[depth][oldIndex + 1]), serial++)
         }
         val values = node.indices.indices.map { ordered[it][node.indices[it]] }
+        if (!isRelevantPrefix(values)) continue
+        if (expanded++ == maxExpandedNodes) { onLimitReached(); return@sequence }
         if (!canExtend(values)) continue
         if (values.size == ordered.size) yield(values)
         else queue += Node(node.indices.copyOf(node.indices.size + 1), node.totalRank, serial++)

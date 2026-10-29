@@ -232,6 +232,16 @@ internal class BlockCandidateAccumulator {
     var workingBytes: Long = 0
         private set
 
+    var routeRevision: Long = 0
+        private set
+
+    /** Admission order comes from the existing map; no per-candidate revision table is retained. */
+    fun admittedAfter(result: PartialCodewordSolver.Result, count: Int): Boolean {
+        for ((index, entry) in entries.values.withIndex())
+            if (entry.representative.corrected.contentEquals(result.corrected)) return index >= count
+        error("Candidate does not belong to this accumulator")
+    }
+
     val size: Int get() = entries.size
     fun isEmpty(): Boolean = entries.isEmpty()
 
@@ -247,10 +257,14 @@ internal class BlockCandidateAccumulator {
 
     fun add(result: PartialCodewordSolver.Result) {
         workingBytes += additionalBytes(result)
+        val previous = entries[Key(result.corrected)]
         val entry = entries.getOrPut(Key(result.corrected)) { Entry(result) }
+        val oldRoutes = entry.routes.size
+        val oldRepresentative = entry.representative
         entry.routes += result.derivation()
         entry.routes += result.alternativeDerivations
         if (representativeOrder.compare(result, entry.representative) < 0) entry.representative = result
+        if (previous != null && (entry.routes.size != oldRoutes || entry.representative !== oldRepresentative)) routeRevision++
     }
 
     fun results(): List<PartialCodewordSolver.Result> = entries.values.map { entry ->

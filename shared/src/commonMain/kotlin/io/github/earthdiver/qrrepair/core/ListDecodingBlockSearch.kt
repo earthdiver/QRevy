@@ -54,6 +54,9 @@ class ListDecodingBlockSearch(
     val workingBytes: Long get() = 9216L + block.codewords.size * 64L + accumulated.workingBytes +
         if (assignments > 0) partialBitTrialWorkingBytes(block.codewords.size, nsym, plan.bitCount) else 0L
     val candidates: List<PartialCodewordSolver.Result> get() = accumulated.results()
+    val candidateCount: Int get() = accumulated.size
+    val routeRevision: Long get() = accumulated.routeRevision
+    fun admittedAfter(result: PartialCodewordSolver.Result, count: Int): Boolean = accumulated.admittedAfter(result, count)
 
     init {
         require(block.codewords.size == original.codewords.size && mismatchLimit >= 0)
@@ -97,6 +100,7 @@ class ListDecodingBlockSearch(
         val guessed = if (base) block.codewords.copyOf() else bitTrials.assignment(index)
         val before = accumulated.workingBytes
         val beforeCount = accumulated.size
+        val beforeRevision = accumulated.routeRevision
         val key = if (base && cache != null) ListDecodingTrialCache.Key(block,
             if (extra == 1) intArrayOf() else intArrayOf(extra)) else null
         var collected: ListDecodingTrialCache.Collector? = null
@@ -126,7 +130,7 @@ class ListDecodingBlockSearch(
                     val positions = guessed.indices.filter { it in erased || candidate.corrected[it] != guessed[it] }.toIntArray()
                     offer(candidate.corrected, positions, candidate.derivation)
                 }
-                return accumulated.size != beforeCount
+                return accumulated.size != beforeCount || accumulated.routeRevision != beforeRevision
             }
             trials++
             // Triangle inequality proves a close ordinary result is the only codeword in this
@@ -137,7 +141,7 @@ class ListDecodingBlockSearch(
                 offer(ordinary.corrected, ordinary.errataPositions, null)
                 if (errors + radius < n - k + 1) {
                     skipped += ListDecodingTrialSkip.UNIQUE_NEARBY_WORD
-                    return accumulated.size != beforeCount
+                    return accumulated.size != beforeCount || accumulated.routeRevision != beforeRevision
                 }
             }
             // Earlier shells and ordinary RS cover the smaller distances. A new word
@@ -147,11 +151,11 @@ class ListDecodingBlockSearch(
                 (original.unknownMasks[it] != 0 || guessed[it] != original.codewords[it]) }
             if (radius - freeErrorSymbols > mismatchLimit) {
                 skipped += ListDecodingTrialSkip.MISMATCH_CAP
-                return accumulated.size != beforeCount
+                return accumulated.size != beforeCount || accumulated.routeRevision != beforeRevision
             }
             val available = availableBytes - (accumulated.workingBytes - before)
             val choice = ListDecodingPlanner.hard(block.codewords.size, k, erased.size, available, extra, check, decoder)
-                ?: return accumulated.size != beforeCount
+                ?: return accumulated.size != beforeCount || accumulated.routeRevision != beforeRevision
             val parameters = choice.parameters
             methods[choice.method] = (methods[choice.method] ?: 0) + 1
             radiusTrials[radius] = (radiusTrials[radius] ?: 0) + 1
@@ -182,7 +186,7 @@ class ListDecodingBlockSearch(
             memoryLimited = true
             if (base) basePending = false else assignment = assignments
         }
-        return accumulated.size != beforeCount
+        return accumulated.size != beforeCount || accumulated.routeRevision != beforeRevision
     }
 
     /** Optional KV pass before enumerating partial-bit assignments. Null means it adds no useful plan. */
@@ -197,6 +201,7 @@ class ListDecodingBlockSearch(
             return null
         }
         val beforeCount = accumulated.size
+        val beforeRevision = accumulated.routeRevision
         val before = accumulated.workingBytes
         val key = cache?.let { ListDecodingTrialCache.Key(block,
             softMasks + intArrayOf(parameters.multiplicity, parameters.listDegree, parameters.degreeBound)) }
@@ -219,7 +224,7 @@ class ListDecodingBlockSearch(
             if (cached != null) {
                 reusedTrials++
                 cached.forEach { offer(it.corrected, requireNotNull(it.derivation), 0) }
-                return accumulated.size != beforeCount
+                return accumulated.size != beforeCount || accumulated.routeRevision != beforeRevision
             }
             trials++
             interpolations++
@@ -239,6 +244,6 @@ class ListDecodingBlockSearch(
         } catch (_: ListDecodingWorkingMemoryException) {
             memoryLimited = true
         }
-        return accumulated.size != beforeCount
+        return accumulated.size != beforeCount || accumulated.routeRevision != beforeRevision
     }
 }
