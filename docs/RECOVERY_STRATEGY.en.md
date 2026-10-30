@@ -132,13 +132,14 @@ Codeword extraction also preserves the positions of unknown bits. **Deinterleavi
 | 2 | Initial list decoding with a short time allowance |
 | 3 | RS partial-bit constraints, narrowed using QR structure |
 | 4 | Partial-bit search with conventional RS |
-| 5 | Additional list decoding, combined with temporary assignments where useful |
+| 5 | Known-bit error search, when enabled and no candidate with decoded content has been found |
+| 6 | Additional list decoding, combined with temporary assignments where useful |
 
-If stage 1 passes QR-structure and input-condition checks and decodes the content, that reading attempt ends. Otherwise, processing proceeds to later stages. Candidates found in stage 2 or later are retained while the search continues.
+If stage 1 passes QR-structure and input-condition checks and decodes the content, that reading attempt ends. Otherwise, processing proceeds to later stages. Candidates found in stage 2 or later are retained while the search continues. Stage 5 runs only when **Known-bit error search** is enabled and no candidate with decoded content has been found through stage 4. Stage 6 is still attempted if stage 5 finds candidates.
 
-When the data/ECC error limit is 0 bits, stages 2, 4, and 5 are skipped. The search looks for solutions in which every compared known bit matches the input.
+When the data/ECC error limit is 0 bits, stages 2, 4, 5, and 6 are skipped. The search looks for solutions in which every compared known bit matches the input.
 
-## 5. Conventional RS, partial-bit constraints, and partial-bit search
+## 5. Conventional RS and bit-level recovery
 
 Conventional RS treats a codeword containing even one unknown bit as an **erasure**, meaning that the value of the whole codeword is unknown. Partial-bit constraints also use the known bits remaining in that codeword. Partial-bit search assigns temporary values to unknown bits and retries conventional RS.
 
@@ -185,6 +186,16 @@ For example, a codeword with two unknown bits has four possible values. Assignin
 The partial-bit search limit also bounds the degrees of freedom when enumerating solutions from RS partial-bit constraints.
 
 When `*` cells are marked, the app first attempts recovery with those cells left unknown. If the content cannot be decoded, it tries assigning `0 / 1` to the marked cells. Two cells, for example, give four combinations: `00 / 01 / 10 / 11`. The trial values are recorded in the calculation history.
+
+### Known-bit error search
+
+**Known-bit error search** is off by default. When enabled, it searches for up to one or two erroneous data/ECC bits whose values were known at repair start. The limit applies to the whole QR code, summed across all RS blocks, rather than separately to each block.
+
+First, the search removes RS conditions that can be satisfied by choosing unknown-bit values and checks for discrepancies that unknown-bit assignments alone cannot remove. It tries no flips, one flipped bit, and, when enabled, two flipped bits. For hypotheses compatible with the remaining conditions, it solves linear equations for the unknown bits. QR-structure constraints are applied to the values after the hypothesized flips, and block solutions are combined and validated.
+
+This search starts from the original input without inheriting structure fills or assignments to `*` cells from earlier stages. A `*` cell remains unknown. Protected fixed cells cannot be flipped. The data/ECC error limit, selected version and orientation, and explicit ECC/mask selections still apply. When single-segment terminator and padding forcing is on, its header and suffix conditions remain enforced. When it is off, the encoding mode and character or byte count can be reconsidered for each flip hypothesis.
+
+This is separate from conventional errors-and-erasures RS and list decoding. Later list decoding searches independently from the original input without inheriting these hypothesized known-bit flips. Candidates retain the hypothesized error positions and the calculation records used to solve unknown bits under those conditions. More than one candidate can satisfy the conditions.
 
 ## 6. Using QR data structure
 
@@ -283,7 +294,7 @@ Candidates are compared in this order, using the next criterion when the precedi
 8. Fewer codewords affected by correction.
 9. Fewer erased codewords.
 
-The conventional RS margin for a calculation is `ECC codewords − erasures − 2 × erroneous codewords`. A margin calculated after filling or temporary assignments differs from the margin obtained by applying conventional RS directly to the starting input. Candidates using partial-bit constraints or list decoding are treated as having a margin of zero for ranking.
+The conventional RS margin for a calculation is `ECC codewords − erasures − 2 × erroneous codewords`. A margin calculated after filling or temporary assignments differs from the margin obtained by applying conventional RS directly to the starting input. Candidates using partial-bit constraints, known-bit error search, or list decoding are treated as having a margin of zero for ranking.
 
 Cell confidence is an explanatory indicator based on value sources, image assessments, and agreement among the compared candidates.
 
@@ -294,6 +305,8 @@ The app separately records calculation methods that produced the same candidate,
 Search limits apply to the number of unknown bits assigned at once, combinations examined across blocks, calculation time, working memory, and the number of candidates and calculation records retained.
 
 List decoding has a total allowance of ten minutes across all list-decoding calculations in one repair. Time spent on other methods is excluded. The allowed number of mismatches with known data/ECC bits for list decoding is the smaller of the selected error limit and 5% of the total data/ECC bit count, rounded up.
+
+Known-bit error search has cumulative limits of 30 seconds and one million trials across all formats and reading attempts in one repair. Time spent on other methods is excluded. The partial-bit search / degrees-of-freedom limit, block-combination limits, working-memory limits, and candidate-retention limits also apply. Reaching the time or trial limit is reported with the stop reason and an indication that combinations remain unchecked.
 
 If the search is interrupted, reaches the time limit, or runs out of memory, validated candidates already obtained remain in the results. The app distinguishes stopping an unfinished search from omitting found candidates or calculation records because of retention limits.
 
