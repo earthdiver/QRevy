@@ -32,8 +32,8 @@ android {
         applicationId = "io.github.earthdiver.qrrepair"
         minSdk = 26
         targetSdk = 37
-        versionCode = 53
-        versionName = "0.19.2"
+        versionCode = 54
+        versionName = "0.19.3"
     }
 
     compileOptions {
