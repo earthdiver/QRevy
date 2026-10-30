@@ -35,6 +35,7 @@ You can also enable **Force single-segment terminator and padding** manually bef
 | Priority-search cell limit | Default (4 bits) |
 | Partial-bit search / degrees-of-freedom limit | Default (12 bits) |
 | Additional list-decoding errors | Default (1 symbol) |
+| Known-bit error search | Default (off) |
 
 See the [User Guide](../../USER_GUIDE.en.md) for the controls.
 
