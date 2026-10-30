@@ -60,6 +60,7 @@ fun RecoveryDisplayConditions?.runSettingsSection(): DiagnosticSection {
         append(localizedText("\n既知bit誤り探索: ${settings.knownBitErrorLimit}bit（0はOFF）", "\nKnown-bit error search: ${settings.knownBitErrorLimit} bits (0 is off)"))
         append(localizedText("\n部分bit探索・自由度の上限: ${settings.partialBitSearchLimit}bit／RSブロック",
             "\nPartial-bit search / dimension limit: ${settings.partialBitSearchLimit} bits per RS block"))
+        append('\n').append(settings.listDecodingLimitText())
         append(localizedText("\n固定セルとの矛盾を許容: ", "\nAllow conflicts with fixed cells: "))
             .append(when (settings.lockManualBits) {
                 true -> "OFF"
@@ -90,8 +91,7 @@ fun RecoveryDisplayConditions?.runSettingsText(): String = this?.let { settings 
     append(localizedText("\n既知bit誤り探索: ${settings.knownBitErrorLimit}bit（0はOFF）", "\nKnown-bit error search: ${settings.knownBitErrorLimit} bits (0 is off)"))
     append(localizedText("\n部分bit探索・自由度の上限: ${settings.partialBitSearchLimit}bit／RSブロック",
         "\nPartial-bit search / dimension limit: ${settings.partialBitSearchLimit} bits per RS block"))
-    append(localizedText("\n通常RSからの追加探索上限: ＋${settings.listDecodingAdditionalErrors}語／RSブロック（GS・Wu）",
-        "\nList-decoding extension limit: +${settings.listDecodingAdditionalErrors} symbols per RS block (GS/Wu)"))
+    append('\n').append(settings.listDecodingLimitText())
     if (settings.dataEccLimit == 0) {
         append(localizedText(
             "\n入力のデータ・ECCの0/1と完全に一致する候補だけを採用します。「?」の補完はできます。",

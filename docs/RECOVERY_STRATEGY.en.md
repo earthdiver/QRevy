@@ -135,7 +135,9 @@ Codeword extraction also preserves the positions of unknown bits. **Deinterleavi
 | 5 | Known-bit error search, when enabled and no candidate with decoded content has been found |
 | 6 | Additional list decoding, combined with temporary assignments where useful |
 
-If stage 1 passes QR-structure and input-condition checks and decodes the content, that reading attempt ends. Otherwise, processing proceeds to later stages. Candidates found in stage 2 or later are retained while the search continues. Stage 5 runs only when **Known-bit error search** is enabled and no candidate with decoded content has been found through stage 4. Stage 6 is still attempted if stage 5 finds candidates.
+If stage 1 passes QR-structure and input-condition checks and decodes the content, that reading attempt ends. Otherwise, processing proceeds to later stages. Candidates found in stage 2 or later are retained while the search continues. Stage 5 runs only when **Known-bit error search** is enabled and no candidate with decoded content has been found through stage 4. If list decoding is enabled, stage 6 is still attempted if stage 5 finds candidates.
+
+Selecting OFF for the list-decoding extension skips stages 2 and 6, including GS, Wu, and KV. The execution conditions for other stages are unchanged. The default remains +1 codeword.
 
 When the data/ECC error limit is 0 bits, stages 2, 4, 5, and 6 are skipped. The search looks for solutions in which every compared known bit matches the input.
 

@@ -29,7 +29,7 @@ class ImageAdjustmentSessionCodecTest {
 
     @Test fun listDecodingExtensionDefaultsAndSelectionsRoundTripAcrossHistory() {
         assertEquals(1, PreprocessSettings().listDecodingAdditionalErrors)
-        val original = payload(PreprocessSettings()).copy(historyEntries = (1..3).map { limit ->
+        val original = payload(PreprocessSettings()).copy(historyEntries = (0..3).map { limit ->
             RecoveryHistoryEntry(kind = HistoryEventKind.SETTINGS, label = "List extension",
                 snapshot = RecoverySnapshot(null, null, null, -1,
                     PreprocessSettings(listDecodingAdditionalErrors = limit)))
@@ -47,7 +47,7 @@ class ImageAdjustmentSessionCodecTest {
 
     @Test fun invalidOrMissingListExtensionIsRejectedEvenWithValidChecksum() {
         val encoded = RecoverySessionCodec.encode(payload(PreprocessSettings()))
-        for (limit in listOf(-1, 0, 4, Int.MAX_VALUE)) {
+        for (limit in listOf(-1, 4, Int.MAX_VALUE)) {
             assertThrows(IllegalArgumentException::class.java) { PreprocessSettings(listDecodingAdditionalErrors = limit) }
             val invalid = rewrite(encoded) { raw -> ByteBuffer.wrap(raw).putInt(raw.size - 11, limit); raw }
             assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(invalid) }

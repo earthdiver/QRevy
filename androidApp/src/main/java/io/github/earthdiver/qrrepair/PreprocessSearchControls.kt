@@ -140,12 +140,12 @@ internal class PreprocessSearchControls(
         listLimitButton.setOnClickListener {
             val choices = io.github.earthdiver.qrrepair.core.ListDecodingLimit.supported.toList()
             AlertDialog.Builder(activity).setTitle(R.string.list_decoding_limit_title)
-                .setSingleChoiceItems(choices.map { getString(R.string.list_decoding_limit_choice, it) }.toTypedArray(),
+                .setSingleChoiceItems(choices.map { listLimitChoice(it) }.toTypedArray(),
                     choices.indexOf(searchSettings.listDecodingAdditionalErrors)) { dialog, which ->
                     searchSettings.listDecodingAdditionalErrors = choices[which]
                     refreshListLimit()
                     noteDraftChange("list-decoding-limit", getString(R.string.list_decoding_limit_title),
-                        getString(R.string.list_decoding_limit_choice, searchSettings.listDecodingAdditionalErrors))
+                        listLimitChoice(searchSettings.listDecodingAdditionalErrors))
                     dialog.dismiss()
                 }.setNegativeButton(R.string.close, null).show()
         }
@@ -259,8 +259,13 @@ internal class PreprocessSearchControls(
         partialBitLimitButton.text = getString(R.string.partial_bit_search_limit, searchSettings.partialBitSearchLimit)
     }
 
+    private fun listLimitChoice(limit: Int): String = if (limit == 0)
+        getString(R.string.list_decoding_off_choice) else getString(R.string.list_decoding_limit_choice, limit)
+
     private fun refreshListLimit() {
-        listLimitButton.text = getString(R.string.list_decoding_limit, searchSettings.listDecodingAdditionalErrors)
+        listLimitButton.text = if (searchSettings.listDecodingAdditionalErrors == 0)
+            getString(R.string.list_decoding_off) else
+            getString(R.string.list_decoding_limit, searchSettings.listDecodingAdditionalErrors)
     }
 
     fun refreshPriorityLimit() {

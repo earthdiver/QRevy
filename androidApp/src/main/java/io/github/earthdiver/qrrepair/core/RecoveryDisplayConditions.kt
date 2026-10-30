@@ -45,6 +45,11 @@ fun RecoveryDisplayConditions.limitText(formatRegion: Boolean): String {
         "$nameEn mismatch limit: ${limit?.let { "$it bits" } ?: "none"}")
 }
 
+fun RecoveryDisplayConditions.listDecodingLimitText(): String = if (listDecodingAdditionalErrors == 0)
+    localizedText("リスト復号: OFF（GS・Wu・KV）", "List decoding: OFF (GS/Wu/KV)")
+else localizedText("通常RSからの追加探索上限: ＋${listDecodingAdditionalErrors}語／RSブロック（GS・Wu）",
+    "List-decoding extension limit: +$listDecodingAdditionalErrors symbols per RS block (GS/Wu)")
+
 fun RecoveryCandidate.conditionText(): String = buildString {
     val conditions = displayConditions
     conditions?.let {
@@ -52,8 +57,7 @@ fun RecoveryCandidate.conditionText(): String = buildString {
         append(it.limitText(true)).append('\n').append(it.limitText(false))
         append(localizedText("\n部分bit探索・自由度の上限: ${it.partialBitSearchLimit}bit／RSブロック",
             "\nPartial-bit search / dimension limit: ${it.partialBitSearchLimit} bits per RS block"))
-        append(localizedText("\n通常RSからの追加探索上限: ＋${it.listDecodingAdditionalErrors}語／RSブロック（GS・Wu）",
-            "\nList-decoding extension limit: +${it.listDecodingAdditionalErrors} symbols per RS block (GS/Wu)"))
+        append('\n').append(it.listDecodingLimitText())
         append(localizedText("\n形式の選択: ECC ", "\nFormat selection: ECC "))
         append(if (it.format?.ecLevel != null) localizedText("指定", "specified") else localizedText("自動", "automatic"))
         append(localizedText(" / マスク ", " / mask "))

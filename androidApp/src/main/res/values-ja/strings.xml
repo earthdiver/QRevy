@@ -214,10 +214,12 @@
     <string name="partial_bit_search_limit_note">部分bit探索と、RS制約を解いた後に残る自由度に共通する、RSブロックごとの上限です。既定値は12bit。1bit増やすと最大列挙数は2倍になり、*探索との併用では処理量がさらに増えます。メモリ制限により、上限まで探索できない場合があります。</string>
     <string name="mirrored_input">入力画像を鏡像として処理する</string>
     <string name="mirrored_input_note">右上と左下のFinder役割と格子の軸を入れ替えます。画像表示は変わらず、セル編集は同じ画像上のセルに保持されます。</string>
+    <string name="list_decoding_off">リスト復号: OFF</string>
+    <string name="list_decoding_off_choice">OFF（リスト復号を使わない）</string>
     <string name="list_decoding_limit">通常RSからの追加探索上限: ＋%1$d語</string>
     <string name="list_decoding_limit_title">通常RSからの追加探索上限</string>
     <string name="list_decoding_limit_choice">RSブロックごとに＋%1$d語</string>
-    <string name="list_decoding_limit_note">初期値は＋1語です。GS・Wu法が小さい訂正半径から上限まで探索します。Johnson境界と共通の時間・メモリ上限により制限され、＋2・＋3語では時間が大幅に増える場合があります。KV法は独自の一致スコアで判定します。</string>
+    <string name="list_decoding_limit_note">OFFでは先行・後続ともにGS・Wu・KV法を実行しません。初期値は＋1語です。GS・Wu法が小さい訂正半径から上限まで探索します。Johnson境界と共通の時間・メモリ上限により制限され、＋2・＋3語では時間が大幅に増える場合があります。KV法は独自の一致スコアで判定します。</string>
     <string name="known_bit_title">既知bit誤りの追加探索</string>
     <string name="known_bit_off">既知bit誤りの追加探索: OFF</string>
     <string name="known_bit_one">既知bit誤りの追加探索: 最大1bit</string>

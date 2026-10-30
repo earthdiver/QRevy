@@ -62,6 +62,25 @@ class RecoveryPhaseRunnerTest {
         assertNull(run.listDecodingSummary)
     }
 
+    @Test fun disablingListsPreservesOtherPhasesWithoutUsingTheListBudget() {
+        val budget = ListDecodingBudget(0, clockMillis = { 0L })
+        val run = RecoveryRunState(QrMatrix(21), RecoveryRetentionBudget(), RecoveryCancellation.NONE,
+            PartialBitSearchLimit.DEFAULT, budget, listDecodingAdditionalErrors = 0, knownBitErrorLimit = 2)
+        val visited = mutableListOf<RecoveryPhase>()
+        RecoveryPhaseRunner(run, null, RecoveryCancellation.NONE, { false }, searchPhase = {
+            visited += run.phase
+        }, finish = { it }).execute()
+        assertEquals(listOf(RecoveryPhase.ORIGINAL_RS, RecoveryPhase.BIT_CONSTRAINTS,
+            RecoveryPhase.PARTIAL_RS, RecoveryPhase.KNOWN_BIT_ERRORS), visited)
+        assertTrue(run.knownBitSearchAttempted)
+        assertTrue(run.listDecodingStatuses.values.all { it == ListDecodingStatus.DISABLED })
+        assertNull(run.listDecodingSummary)
+        assertTrue(run.listDecodingNewTrials.isEmpty())
+        assertTrue(run.incompleteReasons.isEmpty())
+        assertEquals(0L, budget.elapsedMillis)
+        assertTrue(run.finished)
+    }
+
     @Test fun omittedOriginalCandidatesDoNotSuppressTheRemainingSearch() {
         val run = state(retention = RecoveryRetentionBudget(0))
         val parsed = candidate()

@@ -6,7 +6,7 @@ enum class ListDecodingStage { WITHOUT_ASSIGNMENTS, ADDITIONAL }
 
 enum class ListDecodingStatus {
     NOT_REACHED, RUNNING, COMPLETED, INELIGIBLE, DEFERRED, TIME_LIMIT, WORKING_MEMORY_LIMIT, SEARCH_LIMIT,
-    INTERRUPTED, INTERNAL_ERROR, ORIGINAL_RS_SUCCEEDED, ZERO_ERROR_LIMIT, INPUT_CONSTRAINT,
+    INTERRUPTED, INTERNAL_ERROR, ORIGINAL_RS_SUCCEEDED, ZERO_ERROR_LIMIT, INPUT_CONSTRAINT, DISABLED,
 }
 
 /** Decisions survive candidate eviction and are aggregated independently of decoder trial counts. */
@@ -34,6 +34,7 @@ data class ListDecodingExecution(
             ListDecodingStatus.INTERRUPTED -> localizedText("利用者の中断により未完了、または未開始です", "unfinished or not started because the user interrupted repair")
             ListDecodingStatus.INTERNAL_ERROR -> localizedText("内部エラーにより未完了、または未開始です", "unfinished or not started because of an internal error")
             ListDecodingStatus.ORIGINAL_RS_SUCCEEDED -> localizedText("未実行：元の観測値に対する通常RSで検証済み候補を得たためです。正解の証明ではありません", "not run: conventional RS on the original observations produced a validated candidate; this is not proof of correctness")
+            ListDecodingStatus.DISABLED -> localizedText("未実行：リスト復号がOFFのためです", "not run: list decoding is off")
             ListDecodingStatus.ZERO_ERROR_LIMIT -> localizedText("未実行：データ・ECCの誤り上限が0bitのためです", "not run: the data/ECC error limit is zero bits")
             ListDecodingStatus.INPUT_CONSTRAINT -> localizedText("未実行：入力と指定条件が両立しないためです", "not run: the input conflicts with the selected conditions")
         } }

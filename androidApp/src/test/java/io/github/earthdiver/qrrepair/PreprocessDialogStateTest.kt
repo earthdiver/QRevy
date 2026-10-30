@@ -31,7 +31,7 @@ class PreprocessDialogStateTest {
     }
 
     @Test fun selectedListExtensionSurvivesCaptureAndSamplingProfiles() {
-        for (limit in 1..3) {
+        for (limit in 0..3) {
             val state = PreprocessDialogState(PreprocessSettings())
             state.search.listDecodingAdditionalErrors = limit
             val captured = state.captureSettings(controls(),

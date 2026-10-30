@@ -76,6 +76,24 @@ class ListDecodingRecoveryTest {
                 retentionBudget = RecoveryRetentionBudget(workingLimitBytes = workingLimit), stopRequested = stop)
     }
 
+    @Test fun disablingListsPreventsListRecoveryButKeepsConventionalCorrection() {
+        for (errors in listOf(3, 4)) {
+            val f = Fixture()
+            for (i in 2 until 2 + errors) f.flip(i, 1)
+            val budget = ListDecodingBudget(0)
+            val outcome = f.recover(additionalErrors = 0, budget = budget)
+            assertEquals(errors == 3, outcome.candidates.any { it.correctedInterleaved.contentEquals(f.raw) })
+            assertTrue(outcome.candidates.all { it.actualBlockMethods.all { method -> method.listDecoding == null } })
+            assertNull(outcome.searchDiagnostic.listDecoding)
+            assertTrue(outcome.searchDiagnostic.listDecodingExecution!!.stages.values.all {
+                it == setOf(ListDecodingStatus.DISABLED)
+            })
+            assertFalse(SearchIncompleteReason.LIST_DECODING_TIME_LIMIT in outcome.searchDiagnostic.incompleteReasons)
+            assertEquals(0L, budget.elapsedMillis)
+            if (errors == 4) assertTrue(f.recover().candidates.any { it.correctedInterleaved.contentEquals(f.raw) })
+        }
+    }
+
     @Test fun fallbackRecoversFourErroneousBytesBeyondVersionOneLowRsCapacity() {
         val f = Fixture()
         for (i in 2..5) f.flip(i, 1)

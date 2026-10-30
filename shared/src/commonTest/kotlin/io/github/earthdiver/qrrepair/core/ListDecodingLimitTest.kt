@@ -63,7 +63,7 @@ class ListDecodingLimitTest {
             for (i in 10..12) values[i] = values[i] xor 1
         }
         val block = RsBlockWork(19, received, masks)
-        for (extra in ListDecodingLimit.supported) {
+        for (extra in ListDecodingLimit.enabledExtensions) {
             val search = ListDecodingBlockSearch(block, block, emptyList(), 7, true, emptySet(), 3,
                 additionalErrors = extra)
             while (search.hasNext) search.advance(memory)

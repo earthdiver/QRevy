@@ -16,6 +16,7 @@ internal class RecoveryPhaseRunner(
     fun execute(): List<RecoveryCandidate> {
         cancellation.check()
         return try {
+            if (run.listDecodingAdditionalErrors == 0) skipLists(ListDecodingStatus.DISABLED)
             search(RecoveryPhase.ORIGINAL_RS)
             // This pass uses the original observations: no forced suffix or tentative bits.
             // Keep its validated result when its success suppresses further searching.
@@ -78,6 +79,7 @@ internal class RecoveryPhaseRunner(
     }
 
     private fun searchLists(early: Boolean) {
+        if (run.listDecodingAdditionalErrors == 0) return
         val listDecodingBudget = run.listDecodingBudget
         val stage = if (early) ListDecodingStage.WITHOUT_ASSIGNMENTS else ListDecodingStage.ADDITIONAL
         val phase = if (early) RecoveryPhase.EARLY_LIST else RecoveryPhase.ADDITIONAL_LIST

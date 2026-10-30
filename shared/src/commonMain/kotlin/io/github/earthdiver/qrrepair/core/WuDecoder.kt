@@ -16,7 +16,7 @@ class WuDecoder(private val length: Int, private val dataLength: Int) {
 
     /** Deterministic work estimate for selection, not a wall-clock guarantee. */
     fun estimatedWork(erasures: Int, additionalErrors: Int = ListDecodingLimit.DEFAULT): Long {
-        require(additionalErrors in ListDecodingLimit.supported)
+        require(additionalErrors in ListDecodingLimit.enabledExtensions)
         val parity = length - dataLength - erasures
         var work = length.toLong() * (parity * parity + if (parity % 2 == 0) 1024 else 32) +
             if (parity % 2 == 0) 65_536L else 0L
@@ -35,7 +35,7 @@ class WuDecoder(private val length: Int, private val dataLength: Int) {
         require(received.size == length && received.all { it in 0..255 })
         require(erased.distinct().size == erased.size && erased.all { it in received.indices })
         val parity = length - dataLength - erased.size
-        require(parity >= 1 && radius - parity / 2 in ListDecodingLimit.supported && radius <= parity)
+        require(parity >= 1 && radius - parity / 2 in ListDecodingLimit.enabledExtensions && radius <= parity)
         if (workingBytes > workingLimitBytes) throw ListDecodingWorkingMemoryException()
         check()
         // Each shell covers exactly its distance. Smaller words need their lower-degree

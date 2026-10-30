@@ -60,7 +60,7 @@ class ListDecodingBlockSearch(
 
     init {
         require(block.codewords.size == original.codewords.size && mismatchLimit >= 0)
-        require(additionalErrors in ListDecodingLimit.supported)
+        require(additionalErrors in ListDecodingLimit.enabledExtensions)
         initialCandidates.forEach { result ->
             val mismatches = mismatches(result.corrected)
             if (mismatches <= mismatchLimit && accepts(result.corrected)) {

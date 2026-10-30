@@ -39,6 +39,22 @@ class KnownBitRecoveryTest {
             assertEquals(2,traces.values.count { it.knownBitError })
         }
     }
+    @Test fun knownBitSearchCanRecoverWithListDecodingDisabled() {
+        val outcome = RecoveryEngine().recoverWithDiagnostics(fixture(0),
+            formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.L, 0),
+            maxKnownDataEccMismatches = 2, knownBitErrorLimit = 2, listDecodingAdditionalErrors = 0,
+            listDecodingBudget = ListDecodingBudget(0))
+        val candidate = outcome.candidates.single { it.text == "abcdefghijklm" }
+        assertTrue(candidate.actualBlockMethods.any { it.knownBitErrors?.size == 2 })
+        assertTrue(candidate.actualBlockMethods.all { it.listDecoding == null })
+        assertEquals(0, candidate.displayConditions!!.listDecodingAdditionalErrors)
+        assertNull(outcome.searchDiagnostic.listDecoding)
+        assertTrue(outcome.searchDiagnostic.listDecodingExecution!!.stages.values.all {
+            it == setOf(ListDecodingStatus.DISABLED)
+        })
+        assertFalse(SearchIncompleteReason.LIST_DECODING_TIME_LIMIT in outcome.searchDiagnostic.incompleteReasons)
+    }
+
     @Test fun recomputesGrammarAfterModeAndCountErrors() {
         for(bit in listOf(1,10)) {
             val m = fixture(0,bit)

@@ -26,6 +26,16 @@ class ListDecodingDiagnosticPresentationTest {
         assertTrue(settings.runSettingsText().contains(if (ja) "＋3語／RSブロック" else "+3 symbols per RS block"))
     }
 
+    @Test fun disabledListsAreShownAsOffInSavedRunAndCandidateSettings() = inBothLanguages { ja ->
+        val settings = RecoveryDisplayConditions(false, true, null, null, null, listDecodingAdditionalErrors = 0)
+        val expected = if (ja) "リスト復号: OFF（GS・Wu・KV）" else "List decoding: OFF (GS/Wu/KV)"
+        for (text in listOf(settings.runSettingsSection().summary, settings.runSettingsText(),
+            candidate(false).copy(displayConditions = settings).conditionText())) {
+            assertTrue(text, text.contains(expected))
+            assertFalse(text, text.contains(if (ja) "＋0語" else "+0 symbols"))
+        }
+    }
+
     private fun inBothLanguages(check: (Boolean) -> Unit) {
         val app = RuntimeEnvironment.getApplication()
         val previous = AppLanguageManager.current
@@ -67,7 +77,7 @@ class ListDecodingDiagnosticPresentationTest {
 
     @Test fun skippedStagesAreHiddenWithoutAnyDecoderTrials() = inBothLanguages { ja ->
         for (reason in listOf(ListDecodingStatus.ORIGINAL_RS_SUCCEEDED, ListDecodingStatus.ZERO_ERROR_LIMIT,
-            ListDecodingStatus.INPUT_CONSTRAINT)) {
+            ListDecodingStatus.INPUT_CONSTRAINT, ListDecodingStatus.DISABLED)) {
             val diagnostic = wholeSearch.copy(listDecoding = null, listDecodingExecution = ListDecodingExecution(
                 ListDecodingStage.entries.associateWith { setOf(reason) }))
             val presenter = RecoveryDiagnosticPresenter(ja)

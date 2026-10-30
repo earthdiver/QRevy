@@ -26,7 +26,7 @@ class GuruswamiSudanDecoder internal constructor(val length: Int, val dataLength
     /** A finite integer radius strictly inside the Johnson bound. */
     fun parameters(erasures: Int, workingLimitBytes: Long, additionalErrors: Int, check: () -> Unit = {}): Parameters? {
         require(erasures in 0..length)
-        require(additionalErrors in ListDecodingLimit.supported)
+        require(additionalErrors in ListDecodingLimit.enabledExtensions)
         parameterCache.firstOrNull { it.first == (erasures to additionalErrors) }?.second?.let {
             check()
             if (it.workingBytes > workingLimitBytes) throw ListDecodingWorkingMemoryException()

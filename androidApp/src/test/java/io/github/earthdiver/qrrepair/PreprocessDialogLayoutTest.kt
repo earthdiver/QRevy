@@ -129,21 +129,21 @@ class PreprocessDialogLayoutTest {
             findText(decor, "詳細設定")!!.performClick()
             val control = findText(decor, "通常RSからの追加探索上限:")!!
             assertEquals("通常RSからの追加探索上限: ＋1語", control.text.toString())
-            for (limit in listOf(2, 3, 1, 3)) {
+            for (limit in listOf(0, 2, 3, 1, 0)) {
                 control.performClick()
                 val choices = ShadowDialog.getLatestDialog() as AlertDialog
                 val list = choices.listView
-                assertEquals(listOf("RSブロックごとに＋1語", "RSブロックごとに＋2語", "RSブロックごとに＋3語"),
+                assertEquals(listOf("OFF（リスト復号を使わない）", "RSブロックごとに＋1語", "RSブロックごとに＋2語", "RSブロックごとに＋3語"),
                     (0 until list.adapter.count).map { list.adapter.getItem(it).toString() })
-                val index = limit - 1
+                val index = limit
                 list.performItemClick(list.getChildAt(index), index, list.adapter.getItemId(index))
-                assertEquals("通常RSからの追加探索上限: ＋${limit}語", control.text.toString())
+                assertEquals(if (limit == 0) "リスト復号: OFF" else "通常RSからの追加探索上限: ＋${limit}語", control.text.toString())
             }
             findExactText(decor, "保存")!!.performClick()
             shadowOf(Looper.getMainLooper()).idle()
             val saved = MainActivity::class.java.getDeclaredField("preprocessSettings").apply { isAccessible = true }
                 .get(activity) as PreprocessSettings
-            assertEquals(3, saved.listDecodingAdditionalErrors)
+            assertEquals(0, saved.listDecodingAdditionalErrors)
             findExactText(decor, "キャンセル")!!.performClick()
             assertFalse(dialog.isShowing)
             // Finish dismissal callbacks before simulating the next user action.
@@ -152,8 +152,8 @@ class PreprocessDialogLayoutTest {
             shadowOf(Looper.getMainLooper()).idle()
             val reopened = preprocessDialog(activity)
             findText(reopened.window!!.decorView, "詳細設定")!!.performClick()
-            assertEquals("通常RSからの追加探索上限: ＋3語",
-                findText(reopened.window!!.decorView, "通常RSからの追加探索上限:")!!.text.toString())
+            assertEquals("リスト復号: OFF",
+                findText(reopened.window!!.decorView, "リスト復号: OFF")!!.text.toString())
             reopened.dismiss()
         } finally {
             otherDialog?.dismiss()

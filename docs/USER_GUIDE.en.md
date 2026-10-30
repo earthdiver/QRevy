@@ -97,7 +97,7 @@ If you know the error-correction level or mask, choose it under **ECC: Auto** or
 | **Automatically fine-tune sampling position** | Use when the corners are close but readings may miss cell centers. It adds work while preserving the selected version and orientation. |
 | **Partial-bit search / dimension limit** | Choose 12, 13, or 14 bits per RS block; the default is 12. Each extra bit doubles the maximum number of combinations. |
 | **Known-bit error search** | Off by default. Choose up to 1 or 2 incorrect known bits across the whole QR. Runs as a fallback with a shared 30-second / 1,000,000-trial allowance, plus existing memory and candidate limits. Fixed cells, trusted headers and the data/ECC mismatch limit remain enforced. |
-| **List-decoding extension (symbols)** | Open this control to choose **Extra errors beyond conventional RS**: +1, +2, or +3 codewords per block; the default is +1. A higher limit can take much longer and may not find more candidates. |
+| **List-decoding extension (symbols)** | Open this control to choose **Extra errors beyond conventional RS**: OFF, or +1, +2, or +3 codewords per block; the default is +1. OFF skips GS, Wu, and KV in both list-decoding stages. A higher limit can take much longer and may not find more candidates. |
 | **Treat input image as mirrored** | Enable for a mirrored QR image. The top-right and bottom-left Finder roles exchange; the displayed image is unchanged and edits stay on the same image cells. It defaults to off and is saved with the work. |
 
 Searches also have time and memory limits. Raising a setting does not guarantee that all combinations will be checked.
