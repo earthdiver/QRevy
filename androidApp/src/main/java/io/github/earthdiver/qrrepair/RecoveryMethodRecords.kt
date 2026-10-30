@@ -90,17 +90,20 @@ internal fun RecoveryCandidate.selectedBlockDerivations(): Map<Int, PartialCodew
     val byBlock = if (hasCompleteRepairInfo()) repairInfo.groupBy { it.blockIndex } else emptyMap()
     return actualBlockMethods.mapNotNull { method ->
         val block = method.blockIndex
-        val recorded = blockDerivations[block]?.firstOrNull()?.takeIf {
-            it.bitConstraintSolved == method.bitConstraintSolved && it.guessedBits == method.guessedBits &&
-                it.listDecoding == method.listDecoding && (method.rsMargin == null || it.rsMargin == method.rsMargin)
+        val recorded = blockDerivations[block]?.firstOrNull()?.takeIf { route ->
+            route.bitConstraintSolved == method.bitConstraintSolved && route.guessedBits == method.guessedBits &&
+                route.listDecoding == method.listDecoding && route.knownBitErrors.takeIf { route.knownBitSearch } == method.knownBitErrors &&
+                (method.rsMargin == null || route.rsMargin == method.rsMargin)
         }
         if (recorded != null) return@mapNotNull block to recorded.copy(searchPenalty = 0)
         val info = byBlock[block] ?: return@mapNotNull null
-        if (info.any { it.bitConstraintSolved != method.bitConstraintSolved || it.listDecoding != method.listDecoding })
+        if (info.any { it.bitConstraintSolved != method.bitConstraintSolved || it.listDecoding != method.listDecoding ||
+                it.knownBitSearch != (method.knownBitErrors != null) })
             return@mapNotNull null
         val guessed = info.filter { it.partialEnumerated }.map { it.localIndex }
         block to PartialCodewordSolver.Derivation(info.filter { it.rsErrata }.map { it.localIndex },
-            method.guessedBits, guessed.size, guessed, method.rsMargin ?: 0, 0, method.bitConstraintSolved, method.listDecoding)
+            method.guessedBits, guessed.size, guessed, method.rsMargin ?: 0, 0, method.bitConstraintSolved, method.listDecoding,
+            knownBitErrors = method.knownBitErrors.orEmpty(), knownBitSearch = method.knownBitErrors != null)
     }.toMap()
 }
 

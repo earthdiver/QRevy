@@ -255,6 +255,7 @@ fun RecoveryCandidate.compactUsedMethodsText(): String = localizedText("使用�
         if (priorityGuessedBits > 0) add(localizedText("優先セルのbit探索", "priority-cell bit search"))
         if (partialGuessedBits > 0) add(localizedText("bit探索", "bit search"))
         if (usesConventionalRs()) add(localizedText("通常RS", "conventional RS"))
+        if (usesKnownBitSearch()) add(localizedText("既知bit誤り探索", "known-bit error search"))
         actualBlockMethods.mapNotNull { it.listDecoding?.method }.distinct().forEach { add(it.displayName()) }
         if (usesBitConstraints()) add(localizedText("部分bit制約", "partial-bit constraints"))
     }.joinToString(localizedText("・", ", "))
@@ -262,11 +263,20 @@ fun RecoveryCandidate.compactUsedMethodsText(): String = localizedText("使用�
 private fun RecoveryCandidate.usesBitConstraints(): Boolean = if (actualBlockMethods.isNotEmpty())
     actualBlockMethods.any { it.bitConstraintSolved } else repairInfo.any { it.bitConstraintSolved }
 
+private fun RecoveryCandidate.usesKnownBitSearch(): Boolean = if (actualBlockMethods.isNotEmpty())
+    actualBlockMethods.any { it.knownBitErrors != null } else repairInfo.any { it.knownBitSearch }
+
 private fun RecoveryCandidate.usesConventionalRs(): Boolean = if (actualBlockMethods.isNotEmpty())
-    actualBlockMethods.any { !it.bitConstraintSolved && it.listDecoding == null } else repairInfo.isEmpty() || repairInfo.any { !it.bitConstraintSolved && it.listDecoding == null }
+    actualBlockMethods.any { !it.bitConstraintSolved && it.listDecoding == null && it.knownBitErrors == null }
+    else repairInfo.isEmpty() || repairInfo.any { !it.bitConstraintSolved && it.listDecoding == null && !it.knownBitSearch }
+
+private fun knownBitSearchExplanation(): String = localizedText(
+    "既知bitの誤り位置を探索し、不明なbitをQRの誤り訂正の条件に合うように求めました（既知bit誤り探索）。",
+    "Known-bit error search explored error positions in observed bits and solved for unknown bits satisfying QR error-correction constraints.")
 
 /** Explain the adopted methods without repeating their per-block calculation records. */
 fun RecoveryCandidate.processingMethodsText(): String = buildList {
+    if (usesKnownBitSearch()) add(knownBitSearchExplanation())
     if (usesConventionalRs()) add(if (correctedErrataSymbols > 0)
         localizedText("通常RSによる確認・補完・訂正を使いました。", "Conventional RS was used to check, fill or correct values.")
         else localizedText("通常RSで、データが誤り訂正の条件を満たすことを確認しました。", "Conventional RS verified that the data satisfies the error-correction conditions."))
@@ -313,6 +323,7 @@ fun RecoveryCandidate.usedMethodsText(): String = buildString {
         "\n優先指定セルの白黒を仮置き: ${priorityGuessedBits}bit",
         "\nTentative values for prioritized cells: $priorityGuessedBits bits"))
     actualBlockMethods.forEach { append('\n').append(it.searchDescription(includeCalculationDetails = false)) }
+    if (usesKnownBitSearch()) append('\n').append(knownBitSearchExplanation())
     if (usesBitConstraints()) append(localizedText(
         "\n部分bit制約で、不明なbitの組合せを計算しました。",
         "\nPartial-bit constraints calculated combinations of unknown bits."))
@@ -357,6 +368,9 @@ fun RecoveryBlockMethod.searchDescription(includeCalculationDetails: Boolean = t
         "によるリスト復号", " list decoding")
     else if (listDecoding != null) listDecoding.method.displayName() + " / " + listDecoding.calculationDescription() + localizedText(
         "／仮置きした不明ビット: $guessedBits", " / assigned unknown bits: $guessedBits")
+    else if (knownBitErrors != null) localizedText(
+        "既知bit誤り探索：${knownBitErrors.size}bit変更／この計算段階の自由度: $guessedBits",
+        "Known-bit error search: ${knownBitErrors.size} changed bits / degrees of freedom at this stage: $guessedBits")
     else if (bitConstraintSolved) localizedText(
         "部分bit制約／このブロックの自由度: $guessedBits",
         "Partial-bit constraints / degrees of freedom for this block: $guessedBits")

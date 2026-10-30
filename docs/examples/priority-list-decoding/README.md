@@ -12,6 +12,8 @@ This independently generated QR has 53 unknown cells out of 441 (12.0%) and two 
 QRevy repaired.
 ```
 
+In the details image, blue identifies the 53 filled cells and orange identifies the two corrected known cells. The changed known cells are column 20 / row 10 and column 18 / row 17.
+
 ## Try it
 
 Import [before.txt](before.txt) using **Import text matrix**. Enable **Force single-segment terminator and padding**, keep the existing `*` mark, check the Finder roles and run **Repair**. The version is 1 and is obtained from the input. ECC and mask remain automatic; the recovered QR uses ECC L and mask 0.
@@ -25,16 +27,17 @@ All other recovery settings keep their initial values:
 | Priority search cell limit | 4; this input uses only 1 |
 | Partial-bit search / dimension limit | 12 bits |
 | List-decoding extension limit | +1 symbol per RS block |
+| Known-bit error search | Off |
 
 You can also import [before.png](before.png) as an image. Keep automatic thresholds and the initialized outline, version and orientation. In **Cell editing**, select the bottom-row cell immediately left of the rightmost cell (column 20, row 21, counting from 1) and mark it `*`. Enable **Force single-segment terminator and padding**, confirm the Finder roles if needed, then run **Repair**. See the [User Guide](../../USER_GUIDE.en.md) for the controls.
 
-In the details image, blue identifies the 53 filled cells and orange identifies the two corrected known cells. The changed known cells are column 20 / row 10 and column 18 / row 17.
-
-## Recovery method 1
+## Why the three methods are needed
 
 The priority cell is an unknown mode-header bit. Its tentative assignment allows single-segment terminator and padding forcing; this is a hypothesis, not an image observation. Forcing fills 20 missing terminator/alignment/padding bits. Four whole ECC codewords remain erased, and two payload codewords each contain one incorrect bit. Ordinary errors-and-erasures RS needs `2 × 2 + 4 = 8` ECC symbols, exceeding this QR's 7. Wu list decoding recovers the original at radius 2, one symbol beyond the ordinary radius of 1, while respecting the default two-bit mismatch cap.
 
-The recorded controls use the same input and default limits:
+### Comparison results
+
+The recorded controls use the same input and default limits, with known-bit error search **off**:
 
 | Condition | TEXT candidates | PNG candidates |
 | --- | --- | --- |
@@ -43,8 +46,12 @@ The recorded controls use the same input and default limits:
 | List stages deliberately disabled | 0 | 0 |
 | Priority mark removed | 0 | 0 |
 
-## Recovery method 2
+## Alternative steps: known-bit error search (added October 30, 2026)
 
-For the TEXT input, replace the `*` with `?`, leave **Force single-segment terminator and padding** off, and set **Known-bit error search** to **up to 2 bits** in Detailed settings. Leave the known data/ECC error limit at **Default** (2 bits for version 1). This also recovers `QRevy repaired.` without the priority mark or forced suffix.
+For the TEXT input, leave **Force single-segment terminator and padding** off, and set **Known-bit error search** to **up to 2 bits** in Detailed settings. The existing `*` mark can remain as it is. Leave the known data/ECC error limit at **Default** (2 bits for version 1). Run **Repair**. This produces a candidate matching the original QR and containing `QRevy repaired.` without forcing the suffix.
 
-The recorded images, result JSON and controls above describe the original route with known-bit error search **off**. They are not measurements of this alternative route.
+This route searches for errors in known bits and solves RS bit constraints. Conventional errors-and-erasures RS alone cannot recover the input: eight codewords contain unknown bits, exceeding its seven ECC symbols. With known-bit error search enabled, the original candidate is recovered even when list decoding is disabled. Keeping or removing the `*` mark yields the same result.
+
+The result is not unique: another text candidate, `QBefY repaired.y`, is also produced. Compare the candidates; successful error correction alone does not establish which content is correct.
+
+The recorded images, result JSON and comparison table above describe the priority-search and list-decoding procedure with known-bit error search **off**. They are not measurements of these alternative steps.

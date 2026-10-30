@@ -82,7 +82,7 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
                     "Unknown codewords after structure filling and priority assignments (all blocks): ${route.erasedCodewords}"))
                 add(ui("補完・訂正対象（全ブロック合計）: ${route.correctedErrataSymbols}コード語",
                     "Target codewords (all blocks): ${route.correctedErrataSymbols}"))
-                if (route.actualBlockMethods.isEmpty() && route.repairInfo.none { it.bitConstraintSolved || it.listDecoding != null })
+                if (route.actualBlockMethods.isEmpty() && route.repairInfo.none { it.bitConstraintSolved || it.listDecoding != null || it.knownBitSearch })
                     add(ui("通常RS訂正余裕（ブロック最小）: ${route.minRsMargin}",
                         "Conventional RS margin (minimum across blocks): ${route.minRsMargin}"))
                 route.actualBlockMethods.forEach { block ->
@@ -113,7 +113,7 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
                                 "Same calculation record as ${methodName(reference)}, block ${block + 1}"))
                             else {
                                 add(blockCalculationText(RecoveryBlockMethod(block, derivation.bitConstraintSolved,
-                                    derivation.rsMargin.takeUnless { derivation.bitConstraintSolved || derivation.listDecoding != null },
+                                    derivation.rsMargin.takeUnless { derivation.bitConstraintSolved || derivation.listDecoding != null || derivation.knownBitSearch },
                                     derivation.guessedBits, derivation.listDecoding, derivation.knownBitErrors.takeIf { derivation.knownBitSearch }), derivation.errataPositions.size))
                                 if (selected?.errataPositions != derivation.errataPositions)
                                     add(positionsText("補完・訂正対象", "Target", derivation.errataPositions))
@@ -251,8 +251,11 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
             method.bitConstraintSolved -> ui("部分bit制約", "Partial-bit constraints")
             else -> ui("通常RS", "Conventional RS")
         })
-        append(if (method.bitConstraintSolved) ui("\nこのブロックの自由度: ", "\nDegrees of freedom for this block: ")
-            else ui("\n計算前に仮置きした不明bit: ", "\nUnknown bits assigned before calculation: ")).append(method.guessedBits)
+        append(when {
+            method.knownBitErrors != null -> ui("\nこの計算段階の自由度: ", "\nDegrees of freedom at this stage: ")
+            method.bitConstraintSolved -> ui("\nこのブロックの自由度: ", "\nDegrees of freedom for this block: ")
+            else -> ui("\n計算前に仮置きした不明bit: ", "\nUnknown bits assigned before calculation: ")
+        }).append(method.guessedBits)
         if (list != null) {
             if (list.method == ListDecoderMethod.KOETTER_VARDY) {
                 append(ui("\n一致スコア: ${list.score}\n必要スコア: ${list.scoreThreshold}",

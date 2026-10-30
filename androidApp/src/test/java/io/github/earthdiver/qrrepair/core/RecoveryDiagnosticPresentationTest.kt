@@ -162,6 +162,39 @@ class RecoveryDiagnosticPresentationTest {
         assertTrue(detailed.contains(if (ja) "部分bit制約" else "Partial-bit constraints"))
     }
 
+    @Test fun knownBitSearchIsNamedWithoutClaimingConventionalRs() = inBothLanguages { ja ->
+        for (errors in listOf(emptyList(), listOf(RsBitConstraintSolver.Bit(2, 0), RsBitConstraintSolver.Bit(4, 0)))) {
+            val method = RecoveryBlockMethod(0, false, null, 0, knownBitErrors = errors)
+            val candidate = RecoveryCandidate(1, ErrorCorrectionLevel.L, 0, "SYNTHETIC", byteArrayOf(),
+                30, 0, 8, 8, 10, errors.size, 155, intArrayOf(), CodewordExtraction(emptyList()),
+                actualBlockMethods = listOf(method),
+                repairInfo = listOf(CodewordRepairInfo(0, 0, 0, 1, 1, true, false, knownBitSearch = true)))
+            for (record in listOf(candidate, candidate.copy(actualBlockMethods = emptyList()))) {
+                for (text in listOf(record.compactUsedMethodsText(), record.processingMethodsText(),
+                    record.usedMethodsText(), record.resultExplanationText())) {
+                    assertTrue(text, text.contains(if (ja) "既知bit誤り探索" else "known-bit error search", ignoreCase = true))
+                    assertFalse(text, text.contains(if (ja) "通常RS" else "conventional RS", ignoreCase = true))
+                }
+            }
+            for (details in listOf(false, true)) {
+                val text = method.searchDescription(includeCalculationDetails = details)
+                assertTrue(text, text.contains(if (ja) "${errors.size}bit変更" else "${errors.size} changed bits"))
+                assertFalse(text, text.contains(if (ja) "通常RS" else "conventional RS", ignoreCase = true))
+            }
+        }
+    }
+
+    @Test fun mixedKnownBitAndConventionalBlocksKeepBothMethodNames() = inBothLanguages { ja ->
+        val candidate = RecoveryCandidate(3, ErrorCorrectionLevel.Q, 0, "SYNTHETIC", byteArrayOf(),
+            30, 0, 8, 8, 10, 1, 100, intArrayOf(), CodewordExtraction(emptyList()),
+            actualBlockMethods = listOf(RecoveryBlockMethod(0, false, 2, 0),
+                RecoveryBlockMethod(1, false, null, 0, knownBitErrors = listOf(RsBitConstraintSolver.Bit(2, 0)))))
+        for (text in listOf(candidate.compactUsedMethodsText(), candidate.processingMethodsText(), candidate.usedMethodsText())) {
+            assertTrue(text, text.contains(if (ja) "既知bit誤り探索" else "known-bit error search", ignoreCase = true))
+            assertTrue(text, text.contains(if (ja) "通常RS" else "conventional RS", ignoreCase = true))
+        }
+    }
+
     @Test fun conventionalComparisonReportsEqualityDifferenceAndMissingResult() = inBothLanguages { ja ->
         assertTrue(conventional().comparisonText(intArrayOf(1, 2)).contains(if (ja) "同じデータ・ECCコード語" else "same data/ECC codewords"))
         assertTrue(conventional().comparisonText(intArrayOf(1, 3)).contains(if (ja) "異なります" else "differs"))
