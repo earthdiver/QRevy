@@ -16,6 +16,27 @@ internal data class RecoveryMethodRecords(val records: List<RecoveryCandidate>) 
                 // Search ordering is not a different calculation method.
                 .distinctBy { it.copy(searchPenalty = 0) }
         }.filterValues { it.size > 1 }
+
+    /** Keep each additional calculation attached to the conditions of its original records. */
+    fun recordsFor(block: Int, derivation: PartialCodewordSolver.Derivation): List<RecoveryCandidate> =
+        records.filter { record -> record.blockDerivations[block].orEmpty().any {
+            it.copy(searchPenalty = 0) == derivation.copy(searchPenalty = 0)
+        } }
+}
+
+internal sealed interface RecoveryMethodLimit {
+    data class Bounded(val bits: Int) : RecoveryMethodLimit
+    data object Unlimited : RecoveryMethodLimit
+    data object Unknown : RecoveryMethodLimit
+}
+
+/** A missing phase-specific limit is not an unlimited run, nor proof of an older list-search limit. */
+internal fun RecoveryCandidate.appliedMethodLimit(): RecoveryMethodLimit {
+    listDecodingMismatchLimit?.let { return RecoveryMethodLimit.Bounded(it) }
+    if (actualBlockMethods.isEmpty() || actualBlockMethods.any { it.listDecoding != null } ||
+        repairInfo.any { it.listDecoding != null }) return RecoveryMethodLimit.Unknown
+    val settings = displayConditions ?: return RecoveryMethodLimit.Unknown
+    return settings.dataEccLimit?.let { RecoveryMethodLimit.Bounded(it) } ?: RecoveryMethodLimit.Unlimited
 }
 
 internal data class RecoveryStructureCheck(val plans: Int, val mode: Int?, val count: Int?, val evidenceBits: Int) {
@@ -51,11 +72,29 @@ internal fun RecoveryCandidate.methodDifferences(other: RecoveryCandidate): List
 internal fun RecoveryCandidate.groupedMethodRecords(): List<RecoveryMethodRecords> {
     val groups = mutableListOf<MutableList<RecoveryCandidate>>()
     for (route in listOf(this) + alternativeDerivations) {
-        val matching = groups.firstOrNull { it.first().methodDifferences(route).isEmpty() }
+        val matching = groups.firstOrNull { it.first().sameDisplayedMethod(route) }
         if (matching != null) matching.add(route) else groups.add(mutableListOf(route))
     }
     return groups.map { RecoveryMethodRecords(it) }
 }
+
+/** Only the display grouping may equate different recordings of the same applied limit. */
+private fun RecoveryCandidate.sameDisplayedMethod(other: RecoveryCandidate): Boolean {
+    val differences = methodDifferences(other)
+    if (differences.isEmpty()) return true
+    if (differences != listOf(RecoveryMethodDifference.LIMIT)) return false
+    val limit = appliedMethodLimit()
+    return limit != RecoveryMethodLimit.Unknown && limit == other.appliedMethodLimit() &&
+        hasCompleteMethodEvidence() && other.hasCompleteMethodEvidence() && sameStructurePreparation(other) &&
+        selectedBlockDerivations() == other.selectedBlockDerivations()
+}
+
+internal fun RecoveryCandidate.hasCompleteMethodEvidence(): Boolean =
+    hasCompleteRepairInfo() && extraction.codewords.all { it.coordinates.size == 8 } &&
+        actualBlockMethods.isNotEmpty() &&
+        actualBlockMethods.map { it.blockIndex }.toSet() == repairInfo.map { it.blockIndex }.toSet() &&
+        selectedBlockDerivations().size == actualBlockMethods.size &&
+        repairInfo.sumOf { it.constraintValuesByBit.size } == constraintFilledBits
 
 
 /** Inputs to the block calculation, excluding the choice of RS solver and its target positions. */

@@ -12,7 +12,7 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
         val multipleMethods = methods.size > 1
         val commonStructure = methods.size == 1 || methods.all { candidate.sameStructurePreparation(it.representative) }
         val commonPriority = methods.all { candidate.samePriorityPreparation(it.representative) }
-        val withoutFilling = methods.map { it.representative }.filter { it.constraintFilledBits == 0 }
+        val withoutFilling = methods.flatMap { it.records }.filter { it.constraintFilledBits == 0 }
         val omitted = methods.any { it.records.any { record -> record.derivationsOmitted } } ||
             selectedEntry?.derivationsOmitted == true
         val summary = buildList {
@@ -25,11 +25,22 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
                 if (multipleMethods) add("\n" + methodName(index) +
                     if (index == 0) ui("［セルの説明に使用］", " [used for cell explanations]") else "")
                 preparation(method.representative, !commonStructure, !commonPriority,
-                    withoutFilling.any { method.representative.sameQrWithoutStructureFilling(it) })
+                    method.records.any { route -> withoutFilling.any { route.sameQrWithoutStructureFilling(it) } })
                     .takeIf(String::isNotBlank)?.let(::add)
                 val blocks = method.representative.actualBlockMethods
                 if (blocks.isEmpty()) add(method.representative.compactUsedMethodsText())
                 else blocks.forEach { add(compactBlock(it, blocks.size > 1)) }
+                val limitPeers = methods.filter { other -> other !== method &&
+                    method.representative.methodDifferences(other.representative) == listOf(RecoveryMethodDifference.LIMIT) }
+                if (limitPeers.isNotEmpty()) {
+                    add(appliedLimitText(method.representative.appliedMethodLimit()))
+                    if (!method.representative.hasCompleteMethodEvidence()) add(ui(
+                        "計算根拠の記録が不完全なため、別の方法として表示しています。",
+                        "Shown separately because calculation evidence is incomplete."))
+                    else if (limitPeers.any { it.representative.appliedMethodLimit() == method.representative.appliedMethodLimit() &&
+                            it.representative.selectedBlockDerivations() != method.representative.selectedBlockDerivations() })
+                        add(ui("補完・訂正対象や仮置き対象が異なります。", "Correction or tentative-assignment targets differ."))
+                }
             }
             selectedEntry?.alternativeDerivations?.size?.takeIf { it > 0 }?.let {
                 add(ui("\n別の読み取り試行: ${it}件", "\nOther sampled-input attempts: $it"))
@@ -75,9 +86,7 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
                     if (route.constraintFilledBits == 0) add(ui("構造による補完・変更はありません。",
                         "No values were filled or changed using QR structure."))
                 }
-                route.listDecodingMismatchLimit?.let {
-                    add(ui("この方法のリスト復号の不一致上限: ${it}bit", "List-decoding mismatch limit for this method: $it bits"))
-                }
+                if (method.records.any { it.listDecodingMismatchLimit != null }) add(searchConditionsText(method.records))
                 add(ui("構造補完・優先セルの仮置きを反映した不明コード語数（全ブロック合計）: ${route.erasedCodewords}",
                     "Unknown codewords after structure filling and priority assignments (all blocks): ${route.erasedCodewords}"))
                 add(ui("補完・訂正対象（全ブロック合計）: ${route.correctedErrataSymbols}コード語",
@@ -106,7 +115,8 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
                             val reference = (0 until index).firstOrNull { earlier ->
                                 val other = methods[earlier].representative
                                 val sameInput = matchingInputs[index][earlier]
-                                    ?: route.sameBlockCalculationInput(other).also { matchingInputs[index][earlier] = it }
+                                    ?: method.records.all { it.sameBlockCalculationInput(other) }
+                                        .also { matchingInputs[index][earlier] = it }
                                 sameInput && selectedBlocks[earlier][block] == derivation.copy(searchPenalty = 0)
                             }
                             if (reference != null) add(ui("${methodName(reference)}のブロック${block + 1}と同じ計算記録",
@@ -120,6 +130,8 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
                                 if (derivation.guessedPositions.isNotEmpty())
                                     add(positionsText("仮置き対象", "Tentatively assigned", derivation.guessedPositions))
                             }
+                            if (method.records.map { it.listDecodingMismatchLimit }.distinct().size > 1)
+                                add(searchConditionsText(method.recordsFor(block, derivation)))
                         }
                     }
                 }
@@ -141,6 +153,25 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
     }
 
     private fun methodName(index: Int): String = ui("方法", "Method ") + recoveryMethodLabel(index)
+
+    private fun appliedLimitText(limit: RecoveryMethodLimit): String =
+        ui("適用されたデータ・ECCの不一致上限: ", "Applied data/ECC mismatch limit: ") + when (limit) {
+            is RecoveryMethodLimit.Bounded -> ui("${limit.bits}bit", "${limit.bits} bits")
+            RecoveryMethodLimit.Unlimited -> ui("なし", "none")
+            RecoveryMethodLimit.Unknown -> ui("記録不足のため確認できません", "unknown because records are incomplete")
+        }
+
+    private fun searchConditionsText(records: List<RecoveryCandidate>): String = records
+        .groupBy { it.appliedMethodLimit() }.entries.sortedBy { (limit, _) -> when (limit) {
+            is RecoveryMethodLimit.Bounded -> limit.bits
+            RecoveryMethodLimit.Unlimited -> Int.MAX_VALUE - 1
+            RecoveryMethodLimit.Unknown -> Int.MAX_VALUE
+        } }.joinToString("\n") { (limit, sources) ->
+            val conditions = sources.map { it.listDecodingMismatchLimit != null }.distinct().sorted().map { additional ->
+                if (additional) ui("追加探索", "additional search") else ui("実行設定", "run settings")
+            }.joinToString(ui("・", ", "))
+            appliedLimitText(limit) + ui("（$conditions）", " ($conditions)")
+        }
 
     private fun preparation(route: RecoveryCandidate, structure: Boolean, priority: Boolean,
         sameWithoutFilling: Boolean = false): String = buildList {
