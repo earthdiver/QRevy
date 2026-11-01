@@ -20,7 +20,7 @@ Work and source images stay in app-private storage, excluded from Android cloud 
 | --- | --- |
 | Temporary camera images | Kept in app-private storage and deleted after use, including when import fails. Capture and crop files left behind are removed on startup once at least 24 hours have passed since their last modification. |
 | Copied content | **Copy content** sends the complete recovered text to the system clipboard. Android controls how long clipboard content is kept. |
-| Exported images | Saved outside app-private storage only when you choose to export. The destination's sharing and backup settings apply. |
+| Exported images and text matrices | Saved outside app-private storage only when you choose to export. The destination's sharing and backup settings apply. |
 
 Recovered text is displayed and compared in full, without masking or redaction. Recovered web addresses (URLs) never open automatically.
 

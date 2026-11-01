@@ -5,6 +5,11 @@
     <string name="exit">Exit</string>
     <string name="select_image">Select image</string>
     <string name="import_text_matrix">TXT matrix</string>
+    <string name="save_pre_recovery_text_matrix">Save pre-repair TXT matrix</string>
+    <string name="text_matrix_unavailable">No matrix is available to save. Check the grid settings.</string>
+    <string name="text_matrix_destination_unavailable">Could not open the destination</string>
+    <string name="text_matrix_saved">Pre-repair TXT matrix saved.</string>
+    <string name="text_matrix_save_failed">TXT matrix save failed: %1$s</string>
     <string name="camera">Camera</string>
     <string name="repair">Repair</string>
     <string name="result_tab">Candidate %1$d</string>

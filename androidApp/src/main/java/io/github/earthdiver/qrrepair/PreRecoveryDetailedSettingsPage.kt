@@ -13,6 +13,7 @@ internal data class DetailedSettingsPageActions(
     val rotateBy: (Float) -> Unit,
     val resetRotation: () -> Unit,
     val saveDiagnosticInput: () -> Unit,
+    val saveTextMatrix: () -> Unit,
 )
 
 /** Builds the detailed pre-recovery settings page; setting state and image operations stay outside. */
@@ -69,6 +70,7 @@ internal class PreRecoveryDetailedSettingsPage(
             addSettingsItem(formatMismatchLimitControl, 6)
             addSettingsItem(dataEccMismatchLimitControl, 6)
             addSettingsItem(buttonFactory(context.getString(R.string.save_debug_input), actions.saveDiagnosticInput), 6)
+            addSettingsItem(buttonFactory(context.getString(R.string.save_pre_recovery_text_matrix), actions.saveTextMatrix), 6)
         })
     }
 

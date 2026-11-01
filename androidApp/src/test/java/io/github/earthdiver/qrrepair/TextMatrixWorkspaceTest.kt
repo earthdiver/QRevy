@@ -1,5 +1,8 @@
 package io.github.earthdiver.qrrepair
 
+import android.app.Activity
+import android.content.Intent
+import android.os.Bundle
 import android.app.AlertDialog
 import android.net.Uri
 import android.os.Looper
@@ -22,12 +25,125 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowDialog
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.io.OutputStream
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "ja-rJP-w360dp-h640dp-port-mdpi")
 class TextMatrixWorkspaceTest {
+    @Test fun textExportIncludesUnsavedEditsAndPriorityInLogicalOrientationWithoutRepair() {
+        val input = structuredRows(25).apply {
+            this[10][12] = '1'
+            this[10][13] = '0'
+            this[12][10] = '*'
+        }
+        for (rotation in 0..3) withImportedMatrix(rotated(input, rotation)) { activity, dialog, initial ->
+            val root = dialog.window!!.decorView
+            val overlay = views(root).filterIsInstance<PreprocessOverlayView>().single()
+            overlay.onCellBrushApplied!!.invoke(setOf(Coord(15, 10)), ModuleValue.ONE)
+            overlay.onCellBrushApplied!!.invoke(setOf(Coord(16, 10)), ModuleValue.ZERO)
+            overlay.onCellBrushApplied!!.invoke(setOf(Coord(12, 10)), ModuleValue.ERASED)
+            label(root, "詳細設定").performClick()
+            label(root, activity.getString(R.string.save_pre_recovery_text_matrix)).performClick()
+            val request = shadowOf(activity).nextStartedActivityForResult
+            assertEquals(Intent.ACTION_CREATE_DOCUMENT, request.intent.action)
+            assertEquals("text/plain", request.intent.type)
+            assertTrue(request.intent.hasCategory(Intent.CATEGORY_OPENABLE))
+            assertEquals("QRevy-before-repair.txt", request.intent.getStringExtra(Intent.EXTRA_TITLE))
+            // The export must keep the click-time draft even if the editor changes later.
+            overlay.onCellBrushApplied!!.invoke(setOf(Coord(15, 10)), ModuleValue.ZERO)
+            val output = ByteArrayOutputStream()
+            val uri = Uri.parse("content://qr-repair-test/export")
+            shadowOf(activity.contentResolver).registerOutputStream(uri, output)
+            deliverExportResult(activity, request.requestCode, Activity.RESULT_OK, Intent().setData(uri))
+            awaitExport(activity)
+            val expected = input.map { it.copyOf() }.toTypedArray().apply {
+                this[10][15] = '1'; this[10][16] = '0'; this[10][12] = '?'
+            }.joinToString("\n", postfix = "\n") { String(it) }
+            assertEquals(expected, output.toString("UTF-8"))
+            val parsed = QrTextMatrixParser.parse(output.toString("UTF-8"))
+            assertTrue(parsed.matrix[10, 12].prioritySearch)
+            assertEquals(ModuleValue.ERASED, parsed.matrix[8, 17].value)
+            assertSame("Export must not save draft settings", initial, field("preprocessSettings").get(activity))
+            assertTrue(dialog.isShowing)
+            assertNull(field("pendingTextMatrix").get(activity))
+        }
+    }
+
+    @Test fun pendingTextExportSurvivesRecreationAndProcessStateRestoration() {
+        for (processRestart in listOf(false, true)) {
+            var controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+            try {
+                val matrix = QrMatrix(177).apply {
+                    set(0, 0, ModuleValue.ONE, 1f, ModuleSource.USER)
+                    set(1, 0, ModuleValue.ZERO, 1f, ModuleSource.USER_SOFT)
+                    setPrioritySearch(2, 0, true)
+                }
+                startExport(controller.get(), matrix)
+                val request = shadowOf(controller.get()).nextStartedActivityForResult
+                if (processRestart) {
+                    val state = Bundle()
+                    controller.saveInstanceState(state).pause().stop().destroy()
+                    controller = Robolectric.buildActivity(MainActivity::class.java).setup(state)
+                } else controller.recreate()
+                val activity = controller.get()
+                val output = ByteArrayOutputStream()
+                val uri = Uri.parse("content://qr-repair-test/restored-export")
+                shadowOf(activity.contentResolver).registerOutputStream(uri, output)
+                deliverExportResult(activity, request.requestCode, Activity.RESULT_OK, Intent().setData(uri))
+                awaitExport(activity)
+                val text = output.toString("UTF-8")
+                assertTrue(text.startsWith("10*?"))
+                assertEquals(177 * 178, text.length)
+                assertEquals(177, QrTextMatrixParser.parse(text).matrix.dimension)
+                assertNull(field("pendingTextMatrix").get(activity))
+            } finally { controller.pause().stop().destroy() }
+        }
+    }
+
+    @Test fun cancelledMissingDestinationAndFailedTextExportsClearPendingContent() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        try {
+            for (result in listOf(Activity.RESULT_CANCELED, Activity.RESULT_OK)) {
+                startExport(activity, QrMatrix(21))
+                val request = shadowOf(activity).nextStartedActivityForResult
+                deliverExportResult(activity, request.requestCode, result, null)
+                assertNull(field("pendingTextMatrix").get(activity))
+            }
+            startExport(activity, QrMatrix(21))
+            val request = shadowOf(activity).nextStartedActivityForResult
+            val uri = Uri.parse("content://qr-repair-test/unwritable-export")
+            shadowOf(activity.contentResolver).registerOutputStream(uri, object : OutputStream() {
+                override fun write(value: Int) { throw IOException("Destination unavailable") }
+            })
+            deliverExportResult(activity, request.requestCode, Activity.RESULT_OK, Intent().setData(uri))
+            awaitExport(activity)
+            assertNull(field("pendingTextMatrix").get(activity))
+            assertEquals(activity.getString(R.string.text_matrix_save_failed, "Destination unavailable"),
+                org.robolectric.shadows.ShadowToast.getTextOfLatestToast())
+        } finally { controller.pause().stop().destroy() }
+    }
+
+    private fun startExport(activity: MainActivity, matrix: QrMatrix) {
+        MainActivity::class.java.getDeclaredMethod("startSaveTextMatrix", QrMatrix::class.java)
+            .apply { isAccessible = true }.invoke(activity, matrix)
+    }
+
+    private fun deliverExportResult(activity: MainActivity, request: Int, result: Int, data: Intent?) {
+        MainActivity::class.java.getDeclaredMethod("onActivityResult", Int::class.javaPrimitiveType,
+            Int::class.javaPrimitiveType, Intent::class.java).apply { isAccessible = true }
+            .invoke(activity, request, result, data)
+    }
+
+    private fun awaitExport(activity: MainActivity) {
+        (field("executor").get(activity) as ExecutorService).submit {}.get(30, TimeUnit.SECONDS)
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
     @Test fun importedMatrixReturnsToRealSettingsFromBothHomeActions() {
         AppStylePreferences.save(RuntimeEnvironment.getApplication(), AppStyle.MODERN)
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()

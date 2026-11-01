@@ -8,5 +8,5 @@ QRevy processes QR codes locally on your Android device. The app does not reques
 • Work and source images stay in app-private storage, excluded from Android cloud backup and device transfer. These storage protections do not encrypt QR content.
 • Temporary camera images are kept in app-private storage and deleted after use, including when import fails. Capture and crop files left behind are removed on startup once at least 24 hours have passed since their last modification.
 • Recovered text is displayed and compared in full, without masking or redaction. Copy content sends the complete recovered text to the system clipboard. Android controls how long clipboard content is kept.
-• Images are saved outside app-private storage only when you choose to export. The destination's sharing and backup settings apply.
+• Images and text matrices are saved outside app-private storage only when you choose to export. The destination's sharing and backup settings apply.
 • Recovered web addresses (URLs) never open automatically.

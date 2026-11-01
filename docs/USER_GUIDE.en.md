@@ -162,9 +162,11 @@ QRR is the app’s saved-work format. The app writes format version **28** and r
 
 ### Export and privacy
 
+**Save pre-repair TXT matrix** at the bottom of **Detailed settings** saves the current grid as a `0/1/?/*` text file, including unsaved cell edits and priority marks, before structural completion or recovery. The file can be imported with **TXT matrix**. It contains cell values and priority marks only; it does not retain fixed/tentative distinctions, edit history, or recovery settings.
+
 **Copy content** sends the complete recovered text to the device clipboard. **Save PNG** exports the selected validated QR candidate as a Portable Network Graphics (PNG) image; an unsuccessful attempt cannot be exported as a recovered QR.
 
-Saved work is private to the app and excluded from Android backup and device transfer. The app does not encrypt it. Exported images are stored outside app-private storage; review the destination’s sharing and backup settings. See [Privacy](../PRIVACY.md) and [Security](../SECURITY.md).
+Saved work is private to the app and excluded from Android backup and device transfer. The app does not encrypt it. Exported images and text matrices are stored outside app-private storage; review the destination’s sharing and backup settings. See [Privacy](../PRIVACY.md) and [Security](../SECURITY.md).
 
 ## 8. Appearance and navigation
 

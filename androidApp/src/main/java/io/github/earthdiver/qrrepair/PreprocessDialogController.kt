@@ -52,6 +52,7 @@ internal interface PreprocessDialogHost {
     fun editorOpened(session: PreprocessEditorSession) = Unit
     fun editorClosed(session: PreprocessEditorSession) = Unit
     fun saveDiagnosticInput(bitmap: Bitmap, owned: Boolean)
+    fun saveTextMatrix(matrix: QrMatrix)
 }
 
 /** Owns the pre-repair pages, their interactions, and temporary transformed images. */
@@ -457,29 +458,6 @@ internal class PreprocessDialogController(
                 noteDraftChange("mirrored-input", getString(R.string.mirrored_input), if (checked) "ON" else "OFF")
             }
         }
-        val detailsPage = PreRecoveryDetailedSettingsPage(
-            this,
-            buttonFactory = ::button,
-            scrollRow = { views -> scrollRow(*views) },
-            polarity = polarity,
-            mirroredInput = mirroredInput,
-            searchQuadNeighborhood = searchQuadNeighborhood,
-            trustKnownPayloadCount = trustKnownPayloadCount,
-            allowFixedCorrections = allowFixedCorrections,
-            formatMismatchLimitControl = searchControls.formatMismatchLimitControl,
-            dataEccMismatchLimitControl = searchControls.dataEccMismatchLimitControl,
-            prioritySearchControl = searchControls.priorityLimitButton,
-            partialBitSearchControl = searchControls.partialBitSearchControl,
-            listDecodingControl = searchControls.listDecodingControl,
-            actions = DetailedSettingsPageActions(
-                rotateBy = ::rotateBy,
-                resetRotation = ::resetRotation,
-                saveDiagnosticInput = {
-                    val diagnostic = BitmapUtils.forSettings(source, imageSettings(), quietModules = 4.0).bitmap
-                    host.saveDiagnosticInput(diagnostic, owned = diagnostic !== source.bitmap)
-                },
-            ),
-        ).view
         fun geometrySnapshot() = PreprocessGeometrySnapshot(
             logicalGridAssigned = overlay.isLogicalGridAssigned(),
             quad = overlay.imageQuad(),
@@ -508,6 +486,37 @@ internal class PreprocessDialogController(
             trustKnownPayloadCount.isEnabled = headerComplete || trustKnownPayloadCount.isChecked
             return g to matrix
         }
+        val detailsPage = PreRecoveryDetailedSettingsPage(
+            this,
+            buttonFactory = ::button,
+            scrollRow = { views -> scrollRow(*views) },
+            polarity = polarity,
+            mirroredInput = mirroredInput,
+            searchQuadNeighborhood = searchQuadNeighborhood,
+            trustKnownPayloadCount = trustKnownPayloadCount,
+            allowFixedCorrections = allowFixedCorrections,
+            formatMismatchLimitControl = searchControls.formatMismatchLimitControl,
+            dataEccMismatchLimitControl = searchControls.dataEccMismatchLimitControl,
+            prioritySearchControl = searchControls.priorityLimitButton,
+            partialBitSearchControl = searchControls.partialBitSearchControl,
+            listDecodingControl = searchControls.listDecodingControl,
+            actions = DetailedSettingsPageActions(
+                rotateBy = ::rotateBy,
+                resetRotation = ::resetRotation,
+                saveTextMatrix = {
+                    val matrix = refreshPreRecoveryMatrix()?.second
+                    if (matrix == null) {
+                        Toast.makeText(activity, R.string.text_matrix_unavailable, Toast.LENGTH_LONG).show()
+                    } else {
+                        host.saveTextMatrix(matrix)
+                    }
+                },
+                saveDiagnosticInput = {
+                    val diagnostic = BitmapUtils.forSettings(source, imageSettings(), quietModules = 4.0).bitmap
+                    host.saveDiagnosticInput(diagnostic, owned = diagnostic !== source.bitmap)
+                },
+            ),
+        ).view
         fun setManualFocus(enabled: Boolean) {
             manualFocus = enabled
             overlay.highlightManualOnly = enabled

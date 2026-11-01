@@ -5,6 +5,11 @@
     <string name="exit">終了</string>
     <string name="select_image">画像を選択</string>
     <string name="import_text_matrix">TXT行列</string>
+    <string name="save_pre_recovery_text_matrix">修復前のTXT行列を保存</string>
+    <string name="text_matrix_unavailable">保存する行列がありません。グリッド設定を確認してください。</string>
+    <string name="text_matrix_destination_unavailable">保存先を開けません</string>
+    <string name="text_matrix_saved">修復前のTXT行列を保存しました。</string>
+    <string name="text_matrix_save_failed">TXT行列の保存失敗: %1$s</string>
     <string name="camera">カメラ</string>
     <string name="repair">修復する</string>
     <string name="result_tab">候補%1$d</string>

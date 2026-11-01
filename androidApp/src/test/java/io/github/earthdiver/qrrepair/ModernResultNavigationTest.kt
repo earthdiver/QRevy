@@ -44,6 +44,7 @@ class ModernResultNavigationTest {
             override fun save(draft: PreprocessSave) { saves++; available = false }
             override fun showSavedStatus() = Unit
             override fun startRecovery() { repairs++ }
+            override fun saveTextMatrix(matrix: io.github.earthdiver.qrrepair.core.QrMatrix) = Unit
             override fun saveDiagnosticInput(bitmap: Bitmap, owned: Boolean) = Unit
             override fun canShowResult() = available
             override fun showResult() { views++ }

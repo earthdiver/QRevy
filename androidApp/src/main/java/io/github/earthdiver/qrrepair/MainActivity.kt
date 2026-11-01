@@ -128,11 +128,13 @@ internal fun replaceOwnedBitmap(
 class MainActivity : Activity() {
     companion object {
         private const val STATE_SESSION_ID = "main.session_id"
+        private const val STATE_PENDING_TEXT_MATRIX = "main.pending_text_matrix"
         private const val REQ_OPEN_IMAGE = 1001
         private const val REQ_SAVE_PNG = 1002
         private const val REQ_CAMERA = 1003
         private const val REQ_SAVE_DIAGNOSTIC_INPUT = 1004
         private const val REQ_OPEN_TEXT_MATRIX = 1005
+        private const val REQ_SAVE_TEXT_MATRIX = 1006
     }
 
     private lateinit var activeStyle: AppStyle
@@ -249,6 +251,7 @@ class MainActivity : Activity() {
     /** Source transformed according to the active reproducible preprocessing settings. */
     private var analysisPrepared: BitmapUtils.Prepared? = null
     private var pendingDiagnosticBitmap: PendingDiagnosticBitmap? = null
+    private var pendingTextMatrix: String? = null
     private var preprocessSettings = PreprocessSettings().withInitialErrorLimits()
     // In-memory checkpoint for the active work only. Dialogs edit independent copies.
     private var savedCellEditState: PreRecoveryCellEditState? = null
@@ -273,6 +276,7 @@ class MainActivity : Activity() {
         activeStyle = retained?.style ?: AppStylePreferences.selected(this)
         setTheme(activeStyle.theme)
         super.onCreate(savedInstanceState)
+        pendingTextMatrix = savedInstanceState?.getString(STATE_PENDING_TEXT_MATRIX)
         sessionStore = RecoverySessionStore(this)
         purgeStaleCameraCaptures()
         setContentView(buildUi())
@@ -307,6 +311,7 @@ class MainActivity : Activity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         sessionId?.let { outState.putString(STATE_SESSION_ID, it) }
+        pendingTextMatrix?.let { outState.putString(STATE_PENDING_TEXT_MATRIX, it) }
         super.onSaveInstanceState(outState)
     }
 
@@ -1950,12 +1955,18 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (resultCode != RESULT_OK) {
             if (requestCode == REQ_SAVE_DIAGNOSTIC_INPUT) releasePendingDiagnosticBitmap()
+            if (requestCode == REQ_SAVE_TEXT_MATRIX) pendingTextMatrix = null
             return
         }
         when (requestCode) {
             REQ_OPEN_IMAGE -> data?.data?.let { loadImage(it) }
             REQ_OPEN_TEXT_MATRIX -> data?.data?.let { loadTextMatrix(it) }
             REQ_SAVE_PNG -> data?.data?.let { savePng(it) }
+            REQ_SAVE_TEXT_MATRIX -> {
+                val text = pendingTextMatrix
+                pendingTextMatrix = null
+                if (text != null) data?.data?.let { saveTextMatrix(it, text) }
+            }
             REQ_SAVE_DIAGNOSTIC_INPUT -> data?.data?.let { saveDiagnosticInput(it) }
                 ?: releasePendingDiagnosticBitmap()
             REQ_CAMERA -> data?.getStringExtra(CameraActivity.EXTRA_CAPTURE_PATH)?.let {
@@ -2510,6 +2521,8 @@ class MainActivity : Activity() {
                     if (preprocessEditor === session) preprocessEditor = null
                 }
 
+                override fun saveTextMatrix(matrix: QrMatrix) = startSaveTextMatrix(matrix)
+
                 override fun saveDiagnosticInput(bitmap: Bitmap, owned: Boolean) =
                     startSaveDiagnosticInput(bitmap, owned)
             },
@@ -2706,6 +2719,43 @@ class MainActivity : Activity() {
         updateContentPreview()
     }
 
+
+    private fun startSaveTextMatrix(matrix: QrMatrix) {
+        // Freeze the draft before opening the picker; later edits must not change this export.
+        pendingTextMatrix = buildString {
+            for (y in 0 until matrix.dimension) {
+                for (x in 0 until matrix.dimension) {
+                    val cell = matrix[x, y]
+                    append(if (cell.prioritySearch) '*' else when (cell.value) {
+                        ModuleValue.ZERO -> '0'
+                        ModuleValue.ONE -> '1'
+                        ModuleValue.ERASED -> '?'
+                    })
+                }
+                append('\n')
+            }
+        }
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TITLE, "QRevy-before-repair.txt")
+        }
+        startActivityForResult(intent, REQ_SAVE_TEXT_MATRIX)
+    }
+
+    private fun saveTextMatrix(uri: Uri, text: String) {
+        executor.execute {
+            val message = try {
+                contentResolver.openOutputStream(uri, "wt")?.use { out ->
+                    out.write(text.toByteArray(Charsets.UTF_8))
+                } ?: throw IllegalStateException(getString(R.string.text_matrix_destination_unavailable))
+                getString(R.string.text_matrix_saved)
+            } catch (error: Exception) {
+                getString(R.string.text_matrix_save_failed, error.message ?: error.javaClass.simpleName)
+            }
+            runOnUiThread { Toast.makeText(this, message, Toast.LENGTH_LONG).show() }
+        }
+    }
 
     private fun startSavePng() {
         val candidate = recoveryState.selectedRecovery

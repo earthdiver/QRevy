@@ -37,6 +37,7 @@ class PreprocessDialogControllerTest {
         override fun save(draft: PreprocessSave) { saves += draft; effects += "save" }
         override fun showSavedStatus() { effects += "saved status" }
         override fun startRecovery() { effects += "repair" }
+        override fun saveTextMatrix(matrix: io.github.earthdiver.qrrepair.core.QrMatrix) = Unit
         override fun saveDiagnosticInput(bitmap: Bitmap, owned: Boolean) { diagnostic = bitmap }
     }
 
