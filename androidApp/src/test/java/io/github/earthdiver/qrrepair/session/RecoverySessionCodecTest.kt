@@ -111,6 +111,20 @@ class RecoverySessionCodecTest {
             .historyEntries.single().snapshot.preprocessSettings)
     }
 
+    @Test fun visibleFinderRoleRoundTripsWithoutCreatingCenterMeasurements() {
+        val quad = ImageQuad(PointD(0.0, 0.0), PointD(80.0, 0.0), PointD(80.0, 80.0), PointD(0.0, 80.0))
+        for (role in FinderRole.entries) {
+            val settings = PreprocessSettings(manualQuad = quad, visibleFinderRole = role)
+            val bytes = RecoverySessionCodec.encode(settingsPayload(settings))
+            assertEquals(settings, RecoverySessionCodec.decode(bytes).historyEntries.single().snapshot.preprocessSettings)
+            ByteBuffer.wrap(bytes).putInt(4, 28)
+            assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(bytes) }
+        }
+        val old = RecoverySessionCodec.encode(settingsPayload(PreprocessSettings(manualQuad = quad)))
+        ByteBuffer.wrap(old).putInt(4, 28)
+        assertEquals(null, RecoverySessionCodec.decode(old).historyEntries.single().snapshot.preprocessSettings!!.visibleFinderRole)
+    }
+
     @Test fun knownBitSearchSettingsRoundTripAndValidateRange() {
         for (limit in 0..2) {
             val settings=PreprocessSettings(knownBitErrorLimit=limit)

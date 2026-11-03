@@ -108,6 +108,7 @@ internal class PreprocessDialogController(
                 if (preprocessSettings.logicalGridAssigned) setImageQuad(it) else setPhysicalImageQuad(it)
             } ?: if (preprocessSettings.logicalGridAssigned) setImageQuad(imageQuad()) else Unit
             setFinderPoints(preprocessSettings.manualFinders)
+            visibleFinderRole = preprocessSettings.visibleFinderRole
             setConfirmedFinderPolarity(preprocessSettings.confirmedFinderPolarity)
             onClassificationSummaryChanged = { summary -> classificationLegend?.text = summary }
             val fixedHeight = (resources.displayMetrics.heightPixels * .42).toInt().coerceIn(dp(240), dp(420))
@@ -220,7 +221,9 @@ internal class PreprocessDialogController(
             blackLabel.text = blackText
             whiteLabel.text = whiteText
         }
+        var refreshCornerControls: () -> Unit = {}
         fun refreshLabels() {
+            refreshCornerControls()
             updateThresholdLabels()
             val selectedVersion = version.progress + 1
             val selectedDimension = 17 + 4 * selectedVersion
@@ -383,6 +386,7 @@ internal class PreprocessDialogController(
                         Toast.makeText(this, ui("周辺でFinderを確定できませんでした。指定点をヒントとして解析します。", "The Finder could not be confirmed nearby. The selected point will be used as a hint."), Toast.LENGTH_LONG).show()
                     } else {
                         overlay.setVerifiedFinder(role, refined)
+                        refreshCornerControls()
                         refreshClassificationMatrix()
                         Toast.makeText(this, ui("Finder位置を自動補正しました（モジュール幅 ${"%.1f".format(refined.moduleSize)}px）", "Finder position refined (module width ${"%.1f".format(refined.moduleSize)} px)"), Toast.LENGTH_SHORT).show()
                     }
@@ -390,6 +394,7 @@ internal class PreprocessDialogController(
             }
         }
         overlay.onFinderRemoved = { role ->
+            refreshCornerControls()
             // A refinement launched when this Finder was placed may still be running. Do not
             // allow its delayed result to confirm the Finder again after the user removed it.
             finderSearchGeneration.incrementAndGet()
@@ -462,6 +467,7 @@ internal class PreprocessDialogController(
             logicalGridAssigned = overlay.isLogicalGridAssigned(),
             quad = overlay.imageQuad(),
             finders = overlay.finderPoints(),
+            visibleFinderRole = overlay.visibleFinderRole,
             confirmedFinderPolarity = overlay.confirmedFinderPolarity(),
         )
         fun sampleImageMatrix(): Pair<GridGeometry, QrMatrix>? {
@@ -491,7 +497,6 @@ internal class PreprocessDialogController(
             buttonFactory = ::button,
             scrollRow = { views -> scrollRow(*views) },
             polarity = polarity,
-            mirroredInput = mirroredInput,
             searchQuadNeighborhood = searchQuadNeighborhood,
             trustKnownPayloadCount = trustKnownPayloadCount,
             allowFixedCorrections = allowFixedCorrections,
@@ -779,11 +784,28 @@ internal class PreprocessDialogController(
             addView(formatSearchCount)
         }
         refreshFormatConstraintControls()
+        val cornerControls = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(mirroredInput)
+        }
+        val clearVisible = button(ui("位置未測定の役割指定を解除", "Clear role without a center")) {
+            overlay.visibleFinderRole = null
+            if (overlay.finderPoints().isEmpty()) overlay.setPhysicalImageQuad(overlay.imageQuad())
+            userGeometryEdited = true
+            refreshLabels()
+            noteDraftChange("corner-orientation", ui("役割指定を解除", "Cleared Finder role"), "")
+        }
+        cornerControls.addView(clearVisible)
+        refreshCornerControls = {
+            clearVisible.visibility = if (overlay.visibleFinderRole != null) View.VISIBLE else View.GONE
+        }
+        refreshCornerControls()
         val basicPage = PreRecoveryBasicSettingsPage(
             this,
             buttonFactory = ::button,
             compactRow = { views -> compactRow(*views) },
             versionButton = requireNotNull(versionButton),
+            cornerControls = cornerControls,
             automaticThresholds = automaticThresholds,
             blackLabel = blackLabel,
             blackSeekBar = black,
@@ -837,7 +859,9 @@ internal class PreprocessDialogController(
                     overlay.clearCornerSelection()
                     overlay.finderPlacementRole = role
                 },
-                beginFinderRemoval = overlay::beginFinderRemoval,
+                beginFinderRemoval = {
+                    overlay.beginFinderRemoval()
+                },
             ),
         ).view
         val pages = mapOf(
@@ -867,6 +891,8 @@ internal class PreprocessDialogController(
                 showDataDialog(activity, data.view)
             },
             onPageShown = { page ->
+                overlay.showCornerRoles = page == PreprocessPage.BASIC
+                refreshCornerControls()
                 overlay.clearCornerSelection()
                 overlay.highlightManualOnly = manualFocus && page == PreprocessPage.CELL_EDITOR
                 if (page == PreprocessPage.CELL_EDITOR) {
@@ -963,6 +989,7 @@ internal class PreprocessDialogController(
                 editor.noteChange(key, label, detail, capturePreprocessSettings())
             }
             overlay.onGeometryEditFinished = {
+                refreshCornerControls()
                 overlay.removeCallbacks(refreshDraggedGrid)
                 refreshClassificationMatrix()
                 noteDraftChange("quad", ui("四隅を調整", "Adjusted corners"), ui("ドラッグまたは矢印で調整", "Adjusted by drag or arrow keys"))

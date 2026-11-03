@@ -86,6 +86,8 @@ data class PreprocessSettings(
     val partialBitSearchLimit: Int = PartialBitSearchLimit.DEFAULT,
     val listDecodingAdditionalErrors: Int = ListDecodingLimit.DEFAULT,
     val knownBitErrorLimit: Int = 0,
+    /** User-identified Finder role with no measured center. */
+    val visibleFinderRole: FinderRole? = null,
 ) {
     val effectiveFormatMismatchLimit: Int?
         get() = ErrorLimitPolicy.format(formatMismatchLimitMode, formatMismatchLimit)
@@ -102,6 +104,7 @@ data class PreprocessSettings(
     fun withInitialGrid(estimate: InitialGridEstimate?) = copy(
         version = estimate?.version ?: 1,
         manualQuad = estimate?.moduleCenterQuad,
+        visibleFinderRole = null,
         manualFinders = estimate?.autoAssignedFinders.orEmpty(),
         logicalGridAssigned = estimate?.autoAssignedFinders?.isNotEmpty() == true,
         confirmedFinderPolarity = estimate?.confirmedPolarity ?: FinderPolarity.UNKNOWN,

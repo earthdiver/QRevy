@@ -79,6 +79,16 @@ class PreprocessDialogControllerTest {
         }
     }
 
+    @Test fun cornerLabelsPreferOutsideAndUseTheSideWithSpaceAtTheScreenEdge() {
+        val corners = listOf(PointD(60.0, 4.0), PointD(160.0, 4.0), PointD(160.0, 130.0), PointD(60.0, 130.0))
+        for (quad in listOf(corners, corners.reversed())) {
+            val label = io.github.earthdiver.qrrepair.ui.cornerLabelCenter(quad,
+                quad.indexOf(corners.first()), 12.0, 8.0, 220, 180, 16.0)
+            assertTrue(label.x + 12 < 60)
+            assertTrue(label.y >= 8)
+        }
+    }
+
     @Test fun imageWithoutAnEstimatedGridRequiresAFinderRoleBeforeRepair() {
         val image = LumaImage(240, 240, IntArray(240 * 240) { 255 })
         val estimate = InitialGridEstimator.estimate(image, emptyList())

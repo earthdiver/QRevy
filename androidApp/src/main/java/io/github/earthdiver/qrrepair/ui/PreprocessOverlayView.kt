@@ -37,7 +37,8 @@ class PreprocessOverlayView(context: Context) : View(context) {
     private var bitmap: Bitmap? = null
     private var version = 1
     /** A periodicity estimate is sufficient for threshold preview, even before QR corner roles are confirmed. */
-    private var gridPreviewAvailable = false
+    var gridPreviewAvailable = false
+        private set
     private var logicalGridAssigned = false
     private var mirroredInput = false
     private val corners = MutableList(4) { PointD(0.0, 0.0) }
@@ -157,6 +158,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
     fun setMirroredInput(value: Boolean) {
         if (mirroredInput == value) return
         mirroredInput = value
+        visibleFinderRole = visibleFinderRole?.transposed()
         val right = corners[1]; corners[1] = corners[3]; corners[3] = right
         val points = finders.mapKeys { it.key.transposed() }
         finders.clear(); finders.putAll(points)
@@ -245,12 +247,17 @@ class PreprocessOverlayView(context: Context) : View(context) {
     }
     fun setFinderPoint(role: FinderRole, point: PointD) {
         assignLogicalGrid(point, role)
+        if (visibleFinderRole == role) visibleFinderRole = null
         finders[role] = point; autoDetectedFinders.remove(role); confirmedFinderRoles += role; invalidate()
     }
     fun setVerifiedFinder(role: FinderRole, candidate: FinderCandidate) {
         confirmedFinderEvidence[role] = candidate
         setFinderPoint(role, PointD(candidate.centerX, candidate.centerY))
     }
+    var visibleFinderRole: FinderRole? = null
+    var showCornerRoles = false
+        set(value) { field = value; invalidate() }
+
     fun imageQuad(): ImageQuad = ImageQuad(corners[0], corners[1], corners[2], corners[3])
     internal fun expectedFinderCenter(role: FinderRole): PointD {
         val dimension = 17 + 4 * version
@@ -274,6 +281,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
             ?: io.github.earthdiver.qrrepair.core.FinderPolarity.UNKNOWN
     }
     fun clearFinders() {
+        visibleFinderRole = null
         finders.clear(); autoDetectedFinders.clear(); confirmedFinderRoles.clear()
         confirmedFinderEvidence.clear(); confirmedPolarityHint = io.github.earthdiver.qrrepair.core.FinderPolarity.UNKNOWN
         finderRemovalEnabled = false; invalidate()
@@ -288,7 +296,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
             confirmedPolarityHint = io.github.earthdiver.qrrepair.core.FinderPolarity.UNKNOWN
             // Keep the current corners as a provisional physical grid. This permits a new
             // Finder role to rotate the logical grid again without losing manual cell edits.
-            logicalGridAssigned = false
+            logicalGridAssigned = visibleFinderRole != null
         }
         finderRemovalEnabled = false
         invalidate()
@@ -496,13 +504,30 @@ class PreprocessOverlayView(context: Context) : View(context) {
             canvas.drawCircle(point.x.toFloat(), point.y.toFloat(), dp(10f), handlePaint)
             if (selectedCorner == index) canvas.drawCircle(point.x.toFloat(), point.y.toFloat(), dp(15f), selectedPaint)
         }
+        if (showCornerRoles && logicalGridAssigned) {
+            val labels = listOf(localizedText("左上", "TL"), localizedText("右上", "TR"),
+                localizedText("右下", "BR"), localizedText("左下", "BL"))
+            classificationTextPaint.color = Color.WHITE
+            classificationTextPaint.textSize = dp(13f)
+            classificationTextOutlinePaint.textSize = dp(13f)
+            classificationTextOutlinePaint.strokeWidth = dp(2f)
+            val ascent = classificationTextPaint.ascent()
+            val descent = classificationTextPaint.descent()
+            labels.forEachIndexed { index, label ->
+                val center = cornerLabelCenter(vc, index, classificationTextPaint.measureText(label) / 2.0 + dp(1f),
+                    (descent - ascent) / 2.0 + dp(1f), width, height, dp(16f).toDouble())
+                val baseline = center.y.toFloat() - (ascent + descent) / 2
+                canvas.drawText(label, center.x.toFloat(), baseline, classificationTextOutlinePaint)
+                canvas.drawText(label, center.x.toFloat(), baseline, classificationTextPaint)
+            }
+        }
         finders.forEach { (role, p) ->
             val paint = if (role in autoDetectedFinders) autoFinderPaint else finderPaint
             // A Finder marker represents observed/user evidence, so draw it at its stored point.
             // Expected QR structure is already shown separately by the grid overlay.
             val q = v(p); canvas.drawCircle(q.x.toFloat(), q.y.toFloat(), dp(18f), paint)
             paint.style = Paint.Style.FILL; paint.textSize = dp(12f)
-            canvas.drawText(role.name, q.x.toFloat() + dp(20f), q.y.toFloat(), paint)
+            if (!showCornerRoles || !logicalGridAssigned) canvas.drawText(role.name, q.x.toFloat() + dp(20f), q.y.toFloat(), paint)
             paint.style = Paint.Style.STROKE
         }
         if (renderSampledCells) editGeometry?.let { geometry ->
@@ -874,6 +899,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
                         }
                     }
                     assignLogicalGrid(p, role)
+                    if (visibleFinderRole == role) visibleFinderRole = null
                     finders[role] = p
                     confirmedFinderRoles += role
                     autoDetectedFinders.remove(role)
@@ -1031,3 +1057,30 @@ internal fun confirmedFinderPoints(
     all: Map<FinderRole, PointD>,
     confirmed: Set<FinderRole>,
 ): Map<FinderRole, PointD> = all.filterKeys { it in confirmed }
+
+// Score the entire label box against the two edges meeting at this corner.
+internal fun cornerLabelCenter(corners: List<PointD>, index: Int, halfWidth: Double, halfHeight: Double,
+    width: Int, height: Int, gap: Double): PointD {
+    val corner = corners[index]
+    val opposite = corners[(index + 2) % 4]
+    val normals = listOf(1, 3).map { offset ->
+        val adjacent = corners[(index + offset) % 4]
+        val nx = adjacent.y - corner.y
+        val ny = corner.x - adjacent.x
+        val inward = nx * (opposite.x - corner.x) + ny * (opposite.y - corner.y) > 0
+        val length = hypot(nx, ny).coerceAtLeast(1e-9) * if (inward) -1 else 1
+        PointD(nx / length, ny / length)
+    }
+    fun fit(value: Double, half: Double, extent: Int) =
+        if (extent < 2 * half) extent / 2.0 else value.coerceIn(half, extent - half)
+    val candidates = (-1..1).flatMap { dx -> (-1..1).filter { dy -> dx != 0 || dy != 0 }.map { dy ->
+        PointD(fit(corner.x + dx * (halfWidth + gap), halfWidth, width),
+            fit(corner.y + dy * (halfHeight + gap), halfHeight, height))
+    } }
+    fun clearance(p: PointD) = normals.maxOf { n ->
+        n.x * (p.x - corner.x) + n.y * (p.y - corner.y) -
+            kotlin.math.abs(n.x) * halfWidth - kotlin.math.abs(n.y) * halfHeight
+    }
+    return candidates.maxWith(compareBy<PointD> { clearance(it).coerceAtMost(gap) }
+        .thenBy { -it.distanceTo(corner) })
+}

@@ -367,7 +367,7 @@ internal fun manualGeometrySeeds(settings: PreprocessSettings): List<Pair<Int, I
         manualQuadNeighborhood(
             quad,
             settings.version,
-            rotationPivotRole = settings.manualFinders.keys.singleOrNull(),
+            rotationPivotRole = (settings.manualFinders.keys + listOfNotNull(settings.visibleFinderRole)).singleOrNull(),
         )
     } else listOf(quad)
     return quads.map { settings.version to it }

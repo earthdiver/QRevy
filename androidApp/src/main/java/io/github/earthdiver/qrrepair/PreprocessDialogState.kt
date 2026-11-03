@@ -29,6 +29,7 @@ internal data class PreprocessGeometrySnapshot(
     val quad: ImageQuad,
     val finders: Map<FinderRole, PointD>,
     val confirmedFinderPolarity: FinderPolarity? = null,
+    val visibleFinderRole: FinderRole? = null,
 )
 
 /** Owns non-View state for one pre-repair dialog and assembles reproducible settings. */
@@ -112,6 +113,7 @@ internal class PreprocessDialogState(private val initial: PreprocessSettings) {
             perspectiveCorrectionQuad = perspectiveCorrectionQuad,
             manualQuad = geometry.quad,
             manualFinders = geometry.finders,
+            visibleFinderRole = geometry.visibleFinderRole,
             logicalGridAssigned = geometry.logicalGridAssigned,
             detectedFinders = emptyList(),
             confirmedFinderPolarity = geometry.confirmedFinderPolarity ?: FinderPolarity.UNKNOWN,

@@ -231,7 +231,8 @@ internal object RecoverySessionPayloadCodec {
         settings.manualQuad?.asList()?.forEach { point ->
             out.writeDouble(point.x); out.writeDouble(point.y)
         }
-        out.writeBoolean(settings.logicalGridAssigned)
+        // Schema 29 extends the orientation byte: 0/1 retain their legacy meanings.
+        out.writeByte(settings.visibleFinderRole?.let { 2 + it.ordinal } ?: if (settings.logicalGridAssigned) 1 else 0)
         out.writeInt(settings.manualFinders.size)
         settings.manualFinders.forEach { (role, point) ->
             out.writeInt(role.ordinal); out.writeDouble(point.x); out.writeDouble(point.y)
@@ -319,7 +320,11 @@ internal object RecoverySessionPayloadCodec {
             val points = List(4) { PointD(input.readDouble(), input.readDouble()) }
             ImageQuad(points[0], points[1], points[2], points[3])
         } else null
-        val logicalGridAssigned = input.readBoolean()
+        val orientation = input.readUnsignedByte()
+        requireCorrupt(orientation in 0..(if (formatVersion >= 29) 1 + FinderRole.entries.size else 1), "invalid grid orientation")
+        val logicalGridAssigned = orientation != 0
+        val visibleFinderRole = FinderRole.entries.getOrNull(orientation - 2)
+        requireCorrupt(visibleFinderRole == null || quad != null, "role without grid")
         val finderCount = input.readInt()
         requireCorrupt(finderCount in 0..3, "invalid confirmed finder count")
         val manualFinders = linkedMapOf<FinderRole, PointD>()
@@ -415,6 +420,7 @@ internal object RecoverySessionPayloadCodec {
                 perspectiveCorrectionQuad = perspectiveQuad,
                 manualQuad = quad,
                 manualFinders = manualFinders,
+                visibleFinderRole = visibleFinderRole,
                 logicalGridAssigned = logicalGridAssigned,
                 detectedFinders = candidates,
                 confirmedFinderPolarity = confirmedPolarity,
@@ -432,6 +438,7 @@ internal object RecoverySessionPayloadCodec {
         require(settings.version in 1..40)
         require(settings.blackMax in 0..254 && settings.whiteMin in 1..255 && settings.blackMax < settings.whiteMin)
         require(settings.unknownColorClusters.size <= 4)
+        require(settings.visibleFinderRole == null || (settings.logicalGridAssigned && settings.manualQuad != null))
         require(settings.manualFinders.size <= 3 && settings.detectedFinders.size <= 64)
         val dimension = 17 + 4 * settings.version
         require(settings.preRecoveryEdits.size <= dimension * dimension)

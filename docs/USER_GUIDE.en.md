@@ -39,6 +39,7 @@ The three large square patterns near a QR code’s corners are **Finder patterns
 
 Image and text imports may assign roles automatically. Check the green Finder markers. **At least one Finder role must be assigned before repair.**
 
+- In basic settings, enable **Treat input image as mirrored** for a mirror image. Once orientation is assigned, the image shows the role of each corner.
 - To assign a role, choose **Top left**, **Top right**, or **Bottom left**, then tap the center of the corresponding visible pattern. The app refines the position when it detects a nearby pattern.
 - To remove an incorrect role, choose **Clear** and tap its green marker. Clearing all roles also clears orientation, while keeping corners and cell edits. Assign a role again before repair.
 - A hidden Finder does not need an assignment. An incorrect role can prevent recovery, so use only roles you can identify.
@@ -98,7 +99,6 @@ If you know the error-correction level or mask, choose it under **ECC: Auto** or
 | **Partial-bit search / dimension limit** | Choose 12, 13, or 14 bits per RS block; the default is 12. Each extra bit doubles the maximum number of combinations. |
 | **Known-bit error search** | Off by default. Choose up to 1 or 2 incorrect known bits across the whole QR. Runs as a fallback with a shared 30-second / 1,000,000-trial allowance, plus existing memory and candidate limits. Fixed cells, trusted headers and the data/ECC mismatch limit remain enforced. |
 | **List-decoding extension (symbols)** | Open this control to choose **Extra errors beyond conventional RS**: OFF, or +1, +2, or +3 codewords per block; the default is +1. OFF skips GS, Wu, and KV in both list-decoding stages. A higher limit can take much longer and may not find more candidates. |
-| **Treat input image as mirrored** | Enable for a mirrored QR image. The top-right and bottom-left Finder roles exchange; the displayed image is unchanged and edits stay on the same image cells. It defaults to off and is saved with the work. |
 
 Searches also have time and memory limits. Raising a setting does not guarantee that all combinations will be checked.
 
@@ -150,7 +150,7 @@ Tap an entry in **Saved work** or **Recent work** to reopen it. Long-press to de
 
 ### Saved-work compatibility
 
-QRR is the app’s saved-work format. The app writes format version **28** and reads versions **23–28**; other versions are rejected. Older files restore settings they did not store as follows: Known-bit error search is off for all versions 23–27.
+QRR is the app’s saved-work format. The app writes format version **29** and reads versions **23–29**; other versions are rejected. Older files restore settings they did not store as follows: Known-bit error search is off for all versions 23–27.
 
 | File version | Restored defaults |
 | --- | --- |
