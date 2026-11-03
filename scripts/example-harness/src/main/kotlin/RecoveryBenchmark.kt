@@ -22,11 +22,14 @@ private fun digest(value: String): String = MessageDigest.getInstance("SHA-256")
 private fun wordsKey(words: IntArray) = words.joinToString(",")
 private fun shuffled(values: List<Int>, random: Random) = values.toMutableList().also { java.util.Collections.shuffle(it, random) }
 
+private const val IMAGE_SCALE = 6
+private fun rowShift(y: Int, side: Int) = (3 * kotlin.math.sin(y * Math.PI / side)).toInt()
+
 private class BenchmarkFixture(val name: String, val seed: Int) {
     val version = if (name in setOf("burst", "multiple-blocks")) 3 else 1
     val ecc = if (version == 3) ErrorCorrectionLevel.Q else ErrorCorrectionLevel.L
     val mask = seed % 8
-    private val text = "BASE ${seed.toString().padStart(3, '0')} A"
+    val text = "BASE ${seed.toString().padStart(3, '0')} A"
     private fun encode(text: String): QrMatrix {
         val qr = Encoder.encode(text, ecc, mapOf(EncodeHintType.QR_VERSION to version, EncodeHintType.QR_MASK_PATTERN to mask))
         return QrMatrix(qr.matrix.width).apply {
@@ -116,6 +119,46 @@ private class BenchmarkFixture(val name: String, val seed: Int) {
                     })
             })
     }
+    fun raster(damage: String): LumaImage {
+        val scale = IMAGE_SCALE
+        val side = (matrix.dimension + 8) * scale
+        val formatCells = FormatSolver.copies(matrix.dimension).flatten().toSet()
+        fun luminance(px: Int, py: Int): Int {
+            val x = Math.floorDiv(px, scale) - 4
+            val y = Math.floorDiv(py, scale) - 4
+            if (x !in 0 until matrix.dimension || y !in 0 until matrix.dimension) return 245
+            val black = matrix[x, y].value == ModuleValue.ONE
+            return when {
+                damage == "format" && (x to y) in formatCells -> 128
+                matrix[x, y].value == ModuleValue.ERASED -> 128
+                black -> 15
+                else -> 245
+            }
+        }
+        return LumaImage(side, side, IntArray(side * side) { i ->
+            val x = i % side
+            val y = i / side
+            val base = luminance(x, y)
+            when (damage) {
+                "shadow" -> base - base * x / (2 * side)
+                "glare" -> if (kotlin.math.abs(x - y - seed % scale) < scale) 235 else base
+                "warp" -> luminance(x - rowShift(y, side), y)
+                "blur" -> (-3..3).sumOf { dx -> (-3..3).sumOf { dy -> luminance(x + dx, y + dy) } } / 49
+                else -> base
+            }
+        })
+    }
+
+    fun knownGrid(settings: PreprocessSettings): PreprocessSettings {
+        val last = matrix.dimension - 1
+        fun center(x: Int, y: Int) = PointD((4 + x) * IMAGE_SCALE + (IMAGE_SCALE - 1) / 2.0,
+            (4 + y) * IMAGE_SCALE + (IMAGE_SCALE - 1) / 2.0)
+        return settings.copy(version = version, logicalGridAssigned = true,
+            manualQuad = ImageQuad(center(0, 0), center(last, 0), center(last, last), center(0, last)),
+            manualFinders = mapOf(FinderRole.TOP_LEFT to center(3, 3), FinderRole.TOP_RIGHT to center(last - 3, 3),
+                FinderRole.BOTTOM_LEFT to center(3, last - 3)))
+    }
+
     /** Geometry and sampling are timed separately; sampled values never replace the input constraints. */
     fun imageProbe(): Map<String, Any?> {
         val scale = 6
@@ -245,7 +288,93 @@ private fun benchmarkSelfTest() {
     println("Recovery benchmark fixture and measurement checks passed")
 }
 
+private fun imageBenchmark(args: Array<String>) {
+    require(args.size == 5) { "Use an image mode followed by OUTPUT SEEDS CHECKS GUARD_MS" }
+    val output = File(args[1])
+    val seeds = args[2].toInt()
+    val limit = args[3].toInt()
+    val guard = args[4].toLong()
+    require(seeds in 1..100 && limit > 0 && guard > 0)
+    require(output.createNewFile()) { "Choose a new output file" }
+    output.bufferedWriter().use { writer ->
+        for (seed in 0 until seeds) for (damage in listOf("clean", "shadow", "glare", "warp", "blur", "format", "mixed", "ambiguous")) {
+            val fixture = BenchmarkFixture(if (damage in setOf("mixed", "ambiguous")) damage else "clean", seed)
+            val pixels = fixture.raster(damage)
+            val oriented = args[0] == "--oriented-images"
+            val knownGrid = args[0] == "--known-grid-images"
+            // The sinusoidal row displacement cannot be represented by a projective quad.
+            val image = if (knownGrid && damage == "warp") LumaImage(pixels.width, pixels.height,
+                IntArray(pixels.pixels.size) { i ->
+                    val y = i / pixels.width
+                    val x = i % pixels.width + rowShift(y, pixels.height)
+                    if (x < pixels.width) pixels.pixels[y * pixels.width + x] else 245
+                }) else pixels
+            val pools = ManagementFactory.getMemoryPoolMXBeans().filter { it.type == MemoryType.HEAP }
+            pools.forEach { it.resetPeakUsage() }
+            val start = System.nanoTime()
+            fun millis() = (System.nanoTime() - start) / 1e6
+            val estimate = if (knownGrid) null else InitialGridEstimator.estimate(image, desktopBoundaries(image))
+            var checks = 0
+            var stop: String? = null
+            val result = if (!knownGrid && estimate == null) null else run {
+                val rgb = IntArray(image.pixels.size) { i -> -0x1000000 or (image.pixels[i] * 0x10101) }
+                val thresholds = InitialThresholdEstimator.estimate(android.graphics.Bitmap(image.width, image.height, rgb))
+                val base = PreprocessSettings(blackMax = thresholds?.blackMax ?: 96,
+                    whiteMin = thresholds?.whiteMin ?: 160, automaticThresholds = true).withInitialErrorLimits()
+                val settings = when {
+                    knownGrid -> fixture.knownGrid(base)
+                    oriented -> {
+                        // The generator prints upright symbols. Reorder only the measured coordinates.
+                        val corners = requireNotNull(estimate).moduleCenterQuad.asList().sortedBy { it.y }
+                        val top = corners.take(2).sortedBy { it.x }
+                        val bottom = corners.drop(2).sortedBy { it.x }
+                        base.withInitialGrid(estimate).copy(logicalGridAssigned = true,
+                            manualQuad = ImageQuad(top[0], top[1], bottom[1], bottom[0]))
+                    }
+                    else -> base.withInitialGrid(estimate)
+                }
+                AutoRecoveryEngine().run(image, profile = SamplingProfile(settings, estimate?.confirmedPolarity == FinderPolarity.INVERTED),
+                    listDecodingBudget = ListDecodingBudget(clockMillis = { 0L }), stopRequested = {
+                        checks++
+                        if (stop == null) stop = when {
+                            checks > limit -> "checks"
+                            millis() >= guard -> "wall"
+                            else -> null
+                        }
+                        stop != null
+                    })
+            }
+            val elapsed = millis()
+            val mixedTruth = result?.bestAttempt?.matrix?.takeIf { damage == "mixed" && it.dimension == fixture.matrix.dimension }?.let { matrix ->
+                val words = CodewordExtractor.extract(matrix, fixture.version, fixture.mask).codewords
+                val mismatches = words.mapIndexed { i, word ->
+                    ((word.value xor fixture.original[i]) and word.unknownBits.inv() and 255).countOneBits()
+                }
+                mapOf("knownBitErrors" to mismatches.sum(), "erasedWords" to words.count { it.unknownBits != 0 },
+                    "wrongCompleteWords" to words.indices.count { words[it].unknownBits == 0 && mismatches[it] > 0 },
+                    "allowedBitErrors" to ErrorLimitPolicy.data(fixture.version, ErrorLimitMode.AUTOMATIC, null))
+            }
+            val candidates = result?.entries.orEmpty().map { it.candidate }
+            val rank = candidates.indexOfFirst { it.version == fixture.version && it.ecLevel == fixture.ecc &&
+                it.dataMask == fixture.mask && it.correctedInterleaved.contentEquals(fixture.original) }
+            writer.appendLine(benchmarkJson.toJson(mapOf("mixedTruth" to mixedTruth, "estimatedVersion" to estimate?.version,
+                "gridMode" to when { knownGrid -> "known"; oriented -> "oriented"; else -> "auto" }, "damage" to damage, "seed" to seed, "rank" to
+                (rank + 1).takeIf { rank >= 0 }, "contentFound" to candidates.any { it.text == fixture.text },
+                "candidateCount" to candidates.size, "knownWitnessesFound" to fixture.witnesses.count { witness ->
+                    candidates.any { it.version == fixture.version && it.ecLevel == fixture.ecc && it.dataMask == fixture.mask &&
+                        it.correctedInterleaved.contentEquals(witness) } },
+                "heapPoolPeakSumBytes" to pools.sumOf { it.peakUsage.used }, "noGeometry" to (!knownGrid && estimate == null),
+                "finderRolesAssigned" to if (knownGrid) 3 else estimate?.autoAssignedFinders.orEmpty().size,
+                "attemptedGeometries" to (result?.attemptedGeometries ?: 0), "elapsedMs" to elapsed,
+                "checks" to checks, "checkLimit" to limit, "guardMillis" to guard, "stop" to stop,
+                "diagnostic" to result?.searchDiagnostic)))
+            writer.flush()
+        }
+    }
+}
+
 fun main(args: Array<String>) {
+    if (args.firstOrNull() in setOf("--images", "--known-grid-images", "--oriented-images")) { imageBenchmark(args); return }
     if (args.contentEquals(arrayOf("--self-test"))) { benchmarkSelfTest(); return }
     require(args.size % 2 == 0) { "Use --output DIR [--samples N] [--warmups N] [--seeds N] [--checks N] [--guard-ms N] [--case NAME] [--profile true|false]" }
     val options = args.toList().chunked(2).associate { it[0] to it[1] }
