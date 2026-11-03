@@ -32,10 +32,19 @@ internal object KnownBitQrSearch {
             val block = de.blocks[index]
             val required = KnownBitErrorSearch.workingBytes(block.codewords.size, de.ecSymbolsPerBlock)
             if (required > memory - bytes) { stops += CombinationSearchStop.WORKING_MEMORY_LIMIT; return }
+            var indexBytes = 0L
             bytes += required
             try {
                 val search = KnownBitErrorSearch(block, de.ecSymbolsPerBlock, check)
-                for (h in search.hypotheses(remaining, pins[index], budget)) {
+                val choices = search.hypotheses(remaining, pins[index], budget) { requested ->
+                    val fits = requested <= memory - bytes
+                    if (fits) {
+                        indexBytes = requested
+                        bytes += requested
+                    }
+                    fits
+                }
+                for (h in choices) {
                     val spaceBytes = h.space.restrictionWorkingBytes + 2048L + block.numDataCodewords * 4096L
                     if (spaceBytes > memory - bytes) { stops += CombinationSearchStop.WORKING_MEMORY_LIMIT; continue }
                     bytes += spaceBytes
@@ -46,7 +55,7 @@ internal object KnownBitQrSearch {
                     }
                     if (nodes <= 0) break
                 }
-            } finally { bytes -= required }
+            } finally { bytes -= required + indexBytes }
         }
         budget.measure { visit(0, limit) }
         return stops

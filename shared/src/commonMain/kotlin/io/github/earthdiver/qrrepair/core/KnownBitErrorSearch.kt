@@ -70,7 +70,19 @@ class KnownBitErrorSearch(private val block: RsBlockWork, private val ec: Int,
         target = reduce(syndrome)
         for (pos in known) columns[pos] = reduce(columns[pos])
     }
-    fun hypotheses(maxErrors: Int, protected: Set<RsBitConstraintSolver.Bit>, budget: KnownBitErrorBudget): Sequence<Hypothesis> = sequence {
+    // Hash the projected column or its required partner without allocating a temporary vector.
+    private fun bucket(column: LongArray, complement: Boolean, mask: Int): Int {
+        var hash = -3750763034362895579L
+        for (i in column.indices) {
+            val word = if (complement) column[i] xor target[i] else column[i]
+            hash = (hash xor word) * 1099511628211L
+            hash = hash xor (hash ushr 32)
+        }
+        return (hash xor (hash ushr 16)).toInt() and mask
+    }
+
+    fun hypotheses(maxErrors: Int, protected: Set<RsBitConstraintSolver.Bit>, budget: KnownBitErrorBudget,
+        reservePairIndex: (Long) -> Boolean = { true }): Sequence<Hypothesis> = sequence {
         require(maxErrors in 0..2)
         val eligible = known.filter { RsBitConstraintSolver.Bit(it / 8, it % 8) !in protected }
         val solver = RsBitConstraintSolver()
@@ -88,6 +100,33 @@ class KnownBitErrorSearch(private val block: RsBlockWork, private val ec: Int,
         }
         offer()
         if (maxErrors >= 1) for (a in eligible) offer(a)
-        if (maxErrors >= 2) for (i in eligible.indices) for (j in 0 until i) offer(eligible[i], eligible[j])
+        if (maxErrors < 2 || eligible.size < 2) return@sequence
+        val bucketCount = (eligible.size - 1).takeHighestOneBit() * 2
+        val indexBytes = 64L + Int.SIZE_BYTES * (bucketCount + eligible.size)
+        if (!reservePairIndex(indexBytes)) {
+            for (i in eligible.indices) for (j in 0 until i) offer(eligible[i], eligible[j])
+            return@sequence
+        }
+        val heads = IntArray(bucketCount) { -1 }
+        val next = IntArray(eligible.size)
+        val mask = bucketCount - 1
+        // Reverse insertion leaves each chain in ascending input order.
+        for (j in eligible.indices.reversed()) {
+            cancellation.check()
+            budget.check()
+            val key = bucket(columns[eligible[j]], false, mask)
+            next[j] = heads[key]
+            heads[key] = j
+        }
+        for (i in eligible.indices) {
+            cancellation.check()
+            budget.check()
+            val a = eligible[i]
+            var j = heads[bucket(columns[a], true, mask)]
+            while (j >= 0 && j < i) {
+                offer(a, eligible[j]) // offer compares the full vectors, including on hash collisions.
+                j = next[j]
+            }
+        }
     }
 }

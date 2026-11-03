@@ -204,6 +204,8 @@ When `*` cells are marked, the app first attempts recovery with those cells left
 
 First, the search removes RS conditions that can be satisfied by choosing unknown-bit values and checks for discrepancies that unknown-bit assignments alone cannot remove. It tries no flips, one flipped bit, and, when enabled, two flipped bits. For hypotheses compatible with the remaining conditions, it solves linear equations for the unknown bits. QR-structure constraints are applied to the values after the hypothesized flips, and block solutions are combined and validated.
 
+For two flips in one block, a lookup table uses the first bit’s projected discrepancy to find possible partners. Each pair is checked against the full discrepancy. If the table exceeds the available working memory, the search checks pairs sequentially.
+
 This search starts from the original input without inheriting structure fills or assignments to `*` cells from earlier stages. A `*` cell remains unknown. Protected fixed cells cannot be flipped. The data/ECC error limit, selected version and orientation, and explicit ECC/mask selections still apply. When single-segment terminator and padding forcing is on, its header and suffix conditions remain enforced. When it is off, the encoding mode and character or byte count can be reconsidered for each flip hypothesis.
 
 This is separate from conventional errors-and-erasures RS and list decoding. Later list decoding searches independently from the original input without inheriting these hypothesized known-bit flips. Candidates retain the hypothesized error positions and the calculation records used to solve unknown bits under those conditions. More than one candidate can satisfy the conditions.
