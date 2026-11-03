@@ -21,13 +21,14 @@ class ImageImportControllerTest {
         val adjustment = ImageAdjustment(contrast = 20, brightness = 10)
         val input = bitmap()
         val controller = controller(callbacks, { 1 })
-        controller.prepare(1, input, null, adjustment) { result = it }
+        controller.prepare(1, input, null, adjustment, distortionCorrection = true) { result = it }
         assertNull(result)
         while (callbacks.isNotEmpty()) callbacks.removeFirst().invoke()
         val delivered = requireNotNull(result)
         assertFalse(delivered.source.bitmap.isRecycled)
         assertFalse(delivered.adjusted.bitmap.isRecycled)
         assertEquals(adjustment, delivered.settings.imageAdjustment)
+        assertTrue(delivered.settings.distortionCorrection)
         assertTrue(delivered.settings.automaticThresholds)
         delivered.source.bitmap.recycle()
         if (delivered.adjusted.bitmap !== delivered.source.bitmap) delivered.adjusted.bitmap.recycle()

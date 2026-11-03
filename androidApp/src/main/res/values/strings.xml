@@ -234,4 +234,7 @@
     <string name="known_bit_one">Known-bit error search: up to 1 bit</string>
     <string name="known_bit_two">Known-bit error search: up to 2 bits</string>
     <string name="known_bit_note">Optional fallback for mixed missing and incorrect cells. The limit applies to the whole QR, not each RS block. Shares a 30-second / 1,000,000-trial allowance across the operation. Fixed cells and trusted header conditions remain enforced.</string>
+    <string name="image_distortion_correction">Distortion correction (experimental)</string>
+    <string name="image_distortion_help">Try reading curved paper or labels. Analysis also tries distortion-corrected candidates. Ordinary analysis continues when the required landmarks cannot be found.</string>
+    <string name="image_distortion_unavailable">No usable landmarks or distortion mapping were found. Only ordinary analysis was performed.</string>
 </resources>

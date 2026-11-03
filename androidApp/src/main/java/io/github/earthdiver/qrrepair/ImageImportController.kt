@@ -74,6 +74,7 @@ internal class ImageImportController(
         bitmap: Bitmap,
         cleanupFile: File?,
         imageAdjustment: ImageAdjustment,
+        distortionCorrection: Boolean = false,
         onPrepared: (PreparedImageImport) -> Unit,
     ) {
         executor.execute {
@@ -94,6 +95,7 @@ internal class ImageImportController(
                 )
                 val settings = PreprocessSettings(
                     imageAdjustment = imageAdjustment,
+                    distortionCorrection = distortionCorrection,
                     automaticThresholds = true,
                     blackMax = initialEstimate?.blackMax ?: 96,
                     whiteMin = initialEstimate?.whiteMin ?: 160,

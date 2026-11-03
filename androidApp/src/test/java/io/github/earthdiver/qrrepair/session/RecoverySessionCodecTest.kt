@@ -117,11 +117,10 @@ class RecoverySessionCodecTest {
             val settings = PreprocessSettings(manualQuad = quad, visibleFinderRole = role)
             val bytes = RecoverySessionCodec.encode(settingsPayload(settings))
             assertEquals(settings, RecoverySessionCodec.decode(bytes).historyEntries.single().snapshot.preprocessSettings)
-            ByteBuffer.wrap(bytes).putInt(4, 28)
-            assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(bytes) }
+            val legacy = schema28Settings(bytes)
+            assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(legacy) }
         }
-        val old = RecoverySessionCodec.encode(settingsPayload(PreprocessSettings(manualQuad = quad)))
-        ByteBuffer.wrap(old).putInt(4, 28)
+        val old = schema28Settings(RecoverySessionCodec.encode(settingsPayload(PreprocessSettings(manualQuad = quad))))
         assertEquals(null, RecoverySessionCodec.decode(old).historyEntries.single().snapshot.preprocessSettings!!.visibleFinderRole)
     }
 
@@ -137,7 +136,9 @@ class RecoverySessionCodecTest {
     @Test fun olderSettingsDefaultOffAndMalformedNewLimitIsRejected() {
         fun raw(limit:Int):ByteArray {
             val encoded=RecoverySessionCodec.encode(settingsPayload(PreprocessSettings(knownBitErrorLimit=limit)))
-            return GZIPInputStream(ByteArrayInputStream(encoded,48,encoded.size-48)).use { it.readBytes() }
+            val current = GZIPInputStream(ByteArrayInputStream(encoded,48,encoded.size-48)).use { it.readBytes() }
+            // Schema 28 has neither distortion correction nor preview geometry.
+            return current.copyOfRange(0, current.size - 5) + current.copyOfRange(current.size - 3, current.size)
         }
         fun container(raw:ByteArray,version:Int):ByteArray {
             val compressed=java.io.ByteArrayOutputStream().also { out -> java.util.zip.GZIPOutputStream(out).use { it.write(raw) } }.toByteArray()
@@ -152,6 +153,12 @@ class RecoverySessionCodecTest {
         assertEquals(0,RecoverySessionCodec.decode(container(old,27)).historyEntries.single().snapshot.preprocessSettings!!.knownBitErrorLimit)
         two[changed]=3
         assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(container(two,28)) }
+    }
+
+    private fun schema28Settings(encoded: ByteArray): ByteArray {
+        val raw = QrrContainerCodec.decode(encoded).bytes
+        val legacy = raw.copyOfRange(0, raw.size - 5) + raw.copyOfRange(raw.size - 3, raw.size)
+        return QrrContainerCodec.encode { it.write(legacy) }.also { ByteBuffer.wrap(it).putInt(4, 28) }
     }
 
     private fun settingsPayload(settings: PreprocessSettings) = RecoverySessionCodec.Payload(

@@ -72,6 +72,7 @@ internal class PreprocessDialogState(private val initial: PreprocessSettings) {
         val (blackMax, whiteMin) = normalizedThresholds(controls)
         return PreprocessSettings(
             imageAdjustment = imageAdjustment,
+            distortionCorrection = initial.distortionCorrection,
             mirroredInput = mirroredInput,
             polarity = controls.polarity,
             automaticThresholds = controls.automaticThresholds,

@@ -36,6 +36,9 @@ class ImageAdjustmentEditor(
     val preview = CropOverlayView(context).apply { cropEnabled = allowCrop; setBitmap(whiteSource) }
     var adjustment: ImageAdjustment = initial
         private set
+    var distortionCorrection: Boolean = false
+        private set
+    private var distortionToggle: android.widget.CheckBox? = null
     var showingBefore: Boolean = false
         private set
     private var rotated: Bitmap = whiteSource
@@ -71,12 +74,25 @@ class ImageAdjustmentEditor(
             addView(compare, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
             addView(action(R.string.image_help) {
                 AlertDialog.Builder(context).setTitle(R.string.image_adjustment)
-                    .setMessage(context.getString(R.string.crop_help) + "\n\n" + context.getString(R.string.image_adjustment_help))
+                    .setMessage(context.getString(R.string.crop_help) + "\n\n" + context.getString(R.string.image_adjustment_help) +
+                        if (allowCrop) "\n\n" + context.getString(R.string.image_distortion_help) else "")
                     .setPositiveButton(R.string.close, null).show()
             }.apply { text = "?" }, LayoutParams(dp(48), LayoutParams.WRAP_CONTENT))
         }, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         addView(status)
         addView(preview, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
+        if (allowCrop) {
+            distortionToggle = android.widget.CheckBox(context).apply {
+                setText(R.string.image_distortion_correction)
+                textSize = 13f
+                setPadding(dp(8), dp(4), dp(8), dp(4))
+                setSingleLine(false)
+                maxLines = Int.MAX_VALUE
+                ellipsize = null
+                setOnCheckedChangeListener { _, checked -> distortionCorrection = checked }
+            }
+            addView(distortionToggle)
+        }
         addView(tools, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         addView(actions.apply {
             gravity = Gravity.TOP
@@ -309,6 +325,7 @@ class ImageAdjustmentEditor(
         putFloatArray("crop", preview.cropRect().let { floatArrayOf(it.left, it.top, it.right, it.bottom) })
         putBoolean("editing", editing); putBoolean("contrastSelected", contrastSelected)
         putBoolean("before", showingBefore)
+        putBoolean("distortionCorrection", distortionCorrection)
     }
 
     fun restoreState(state: Bundle) {
@@ -317,6 +334,7 @@ class ImageAdjustmentEditor(
         setAdjustment(ImageAdjustment(state.getInt("contrast"), state.getInt("brightness"), state.getBoolean("inverted")))
         editing = state.getBoolean("editing"); contrastSelected = state.getBoolean("contrastSelected", true)
         showingBefore = state.getBoolean("before")
+        distortionToggle?.isChecked = state.getBoolean("distortionCorrection")
         rebuildTools(); refreshPreview()
     }
 

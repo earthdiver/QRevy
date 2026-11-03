@@ -264,6 +264,7 @@ class QrEditorView(context: Context) : View(context) {
         val g = geometry ?: return null
         val p = viewToImage(viewX, viewY) ?: return null
         val module = g.imageToModule(p.x, p.y)
+        if (!module.x.isFinite() || !module.y.isFinite()) return null
         val x = floor(module.x + 0.5).toInt()
         val y = floor(module.y + 0.5).toInt()
         return if (x in 0 until g.dimension && y in 0 until g.dimension) Coord(x, y) else null
@@ -297,17 +298,8 @@ class QrEditorView(context: Context) : View(context) {
         val maxX = cells.maxOf { it.x }
         val minY = cells.minOf { it.y }
         val maxY = cells.maxOf { it.y }
-        val corners = listOf(
-            g.moduleToImage(minX - .5, minY - .5),
-            g.moduleToImage(maxX + .5, minY - .5),
-            g.moduleToImage(maxX + .5, maxY + .5),
-            g.moduleToImage(minX - .5, maxY + .5),
-        )
-        val path = Path().apply {
-            moveTo(corners[0].x.toFloat(), corners[0].y.toFloat())
-            for (index in 1..3) lineTo(corners[index].x.toFloat(), corners[index].y.toFloat())
-            close()
-        }
+        val path = mappedOutline(g, listOf(PointD(minX - .5, minY - .5), PointD(maxX + .5, minY - .5),
+            PointD(maxX + .5, maxY + .5), PointD(minX - .5, maxY + .5)))
         rangeBorderPaint.strokeWidth = 3f * invScale
         canvas.drawPath(path, rangeFillPaint)
         canvas.drawPath(path, rangeBorderPaint)
@@ -338,11 +330,9 @@ class QrEditorView(context: Context) : View(context) {
         canvas.save(); canvas.translate(offsetX, offsetY); canvas.scale(viewScale, viewScale); canvas.drawBitmap(b, 0f, 0f, bitmapPaint)
         if (g != null && m != null) {
             val invScale = 1f / max(viewScale, 0.001f); boundaryPaint.strokeWidth = 2f * invScale
-            val corners = listOf(g.moduleToImage(-0.5, -0.5), g.moduleToImage(g.dimension - 0.5, -0.5), g.moduleToImage(g.dimension - 0.5, g.dimension - 0.5), g.moduleToImage(-0.5, g.dimension - 0.5))
-            boundaryPath.rewind()
-            boundaryPath.moveTo(corners[0].x.toFloat(), corners[0].y.toFloat())
-            for (i in 1 until 4) boundaryPath.lineTo(corners[i].x.toFloat(), corners[i].y.toFloat())
-            boundaryPath.close()
+            val last = g.dimension - .5
+            boundaryPath.set(mappedOutline(g, listOf(PointD(-.5, -.5), PointD(last, -.5),
+                PointD(last, last), PointD(-.5, last))))
             canvas.drawPath(boundaryPath, boundaryPaint)
 
             // Navigation changes only the viewport. Skip the cell-sized overlay loops until
@@ -510,18 +500,33 @@ class QrEditorView(context: Context) : View(context) {
         canvas.drawText(label, p.x.toFloat(), baseline, codewordTextPaint)
     }
 
+    /** Subdivide module-space edges so outlines follow non-rigid sampling coordinates. */
+    private fun mappedOutline(g: GridGeometry, points: List<PointD>, closed: Boolean = true): Path = Path().apply {
+        val first = g.moduleToImage(points[0].x, points[0].y)
+        moveTo(first.x.toFloat(), first.y.toFloat())
+        for (index in 0 until if (closed) points.size else points.size - 1) {
+            val a = points[index]; val b = points[(index + 1) % points.size]
+            val steps = if (g.warp == null) 1 else kotlin.math.ceil(a.distanceTo(b)).toInt().coerceIn(1, 256)
+            for (step in 1..steps) {
+                val m = a + (b - a) * (step.toDouble() / steps)
+                val p = g.moduleToImage(m.x, m.y)
+                lineTo(p.x.toFloat(), p.y.toFloat())
+            }
+        }
+        if (closed) close()
+    }
+
     private fun drawQrStructures(canvas: Canvas, g: GridGeometry, invScale: Float) {
         overlayPaint.style = Paint.Style.STROKE; overlayPaint.color = Color.rgb(0, 255, 120); overlayPaint.strokeWidth = 2.0f * invScale
         fun box(x0: Int, y0: Int, size: Int) {
-            val points = listOf(g.moduleToImage(x0 - .5, y0 - .5), g.moduleToImage(x0 + size - .5, y0 - .5), g.moduleToImage(x0 + size - .5, y0 + size - .5), g.moduleToImage(x0 - .5, y0 + size - .5))
-            val path = Path().apply { moveTo(points[0].x.toFloat(), points[0].y.toFloat()); for (i in 1..3) lineTo(points[i].x.toFloat(), points[i].y.toFloat()); close() }
+            val path = mappedOutline(g, listOf(PointD(x0 - .5, y0 - .5), PointD(x0 + size - .5, y0 - .5),
+                PointD(x0 + size - .5, y0 + size - .5), PointD(x0 - .5, y0 + size - .5)))
             canvas.drawPath(path, overlayPaint)
         }
         box(0, 0, 7); box(g.dimension - 7, 0, 7); box(0, g.dimension - 7, 7)
-        val h0 = g.moduleToImage(8.0, 6.0); val h1 = g.moduleToImage((g.dimension - 9).toDouble(), 6.0)
-        val v0 = g.moduleToImage(6.0, 8.0); val v1 = g.moduleToImage(6.0, (g.dimension - 9).toDouble())
-        canvas.drawLine(h0.x.toFloat(), h0.y.toFloat(), h1.x.toFloat(), h1.y.toFloat(), overlayPaint)
-        canvas.drawLine(v0.x.toFloat(), v0.y.toFloat(), v1.x.toFloat(), v1.y.toFloat(), overlayPaint)
+        val last = (g.dimension - 9).toDouble()
+        canvas.drawPath(mappedOutline(g, listOf(PointD(8.0, 6.0), PointD(last, 6.0)), false), overlayPaint)
+        canvas.drawPath(mappedOutline(g, listOf(PointD(6.0, 8.0), PointD(6.0, last)), false), overlayPaint)
     }
 
     private fun drawHeatmap(canvas: Canvas, g: GridGeometry, invScale: Float) {

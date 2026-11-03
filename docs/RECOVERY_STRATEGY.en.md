@@ -55,7 +55,7 @@ Initial estimation uses the QR detection library ZXing-C++ to detect the QR code
 
 If that grid cannot be accepted, the app estimates a grid from the repeating cell spacing, then considers an estimate using two Finders if necessary. It may decline an estimate when, for example, boundaries of different QR codes are detected or normal and inverted readings give conflicting estimates. Text decoded by the detection library is not used as the recovery result.
 
-A projective transformation maps the four corners to cell positions in the image. It describes a flat surface viewed at an angle and cannot accurately represent the distortion of a QR code printed on a curved surface.
+Ordinary grid candidates use a projective transformation to map the four corners to cell positions in the image. This models a flat surface viewed at an angle. The optional distortion candidates described below add non-rigid displacement for curved surfaces.
 
 The basic refinement candidates are:
 
@@ -71,7 +71,23 @@ The reference displacement is 0.6 cell widths. When exactly one Finder role is a
 
 For version 2 and above, an alignment pattern, a small pattern used to align the grid, can add at most one corrected grid for each grid candidate. If its observed position differs from its predicted position by 0.1–1.25 cell widths, the nearest grid corner is moved. Corrections that substantially worsen agreement with the timing pattern, the alternating black and white pattern indicating cell spacing, are rejected. The original grid candidate is also retained.
 
-Including corrected grids, there are at most 38 candidates, or 42 with exactly one assigned Finder role. With refinement disabled, only the specified grid is used.
+Including alignment-corrected grids, there are at most 38 ordinary candidates, or 42 with exactly one assigned Finder role. With refinement disabled, repair uses only the displayed grid. Additional distortion candidates have a separate budget.
+
+### Distortion correction
+
+Experimental distortion correction uses landmarks from all three Finders and other patterns to build grids that follow curvature. The orange dots below mark the landmarks. The left diagram shows one Finder; the right shows one alignment pattern.
+
+![Four landmarks at the centers of the black corner cells in a 7 by 7 Finder, and one landmark at the center of the black central cell in a 5 by 5 alignment pattern](diagrams/distortion-landmarks.svg)
+
+1. **Obtain twelve points from the Finders.** Search for nested dark/light/dark Finder outlines at multiple image sizes, with maximum side lengths of 384, 640, and 960 pixels. For each Finder, use **the centers of the black cells at the four corners of its 7×7 grid: four points per Finder, twelve across all three Finders**. Calculate these four cell-center positions in the image from the detected outline corners.
+2. **Bend the grid using these twelve points.** First fit a projective transformation, then use a **thin-plate spline (TPS)** to smoothly interpolate the remaining displacement. This transformation determines where each cell is sampled.
+3. **Refine using additional patterns.** For alignment patterns, use **the center of the black central cell in the 5×5 pattern: one point per pattern**. Match the pattern near its predicted position and add up to eight usable observations. V4 has one such point, giving thirteen points together with the twelve Finder landmarks. Then track the alternating black and white timing patterns, adding up to sixteen observations per axis. Timing observations receive softer constraints than the other landmarks.
+
+Retain candidates from each stage for comparison, and reject maps that fold over or have excessive displacement or local stretching. Local Finder-template matching also supplies candidates.
+
+The settings screen computes up to twelve correction candidates from the specified four-corner grid and orders them by agreement with the timing pattern and other image checks. Grid lines, cell values, cell selection, and repair share the selected candidate. The corner handles edit the underlying grid before distortion correction; landmarks are measured again when the adjustment finishes. The selected candidate is also saved in the session.
+
+With “Automatically fine-tune sampling position” enabled, repair explores ordinary grid candidates in addition to the displayed grid. It selects up to four ordinary grids based on agreement with the timing pattern and other image checks, then tries distortion correction on each. It adds up to twelve correction candidates per selected grid, for a total of at most 48 additional candidates per polarity.
 
 ### Measuring brightness and marking unknown cells
 

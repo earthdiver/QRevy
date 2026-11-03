@@ -27,6 +27,8 @@ In Classic, choose **Repair** to open the settings. In Modern, use **01 Repair s
 3. Check **QR Version** and align the orange corner handles with the centers of the outermost cells. Version 1 has 21 cells per side; each subsequent version adds four.
 4. Review the cell values in the preview. Adjust the white/unknown/black thresholds if damaged areas are being read as definite `0` or `1` values.
 
+**Distortion correction (experimental)** can be enabled in the crop screen for curved paper or labels; it is off by default. The settings preview displays the corrected, curved grid and recalculates it when you finish adjusting the corners. When several candidates are available, select one with “Distortion: candidate”; repair uses the displayed grid. If no correction landmarks are found, the screen reports this and uses a straight grid. See [how distortion correction works and its limits](RECOVERY_STRATEGY.en.md#distortion-correction).
+
 Automatic estimates may need correction. If only an outline appears, select **QR Version**, even if the displayed value is already correct, to show a grid. Until a Finder role is assigned, provisional alignment guides appear at all four corners and along all four sides, with dashed outlines. Adjust the corners and assign a Finder role as described below. **Rectify selection to a square** clears Finder roles and orientation; assign a role again afterward.
 
 **Set thresholds automatically** starts enabled for image imports. It recalculates thresholds when the grid changes. Moving a slider switches to manual thresholds; turning the option off keeps the current values. Manual thresholds stay unchanged during corner adjustment and sampling fine-tuning. Turn the option on to recalculate them. Saved work retains the mode and values.
@@ -150,7 +152,7 @@ Tap an entry in **Saved work** or **Recent work** to reopen it. Long-press to de
 
 ### Saved-work compatibility
 
-QRR is the app’s saved-work format. The app writes format version **29** and reads versions **23–29**; other versions are rejected. Older files restore settings they did not store as follows: Known-bit error search is off for all versions 23–27.
+QRR is the app’s saved-work format. The app writes format version **31** and reads versions **23–31**; other versions are rejected. Older files restore settings they did not store as follows: Known-bit error search is off for all versions 23–27. Distortion correction is off for versions 23–29. Versions 23–30 do not store the selected preview grid.
 
 | File version | Restored defaults |
 | --- | --- |

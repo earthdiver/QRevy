@@ -93,8 +93,8 @@ class InputImportProgressTest {
                     bitmap().let { it.compress(Bitmap.CompressFormat.PNG, 100, output); it.recycle() }
                 }
                 MainActivity::class.java.getDeclaredMethod("loadImage", Uri::class.java, File::class.java,
-                    ImageAdjustment::class.java).apply { isAccessible = true }
-                    .invoke(activity, Uri.fromFile(capture), capture, ImageAdjustment())
+                    ImageAdjustment::class.java, Boolean::class.javaPrimitiveType).apply { isAccessible = true }
+                    .invoke(activity, Uri.fromFile(capture), capture, ImageAdjustment(), true)
                 val loading = field<AlertDialog>(activity, "inputProgressDialog")
                 // Queue a barrier after decoding so analysis cannot finish before inspection.
                 val release = blockWorker(activity)
@@ -109,6 +109,7 @@ class InputImportProgressTest {
                 assertNull(field<Any?>(activity, "inputProgressDialog"))
                 assertNotSame(previous, field(activity, "prepared"))
                 assertFalse(capture.exists())
+                assertTrue(field<PreprocessSettings>(activity, "preprocessSettings").distortionCorrection)
             } finally { capture.delete() }
         }
     }
@@ -175,8 +176,8 @@ class InputImportProgressTest {
     private fun import(activity: MainActivity, input: String, invalid: Boolean = false) {
         if (input == "analysis") {
             MainActivity::class.java.getDeclaredMethod("acceptDecodedImage", Bitmap::class.java,
-                File::class.java, ImageAdjustment::class.java).apply { isAccessible = true }
-                .invoke(activity, bitmap(), null, ImageAdjustment())
+                File::class.java, ImageAdjustment::class.java, Boolean::class.javaPrimitiveType).apply { isAccessible = true }
+                .invoke(activity, bitmap(), null, ImageAdjustment(), false)
             return
         }
         val bytes = when {
@@ -193,8 +194,8 @@ class InputImportProgressTest {
                 .apply { isAccessible = true }.invoke(activity, uri)
         } else {
             MainActivity::class.java.getDeclaredMethod("loadImage", Uri::class.java, File::class.java,
-                ImageAdjustment::class.java).apply { isAccessible = true }
-                .invoke(activity, uri, null, ImageAdjustment())
+                ImageAdjustment::class.java, Boolean::class.javaPrimitiveType).apply { isAccessible = true }
+                .invoke(activity, uri, null, ImageAdjustment(), false)
         }
     }
 

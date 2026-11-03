@@ -41,6 +41,23 @@ class ImageAdjustmentEditorTest {
         editor.layout(0, 0, width, 800)
     }
 
+    @Test fun distortionIsOptInSurvivesRecreationAndDoesNotWarpTheCrop() {
+        val source = bitmap()
+        val editor = ImageAdjustmentEditor(activity, source, onCancel = {}, onApply = {})
+        val before = editor.createCrop()
+        assertFalse(editor.distortionCorrection)
+        click(editor, R.string.image_distortion_correction)
+        assertTrue(editor.distortionCorrection)
+        assertTrue(before.sameAs(editor.createCrop()))
+        val restored = ImageAdjustmentEditor(activity, source, onCancel = {}, onApply = {})
+        restored.restoreState(editor.saveState())
+        assertTrue(restored.distortionCorrection)
+        click(restored, R.string.image_distortion_correction)
+        assertFalse(restored.distortionCorrection)
+        val tonesOnly = ImageAdjustmentEditor(activity, source, allowCrop = false, onCancel = {}, onApply = {})
+        assertFalse(views(tonesOnly).filterIsInstance<TextView>().any { it.text == activity.getString(R.string.image_distortion_correction) })
+    }
+
     @Test fun systemBarsKeepControlsInsideTheSafeArea() {
         val editor = ImageAdjustmentEditor(activity, bitmap(), onCancel = {}, onApply = {})
         val insets = androidx.core.view.WindowInsetsCompat.Builder()
@@ -160,6 +177,7 @@ class ImageAdjustmentEditorTest {
             layout(editor, 280)
             val buttons = (editor.indexOfChild(editor.preview) + 1 until editor.childCount)
                 .flatMap { views(editor.getChildAt(it)) }.filterIsInstance<android.widget.Button>()
+                .filterNot { it is android.widget.CompoundButton }
             assertTrue(buttons.any { it.layout.lineCount > 1 })
             assertEquals("Every footer button uses the tallest label", 1, buttons.map { it.height }.distinct().size)
             buttons.forEach { assertTrue(it.layout.height <= it.height - it.compoundPaddingTop - it.compoundPaddingBottom) }

@@ -125,7 +125,7 @@ internal object RecoverySessionPayloadCodec {
     }
 
     private fun readSnapshot(input: DataInputStream, formatVersion: Int): RecoverySnapshot {
-        val geometry = readGeometry(input)
+        val geometry = readGeometry(input, formatVersion)
         val source = readMatrix(input)
         val working = readMatrix(input)
         requireCorrupt(source == null || validPrioritySearch(source), "invalid source priority-search modules")
@@ -266,6 +266,11 @@ internal object RecoverySessionPayloadCodec {
         out.writeBoolean(settings.mirroredInput)
         out.writeInt(settings.listDecodingAdditionalErrors)
         out.writeInt(settings.knownBitErrorLimit)
+        out.writeBoolean(settings.distortionCorrection)
+        settings.previewGeometry?.let {
+            require(settings.distortionCorrection && settings.logicalQuad != null && it.version == settings.version)
+        }
+        writeGeometry(out, settings.previewGeometry)
     }
 
     private fun readPreprocessSettings(input: DataInputStream, formatVersion: Int): PreprocessSettings {
@@ -396,6 +401,12 @@ internal object RecoverySessionPayloadCodec {
                 } else false,
                 listDecodingAdditionalErrors = if (formatVersion >= 26) input.readInt() else ListDecodingLimit.DEFAULT,
                 knownBitErrorLimit = if (formatVersion >= 28) input.readInt() else 0,
+                distortionCorrection = if (formatVersion >= 30) {
+                    val flag = input.readUnsignedByte()
+                    requireCorrupt(flag in 0..1, "invalid distortion correction flag")
+                    flag == 1
+                } else false,
+                previewGeometry = if (formatVersion >= 31) readGeometry(input, formatVersion) else null,
                 rotationDegrees = rotation,
                 polarity = polarity,
                 automaticThresholds = automaticThresholds,
@@ -427,7 +438,12 @@ internal object RecoverySessionPayloadCodec {
                 preRecoveryEdits = edits,
                 preRecoverySoftEdits = softEdits,
                 preRecoveryPrioritySearch = priority,
-            )
+            ).also { settings ->
+                settings.previewGeometry?.let {
+                    requireCorrupt(settings.distortionCorrection && settings.logicalQuad != null &&
+                        it.version == settings.version, "preview geometry does not match settings")
+                }
+            }
         } catch (e: IllegalArgumentException) {
             throw CorruptSessionException("invalid preprocessing settings", e)
         }
@@ -518,10 +534,18 @@ internal object RecoverySessionPayloadCodec {
         out.writeInt(g.model.ordinal)
         out.writeBoolean(g.imageQuad != null)
         g.imageQuad?.asList()?.forEach { p -> out.writeDouble(p.x); out.writeDouble(p.y) }
+        out.writeInt(g.warp?.landmarks?.size ?: 0)
+        g.warp?.landmarks?.forEach { mark ->
+            out.writeDouble(mark.position.x); out.writeDouble(mark.position.y)
+            out.writeDouble(mark.displacement.x); out.writeDouble(mark.displacement.y)
+            out.writeDouble(mark.smoothing)
+        }
     }
 
-    private fun readGeometry(input: DataInputStream): GridGeometry? {
-        if (!input.readBoolean()) return null
+    private fun readGeometry(input: DataInputStream, formatVersion: Int): GridGeometry? {
+        val present = input.readUnsignedByte()
+        requireCorrupt(present in 0..1, "invalid geometry presence flag")
+        if (present == 0) return null
         val version = input.readInt()
         requireCorrupt(version in 1..40, "invalid geometry version")
         val role = enumStrict<FinderRole>(input.readInt(), "finder role")
@@ -533,13 +557,22 @@ internal object RecoverySessionPayloadCodec {
             repeat(4) { p += PointD(input.readDouble(), input.readDouble()) }
             ImageQuad(p[0], p[1], p[2], p[3])
         } else null
-        val result = GridGeometry(version, role, cx, cy, pitch, angle, quad, model)
+        val warp = if (formatVersion >= 30) {
+            val count = input.readInt()
+            requireCorrupt(count == 0 || count in 3..64, "invalid warp landmark count")
+            if (count == 0) null else ThinPlateWarp(List(count) {
+                WarpLandmark(PointD(input.readDouble(), input.readDouble()),
+                    PointD(input.readDouble(), input.readDouble()), input.readDouble())
+            })
+        } else null
+        val result = GridGeometry(version, role, cx, cy, pitch, angle, quad, model, warp)
         requireCorrupt(runCatching { validateGeometry(result) }.isSuccess, "invalid geometry values")
         return result
     }
 
     private fun validateGeometry(g: GridGeometry) {
         require(g.version in 1..40)
+        require(g.hasUsableWarp()) { "Folded or excessive warp" }
         require(g.finderCenterX.isFinite() && kotlin.math.abs(g.finderCenterX) <= MAX_COORD_ABS)
         require(g.finderCenterY.isFinite() && kotlin.math.abs(g.finderCenterY) <= MAX_COORD_ABS)
         require(g.modulePitch.isFinite() && g.modulePitch in 0.05..100_000.0)

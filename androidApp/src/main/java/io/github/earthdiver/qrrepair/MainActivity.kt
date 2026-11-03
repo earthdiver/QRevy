@@ -1976,7 +1976,7 @@ class MainActivity : Activity() {
                         data.getIntExtra(CameraActivity.EXTRA_CONTRAST, 0),
                         data.getIntExtra(CameraActivity.EXTRA_BRIGHTNESS, 0),
                         data.getBooleanExtra(CameraActivity.EXTRA_INVERTED, false),
-                    ))
+                    ), distortionCorrection = data.getBooleanExtra(CameraActivity.EXTRA_DISTORTION_CORRECTION, false))
             }
         }
     }
@@ -2020,11 +2020,11 @@ class MainActivity : Activity() {
         inputProgressGeneration = null
     }
 
-    private fun loadImage(uri: Uri, cleanupFile: File? = null, imageAdjustment: ImageAdjustment = ImageAdjustment()) {
+    private fun loadImage(uri: Uri, cleanupFile: File? = null, imageAdjustment: ImageAdjustment = ImageAdjustment(), distortionCorrection: Boolean = false) {
         val token = beginInputImport(ui("画像を読み込み中…", "Loading image…"))
         imageImports.load(token, uri, cleanupFile) { bitmap ->
             if (cleanupFile == null) showImportedImageAdjustment(bitmap)
-            else acceptDecodedImage(bitmap, cleanupFile, imageAdjustment)
+            else acceptDecodedImage(bitmap, cleanupFile, imageAdjustment, distortionCorrection)
         }
     }
 
@@ -2183,7 +2183,7 @@ class MainActivity : Activity() {
         editor = ImageAdjustmentEditor(this, initialBitmap, onCancel = { dialog.dismiss() }, onApply = { adjustment ->
             runCatching { editor.createCrop() }.onSuccess { cropped ->
                 dialog.dismiss()
-                acceptDecodedImage(cropped, imageAdjustment = adjustment)
+                acceptDecodedImage(cropped, imageAdjustment = adjustment, distortionCorrection = editor.distortionCorrection)
             }.onFailure(editor::showError)
         })
         importEditor = editor
@@ -2210,9 +2210,9 @@ class MainActivity : Activity() {
         dialog.show()
     }
 
-    private fun acceptDecodedImage(bitmap: Bitmap, cleanupFile: File? = null, imageAdjustment: ImageAdjustment = ImageAdjustment()) {
+    private fun acceptDecodedImage(bitmap: Bitmap, cleanupFile: File? = null, imageAdjustment: ImageAdjustment = ImageAdjustment(), distortionCorrection: Boolean = false) {
         val token = beginInputImport(ui("画像を解析用に準備中…", "Preparing image for analysis…"))
-        imageImports.prepare(token, bitmap, cleanupFile, imageAdjustment) { result ->
+        imageImports.prepare(token, bitmap, cleanupFile, imageAdjustment, distortionCorrection) { result ->
             val p = result.source
             val adjusted = result.adjusted
             val initialGrid = result.initialGrid
@@ -2418,6 +2418,10 @@ class MainActivity : Activity() {
                 val best = result.bestAttempt ?: result.attempts.first()
                 recoveryState.attemptIndex = result.attempts.indexOf(best).coerceAtLeast(0)
                 showAttempt(recoveryState.attemptIndex)
+                if (requestSettings.distortionCorrection && result.testedHypotheses.none { it.geometry.warp != null } &&
+                    result.searchDiagnostic?.completeness == SearchCompleteness.COMPLETE) {
+                    guideText.append("\n" + getString(R.string.image_distortion_unavailable))
+                }
                 recordHistory(
                     HistoryEventKind.AUTO_RECOVERY,
                     if (oneTimeSingleSegment) ui("修復処理（今回だけ終端後構造を強制）", "Repair (single-segment forcing for this run only)")

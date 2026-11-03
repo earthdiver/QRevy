@@ -48,6 +48,8 @@ internal class PreprocessEditorModel(
             initialSoftEdits = initial.effectiveSoftEdits)
     private val changes = restoredDraft?.changes?.copyForEditing() ?: PreprocessDraftState(initial)
     private val sampler = PreRecoveryPreviewSampler()
+    val correction = DistortionPreviewState()
+    private var restoreCorrection = initial.previewGeometry
     private var provisionalImage = initialWorking
     var working = initialWorking
         private set
@@ -55,12 +57,17 @@ internal class PreprocessEditorModel(
     init { cells.priorityLimit = initial.prioritySearchLimit }
 
     fun replaceWorking(replacement: BitmapUtils.Prepared) {
+        correction.invalidate()
+        restoreCorrection = null
         val previous = working
         working = replacement
         releaseIfTemporary(previous, replacement)
     }
 
-    fun release() = releaseIfTemporary(working, source)
+    fun release() {
+        correction.invalidate()
+        releaseIfTemporary(working, source)
+    }
 
     private fun releaseIfTemporary(previous: BitmapUtils.Prepared, replacement: BitmapUtils.Prepared) {
         if (previous !== source && !retainsImage(previous) && previous.bitmap !== replacement.bitmap &&
@@ -75,7 +82,7 @@ internal class PreprocessEditorModel(
         val stats: MatrixSampler.SamplingStats,
     )
 
-    fun sample(controls: PreprocessControlSnapshot, grid: PreprocessGeometrySnapshot): Preview? {
+    private fun previewInput(controls: PreprocessControlSnapshot, grid: PreprocessGeometrySnapshot): DistortionPreviewState.Input? {
         val q = grid.quad
         val dimension = 17 + 4 * controls.version
         val pitch = ((q.topLeft.distanceTo(q.topRight) + q.topLeft.distanceTo(q.bottomLeft)) /
@@ -93,12 +100,49 @@ internal class PreprocessEditorModel(
             FinderPolarity.NORMAL -> false
             else -> controls.polarity == PolarityMode.INVERTED
         })
-        val (matrix, stats) = sampler.sample(working.luma, geometry, profile, grid.logicalGridAssigned)
-        return Preview(geometry, matrix, profile, stats)
+        // Automatic slider values are outputs, not a reason to refit the landmarks.
+        val normalized = if (profile.settings.automaticThresholds) profile.copy(settings = profile.settings.copy(
+            blackMax = profile.settings.provisionalBlackMax, whiteMin = profile.settings.provisionalWhiteMin,
+        )) else profile
+        return DistortionPreviewState.Input(working.luma, geometry, normalized)
+    }
+
+    fun requestCorrection(controls: PreprocessControlSnapshot, grid: PreprocessGeometrySnapshot): DistortionPreviewState.Request? {
+        if (!initial.distortionCorrection || !grid.logicalGridAssigned) {
+            correction.invalidate()
+            restoreCorrection = null
+            return null
+        }
+        val input = previewInput(controls, grid) ?: return null
+        val request = correction.request(input) ?: return null
+        val restored = restoreCorrection
+        restoreCorrection = null
+        if (restored != null && initial.manualQuad == grid.quad && initial.version == controls.version &&
+            initial.polarity == controls.polarity && initial.confirmedFinderPolarity == grid.confirmedFinderPolarity &&
+            initial.automaticThresholds == controls.automaticThresholds &&
+            (controls.automaticThresholds || (initial.blackMax == controls.blackProgress && initial.whiteMin == controls.whiteProgress + 1))) {
+            correction.restore(request, restored)
+        }
+        return request
+    }
+
+    fun correctionReady(controls: PreprocessControlSnapshot, grid: PreprocessGeometrySnapshot): Boolean =
+        !initial.distortionCorrection || !grid.logicalGridAssigned ||
+            (previewInput(controls, grid)?.let(correction::matches) == true && correction.complete)
+
+    fun sample(controls: PreprocessControlSnapshot, grid: PreprocessGeometrySnapshot): Preview? {
+        val input = previewInput(controls, grid) ?: return null
+        val geometry = correction.selected?.takeIf { correction.matches(input) } ?: input.base
+        val (matrix, stats) = sampler.sample(input.image, geometry, input.profile, grid.logicalGridAssigned)
+        return Preview(geometry, matrix, input.profile, stats)
     }
 
     fun captureSettings(controls: PreprocessControlSnapshot, grid: PreprocessGeometrySnapshot): PreprocessSettings =
-        settings.captureSettings(controls, grid, cells.edits.toMap(), cells.prioritySearch.toSet(), cells.softEdits.toSet())
+        settings.captureSettings(controls, grid, cells.edits.toMap(), cells.prioritySearch.toSet(), cells.softEdits.toSet()).copy(
+            previewGeometry = correction.selected?.takeIf {
+                grid.logicalGridAssigned && previewInput(controls, grid)?.let(correction::matches) == true
+            },
+        )
 
     fun captureDraft(current: PreprocessSettings, page: PreprocessPage): PreprocessEditorDraft =
         PreprocessEditorDraft(current, cells.copyForEditing(), changes.copyForEditing(), page)

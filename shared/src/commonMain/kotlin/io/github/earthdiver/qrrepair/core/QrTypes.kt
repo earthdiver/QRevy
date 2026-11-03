@@ -89,7 +89,7 @@ enum class FinderRole { TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT;
         BOTTOM_LEFT -> TOP_RIGHT
     }
 }
-enum class GeometryModel { SIMILARITY, TWO_FINDER, AFFINE, PROJECTIVE, MANUAL_PROJECTIVE }
+enum class GeometryModel { SIMILARITY, TWO_FINDER, AFFINE, PROJECTIVE, MANUAL_PROJECTIVE, THIN_PLATE_SPLINE }
 
 data class Coord(val x: Int, val y: Int)
 
@@ -137,9 +137,12 @@ data class GridGeometry(
     /** Image positions of module-center corners (0,0), (d-1,0), (d-1,d-1), (0,d-1). */
     val imageQuad: ImageQuad? = null,
     val model: GeometryModel = GeometryModel.SIMILARITY,
+    val warp: ThinPlateWarp? = null,
 ) {
     init {
         require(version in 1..40) { "Invalid QR version: $version" }
+        require((model == GeometryModel.THIN_PLATE_SPLINE) == (warp != null))
+        require(warp == null || imageQuad != null)
         require(finderCenterX.isFinite() && finderCenterY.isFinite()) { "Finder center must be finite" }
         require(modulePitch.isFinite() && modulePitch > 0.0) { "Module pitch must be positive and finite" }
         require(angleRad.isFinite()) { "Geometry angle must be finite" }
@@ -175,7 +178,10 @@ data class GridGeometry(
     }
 
     fun moduleToImage(x: Double, y: Double): PointD {
-        projective?.let { return it.map(x, y) }
+        projective?.let {
+            val point = it.map(x, y)
+            return warp?.let { w -> point + w.offset(x / (dimension - 1), y / (dimension - 1)) } ?: point
+        }
         val dx = (x - finderModuleX) * modulePitch
         val dy = (y - finderModuleY) * modulePitch
         val c = cos(angleRad); val s = sin(angleRad)
@@ -183,7 +189,23 @@ data class GridGeometry(
     }
 
     fun imageToModule(px: Double, py: Double): PointD {
-        inverseProjective?.let { return it.map(px, py) }
+        inverseProjective?.let {
+            var point = it.map(px, py)
+            if (warp == null) return point
+            repeat(20) {
+                val image = moduleToImage(point.x, point.y)
+                val error = PointD(px - image.x, py - image.y)
+                if (error.distanceTo(PointD(0.0, 0.0)) < 1e-5) return point
+                val dx = (moduleToImage(point.x + .001, point.y) - image) * 1000.0
+                val dy = (moduleToImage(point.x, point.y + .001) - image) * 1000.0
+                val det = dx.x * dy.y - dx.y * dy.x
+                if (!det.isFinite() || kotlin.math.abs(det) < 1e-10) return PointD(Double.NaN, Double.NaN)
+                point += PointD((error.x * dy.y - error.y * dy.x) / det,
+                    (dx.x * error.y - dx.y * error.x) / det)
+                if (!point.x.isFinite() || !point.y.isFinite()) return PointD(Double.NaN, Double.NaN)
+            }
+            return PointD(Double.NaN, Double.NaN)
+        }
         val dx = px - finderCenterX; val dy = py - finderCenterY
         val c = cos(angleRad); val s = sin(angleRad)
         return PointD((c * dx + s * dy) / modulePitch + finderModuleX, (-s * dx + c * dy) / modulePitch + finderModuleY)
@@ -191,6 +213,7 @@ data class GridGeometry(
 
     fun nearestModule(px: Double, py: Double): Pair<Int, Int>? {
         val p = imageToModule(px, py)
+        if (!p.x.isFinite() || !p.y.isFinite()) return null
         val x = p.x.roundToInt(); val y = p.y.roundToInt()
         return if (x in 0 until dimension && y in 0 until dimension) x to y else null
     }
@@ -202,7 +225,7 @@ data class GridGeometry(
         return (p.distanceTo(px) + p.distanceTo(py)) / 2.0
     }
 
-    fun moduleCenterQuad(): ImageQuad = imageQuad ?: ImageQuad(
+    fun moduleCenterQuad(): ImageQuad = imageQuad?.takeIf { warp == null } ?: ImageQuad(
         moduleToImage(0.0, 0.0),
         moduleToImage((dimension - 1).toDouble(), 0.0),
         moduleToImage((dimension - 1).toDouble(), (dimension - 1).toDouble()),
@@ -212,6 +235,7 @@ data class GridGeometry(
     fun asProjective(manual: Boolean = false): GridGeometry = copy(
         imageQuad = moduleCenterQuad(),
         model = if (manual) GeometryModel.MANUAL_PROJECTIVE else GeometryModel.PROJECTIVE,
+        warp = null,
     ).reanchored()
 
     /** Recompute the legacy anchor fields from the active mapping. */
@@ -229,7 +253,9 @@ data class GridGeometry(
     }
 
     fun withCorner(index: Int, imagePoint: PointD): GridGeometry {
-        val q = moduleCenterQuad().withCorner(index, imagePoint)
+        val corner = listOf(PointD(0.0, 0.0), PointD(1.0, 0.0), PointD(1.0, 1.0), PointD(0.0, 1.0))[index]
+        val residual = warp?.offset(corner.x, corner.y) ?: PointD(0.0, 0.0)
+        val q = (imageQuad ?: moduleCenterQuad()).withCorner(index, imagePoint - residual)
         val finderPoint = when (role) {
             FinderRole.TOP_LEFT -> PointD(3.0, 3.0)
             FinderRole.TOP_RIGHT -> PointD((dimension - 4).toDouble(), 3.0)
@@ -240,7 +266,11 @@ data class GridGeometry(
             q.asList(),
         )
         val f = h.map(finderPoint)
-        return copy(imageQuad = q, finderCenterX = f.x, finderCenterY = f.y, model = GeometryModel.MANUAL_PROJECTIVE)
+        val updated = copy(imageQuad = q, finderCenterX = f.x, finderCenterY = f.y,
+            model = if (warp != null) GeometryModel.THIN_PLATE_SPLINE else GeometryModel.MANUAL_PROJECTIVE)
+        return if (warp == null) updated else updated.reanchored().also {
+            require(it.hasUsableWarp()) { "Corner edit folds the distortion mapping" }
+        }
     }
 
     fun adjusted(
@@ -269,6 +299,10 @@ data class GridGeometry(
             modulePitch = modulePitch * pitchScale,
             angleRad = angleRad + angleDeltaRad,
             imageQuad = ImageQuad(transform(q.topLeft), transform(q.topRight), transform(q.bottomRight), transform(q.bottomLeft)),
+            warp = warp?.let { w -> ThinPlateWarp(w.landmarks.map { mark ->
+                val v = mark.displacement
+                mark.copy(displacement = PointD((c * v.x - s * v.y) * pitchScale, (s * v.x + c * v.y) * pitchScale))
+            }) },
         )
     }
 

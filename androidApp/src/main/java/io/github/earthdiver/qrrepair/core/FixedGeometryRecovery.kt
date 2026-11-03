@@ -126,7 +126,11 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
         require(maxGeometryAttempts >= 0) { "maxGeometryAttempts must be non-negative" }
         val settings = profile?.settings ?: return AutoRecoveryResult(emptyList(), emptyList(), profile,
             discoveredCandidates = discoveryCounter.snapshot)
-        val seeds = manualGeometrySeeds(settings)
+        val preview = settings.previewGeometry?.takeIf {
+            settings.distortionCorrection && settings.logicalQuad != null && it.version == settings.version
+        }?.let { GeometryHypothesis(emptyList(), it, quickGeometryScore(image, it, profile)) }
+        val seeds = if (preview != null && !settings.searchQuadNeighborhood) emptyList()
+            else manualGeometrySeeds(settings)
         val selectedSeeds = seeds.take(maxGeometryAttempts)
         val baseHypotheses = selectedSeeds.mapNotNull { (version, quad) ->
             cancellation.check()
@@ -157,7 +161,16 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
             if (score > base.quickScore + 12.0) return@mapNotNull null
             base.copy(geometry = refined.first, quickScore = score, alignment = refined.second)
         }
-        val hypotheses = (baseHypotheses + refinedHypotheses).take(maxGeometryAttempts)
+        // Keep the ordinary attempt budget intact. Non-rigid candidates have a separate bounded budget.
+        val ordinary = (baseHypotheses + refinedHypotheses).take(maxGeometryAttempts)
+        val curvedDetector = if (settings.distortionCorrection) CurvedGridDetector(image, profile, cancellation, stopRequested) else null
+        val curved = if (curvedDetector != null) ordinary.sortedBy { it.quickScore }.take(4).flatMap { base ->
+            cancellation.check()
+            curvedDetector.candidates(base.geometry).map { geometry ->
+                base.copy(geometry = geometry, quickScore = quickGeometryScore(image, geometry, profile))
+            }
+        } else emptyList()
+        val hypotheses = (listOfNotNull(preview).take(maxGeometryAttempts) + ordinary + curved).distinctBy { it.geometry }
         val finders = settings.manualFinders.entries.take(maxFinders).map { (_, point) -> confirmedFinderCandidate(settings, point) }
         var completed = 0
         var interrupted = false
@@ -215,7 +228,8 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
         // Completion counts describe finished attempts, not a late stop-button state.
         if (!interrupted) resultAccumulator.completePolicy(hasExcludedInputs =
             seeds.size > selectedSeeds.size || selectedSeeds.size != baseHypotheses.size ||
-                baseHypotheses.size + refinedHypotheses.size > hypotheses.size)
+                baseHypotheses.size + refinedHypotheses.size > ordinary.size ||
+                (settings.distortionCorrection && ordinary.size > 4))
         val result = resultAccumulator.result(finders).copy(discoveredCandidates = discoveryCounter.snapshot)
         val unfinished = result.searchDiagnostic?.completeness != SearchCompleteness.COMPLETE
         onProgress?.invoke(completed, hypotheses.size, if (unfinished)
@@ -223,29 +237,29 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
             else localizedText("試行完了", "Trials completed"))
         return result
     }
+}
 
-    private fun quickGeometryScore(image: LumaImage, geometry: GridGeometry, profile: SamplingProfile): Double {
-        val dimension = geometry.dimension
-        var score = 0.0
-        var inside = 0
-        for (gridY in 0..4) for (gridX in 0..4) {
-            val point = geometry.moduleToImage((dimension - 1) * gridX / 4.0, (dimension - 1) * gridY / 4.0)
-            if (image.inBounds(point.x, point.y)) inside++
-        }
-        score += (1.0 - inside / 25.0) * 35.0
-        var known = 0
-        var mismatches = 0
-        for (module in 8..dimension - 9) for ((x, y) in arrayOf(module to 6, 6 to module)) {
-            val point = geometry.moduleToImage(x.toDouble(), y.toDouble())
-            val radius = geometry.localModulePitch(x.toDouble(), y.toDouble()) * .1
-            val luma = image.sampleMean(point.x, point.y, radius) ?: continue
-            known++
-            val black = profile.normalize(luma) <= profile.threshold
-            if (black != ((module and 1) == 0)) mismatches++
-        }
-        score += if (known >= 6) 24.0 * mismatches / known else 12.0
-        return score
+internal fun quickGeometryScore(image: LumaImage, geometry: GridGeometry, profile: SamplingProfile): Double {
+    val dimension = geometry.dimension
+    var score = 0.0
+    var inside = 0
+    for (gridY in 0..4) for (gridX in 0..4) {
+        val point = geometry.moduleToImage((dimension - 1) * gridX / 4.0, (dimension - 1) * gridY / 4.0)
+        if (image.inBounds(point.x, point.y)) inside++
     }
+    score += (1.0 - inside / 25.0) * 35.0
+    var known = 0
+    var mismatches = 0
+    for (module in 8..dimension - 9) for ((x, y) in arrayOf(module to 6, 6 to module)) {
+        val point = geometry.moduleToImage(x.toDouble(), y.toDouble())
+        val radius = geometry.localModulePitch(x.toDouble(), y.toDouble()) * .1
+        val luma = image.sampleMean(point.x, point.y, radius) ?: continue
+        known++
+        val black = profile.normalize(luma) <= profile.threshold
+        if (black != ((module and 1) == 0)) mismatches++
+    }
+    score += if (known >= 6) 24.0 * mismatches / known else 12.0
+    return score
 }
 
 /** Fits one interior alignment observation by moving only its nearest logical corner. */

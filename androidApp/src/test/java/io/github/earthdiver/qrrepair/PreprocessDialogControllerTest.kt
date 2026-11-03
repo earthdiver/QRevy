@@ -8,6 +8,7 @@ import android.graphics.Canvas
 import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.CheckBox
 import android.widget.TextView
 import io.github.earthdiver.qrrepair.core.*
@@ -32,6 +33,8 @@ class PreprocessDialogControllerTest {
         val saves = mutableListOf<PreprocessSave>()
         val effects = mutableListOf<String>()
         var diagnostic: Bitmap? = null
+        var session: PreprocessEditorSession? = null
+        override fun editorOpened(session: PreprocessEditorSession) { this.session = session }
         override fun retains(image: BitmapUtils.Prepared) =
             saves.lastOrNull()?.image === image || diagnostic === image.bitmap
         override fun save(draft: PreprocessSave) { saves += draft; effects += "save" }
@@ -55,6 +58,7 @@ class PreprocessDialogControllerTest {
 
     private fun withDialog(settings: PreprocessSettings? = null, style: AppStyle = AppStyle.CLASSIC, sourceBitmap: Bitmap? = null,
                            savedCellEdits: PreRecoveryCellEditState? = null,
+                           worker: Executor = Executor { it.run() },
                            block: (AlertDialog, Host, BitmapUtils.Prepared, BitmapUtils.Prepared) -> Unit) {
         val activity = Robolectric.buildActivity(Activity::class.java).setup()
         activity.get().setTheme(style.theme)
@@ -66,7 +70,7 @@ class PreprocessDialogControllerTest {
         PreprocessDialogController(activity.get(), settings ?: PreprocessSettings(version = 1, rotationDegrees = 15f,
             manualQuad = ImageQuad(PointD(20.0, 20.0), PointD(220.0, 20.0),
                 PointD(220.0, 220.0), PointD(20.0, 220.0))),
-            source, working, savedCellEdits, Executor { it.run() }, AtomicInteger(), RecoveryEngine(), host).show()
+            source, working, savedCellEdits, worker, AtomicInteger(), RecoveryEngine(), host).show()
         shadowOf(Looper.getMainLooper()).idle()
         val dialog = ShadowDialog.getLatestDialog() as AlertDialog
         try { block(dialog, host, source, working) } finally {
@@ -76,6 +80,58 @@ class PreprocessDialogControllerTest {
             if (!working.bitmap.isRecycled) working.bitmap.recycle()
             if (!source.bitmap.isRecycled) source.bitmap.recycle()
             host.saves.map { it.image.bitmap }.distinct().forEach { if (!it.isRecycled) it.recycle() }
+        }
+    }
+
+    @Test fun pendingCorrectionCannotBeSavedAndSupersededJobsDoNotRestoreTheOldGrid() {
+        for (style in AppStyle.entries) {
+            val jobs = mutableListOf<Runnable>()
+            val initialQuad = ImageQuad(PointD(20.0, 20.0), PointD(220.0, 20.0), PointD(220.0, 220.0), PointD(20.0, 220.0))
+            withDialog(PreprocessSettings(distortionCorrection = true, manualQuad = initialQuad), style,
+                worker = Executor { jobs += it }) { dialog, host, _, _ ->
+                assertEquals(1, jobs.size)
+                views(dialog.window!!.decorView).filterIsInstance<Button>().single { it.text.toString() == "保存" }.performClick()
+                assertTrue(host.saves.isEmpty())
+                val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
+                val moved = initialQuad.copy(topLeft = PointD(24.0, 20.0))
+                overlay.setImageQuad(moved)
+                overlay.onGeometryEdited!!.invoke()
+                overlay.onGeometryEditFinished!!.invoke()
+                assertEquals(2, jobs.size)
+                jobs[0].run()
+                assertTrue(views(dialog.window!!.decorView).filterIsInstance<Button>().any { it.text.toString().contains("計算中") })
+                host.session!!.open(PreprocessPage.CELL_EDITOR)
+                jobs[1].run()
+                shadowOf(Looper.getMainLooper()).idle()
+                overlay.layout(0, 0, 600, 600)
+                var selected: Coord? = null
+                overlay.onEditCellSelected = { x, y -> selected = Coord(x, y) }
+                val point = overlay.previewGeometry()!!.moduleToImage(10.0, 10.0)
+                for (action in listOf(android.view.MotionEvent.ACTION_DOWN, android.view.MotionEvent.ACTION_UP)) {
+                    android.view.MotionEvent.obtain(0, 10, action, (point.x * 2.5).toFloat(), (point.y * 2.5).toFloat(), 0).also {
+                        overlay.onTouchEvent(it); it.recycle()
+                    }
+                }
+                assertEquals(Coord(10, 10), selected)
+                host.session!!.open(PreprocessPage.BASIC)
+                assertTrue(views(dialog.window!!.decorView).filterIsInstance<Button>().any { it.text.toString().contains("直線格子") })
+                views(dialog.window!!.decorView).filterIsInstance<Button>().single { it.text.toString() == "保存" }.performClick()
+                assertEquals(moved, host.saves.single().settings.previewGeometry!!.imageQuad)
+                assertEquals(moved, overlay.previewGeometry()!!.imageQuad)
+            }
+        }
+    }
+
+    @Test fun repairSettingsRetainTheCropCorrectionChoiceWithoutOfferingAToggle() {
+        for (style in AppStyle.entries) for (enabled in listOf(false, true)) {
+            withDialog(PreprocessSettings(distortionCorrection = enabled), style) { dialog, host, _, _ ->
+                val label = dialog.context.getString(R.string.image_distortion_correction)
+                assertFalse(views(dialog.window!!.decorView).filterIsInstance<CheckBox>()
+                    .any { it.text.toString() == label })
+                automaticThresholdControl(dialog).isChecked = true
+                click(dialog, "保存")
+                assertEquals(enabled, host.saves.single().settings.distortionCorrection)
+            }
         }
     }
 
