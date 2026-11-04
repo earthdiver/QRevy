@@ -21,6 +21,8 @@ class RsPayloadTraversal(
     private val version: Int,
     private val maxNodes: Int,
     private val cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
+    private val assumeUtf8ByteSegments: Boolean = false,
+    private val onUtf8Rejection: () -> Unit = {},
 ) {
     private class TraversalLimit : RuntimeException()
     private var branches = 0
@@ -41,7 +43,7 @@ class RsPayloadTraversal(
         val byteWords = sources.flatMap { source -> (0 until source.block.numDataCodewords).toList() }.toIntArray()
         val totalBits = byteBlocks.size * 8
         val prefix = ArrayList<PartialCodewordSolver.Result>(sources.size)
-        data class ValueGroup(val position: Int, val width: Int, val maximum: Int)
+        data class ValueGroup(val position: Int, val width: Int, val maximum: Int, val utf8Remaining: Int = -1)
         val pendingValues = mutableListOf<ValueGroup>()
 
         fun step(): Boolean {
@@ -126,16 +128,16 @@ class RsPayloadTraversal(
         fun range(position: Int, width: Int, maximum: Int): Sequence<Unit> = sequence {
             suspend fun SequenceScope<Unit>.visit() {
                 cancellation.check()
-                var minimum = 0
+                var minimumPossible = 0
                 var maximumPossible = 0
                 var undecided = -1
                 repeat(width) { offset ->
                     val known = value(position + offset)
-                    minimum = minimum * 2 + (known ?: 0)
+                    minimumPossible = minimumPossible * 2 + (known ?: 0)
                     maximumPossible = maximumPossible * 2 + (known ?: 1)
                     if (known == null && undecided < 0) undecided = position + offset
                 }
-                if (minimum > maximum) return
+                if (minimumPossible > maximum) return
                 if (maximumPossible <= maximum) { yield(Unit); return }
                 val restriction = requireNotNull(restrictions[byteBlocks[undecided / 8]])
                 val checkpoint = restriction.checkpoint
@@ -149,9 +151,44 @@ class RsPayloadTraversal(
             visit()
         }
 
+        fun groupStates(group: ValueGroup, state: Utf8State): Sequence<Utf8State> = sequence {
+            if (group.utf8Remaining < 0) {
+                for (ignored in range(group.position, group.width, group.maximum)) yield(Utf8State.BOUNDARY)
+                return@sequence
+            }
+            // Inspect the byte's significant bits only. Once a whole interval has the same
+            // transition, leave all remaining bits free in the affine RS solution space.
+            suspend fun SequenceScope<Utf8State>.visit(offset: Int, prefix: Int) {
+                val shift = 8 - offset
+                val low = prefix shl shift
+                val high = low + (1 shl shift) - 1
+                var intersects = false
+                var whole: Utf8State? = null
+                state.transitions(low, high, group.utf8Remaining) { first, last, next ->
+                    intersects = true
+                    if (low >= first && high <= last) whole = next
+                }
+                if (!intersects) { onUtf8Rejection(); return }
+                whole?.let { yield(it); return }
+                val p = group.position + offset
+                val known = value(p)
+                if (known != null) { visit(offset + 1, prefix * 2 + known); return }
+                val restriction = requireNotNull(restrictions[byteBlocks[p / 8]])
+                val checkpoint = restriction.checkpoint
+                for (next in 0..1) {
+                    if (!branchStep()) return
+                    try { if (constrain(p, next)) visit(offset + 1, prefix * 2 + next) }
+                    finally { restriction.restore(checkpoint) }
+                    if (limited) return
+                }
+            }
+            visit(0, 0)
+        }
+
         fun values(): Sequence<Unit> = sequence {
             // Iterative group traversal keeps long numeric payloads off the call stack.
-            val iterators = mutableListOf<Iterator<Unit>>()
+            val iterators = mutableListOf<Iterator<Utf8State>>()
+            val states = Array(pendingValues.size + 1) { Utf8State.BOUNDARY }
             var index = 0
             while (true) {
                 cancellation.check()
@@ -162,10 +199,10 @@ class RsPayloadTraversal(
                 }
                 if (index == iterators.size) {
                     val group = pendingValues[index]
-                    iterators += range(group.position, group.width, group.maximum).iterator()
+                    iterators += groupStates(group, states[index]).iterator()
                 }
                 if (iterators[index].hasNext()) {
-                    iterators[index].next()
+                    states[index + 1] = iterators[index].next()
                     index++
                 } else {
                     iterators.removeAt(index)
@@ -195,7 +232,7 @@ class RsPayloadTraversal(
             } finally { restore(mark) }
         }
 
-        suspend fun SequenceScope<List<PartialCodewordSolver.Result>>.parse(position: Int, depth: Int) {
+        suspend fun SequenceScope<List<PartialCodewordSolver.Result>>.parse(position: Int, depth: Int, afterStructuredAppend: Boolean = false) {
             cancellation.check()
             // Deep/control-prefixed streams retain the unstructured route. This bound limits
             // optimization stack depth, not the QR formats accepted by final validation.
@@ -255,6 +292,9 @@ class RsPayloadTraversal(
                                     else -> count * 13
                                 }
                                 val valueStart = pendingValues.size
+                                if (mode == 4 && assumeUtf8ByteSegments) {
+                                    repeat(count) { i -> pendingValues += ValueGroup(body + i * 8, 8, 255, count - i - 1) }
+                                }
                                 if (mode == 1 || mode == 2) {
                                     val size = if (mode == 1) 3 else 2
                                     val packedWidth = if (mode == 1) 10 else 11
@@ -271,10 +311,17 @@ class RsPayloadTraversal(
                             }
                         } finally { restore(mark) }
                     }
-                    3 -> if (depth == 0 && totalBits - position >= 20) emit()
-                    5 -> if (depth == 0) emit()
+                    3 -> if (depth == 0 && totalBits - position >= 20) {
+                        if (assumeUtf8ByteSegments) parse(position + 20, depth + 1, afterStructuredAppend = true) else emit()
+                    }
+                    5, 9 -> if (depth == 0 || afterStructuredAppend) {
+                        val body = position + if (mode == 5) 4 else 12
+                        if (body <= totalBits) {
+                            if (assumeUtf8ByteSegments) parse(body, depth + 1) else emit()
+                        }
+                    }
+                    // ECI governs all following Byte segments; the ordinary validator handles them.
                     7 -> if (totalBits - position >= 12) emit()
-                    9 -> if (depth == 0 && totalBits - position >= 12) emit()
                 }
             }
         }

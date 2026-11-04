@@ -8,4 +8,5 @@ internal data class RecoverySearchOptions(
     val maxFormatMismatches: Int?,
     val maxKnownDataEccMismatches: Int?,
     val manualEdits: Map<Coord, ModuleValue>,
+    val assumeUtf8ByteSegments: Boolean = false,
 )

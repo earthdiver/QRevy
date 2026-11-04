@@ -159,6 +159,7 @@ The following settings apply across stages:
 
 - Format-information error limit
 - Known data/ECC bit error limit
+- Assume UTF-8 text in Byte mode
 - Force single-segment terminator and padding
 - Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)
 
@@ -247,6 +248,8 @@ QR structure serves three purposes:
 | Validating completed candidates | Check that the complete data stream follows QR rules. |
 
 For example, three decimal digits use ten bits and must represent a value from 0 to 999. Even if the bits satisfy RS conditions, a value of 1,000 or more is invalid for three decimal digits.
+
+With **Assume UTF-8 text in Byte mode** enabled, the search restricts unlabelled Byte segments by the ranges for UTF-8 leading and continuation bytes. It can discard a branch before materializing an RS assignment or extending a block combination. A character may span blocks as long as it fits within the declared Byte segment. An explicit ECI encoding takes precedence.
 
 After the terminator marking the end of the data, zero bits align the stream to the next eight-bit boundary. The remaining space is filled with alternating hexadecimal `EC` and `11` padding codewords. At the end of the available capacity, the app also checks cases where the terminator is shortened or omitted according to the remaining bit count.
 

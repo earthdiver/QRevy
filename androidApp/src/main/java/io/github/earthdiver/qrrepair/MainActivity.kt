@@ -1599,6 +1599,7 @@ class MainActivity : Activity() {
                 recoveryEngine.recoverWithDiagnostics(
                     matrix.copy(),
                     trustKnownPayloadCount = requestSettings.trustKnownPayloadCount,
+                    assumeUtf8ByteSegments = requestSettings.assumeUtf8ByteSegments,
                     partialBitSearchLimit = requestSettings.partialBitSearchLimit,
                     listDecodingAdditionalErrors = requestSettings.listDecodingAdditionalErrors,
                     knownBitErrorLimit = requestSettings.knownBitErrorLimit,

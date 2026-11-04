@@ -4,6 +4,7 @@ package io.github.earthdiver.qrrepair.core
 internal object KnownBitQrSearch {
     fun run(de: DeinterleavedQr, version: Int, limit: Int, pins: List<Set<RsBitConstraintSolver.Bit>>,
         dimensionLimit: Int, memory: Long, budget: KnownBitErrorBudget, cancellation: RecoveryCancellation,
+        payloadChecks: RecoveryPayloadChecks = RecoveryPayloadChecks(),
         evaluate: (List<PartialCodewordSolver.Result>) -> Unit): Set<CombinationSearchStop> {
         val stops = linkedSetOf<CombinationSearchStop>()
         val sources = mutableListOf<RsCandidateSource>()
@@ -15,9 +16,9 @@ internal object KnownBitQrSearch {
             check.check()
             if (index == de.blocks.size) {
                 if (nodes <= 0) { stops += CombinationSearchStop.NODE_LIMIT; return }
-                val traversal = RsPayloadTraversal(sources, version, nodes, check)
+                val traversal = payloadChecks.traversal(sources, version, nodes, check)
                 for (combination in traversal.combinations { prefix ->
-                    StrictQrPayloadValidator.canBePrefix(prefix.flatMapIndexed { i, r ->
+                    payloadChecks.acceptPrefix(prefix.flatMapIndexed { i, r ->
                         r.corrected.take(de.blocks[i].numDataCodewords).map(Int::toByte) }.toByteArray(), version)
                 }) {
                     evaluate(combination.mapIndexed { i, r -> r.copy(bitConstraintSolved = false,

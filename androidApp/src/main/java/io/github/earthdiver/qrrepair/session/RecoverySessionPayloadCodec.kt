@@ -271,6 +271,7 @@ internal object RecoverySessionPayloadCodec {
             require(settings.distortionCorrection && settings.logicalQuad != null && it.version == settings.version)
         }
         writeGeometry(out, settings.previewGeometry)
+        out.writeBoolean(settings.assumeUtf8ByteSegments)
     }
 
     private fun readPreprocessSettings(input: DataInputStream, formatVersion: Int): PreprocessSettings {
@@ -407,6 +408,11 @@ internal object RecoverySessionPayloadCodec {
                     flag == 1
                 } else false,
                 previewGeometry = if (formatVersion >= 31) readGeometry(input, formatVersion) else null,
+                assumeUtf8ByteSegments = if (formatVersion >= 32) {
+                    val flag = input.readUnsignedByte()
+                    requireCorrupt(flag in 0..1, "invalid UTF-8 assumption flag")
+                    flag == 1
+                } else false,
                 rotationDegrees = rotation,
                 polarity = polarity,
                 automaticThresholds = automaticThresholds,

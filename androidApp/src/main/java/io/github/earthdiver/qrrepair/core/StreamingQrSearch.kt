@@ -16,6 +16,7 @@ internal class StreamingQrSearch(private val rs: ReedSolomonErasures) {
         cancellation: RecoveryCancellation,
         onStops: (Set<CombinationSearchStop>) -> Unit,
         onSearch: (SearchCompleteness) -> Unit,
+        payloadChecks: RecoveryPayloadChecks = RecoveryPayloadChecks(),
         evaluate: (List<PartialCodewordSolver.Result>) -> Boolean,
     ): Outcome {
         val stops = linkedSetOf<CombinationSearchStop>()
@@ -48,12 +49,12 @@ internal class StreamingQrSearch(private val rs: ReedSolomonErasures) {
                         else RsFailureReason.BIT_SPACE_LIMIT)
                 sources += RsCandidateSource(block, fixed, space, limit)
             }
-            val traversal = RsPayloadTraversal(sources, version, 65_536, cancellation)
+            val traversal = payloadChecks.traversal(sources, version, 65_536, cancellation)
             val combinations = traversal.combinations { prefix ->
                 val data = prefix.flatMapIndexed { index, result ->
                     result.corrected.take(de.blocks[index].numDataCodewords).map { it.toByte() }
                 }.toByteArray()
-                StrictQrPayloadValidator.canBePrefix(data, version)
+                payloadChecks.acceptPrefix(data, version)
             }.takeInExpandingWindows(4096, 65_536, { !parsed }) {
                 stops += if (parsed) CombinationSearchStop.SUCCESS_WINDOW else CombinationSearchStop.COMBINATION_LIMIT
             }

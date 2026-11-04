@@ -37,7 +37,7 @@ class DistortionSessionCodecTest {
     @Test fun legacySchemaDefaultsCorrectionOffWithoutDiscardingFixedEdits() {
         val original = payload(null)
         val raw = QrrContainerCodec.decode(RecoverySessionCodec.encode(original)).bytes
-        val legacy = raw.copyOfRange(0, raw.size - 5) + raw.copyOfRange(raw.size - 3, raw.size)
+        val legacy = raw.copyOfRange(0, raw.size - 6) + raw.copyOfRange(raw.size - 3, raw.size)
         val bytes = QrrContainerCodec.encode { it.write(legacy) }.also { ByteBuffer.wrap(it).putInt(4, 29) }
         val restored = RecoverySessionCodec.decode(bytes).historyEntries.single().snapshot.preprocessSettings!!
         assertFalse(restored.distortionCorrection)
@@ -52,7 +52,7 @@ class DistortionSessionCodecTest {
         }
         assertEquals(original, RecoverySessionCodec.decode(RecoverySessionCodec.encode(original)))
         val raw = QrrContainerCodec.decode(RecoverySessionCodec.encode(payload(null))).bytes
-        val legacy = raw.copyOfRange(0, raw.size - 4) + raw.copyOfRange(raw.size - 3, raw.size)
+        val legacy = raw.copyOfRange(0, raw.size - 5) + raw.copyOfRange(raw.size - 3, raw.size)
         val bytes = QrrContainerCodec.encode { it.write(legacy) }.also { ByteBuffer.wrap(it).putInt(4, 30) }
         val restored = RecoverySessionCodec.decode(bytes).historyEntries.single().snapshot.preprocessSettings!!
         assertTrue(restored.distortionCorrection)
@@ -70,7 +70,7 @@ class DistortionSessionCodecTest {
             assertThrows(IllegalArgumentException::class.java) { RecoverySessionCodec.encode(invalid) }
         }
         val raw = QrrContainerCodec.decode(RecoverySessionCodec.encode(payload(null))).bytes
-        raw[raw.size - 4] = 2
+        raw[raw.size - 5] = 2
         assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) {
             RecoverySessionCodec.decode(QrrContainerCodec.encode { it.write(raw) })
         }
@@ -109,7 +109,7 @@ class DistortionSessionCodecTest {
         val raw = QrrContainerCodec.decode(RecoverySessionCodec.encode(payload(plain))).bytes
         val offset = warpOffset(raw)
         val noWarp = raw.copyOfRange(0, offset) + raw.copyOfRange(offset + 4, raw.size)
-        val legacy = noWarp.copyOfRange(0, noWarp.size - 5) + noWarp.copyOfRange(noWarp.size - 3, noWarp.size)
+        val legacy = noWarp.copyOfRange(0, noWarp.size - 6) + noWarp.copyOfRange(noWarp.size - 3, noWarp.size)
         val bytes = QrrContainerCodec.encode { it.write(legacy) }.also { ByteBuffer.wrap(it).putInt(4, 29) }
         val restored = RecoverySessionCodec.decode(bytes).historyEntries.single().snapshot
         assertEquals(plain, restored.geometry)
@@ -118,7 +118,7 @@ class DistortionSessionCodecTest {
 
     @Test fun invalidCorrectionFlagAndFoldedMappingAreRejected() {
         val raw = QrrContainerCodec.decode(RecoverySessionCodec.encode(payload(null))).bytes
-        raw[raw.size - 5] = 2
+        raw[raw.size - 6] = 2
         assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) {
             RecoverySessionCodec.decode(QrrContainerCodec.encode { it.write(raw) })
         }

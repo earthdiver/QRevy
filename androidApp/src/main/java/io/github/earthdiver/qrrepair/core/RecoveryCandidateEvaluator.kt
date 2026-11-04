@@ -32,6 +32,7 @@ internal class RecoveryCandidateEvaluator(
     private val maxKnownDataEccMismatches: Int?,
     private val maxAlternativeDerivations: Int,
     private val listDecodingMismatchLimit: Int? = null,
+    private val payloadChecks: RecoveryPayloadChecks = RecoveryPayloadChecks(),
 ) {
     private val originalUnknownByRaw = IntArray(evidenceExtraction.codewords.size) { raw ->
         evidenceExtraction.codewords[raw].unknownBits and 0xFF
@@ -73,8 +74,9 @@ internal class RecoveryCandidateEvaluator(
         if (trackSingleSegment && constraints.trustedStructure?.matches(dataBytes) != true) {
             return RecoveryCandidateEvaluation.Rejected(RecoveryCandidateRejection.SINGLE_SEGMENT_STRUCTURE)
         }
-        if (!StrictQrPayloadValidator.isValid(dataBytes, version)) {
-            return RecoveryCandidateEvaluation.Rejected(RecoveryCandidateRejection.QR_STRUCTURE)
+        var utf8Applied = false
+        payloadChecks.rejection(dataBytes, version, onAssumedSegment = { utf8Applied = true })?.let {
+            return RecoveryCandidateEvaluation.Rejected(it)
         }
         val errata = combination.sumOf { it.errataPositions.size }
         val partialBits = combination.sumOf { it.guessedBits }
@@ -111,7 +113,7 @@ internal class RecoveryCandidateEvaluator(
         }
         var decoderFailed = false
         val decoded = try {
-            ZxingPayloadBridge.decodeData(dataBytes, version, format.ecLevel, null)
+            ZxingPayloadBridge.decodeData(dataBytes, version, format.ecLevel, payloadChecks.decodeHints)
         } catch (_: FormatException) {
             null
         } catch (_: RuntimeException) {
@@ -145,6 +147,7 @@ internal class RecoveryCandidateEvaluator(
             constraintEvidenceBits = constraints.evidenceBits,
             constraintForcedByUserSetting = constraints.forcedByTrustedHeader,
             singleSegmentStatus = singleSegmentStatus,
+            utf8AssumptionApplied = utf8Applied,
             inferredMode = constraints.inferredMode,
             inferredCount = constraints.inferredCount,
             partialGuessedBits = partialBits,

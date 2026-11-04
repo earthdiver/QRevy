@@ -12,6 +12,12 @@ internal object StrictQrPayloadValidator {
     /** True unless the available prefix already proves that no valid complete payload can follow. */
     fun canBePrefix(data: ByteArray, version: Int): Boolean = validate(data, version, allowIncomplete = true)
 
+    /** The callback distinguishes this user assumption from an invalid QR structure. */
+    fun checkRecoveryData(data: ByteArray, version: Int, prefix: Boolean, assumeUtf8: Boolean,
+        onInvalidUtf8: () -> Unit = {}, onAssumedSegment: () -> Unit = {}): Boolean =
+        validate(data, version, prefix, assumeUtf8 = assumeUtf8, onInvalidUtf8 = onInvalidUtf8,
+            onAssumedSegment = onAssumedSegment)
+
     /** Payload modes in segment order; control prefixes (ECI/FNC1/etc.) are not payload modes. */
     fun encodingModes(data: ByteArray, version: Int): List<Int>? {
         val modes = mutableListOf<Int>()
@@ -99,9 +105,11 @@ internal object StrictQrPayloadValidator {
         modes: MutableList<Int>? = null, byteSegments: MutableList<Pair<Int, ByteArray>>? = null,
         unknownMasks: IntArray? = null, bitLength: Int = data.size * 8,
         onTerminator: ((Int) -> Unit)? = null, onPayloadEnd: ((Int) -> Unit)? = null, onMode: ((Int) -> Unit)? = null,
-        trace: Trace? = null,
+        trace: Trace? = null, assumeUtf8: Boolean = false,
+        onInvalidUtf8: () -> Unit = {}, onAssumedSegment: () -> Unit = {},
     ): Boolean = try {
         val bits = Bits(data, unknownMasks, bitLength, trace)
+        var hasEci = false
         var structuredAppendSeen = false
         var fnc1Seen = false
         var modeSeenAfterStructuredAppend = false
@@ -139,7 +147,13 @@ internal object StrictQrPayloadValidator {
                     4 -> {
                         modeSeenAfterStructuredAppend = true
                         val count = bits.readCount(mode, version)
-                        if (byteSegments == null) bits.skip(count * 8)
+                        if (assumeUtf8 && !hasEci) {
+                            onAssumedSegment()
+                            if (!validateUtf8(bits, count)) {
+                                onInvalidUtf8()
+                                return false
+                            }
+                        } else if (byteSegments == null) bits.skip(count * 8)
                         else {
                             bits.requireAvailable(count * 8)
                             byteSegments.add(modes!!.size to ByteArray(count) { bits.read(8).toByte() })
@@ -156,6 +170,7 @@ internal object StrictQrPayloadValidator {
                     7 -> {
                         modeSeenAfterStructuredAppend = true
                         val eci = validateEci(bits)
+                        hasEci = true
                         trace?.current = trace.current?.copy(eci = eci)
                     }
                     8 -> { modeSeenAfterStructuredAppend = true; validateCharacters(bits, bits.readCount(mode, version), kanjiValues) }
@@ -253,6 +268,22 @@ internal object StrictQrPayloadValidator {
     private fun validateAlphanumeric(bits: Bits, count: Int) {
         repeat(count / 2) { if (bits.read(11) >= 45 * 45) error("Invalid alphanumeric pair") }
         if ((count and 1) != 0 && bits.read(6) >= 45) error("Invalid alphanumeric character")
+    }
+
+    private fun validateUtf8(bits: Bits, count: Int): Boolean {
+        var state = Utf8State.BOUNDARY
+        repeat(count) { index ->
+            // BYTE bodies need not be codeword-aligned. Even the high nibble at a
+            // block boundary can already contradict every possible continuation.
+            val width = minOf(8, bits.available)
+            val low = bits.read(width) shl (8 - width)
+            val high = low + (1 shl (8 - width)) - 1
+            var next: Utf8State? = null
+            state.transitions(low, high, count - index - 1) { _, _, target -> next = target }
+            state = next ?: return false
+            if (width < 8) throw IncompletePayload
+        }
+        return true
     }
 
     private fun validateEci(bits: Bits): Int {

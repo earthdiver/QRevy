@@ -66,6 +66,7 @@ data class RecoveryCandidate(
     val searchDiagnostic: RecoverySearchDiagnostic? = null,
     val derivationsOmitted: Boolean = false,
     val listDecodingMismatchLimit: Int? = null,
+    val utf8AssumptionApplied: Boolean = false,
 ) {
     val priorityGuessedBits: Int get() = priorityAssignments.size
     val payloadParsed: Boolean get() = text != null
@@ -228,10 +229,11 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         knownBitErrorLimit: Int = 0,
         listDecodingBudget: ListDecodingBudget = ListDecodingBudget(),
         knownBitErrorBudget: KnownBitErrorBudget = KnownBitErrorBudget(),
+        assumeUtf8ByteSegments: Boolean = false,
         onPriorityProgress: ((done: Int, total: Int) -> Unit)? = null,
     ): List<RecoveryCandidate> = recoverWithDiagnostics(
         matrix, maxFormatCandidates, trustKnownPayloadCount, formatConstraint, maxFormatMismatches,
-        maxKnownDataEccMismatches, manualEdits, retentionBudget, cancellation, displayLockManualBits, partialBitSearchLimit = partialBitSearchLimit, listDecodingAdditionalErrors = listDecodingAdditionalErrors, knownBitErrorLimit = knownBitErrorLimit, listDecodingBudget = listDecodingBudget, knownBitErrorBudget = knownBitErrorBudget, onPriorityProgress = onPriorityProgress,
+        maxKnownDataEccMismatches, manualEdits, retentionBudget, cancellation, displayLockManualBits, partialBitSearchLimit = partialBitSearchLimit, listDecodingAdditionalErrors = listDecodingAdditionalErrors, knownBitErrorLimit = knownBitErrorLimit, listDecodingBudget = listDecodingBudget, knownBitErrorBudget = knownBitErrorBudget, assumeUtf8ByteSegments = assumeUtf8ByteSegments, onPriorityProgress = onPriorityProgress,
     ).candidates
 
     /** Returns the candidates and diagnostic evidence from this invocation as one value. */
@@ -253,6 +255,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         listDecodingBudget: ListDecodingBudget = ListDecodingBudget(),
         knownBitErrorBudget: KnownBitErrorBudget = KnownBitErrorBudget(),
         discoveryCounter: RecoveryDiscoveryCounter = RecoveryDiscoveryCounter(),
+        assumeUtf8ByteSegments: Boolean = false,
         onPriorityProgress: ((done: Int, total: Int) -> Unit)? = null,
     ): RecoveryOutcome {
         require(partialBitSearchLimit in PartialBitSearchLimit.supported)
@@ -270,6 +273,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         val options = RecoverySearchOptions(
             maxFormatCandidates = maxFormatCandidates,
             trustKnownPayloadCount = trustKnownPayloadCount,
+            assumeUtf8ByteSegments = assumeUtf8ByteSegments,
             formatConstraint = formatConstraint,
             maxFormatMismatches = maxFormatMismatches,
             maxKnownDataEccMismatches = maxKnownDataEccMismatches,
@@ -280,7 +284,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
             stopRequested()
         }, partialBitSearchLimit, listDecodingBudget, listDecodingAdditionalErrors, discoveryCounter, knownBitErrorLimit, knownBitErrorBudget)
         val conditions = RecoveryDisplayConditions(trustKnownPayloadCount, displayLockManualBits,
-            formatConstraint, maxFormatMismatches, maxKnownDataEccMismatches, partialBitSearchLimit, listDecodingAdditionalErrors, knownBitErrorLimit)
+            formatConstraint, maxFormatMismatches, maxKnownDataEccMismatches, partialBitSearchLimit, listDecodingAdditionalErrors, knownBitErrorLimit, assumeUtf8ByteSegments)
         val publisher = RecoveryOutcomePublisher(matrix, manualEdits, conditions, cancellation)
         val found = RecoveryPhaseRunner(
             run = run,
@@ -407,6 +411,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         run.cancellation.check()
         val maxFormatCandidates = options.maxFormatCandidates
         val trustKnownPayloadCount = options.trustKnownPayloadCount
+        val payloadChecks = RecoveryPayloadChecks(options.assumeUtf8ByteSegments, run.candidateRejections::add)
         val maxFormatMismatches = options.maxFormatMismatches
         val maxKnownDataEccMismatches = options.maxKnownDataEccMismatches
         val version = (matrix.dimension - 17) / 4
@@ -543,7 +548,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 constraints.suffixBlocked && !run.singleSegmentRetryAvailable) {
                 run.singleSegmentRetryAvailable = SingleSegmentRetryProbe.canDecode(
                     de, version, format, matrix, run.diagnosticInput, extraction, evidenceExtraction,
-                    maxKnownDataEccMismatches, run.cancellation)
+                    maxKnownDataEccMismatches, run.cancellation, payloadChecks)
             }
             val singleSegmentStatus = if (trackSingleSegment) {
                 val originalDe = if (priorityAssignments.isNotEmpty())
@@ -591,6 +596,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                     de = de,
                     constraints = constraints,
                     trackSingleSegment = trackSingleSegment,
+                    payloadChecks = payloadChecks,
                     singleSegmentStatus = singleSegmentStatus,
                     priorityAssignments = priorityAssignments,
                     conventionalDiagnostic = conventionalDiagnostic,
@@ -614,7 +620,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                     }
                     val stops = KnownBitQrSearch.run(de, version,
                         minOf(run.knownBitErrorLimit, maxKnownDataEccMismatches ?: run.knownBitErrorLimit),
-                        pins, run.partialBitSearchLimit, run.availableWorkingBytes, run.knownBitErrorBudget, run.cancellation) { combination ->
+                        pins, run.partialBitSearchLimit, run.availableWorkingBytes, run.knownBitErrorBudget, run.cancellation, payloadChecks) { combination ->
                         run.candidateCalculations++
                         parsedFound = run.recordEvaluation(evaluator.evaluate(combination)).parsed || parsedFound
                     }
@@ -638,6 +644,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                     val foundListDecoded = ListDecodingQrSearch(rs).run(de, original, matrix, extraction, priorityAssignments.keys, version, requireNotNull(listDecodingLimit),
                         trialBitEnumeration, nonEnumerable, run.partialBitSearchLimit, run.listSearchWorkingBytes,
                         run.cancellation, baseOnly = run.phase == RecoveryPhase.EARLY_LIST || basicOnly,
+                        payloadChecks = payloadChecks,
                         cache = run.listDecodingCache, additionalErrors = run.listDecodingAdditionalErrors,
                         onRejection = { run.candidateRejections += it },
                         onProgress = { index, search ->
@@ -688,7 +695,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                     }
                     val streamed = StreamingQrSearch(rs).run(de, trialSpaces, version, exactOnly,
                         trialBitEnumeration, nonEnumerable, run.partialBitSearchLimit, run.availableWorkingBytes,
-                        run.cancellation, onStops = { run.combinationSearch = run.combinationSearch.afterPass(it) },
+                        run.cancellation, payloadChecks = payloadChecks, onStops = { run.combinationSearch = run.combinationSearch.afterPass(it) },
                         onSearch = { run.solverCompleteness = run.solverCompleteness.combine(it) },
                     ) { combination ->
                         run.candidateCalculations++
@@ -807,8 +814,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                             for (j in 0 until de.blocks[i].numDataCodewords) add(corrected[j])
                         }
                     }
-                    StrictQrPayloadValidator.canBePrefix(ByteArray(prefixData.size) { prefixData[it].toByte() }, version)
-                        .also { valid -> if (!valid) run.candidateRejections += RecoveryCandidateRejection.QR_STRUCTURE }
+                    payloadChecks.acceptPrefix(ByteArray(prefixData.size) { prefixData[it].toByte() }, version)
                 }.takeInExpandingWindows(
                     initialLimit = INITIAL_QR_COMBINATION_TRIALS,
                     maxLimit = MAX_QR_COMBINATION_TRIALS,

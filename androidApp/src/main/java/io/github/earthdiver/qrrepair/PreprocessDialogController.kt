@@ -148,6 +148,10 @@ internal class PreprocessDialogController(
             text = ui("サンプリング位置を自動微調整する", "Automatically fine-tune sampling position")
             isChecked = preprocessSettings.searchQuadNeighborhood
         }
+        val assumeUtf8ByteSegments = CheckBox(this).apply {
+            setText(R.string.assume_utf8_byte_segments)
+            isChecked = preprocessSettings.assumeUtf8ByteSegments
+        }
         val trustKnownPayloadCount = CheckBox(this).apply {
             text = ui("単一セグメントの終端後構造を強制する", "Force single-segment terminator and padding")
             isChecked = preprocessSettings.trustKnownPayloadCount
@@ -213,6 +217,7 @@ internal class PreprocessDialogController(
             lockVersion = true,
             searchQuadNeighborhood = searchQuadNeighborhood.isChecked,
             trustKnownPayloadCount = trustKnownPayloadCount.isChecked,
+            assumeUtf8ByteSegments = assumeUtf8ByteSegments.isChecked,
             lockManualBits = !allowFixedCorrections.isChecked,
             prioritySearchLimit = cellEditState.priorityLimit,
         )
@@ -528,6 +533,7 @@ internal class PreprocessDialogController(
             scrollRow = { views -> scrollRow(*views) },
             polarity = polarity,
             searchQuadNeighborhood = searchQuadNeighborhood,
+            assumeUtf8ByteSegments = assumeUtf8ByteSegments,
             trustKnownPayloadCount = trustKnownPayloadCount,
             allowFixedCorrections = allowFixedCorrections,
             formatMismatchLimitControl = searchControls.formatMismatchLimitControl,

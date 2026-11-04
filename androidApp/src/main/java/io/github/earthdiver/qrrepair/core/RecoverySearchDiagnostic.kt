@@ -5,7 +5,7 @@ import io.github.earthdiver.qrrepair.localizedText
 /** Proven input restrictions, checked across every permitted format before making a run-wide claim. */
 enum class RecoveryInputBlocker { FORMAT_SELECTION, FORMAT_LIMIT, STRUCTURAL_FIXED_CELLS, ZERO_MISMATCH }
 
-enum class RecoveryCandidateRejection { FIXED_CELLS, MISMATCH_LIMIT, QR_STRUCTURE, SINGLE_SEGMENT_STRUCTURE, LIST_DECODING_MISMATCH_LIMIT }
+enum class RecoveryCandidateRejection { FIXED_CELLS, MISMATCH_LIMIT, QR_STRUCTURE, UTF8_BYTE_SEGMENT, SINGLE_SEGMENT_STRUCTURE, LIST_DECODING_MISMATCH_LIMIT }
 
 enum class SearchIncompleteReason { USER_INTERRUPTED, WORKING_MEMORY_LIMIT, LIST_DECODING_TIME_LIMIT, KNOWN_BIT_SEARCH_LIMIT, KNOWN_BIT_SEARCH_TIME_LIMIT, INTERNAL_ERROR }
 
@@ -47,6 +47,9 @@ data class RecoverySearchDiagnostic(
     fun withUnsearched() = copy(unsearched = true)
 
     fun completionReasonsText(): String = buildList {
+        if (RecoveryCandidateRejection.UTF8_BYTE_SEGMENT in candidateRejections) add(localizedText(
+            "UTF-8 として成立しないバイト区間を含む組合せを除外しました。",
+            "Pruned combinations containing Byte segments incompatible with UTF-8."))
         if (knownBitSearchAttempted) add(localizedText("既知bit誤り探索: $knownBitTrials 試行（設定範囲内の探索）", "Known-bit error search: $knownBitTrials trials (within the configured scope)"))
         incompleteReasons.forEach { reason -> add(when (reason) {
             SearchIncompleteReason.KNOWN_BIT_SEARCH_TIME_LIMIT -> localizedText("既知bit誤り探索が時間切れで終了しました。", "Known-bit error search reached its time limit.")
@@ -142,6 +145,9 @@ data class RecoverySearchDiagnostic(
             setOf(RecoveryCandidateRejection.LIST_DECODING_MISMATCH_LIMIT) -> localizedText(
                 "リスト復号で得られた候補は、元の既知ビットとの不一致が上限を超えたため、採用できませんでした。",
                 "List-decoded candidates exceeded the mismatch cap against the original known bits.")
+            setOf(RecoveryCandidateRejection.UTF8_BYTE_SEGMENT) -> localizedText(
+                "探索したバイト区間が UTF-8 仮定に一致しませんでした。",
+                "The Byte segments examined were incompatible with the UTF-8 assumption.")
             setOf(RecoveryCandidateRejection.QR_STRUCTURE) -> localizedText(
                 "RSの条件を満たす候補は得られましたが、QRのデータ構造を満たす修復候補は見つかりませんでした。",
                 "RS-consistent candidates were obtained, but no recovery candidate satisfied the QR data structure.")

@@ -18,7 +18,7 @@ internal class PayloadBits {
     }
 }
 
-internal fun recoverPayload(data: ByteArray): List<RecoveryCandidate> {
+internal fun recoverPayload(data: ByteArray, assumeUtf8: Boolean = false): List<RecoveryCandidate> {
     require(data.size == 19)
     val raw = IntArray(26) { if (it < data.size) data[it].toInt() and 255 else 0 }
     ReedSolomonEncoder(GenericGF.QR_CODE_FIELD_256).encode(raw, 7)
@@ -32,5 +32,5 @@ internal fun recoverPayload(data: ByteArray): List<RecoveryCandidate> {
         }
     }
     return RecoveryEngine().recover(matrix, formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.L, 0),
-        maxKnownDataEccMismatches = 0)
+        maxKnownDataEccMismatches = 0, assumeUtf8ByteSegments = assumeUtf8)
 }

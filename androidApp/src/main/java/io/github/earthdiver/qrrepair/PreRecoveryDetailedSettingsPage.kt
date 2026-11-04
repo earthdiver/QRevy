@@ -23,6 +23,7 @@ internal class PreRecoveryDetailedSettingsPage(
     scrollRow: (Array<out View>) -> View,
     polarity: RadioGroup,
     searchQuadNeighborhood: CheckBox,
+    assumeUtf8ByteSegments: CheckBox,
     trustKnownPayloadCount: CheckBox,
     allowFixedCorrections: CheckBox,
     formatMismatchLimitControl: View,
@@ -54,6 +55,11 @@ internal class PreRecoveryDetailedSettingsPage(
             addSettingsItem(searchQuadNeighborhood, 6)
             addView(TextView(context).apply {
                 setText(R.string.geometry_search_note)
+                textSize = 12f
+            })
+            addSettingsItem(assumeUtf8ByteSegments, 6)
+            addView(TextView(context).apply {
+                setText(R.string.assume_utf8_note)
                 textSize = 12f
             })
             addSettingsItem(trustKnownPayloadCount, 6)

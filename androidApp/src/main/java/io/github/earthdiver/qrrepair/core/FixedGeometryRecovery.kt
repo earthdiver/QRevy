@@ -204,6 +204,7 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
                 val outcome = recoveryEngine.recoverWithDiagnostics(
                     matrix,
                     trustKnownPayloadCount = settings.trustKnownPayloadCount,
+                    assumeUtf8ByteSegments = settings.assumeUtf8ByteSegments,
                     partialBitSearchLimit = settings.partialBitSearchLimit,
                     listDecodingAdditionalErrors = settings.listDecodingAdditionalErrors,
                     knownBitErrorLimit = settings.knownBitErrorLimit,

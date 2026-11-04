@@ -22,6 +22,7 @@ internal data class PreprocessControlSnapshot(
     val trustKnownPayloadCount: Boolean = false,
     val lockManualBits: Boolean = false,
     val prioritySearchLimit: Int = 4,
+    val assumeUtf8ByteSegments: Boolean = false,
 )
 
 internal data class PreprocessGeometrySnapshot(
@@ -101,6 +102,7 @@ internal class PreprocessDialogState(private val initial: PreprocessSettings) {
             lockVersion = true,
             searchQuadNeighborhood = controls.searchQuadNeighborhood,
             trustKnownPayloadCount = controls.trustKnownPayloadCount,
+            assumeUtf8ByteSegments = controls.assumeUtf8ByteSegments,
             formatConstraint = search.formatConstraint,
             formatMismatchLimit = search.formatMismatchLimit,
             dataEccMismatchLimit = search.dataEccMismatchLimit,

@@ -114,6 +114,10 @@ Presets recalculate when the version changes. Manual keeps the entered number; i
 
 List decoding explores alternatives beyond conventional RS correction. It also limits known data/ECC bit disagreements to 5% of all data/ECC bits, rounded up, or the selected data/ECC limit if smaller. A zero data/ECC limit disables list decoding.
 
+### Assume UTF-8 text in Byte mode
+
+Enable this option when Byte segments without an explicit encoding contain UTF-8 text. Repair uses UTF-8 byte ranges to prune incompatible branches during search and to decode the surviving text. Each Byte segment must end on a character boundary. An explicit ECI encoding takes precedence. This option defaults to off and works independently of single-segment forcing.
+
 ### Force single-segment terminator and padding
 
 A segment is a continuous part of QR data using one encoding mode. **Force single-segment terminator and padding** uses a single Numeric, Alphanumeric, Byte, or Kanji segment to determine the suffix.
@@ -152,7 +156,7 @@ Tap an entry in **Saved work** or **Recent work** to reopen it. Long-press to de
 
 ### Saved-work compatibility
 
-QRR is the app’s saved-work format. The app writes format version **31** and reads versions **23–31**; other versions are rejected. Older files restore settings they did not store as follows: Known-bit error search is off for all versions 23–27. Distortion correction is off for versions 23–29. Versions 23–30 do not store the selected preview grid.
+QRR is the app’s saved-work format. The app writes format version **32** and reads versions **23–32**; other versions are rejected. Older files restore settings they did not store as follows: Known-bit error search is off for all versions 23–27. Distortion correction is off for versions 23–29. Versions 23–30 do not store the selected preview grid. The UTF-8 assumption defaults to off for versions 23–31.
 
 | File version | Restored defaults |
 | --- | --- |

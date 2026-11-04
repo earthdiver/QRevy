@@ -92,6 +92,7 @@ data class PreprocessSettings(
     val knownBitErrorLimit: Int = 0,
     /** User-identified Finder role with no measured center. */
     val visibleFinderRole: FinderRole? = null,
+    val assumeUtf8ByteSegments: Boolean = false,
 ) {
     val effectiveFormatMismatchLimit: Int?
         get() = ErrorLimitPolicy.format(formatMismatchLimitMode, formatMismatchLimit)
