@@ -1,5 +1,6 @@
 package io.github.earthdiver.qrrepair.core
 
+import com.google.zxing.qrcode.decoder.Version
 import io.github.earthdiver.qrrepair.localizedText
 import kotlin.math.abs
 import kotlin.math.asin
@@ -16,6 +17,7 @@ data class GeometryHypothesis(
     val quickScore: Double,
     val finderRoleMap: Map<FinderRole, Int> = emptyMap(),
     val alignment: AlignmentCandidate? = null,
+    val patternRefined: Boolean = false,
 ) {
     val finderIndex: Int get() = finderIndices.firstOrNull() ?: -1
 }
@@ -163,6 +165,10 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
         }
         // Keep the ordinary attempt budget intact. Non-rigid candidates have a separate bounded budget.
         val ordinary = (baseHypotheses + refinedHypotheses).take(maxGeometryAttempts)
+        val patternLimitReached = settings.searchQuadNeighborhood && ordinary.isNotEmpty() && ordinary.size >= maxGeometryAttempts
+        val patternFit = if (settings.searchQuadNeighborhood && !patternLimitReached)
+            projectivePatternHypothesis(image, profile, ordinary) { cancellation.check(); stopRequested() }
+        else null
         val curvedDetector = if (settings.distortionCorrection) CurvedGridDetector(image, profile, cancellation, stopRequested) else null
         val curved = if (curvedDetector != null) ordinary.sortedBy { it.quickScore }.take(4).flatMap { base ->
             cancellation.check()
@@ -170,7 +176,7 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
                 base.copy(geometry = geometry, quickScore = quickGeometryScore(image, geometry, profile))
             }
         } else emptyList()
-        val hypotheses = (listOfNotNull(preview).take(maxGeometryAttempts) + ordinary + curved).distinctBy { it.geometry }
+        val hypotheses = (listOfNotNull(preview).take(maxGeometryAttempts) + ordinary + listOfNotNull(patternFit) + curved).distinctBy { it.geometry }
         val finders = settings.manualFinders.entries.take(maxFinders).map { (_, point) -> confirmedFinderCandidate(settings, point) }
         var completed = 0
         var interrupted = false
@@ -227,7 +233,7 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
         }
         // Completion counts describe finished attempts, not a late stop-button state.
         if (!interrupted) resultAccumulator.completePolicy(hasExcludedInputs =
-            seeds.size > selectedSeeds.size || selectedSeeds.size != baseHypotheses.size ||
+            patternLimitReached || seeds.size > selectedSeeds.size || selectedSeeds.size != baseHypotheses.size ||
                 baseHypotheses.size + refinedHypotheses.size > ordinary.size ||
                 (settings.distortionCorrection && ordinary.size > 4))
         val result = resultAccumulator.result(finders).copy(discoveredCandidates = discoveryCounter.snapshot)
@@ -237,6 +243,29 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
             else localizedText("試行完了", "Trials completed"))
         return result
     }
+}
+
+/** Keep the selected grid and up to three distinct starting positions for one joint fit. */
+internal fun projectivePatternHypothesis(
+    image: LumaImage, profile: SamplingProfile, ordinary: List<GeometryHypothesis>, stopped: () -> Boolean,
+): GeometryHypothesis? {
+    val seed = ordinary.firstOrNull()?.geometry ?: return null
+    val starts = mutableListOf(seed.moduleCenterQuad())
+    fun displacement(a: ImageQuad, b: ImageQuad): Double =
+        a.asList().zip(b.asList()).sumOf { (p, q) ->
+            val delta = p - q
+            delta.x * delta.x + delta.y * delta.y
+        } / 8.0
+    val pitch = seed.localModulePitch()
+    for (candidate in ordinary.sortedBy { it.quickScore }) {
+        val quad = candidate.geometry.moduleCenterQuad()
+        if (starts.all { displacement(it, quad) > .25 * .25 * pitch * pitch }) starts += quad
+        if (starts.size == 4) break
+    }
+    val centers = Version.getVersionForNumber(seed.version).alignmentPatternCenters
+    val fit = ProjectivePatternRefiner.refine(image, seed, starts, centers, profile.inverted, stopped) ?: return null
+    if (ordinary.any { displacement(it.geometry.moduleCenterQuad(), fit.moduleCenterQuad()) < .0001 * pitch * pitch }) return null
+    return GeometryHypothesis(emptyList(), fit, quickGeometryScore(image, fit, profile), patternRefined = true)
 }
 
 internal fun quickGeometryScore(image: LumaImage, geometry: GridGeometry, profile: SamplingProfile): Double {

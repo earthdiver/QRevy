@@ -36,8 +36,10 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
 
     fun candidateReport(candidate: RecoveryCandidate, geometry: GridGeometry?, context: RecoveryDiagnosticContext): RecoveryDiagnosticReport {
         val preview = QrContentPreviewParser.parse(candidate)
+        val origin = context.selectedEntry?.attempt?.hypothesis
+        val patternRefined = origin?.patternRefined == true && origin.geometry == geometry
         val input = initialDiagnosticSection(candidate.version, candidate.ecLevel, candidate.dataMask,
-            geometry?.let(::geometryDiagnosticText).orEmpty(), candidate.rsBitDiagnostic,
+            geometry?.let { geometryDiagnosticText(it, patternRefined) }.orEmpty(), candidate.rsBitDiagnostic,
             candidate.extraction.codewords.takeIf { it.isNotEmpty() }?.sumOf { (it.unknownBits and 255).countOneBits() },
             candidate.originalErasedCodewords, candidate.conventionalRsDiagnostic, candidate.correctedInterleaved,
             conditions = candidate.displayConditions)
@@ -287,12 +289,12 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
         return listOf(processing, shortfall).filter { it.isNotBlank() }.joinToString("\n")
     }
 
-    fun geometryDiagnosticText(geometry: GridGeometry): String {
+    fun geometryDiagnosticText(geometry: GridGeometry, patternRefined: Boolean = false): String {
         val model = when (geometry.model) {
             GeometryModel.SIMILARITY -> ui("相似変換", "Similarity")
             GeometryModel.TWO_FINDER -> ui("2 Finder", "Two Finder patterns")
             GeometryModel.AFFINE -> ui("アフィン変換", "Affine")
-            GeometryModel.PROJECTIVE -> ui("射影変換", "Projective")
+            GeometryModel.PROJECTIVE -> if (patternRefined) ui("固定パターンで射影補正", "Pattern-refined projective grid") else ui("射影変換", "Projective")
             GeometryModel.MANUAL_PROJECTIVE -> ui("手動射影", "Manual projective")
             GeometryModel.THIN_PLATE_SPLINE -> ui("ゆがみ補正を使用", "Distortion correction applied")
         }

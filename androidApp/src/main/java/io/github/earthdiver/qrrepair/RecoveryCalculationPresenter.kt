@@ -142,7 +142,7 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
             stopReasons?.let(::add)
             selectedEntry?.alternativeDerivations?.forEachIndexed { index, route ->
                 add(ui("別の読み取り試行${index + 1}", "Other sampled-input attempt ${index + 1}"))
-                add(listOf(route.profile?.label.orEmpty(), RecoveryDiagnosticPresenter(japanese).geometryDiagnosticText(route.hypothesis.geometry))
+                add(listOf(route.profile?.label.orEmpty(), RecoveryDiagnosticPresenter(japanese).geometryDiagnosticText(route.hypothesis.geometry, route.hypothesis.patternRefined))
                     .filter(String::isNotBlank).joinToString(" / "))
                 add(route.candidate.usedMethodsText())
                 route.samplingStats.thresholds?.let { add(ui("閾値: ${it.blackMax} / ${it.whiteMin}", "Thresholds: ${it.blackMax} / ${it.whiteMin}")) }

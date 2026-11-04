@@ -69,9 +69,13 @@ The basic refinement candidates are:
 
 The reference displacement is 0.6 cell widths. When exactly one Finder role is assigned, the app also tries small clockwise and counterclockwise rotations around the corresponding corner. These two additions give at most 21 grid candidates. Each translation, scaling, or rotation is applied separately to the specified grid.
 
-For version 2 and above, an alignment pattern, a small pattern used to align the grid, can add at most one corrected grid for each grid candidate. If its observed position differs from its predicted position by 0.1–1.25 cell widths, the nearest grid corner is moved. Corrections that substantially worsen agreement with the timing pattern, the alternating black and white pattern indicating cell spacing, are rejected. The original grid candidate is also retained.
+For version 2 and above, an alignment pattern, a small pattern used to align the grid, can add at most one corrected grid for each grid candidate. If its observed position differs from its predicted position by 0.1–1.25 cell widths, the nearest grid corner is moved. Corrections that substantially worsen agreement with the timing pattern, the alternating black and white pattern indicating cell spacing, are rejected. The app tries both the original grid and any accepted correction.
 
-Including alignment-corrected grids, there are at most 38 ordinary candidates, or 42 with exactly one assigned Finder role. With refinement disabled, repair uses only the displayed grid. Additional distortion candidates have a separate budget.
+These steps yield at most 38 candidates per polarity. With exactly one assigned Finder role, rotations about the corresponding corner bring the maximum to 42.
+
+The app chooses starting grids from these candidates and projects the black and white patterns of the Finders, their white separators, and the alignment patterns onto the image. The Levenberg–Marquardt (LM) method adjusts all eight parameters of the projective transform together to match the projected patterns to the observed brightness. Version 1 uses only Finders and their separators. Timing patterns help select starting grids but are excluded from the LM objective.
+
+If the fit improves and yields a grid distinct from the other candidates, the app adds that grid as one more candidate. The total per polarity is therefore **at most 39**, or **at most 43** with exactly one assigned Finder role. With fine-tuning disabled, repair uses the displayed grid alone. Distortion correction has a separate candidate budget.
 
 ### Distortion correction
 
