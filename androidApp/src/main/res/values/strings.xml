@@ -92,6 +92,7 @@
     <string name="finder_placement_help">Tap near the logical %1$s Finder center. Its center is refined when a nearby Finder can be detected; otherwise the tapped point is used.</string>
     <string name="image_rotation">Image rotation</string>
     <string name="reset_rotation">Reset rotation</string>
+    <string name="threshold_input_range">Enter an integer from %1$d to %2$d.</string>
     <string name="thresholding">Thresholding</string>
     <string name="geometry_search_note">When enabled, recovery tests 0.6-module position, size, and one-corner adjustments. If exactly one Finder role is assigned, it also tests clockwise and counterclockwise rotation around that corner.</string>
     <string name="payload_header_trust_note">Use only for a single numeric, alphanumeric, byte, or Kanji segment. Selectable when the leading mode and character/byte count are known or can be assigned by * trials. Unresolved ? bits in the header do not qualify. ECI, FNC1, structured append, and Hanzi are unsupported. Do not use with multiple segments.\nThe terminator, byte-alignment, and padding region is corrected from the observed or trial-assigned mode and count.</string>

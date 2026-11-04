@@ -10,6 +10,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.CheckBox
+import android.widget.EditText
+import android.widget.SeekBar
 import android.widget.TextView
 import io.github.earthdiver.qrrepair.core.*
 import io.github.earthdiver.qrrepair.ui.BitmapUtils
@@ -639,6 +641,59 @@ class PreprocessDialogControllerTest {
             assertTrue(automatic.automaticThresholds)
             assertEquals(settings.provisionalBlackMax, automatic.blackMax)
             assertEquals(settings.provisionalWhiteMin, automatic.whiteMin)
+        }
+    }
+
+    @Test fun thresholdLabelEntryUsesDisplayedPolarityAndUpdatesThePreviewAndSavedPair() {
+        for (inverted in listOf(false, true)) {
+            val settings = PreprocessSettings(
+                polarity = if (inverted) PolarityMode.INVERTED else PolarityMode.NORMAL,
+                automaticThresholds = true,
+                manualQuad = ImageQuad(PointD(20.0, 20.0), PointD(220.0, 20.0), PointD(220.0, 220.0), PointD(20.0, 220.0)),
+            )
+            val gray = Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.GRAY) }
+            withDialog(settings, sourceBitmap = gray) { dialog, host, _, _ ->
+                val controls = views(dialog.window!!.decorView)
+                val label = controls.filterIsInstance<TextView>().single { it.text.startsWith("画像の暗部") }
+                val sliders = controls.filterIsInstance<SeekBar>().filter { it.max == 254 }
+                val originalProgress = sliders.map { it.progress }
+                fun openInput(): Pair<AlertDialog, EditText> {
+                    assertTrue(label.performLongClick())
+                    shadowOf(Looper.getMainLooper()).idle()
+                    val popup = ShadowDialog.getLatestDialog() as AlertDialog
+                    return popup to views(popup.window!!.decorView).filterIsInstance<EditText>().single()
+                }
+                val (cancelled, firstInput) = openInput()
+                val current = if (inverted) 255 - (sliders.last().progress + 1) else sliders.first().progress
+                assertEquals(current.toString(), firstInput.text.toString())
+                firstInput.setText("255")
+                cancelled.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+                assertNotNull(firstInput.error)
+                assertTrue(cancelled.isShowing)
+                firstInput.setText("254")
+                cancelled.getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+                assertTrue(automaticThresholdControl(dialog).isChecked)
+                assertEquals(originalProgress, sliders.map { it.progress })
+
+                val (popup, input) = openInput()
+                input.setText("254")
+                popup.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+                assertFalse(popup.isShowing)
+                assertFalse(automaticThresholdControl(dialog).isChecked)
+                assertTrue(label.text.endsWith("254以下"))
+                val progress = if (inverted) 0 else 254
+                assertEquals(listOf(progress, progress), sliders.map { it.progress })
+                val overlay = controls.filterIsInstance<PreprocessOverlayView>().single()
+                val preview = PreprocessOverlayView::class.java.getDeclaredField("editMatrix").run {
+                    isAccessible = true; get(overlay) as QrMatrix
+                }
+                assertEquals(if (inverted) ModuleValue.ZERO else ModuleValue.ONE, preview[10, 10].value)
+                click(dialog, "保存")
+                val saved = host.saves.single().settings
+                assertEquals(progress, saved.blackMax)
+                assertEquals(progress + 1, saved.whiteMin)
+                assertFalse(saved.automaticThresholds)
+            }
         }
     }
 

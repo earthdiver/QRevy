@@ -31,7 +31,7 @@ In Classic, choose **Repair** to open the settings. In Modern, use **01 Repair s
 
 Automatic estimates may need correction. If only an outline appears, select **QR Version**, even if the displayed value is already correct, to show a grid. Until a Finder role is assigned, provisional alignment guides appear at all four corners and along all four sides, with dashed outlines. Adjust the corners and assign a Finder role as described below. **Rectify selection to a square** clears Finder roles and orientation; assign a role again afterward.
 
-**Set thresholds automatically** starts enabled for image imports. It recalculates thresholds when the grid changes. Moving a slider switches to manual thresholds; turning the option off keeps the current values. Manual thresholds stay unchanged during corner adjustment and sampling fine-tuning. Turn the option on to recalculate them. Saved work retains the mode and values.
+**Set thresholds automatically** starts enabled for image imports. It recalculates thresholds when the grid changes. To enter an exact value, long-press the label above either slider and tap **Apply**. Applying a value or moving a slider switches to manual thresholds. Turning the option off keeps the current values. Manual thresholds stay unchanged during corner adjustment and sampling fine-tuning. Turn the option on to recalculate them. Saved work retains the mode and values.
 
 Unstable readings can also become `?`. Manual edits override image readings. Enable **Treat detected color clusters as unknown (?)** only when detected colored damage should be treated as unknown. It starts disabled and is available only when color clusters were detected.
 

@@ -3,10 +3,13 @@ package io.github.earthdiver.qrrepair
 import android.app.Activity
 import android.app.AlertDialog
 import android.graphics.Bitmap
+import android.text.InputType
 import android.view.Gravity
 import android.view.View
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.CheckBox
+import android.widget.EditText
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.RadioButton
@@ -237,30 +240,55 @@ internal class PreprocessDialogController(
             activePreviewProfile = profile
             refreshClassificationMatrix()
         }
-        val listener = object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (updatingThresholdControls) return
-                updatingThresholdControls = true
-                if (fromUser) automaticThresholds.isChecked = false
-                if (black.progress >= white.progress + 1) {
-                    if (seekBar === black) white.progress = black.progress
-                    else black.progress = white.progress
-                }
-                updatingThresholdControls = false
-                if (fromUser) invalidateSamplingPreview()
-                refreshLabels()
+        fun updateThreshold(slider: SeekBar, progress: Int, manual: Boolean) {
+            if (updatingThresholdControls) return
+            updatingThresholdControls = true
+            if (manual) automaticThresholds.isChecked = false
+            slider.progress = progress
+            if (black.progress > white.progress) {
+                if (slider === black) white.progress = black.progress
+                else black.progress = white.progress
             }
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {
-                overlay.clearCornerSelection()
-            }
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                when (seekBar) {
-                    black -> noteDraftChange("black", ui("QRの黒の閾値を変更", "Changed QR black threshold"), black.progress.toString())
-                    white -> noteDraftChange("white", ui("QRの白の閾値を変更", "Changed QR white threshold"), (white.progress + 1).toString())
-                }
+            updatingThresholdControls = false
+            if (manual) invalidateSamplingPreview()
+            refreshLabels()
+        }
+        fun recordThresholdChange(slider: SeekBar) {
+            if (slider === black) {
+                noteDraftChange("black", ui("QRの黒の閾値を変更", "Changed QR black threshold"), black.progress.toString())
+            } else {
+                noteDraftChange("white", ui("QRの白の閾値を変更", "Changed QR white threshold"), (white.progress + 1).toString())
             }
         }
-        black.setOnSeekBarChangeListener(listener); white.setOnSeekBarChangeListener(listener)
+        val listener = object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                updateThreshold(seekBar, progress, fromUser)
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar) {
+                overlay.clearCornerSelection()
+            }
+            override fun onStopTrackingTouch(seekBar: SeekBar) {
+                recordThresholdChange(seekBar)
+            }
+        }
+        black.setOnSeekBarChangeListener(listener)
+        white.setOnSeekBarChangeListener(listener)
+        fun bindThresholdInput(label: TextView, slider: SeekBar, offset: Int) {
+            label.setOnLongClickListener {
+                val inverted = previewInverted()
+                fun imageValue(logical: Int) = if (inverted) 255 - logical else logical
+                val first = imageValue(offset)
+                val last = imageValue(slider.max + offset)
+                showThresholdInput(label.text, imageValue(slider.progress + offset), minOf(first, last)..maxOf(first, last)) { value ->
+                    val logical = if (inverted) 255 - value else value
+                    updateThreshold(slider, logical - offset, manual = true)
+                    recordThresholdChange(slider)
+                }
+                true
+            }
+        }
+        bindThresholdInput(blackLabel, black, offset = 0)
+        bindThresholdInput(whiteLabel, white, offset = 1)
         fun commitVersion(requested: Int) {
             val nextVersion = requested.coerceIn(1, 40)
             val perspectiveQuad = dialogState.perspectiveCorrectionQuad
@@ -1081,6 +1109,37 @@ internal class PreprocessDialogController(
     private fun compactRow(vararg children: View): LinearLayout = dialogViews.compactRow(*children)
 
     private fun scrollRow(vararg children: View): HorizontalScrollView = dialogViews.scrollRow(*children)
+
+    private fun showThresholdInput(title: CharSequence, current: Int, range: IntRange, applyValue: (Int) -> Unit) {
+        val input = EditText(activity).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setSingleLine()
+            setText(current.toString())
+            selectAll()
+        }
+        val rangeHint = activity.getString(R.string.threshold_input_range, range.first, range.last)
+        val dialog = AlertDialog.Builder(activity)
+            .setTitle(title)
+            .setMessage(rangeHint)
+            .setView(input)
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.image_apply, null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val value = input.text.toString().toIntOrNull()
+                if (value == null || value !in range) {
+                    input.error = rangeHint
+                } else {
+                    applyValue(value)
+                    dialog.dismiss()
+                }
+            }
+        }
+        input.requestFocus()
+        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+        dialog.show()
+    }
 
     private fun dp(value: Int): Int = (value * activity.resources.displayMetrics.density).toInt()
 
