@@ -15,6 +15,36 @@ class TentativeSessionCodecTest {
         "tentative-test", 1L, UiMode.ANALYSIS, listOf(RecoveryHistoryEntry(
             kind = HistoryEventKind.USER_EDIT, label = "Tentative", snapshot = RecoverySnapshot(null, matrix, matrix?.copy(), -1, settings))), 0)
 
+    @Test fun imageMarginsSurviveRestoreAndAreClearedByEditing() {
+        val matrix = QrMatrix(21)
+        matrix.set(a.x, a.y, ModuleValue.ONE, 1f, ModuleSource.IMAGE)
+        matrix.setImageMargin(a.x, a.y, 0)
+        matrix.set(b.x, b.y, ModuleValue.ZERO, 1f, ModuleSource.IMAGE)
+        matrix.setImageMargin(b.x, b.y, 254)
+        val saved = payload(PreprocessSettings(photographicSource = true), matrix)
+        val snapshot = RecoverySessionCodec.decode(RecoverySessionCodec.encode(saved)).historyEntries.single().snapshot
+        assertTrue(snapshot.preprocessSettings!!.photographicSource)
+        val working = snapshot.workingMatrix!!
+        assertEquals(0, working.imageMargin(a.x, a.y))
+        assertEquals(254, working.imageMargin(b.x, b.y))
+        assertEquals(-1, working.imageMargin(0, 0))
+        working.set(a.x, a.y, ModuleValue.ZERO, 1f, ModuleSource.USER)
+        assertEquals(-1, working.imageMargin(a.x, a.y))
+        assertEquals(0, snapshot.sourceMatrix!!.imageMargin(a.x, a.y))
+    }
+
+    @Test fun schema32RestoresKnownImageCellsWithoutInventingSamplingMargins() {
+        val matrix = QrMatrix(21)
+        matrix.set(a.x, a.y, ModuleValue.ONE, 1f, ModuleSource.IMAGE)
+        // A snapshot without optical evidence uses the same record layout as version 32.
+        val encoded = RecoverySessionCodec.encode(payload(PreprocessSettings(), matrix))
+        java.nio.ByteBuffer.wrap(encoded).putInt(4, 32)
+        val snapshot = RecoverySessionCodec.decode(encoded).historyEntries.single().snapshot
+        assertFalse(snapshot.preprocessSettings!!.photographicSource)
+        assertFalse(snapshot.workingMatrix!!.hasImageMargins)
+        assertEquals(ModuleValue.ONE, snapshot.workingMatrix[a.x, a.y].value)
+    }
+
     @Test fun roundTripPreservesValueModeAndMatrixProvenance() {
         val settings = PreprocessSettings(preRecoveryEdits = mapOf(a to ModuleValue.ZERO, b to ModuleValue.ONE), preRecoverySoftEdits = setOf(a))
         val matrix = QrMatrix(21).apply {

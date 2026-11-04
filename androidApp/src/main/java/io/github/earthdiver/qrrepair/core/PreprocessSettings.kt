@@ -93,6 +93,7 @@ data class PreprocessSettings(
     /** User-identified Finder role with no measured center. */
     val visibleFinderRole: FinderRole? = null,
     val assumeUtf8ByteSegments: Boolean = false,
+    val photographicSource: Boolean = false,
 ) {
     val effectiveFormatMismatchLimit: Int?
         get() = ErrorLimitPolicy.format(formatMismatchLimitMode, formatMismatchLimit)

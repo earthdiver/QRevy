@@ -108,7 +108,7 @@ internal object RecoverySessionPayloadCodec {
         writeMatrix(out, snapshot.sourceMatrix)
         writeMatrix(out, snapshot.workingMatrix)
         out.writeInt(snapshot.recoveryIndex)
-        out.writeBoolean(snapshot.preprocessSettings != null)
+        out.writeByte(when { snapshot.preprocessSettings == null -> 0; snapshot.preprocessSettings.photographicSource -> 2; else -> 1 })
         snapshot.preprocessSettings?.let { writePreprocessSettings(out, it) }
         out.writeBoolean(snapshot.selectedQr != null)
         snapshot.selectedQr?.let { selection ->
@@ -126,8 +126,8 @@ internal object RecoverySessionPayloadCodec {
 
     private fun readSnapshot(input: DataInputStream, formatVersion: Int): RecoverySnapshot {
         val geometry = readGeometry(input, formatVersion)
-        val source = readMatrix(input)
-        val working = readMatrix(input)
+        val source = readMatrix(input, formatVersion)
+        val working = readMatrix(input, formatVersion)
         requireCorrupt(source == null || validPrioritySearch(source), "invalid source priority-search modules")
         requireCorrupt(working == null || validPrioritySearch(working), "invalid working priority-search modules")
         if (source != null && working != null) requireCorrupt(source.dimension == working.dimension, "matrix dimension mismatch")
@@ -137,7 +137,10 @@ internal object RecoverySessionPayloadCodec {
         }
         val recoveryIndex = input.readInt()
         requireCorrupt(recoveryIndex >= -1 && recoveryIndex <= 100_000, "invalid recovery index")
-        val settings = if (input.readBoolean()) readPreprocessSettings(input, formatVersion) else null
+        val settingsTag = input.readUnsignedByte()
+        requireCorrupt(settingsTag in 0..(if (formatVersion >= 33) 2 else 1), "invalid preprocessing settings tag")
+        val settings = if (settingsTag == 0) null else
+            readPreprocessSettings(input, formatVersion).copy(photographicSource = settingsTag == 2)
         val selectedQr = if (input.readBoolean()) {
             val version = input.readInt()
             val ecLevel = input.readInt()
@@ -173,6 +176,7 @@ internal object RecoverySessionPayloadCodec {
         snapshot.preprocessSettings?.let(::validatePreprocessSettings)
         for (matrix in listOfNotNull(snapshot.sourceMatrix, snapshot.workingMatrix)) {
             for (y in 0 until matrix.dimension) for (x in 0 until matrix.dimension) {
+                if (matrix.imageMargin(x, y) >= 0) require(matrix[x, y].source == ModuleSource.IMAGE && matrix[x, y].value != ModuleValue.ERASED)
                 require(matrix[x, y].confidence.isFinite() && matrix[x, y].confidence in 0f..1f)
             }
         }
@@ -493,11 +497,11 @@ internal object RecoverySessionPayloadCodec {
     }
 
     private fun writeMatrix(out: DataOutputStream, matrix: QrMatrix?) {
-        out.writeBoolean(matrix != null)
+        out.writeByte(when { matrix == null -> 0; matrix.hasImageMargins -> 2; else -> 1 })
         if (matrix == null) return
         out.writeInt(matrix.dimension)
         if (out is SizingDataOutputStream) {
-            out.counter.written += matrix.dimension.toLong() * matrix.dimension * 7
+            out.counter.written += matrix.dimension.toLong() * matrix.dimension * (if (matrix.hasImageMargins) 8 else 7)
             return
         }
         for (y in 0 until matrix.dimension) for (x in 0 until matrix.dimension) {
@@ -507,11 +511,14 @@ internal object RecoverySessionPayloadCodec {
             out.writeByte(c.source.ordinal)
             out.writeFloat(c.confidence)
             out.writeBoolean(c.prioritySearch)
+            if (matrix.hasImageMargins) out.writeByte(matrix.imageMargin(x, y) + 1)
         }
     }
 
-    private fun readMatrix(input: DataInputStream): QrMatrix? {
-        if (!input.readBoolean()) return null
+    private fun readMatrix(input: DataInputStream, formatVersion: Int): QrMatrix? {
+        val tag = input.readUnsignedByte()
+        requireCorrupt(tag in 0..(if (formatVersion >= 33) 2 else 1), "invalid matrix tag")
+        if (tag == 0) return null
         val d = input.readInt()
         requireCorrupt(isValidQrDimension(d), "invalid QR dimension $d")
         val matrix = QrMatrix(d)
@@ -524,6 +531,13 @@ internal object RecoverySessionPayloadCodec {
             if (input.readBoolean()) {
                 requireCorrupt(value == ModuleValue.ERASED, "priority-search module must be erased")
                 matrix.setPrioritySearch(x, y, true)
+            }
+            if (tag == 2) {
+                val margin = input.readUnsignedByte() - 1
+                if (margin >= 0) {
+                    requireCorrupt(source == ModuleSource.IMAGE && value != ModuleValue.ERASED, "invalid image margin")
+                    matrix.setImageMargin(x, y, margin)
+                }
             }
         }
         return matrix

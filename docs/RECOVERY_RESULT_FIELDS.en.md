@@ -83,6 +83,7 @@ Method names describe how candidate values were calculated, often separately for
 | Method | Meaning |
 | --- | --- |
 | Conventional RS | Fills unknown codewords and corrects wrong values within the usual RS range. Any codeword containing an unknown bit is treated as an erasure. |
+| Temporary erasure of image-derived codewords | Conventional RS is retried with the listed codewords in the block treated as erasures for this calculation only. Mismatches are counted against the original known bits. |
 | Partial-bit constraints | Solves for unknown bits while preserving the known bits at that stage. It cannot correct a wrong known bit. |
 | Known-bit error search | Hypothesizes error positions in known bits and solves for unknown bits using the values after those flips. This is separate from conventional RS and list decoding. |
 | Bit search / priority-cell bit search | Tries `0 / 1` assignments for selected unknown bits before further checks. Priority-cell search uses cells marked `*`. Trial values are assumptions. |

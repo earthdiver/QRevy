@@ -33,7 +33,12 @@ internal class RecoveryPhaseRunner(
                     ListDecodingStatus.ZERO_ERROR_LIMIT else ListDecodingStatus.ORIGINAL_RS_SUCCEEDED)
                 else -> {
                     if (maxKnownDataEccMismatches == 0) skipLists(ListDecodingStatus.ZERO_ERROR_LIMIT)
-                    else searchLists(early = true)
+                    else {
+                        if (run.diagnosticInput.hasImageMargins) search(RecoveryPhase.IMAGE_ERASURES)
+                        run.originalBlocks.clear()
+                        run.originalBlockBytes = 0L
+                        searchLists(early = true)
+                    }
                     // Independent passes keep a large tentative RS list from starving exact spaces.
                     search(RecoveryPhase.BIT_CONSTRAINTS)
                     if (maxKnownDataEccMismatches != 0) {

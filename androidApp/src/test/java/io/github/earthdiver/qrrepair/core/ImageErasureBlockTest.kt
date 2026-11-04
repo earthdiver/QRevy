@@ -1,0 +1,43 @@
+package io.github.earthdiver.qrrepair.core
+
+import com.google.zxing.EncodeHintType
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
+import com.google.zxing.qrcode.encoder.Encoder
+import org.junit.Assert.*
+import org.junit.Test
+
+class ImageErasureBlockTest {
+    @Test fun combinesRecoveredShortAndLongBlocksWithIntactBlocks() {
+        val format = ErrorCorrectionLevel.Q
+        val qr = Encoder.encode("Interleaved image evidence", format,
+            mapOf(EncodeHintType.QR_VERSION to 5, EncodeHintType.QR_MASK_PATTERN to 3)).matrix
+        val matrix = QrMatrix(qr.width)
+        for (y in 0 until qr.height) for (x in 0 until qr.width) {
+            matrix.set(x, y, if (qr[x, y].toInt() == 1) ModuleValue.ONE else ModuleValue.ZERO, 1f, ModuleSource.IMAGE)
+            matrix.setImageMargin(x, y, 90)
+        }
+        val original = CodewordExtractor.extract(matrix, 5, 3)
+        val de = QrBlockInterleaver.deinterleave(original, 5, format)
+        val damaged = setOf(de.blocks.indices.minBy { de.blocks[it].numDataCodewords },
+            de.blocks.indices.maxBy { de.blocks[it].numDataCodewords })
+        assertEquals(2, damaged.size)
+        for ((raw, word) in original.codewords.withIndex()) {
+            val loc = requireNotNull(de.rawLocations[raw])
+            if (loc.blockIndex !in damaged) continue
+            if (loc.localIndex < de.ecSymbolsPerBlock - 2) {
+                for (c in word.coordinates) matrix.set(c.x, c.y, ModuleValue.ERASED, 0f, ModuleSource.IMAGE)
+            } else if (loc.localIndex < de.ecSymbolsPerBlock) {
+                val c = word.coordinates.last()
+                val flipped = if (matrix[c.x, c.y].value == ModuleValue.ONE) ModuleValue.ZERO else ModuleValue.ONE
+                matrix.set(c.x, c.y, flipped, 1f, ModuleSource.IMAGE)
+                matrix.setImageMargin(c.x, c.y, 2)
+            }
+        }
+        val candidate = RecoveryEngine().recover(matrix, formatConstraint = QrFormatConstraint(format, 3),
+            maxKnownDataEccMismatches = 4, listDecodingAdditionalErrors = 0).single {
+            it.correctedInterleaved.contentEquals(original.codewords.map { word -> word.value }.toIntArray())
+        }
+        assertEquals(4, candidate.knownBitMismatchesAfterCorrection)
+        assertEquals(damaged, candidate.actualBlockMethods.filter { it.imageErasures.size == 2 }.map { it.blockIndex }.toSet())
+    }
+}

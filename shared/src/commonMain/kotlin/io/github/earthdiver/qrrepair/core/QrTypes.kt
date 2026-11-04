@@ -31,9 +31,23 @@ data class QrCell(
 class QrMatrix(val dimension: Int) {
     init { require(dimension in 21..177 && (dimension - 17) % 4 == 0) { "Invalid QR dimension: $dimension" } }
     private val cells = Array(dimension * dimension) { QrCell() }
+    // Zero denotes no optical observation. A measured margin of zero is meaningful.
+    private var imageMargins: ByteArray? = null
+    val hasImageMargins: Boolean get() = imageMargins != null
+
+    fun imageMargin(x: Int, y: Int): Int =
+        ((imageMargins?.get(y * dimension + x)?.toInt() ?: 0) and 255) - 1
+
+    fun setImageMargin(x: Int, y: Int, margin: Int) {
+        require(margin in 0..254 && get(x, y).source == ModuleSource.IMAGE && get(x, y).value != ModuleValue.ERASED)
+        val margins = imageMargins ?: ByteArray(cells.size).also { imageMargins = it }
+        margins[y * dimension + x] = (margin + 1).toByte()
+    }
+
     operator fun get(x: Int, y: Int): QrCell = cells[y * dimension + x]
     fun set(x: Int, y: Int, value: ModuleValue, confidence: Float, source: ModuleSource) {
         require(confidence.isFinite() && confidence in 0f..1f) { "Invalid module confidence: $confidence" }
+        imageMargins?.set(y * dimension + x, 0)
         val c = get(x, y); c.value = value; c.confidence = confidence; c.source = source
         if (value != ModuleValue.ERASED) c.prioritySearch = false
     }
@@ -51,6 +65,7 @@ class QrMatrix(val dimension: Int) {
             val c = get(x, y); out.set(x, y, c.value, c.confidence, c.source)
             out.setPrioritySearch(x, y, c.prioritySearch)
         }
+        out.imageMargins = imageMargins?.copyOf()
         return out
     }
     fun erasureCount(): Int = cells.count { it.value == ModuleValue.ERASED }

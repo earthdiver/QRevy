@@ -156,7 +156,7 @@ Tap an entry in **Saved work** or **Recent work** to reopen it. Long-press to de
 
 ### Saved-work compatibility
 
-QRR is the app’s saved-work format. The app writes format version **32** and reads versions **23–32**; other versions are rejected. Older files restore settings they did not store as follows: Known-bit error search is off for all versions 23–27. Distortion correction is off for versions 23–29. Versions 23–30 do not store the selected preview grid. The UTF-8 assumption defaults to off for versions 23–31.
+QRR is the app’s saved-work format. The app writes format version **33** and reads versions **23–33**; other versions are rejected. Older files restore settings they did not store as follows: Known-bit error search is off for all versions 23–27. Distortion correction is off for versions 23–29. Versions 23–30 do not store the selected preview grid. The UTF-8 assumption defaults to off for versions 23–31. Versions 23–32 have no image sampling margins for temporary image erasures.
 
 | File version | Restored defaults |
 | --- | --- |

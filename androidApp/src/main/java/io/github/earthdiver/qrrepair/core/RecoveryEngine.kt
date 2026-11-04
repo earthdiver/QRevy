@@ -19,6 +19,7 @@ data class CodewordRepairInfo(
     val listDecoding: ListDecodingDerivation? = null,
     /** Unmasked values assigned by structure constraints, before any later RS correction. */
     val constraintValuesByBit: Map<Int, Int> = emptyMap(),
+    val temporaryImageErasure: Boolean = false,
 )
 
 data class RecoveryCandidate(
@@ -488,7 +489,15 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 CodewordExtractor.extract(run.diagnosticInput, version, format.dataMask)
             val conventionalDiagnostic = run.conventionalDiagnostics.getOrPut(format.ecLevel to format.dataMask) {
                 val inputBlocks = QrBlockInterleaver.deinterleave(evidenceExtraction, version, format.ecLevel)
-                val diagnosis = ConventionalRsDiagnostic.analyze(inputBlocks, rs, run.cancellation)
+                val diagnosis = ConventionalRsDiagnostic.analyze(inputBlocks, rs, run.cancellation) { index, result ->
+                    if (run.phase == RecoveryPhase.ORIGINAL_RS && matrix.hasImageMargins && maxKnownDataEccMismatches != 0) {
+                        val bytes = 192L + (result.corrected.size + result.errataPositions.size) * 4L
+                        if (run.originalBlockBytes + bytes <= run.retentionBudget.workingLimitBytes / 16) {
+                            run.originalBlocks[Triple(format.ecLevel, format.dataMask, index)] = result
+                            run.originalBlockBytes += bytes
+                        }
+                    }
+                }
                 val raw = diagnosis.correctedInterleaved
                 diagnosis.copy(
                     knownBitMismatches = raw?.let { RecoveryCandidateEvidence.countKnownBitMismatches(run.diagnosticInput, evidenceExtraction, it, format.dataMask).second },
@@ -507,13 +516,14 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                     },
                 )
             }
+            if (run.phase == RecoveryPhase.IMAGE_ERASURES && conventionalDiagnostic.succeeded) continue
             val originalErasures = evidenceExtraction.codewords.count { it.unknownBits != 0 }
             val priorityCoordinates = matrix.prioritySearchCoordinates().toSet()
             val priorityRawIndices = extraction.codewords.indices.filterTo(hashSetOf()) { raw ->
                 extraction.codewords[raw].coordinates.any { (it.x to it.y) in priorityCoordinates }
             }
 
-            val originalSpaces = de.blocks.map { run.bitSolver.analyze(it, de.ecSymbolsPerBlock, run.cancellation) }
+            val originalSpaces by lazy { de.blocks.map { run.bitSolver.analyze(it, de.ecSymbolsPerBlock, run.cancellation) } }
             val bitDiagnostic = run.bitDiagnostics.getOrPut(format.ecLevel to format.dataMask) {
                 if (matrix === run.diagnosticInput) RsBitDiagnostic.build(matrix, extraction, de, originalSpaces, run.cancellation)
                 else {
@@ -684,10 +694,10 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                     continue
                 }
 
-                val trialSpaces = if (constraints.filledBits == 0) originalSpaces else
-                    de.blocks.map { run.bitSolver.analyze(it, de.ecSymbolsPerBlock, run.cancellation) }
+                val trialSpaces by lazy { if (constraints.filledBits == 0) originalSpaces else
+                    de.blocks.map { run.bitSolver.analyze(it, de.ecSymbolsPerBlock, run.cancellation) } }
                 val exactOnly = maxKnownDataEccMismatches == 0 || run.phase == RecoveryPhase.BIT_CONSTRAINTS
-                if (!basicOnly && run.phase != RecoveryPhase.ORIGINAL_RS && trialSpaces.any { (it?.dimension ?: 0) > 0 }) {
+                if (!basicOnly && run.phase != RecoveryPhase.ORIGINAL_RS && run.phase != RecoveryPhase.IMAGE_ERASURES && trialSpaces.any { (it?.dimension ?: 0) > 0 }) {
                     val nonEnumerable = de.blocks.indices.map { index ->
                         priorityRawIndices.mapNotNullTo(hashSetOf()) { raw ->
                             de.rawLocations.getOrNull(raw)?.takeIf { it.blockIndex == index }?.localIndex
@@ -718,7 +728,17 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 }
 
                 val blockCandidateResults = ArrayList<List<PartialCodewordSolver.Result>>(de.blocks.size)
+                val imageRetry = run.phase == RecoveryPhase.IMAGE_ERASURES
                 var blockWorkingBytes = 0L
+                if (imageRetry) {
+                    // Includes ranked words, six block outputs per block and transient RS work.
+                    blockWorkingBytes = 8192L + extraction.codewords.size * 512L
+                    if (blockWorkingBytes > run.availableWorkingBytes) {
+                        run.combinationSearch = run.combinationSearch.afterPass(setOf(CombinationSearchStop.WORKING_MEMORY_LIMIT))
+                        continue
+                    }
+                }
+                val margins = if (imageRetry) imageWordMargins(de, extraction, matrix) else emptyList()
                 var failed = false
                 var failedBlockIndex: Int? = null
                 var failedBlockErasures: Int? = null
@@ -727,6 +747,14 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                     run.candidateCalculations++
                     run.cancellation.check()
                     val blockErasures = block.unknownMasks.count { it != 0 }
+                    if (imageRetry) {
+                        val results = retryImageErasures(block, de.ecSymbolsPerBlock, margins[blockIndex],
+                            conventionalDiagnostic.blocks[blockIndex], rs, run.cancellation,
+                            run.originalBlocks[Triple(format.ecLevel, format.dataMask, blockIndex)])
+                        if (results.isEmpty()) break
+                        blockCandidateResults += results
+                        continue
+                    }
                     val results = try {
                         val nonEnumerable = priorityRawIndices.mapNotNullTo(hashSetOf()) { raw ->
                             de.rawLocations.getOrNull(raw)?.takeIf { it.blockIndex == blockIndex }?.localIndex
@@ -764,6 +792,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                     }
                     blockCandidateResults += results
                 }
+                if (imageRetry && blockCandidateResults.size != de.blocks.size) continue
                 if (failed) {
                     // An ordinary no-result outcome terminates this block's specified policy.
                     run.unresolvedCalculations = true

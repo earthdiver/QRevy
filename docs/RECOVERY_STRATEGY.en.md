@@ -149,11 +149,12 @@ Codeword extraction also preserves the positions of unknown bits. **Deinterleavi
 | Stage | Processing | Purpose and strengths | Related settings |
 | --- | --- | --- | --- |
 | 1 | Conventional RS on the input before filling or temporary assignments | Useful when erroneous and erased codewords fall within the conventional RS correction range in every block. A codeword containing even one unknown cell is treated as a whole-codeword erasure. | Common settings only |
-| 2 | Initial list decoding with a short time allowance | Looks for candidates beyond the conventional RS correction range in a short pass without temporary assignments. KV also uses weights to incorporate the known-cell information remaining in codewords that contain unknown cells. | Extra errors beyond conventional RS |
-| 3 | RS partial-bit constraints, narrowed using QR structure | Useful when known-cell values are correct and unknown cells are scattered a few at a time across many codewords. Uses the known-cell values remaining in each codeword and QR structure to narrow unknown-cell values. Does not correct known-cell values supplied as constraints. | Partial-bit search / dimension limit<br>Priority search cell limit |
-| 4 | Partial-bit search with conventional RS | Assigns temporary values to codewords with few unknown cells to reduce erasures, looking for combinations that bring the remaining erasures and known-cell errors within the conventional RS correction range. The number of combinations grows with the number of cells assigned temporary values. | Partial-bit search / dimension limit<br>Priority search cell limit |
-| 5 | Known-bit error search | Useful when unknown cells are mixed with a few errors in known cells. Depending on the setting, hypothesizes error positions in up to one or two cells across the whole QR code and flips their values. Assuming the remaining known-cell values are correct, uses partial-bit constraints to solve for unknown-cell values. | Known-bit error search<br>Partial-bit search / dimension limit |
-| 6 | Additional list decoding, combined with temporary assignments where useful | Uses the remaining time allowance to search further for candidates beyond the conventional RS correction range. Explores cases not reached in the initial pass, as well as cases where temporary assignments to unknown cells reduce erasures. | Extra errors beyond conventional RS<br>Partial-bit search / dimension limit<br>Priority search cell limit |
+| 2 | Retry conventional RS with low-reliability image-derived codewords temporarily erased | In each failed block, consider only codewords with all eight cells read from the image. Select up to four by how close their least reliable cell is to its black or white threshold, starting with the smallest margin. Select codewords with the same margin together. If adding all of them would exceed four, stop and use only the codewords already selected. Try single erasures or pairs within the remaining erasure capacity (correction margin), for a total of at most six combinations per block. | Common settings only |
+| 3 | Initial list decoding with a short time allowance | Looks for candidates beyond the conventional RS correction range in a short pass without temporary assignments. KV also uses weights to incorporate the known-cell information remaining in codewords that contain unknown cells. | Extra errors beyond conventional RS |
+| 4 | RS partial-bit constraints, narrowed using QR structure | Useful when known-cell values are correct and unknown cells are scattered a few at a time across many codewords. Uses the known-cell values remaining in each codeword and QR structure to narrow unknown-cell values. Does not correct known-cell values supplied as constraints. | Partial-bit search / dimension limit<br>Priority search cell limit |
+| 5 | Partial-bit search with conventional RS | Assigns temporary values to codewords with few unknown cells to reduce erasures, looking for combinations that bring the remaining erasures and known-cell errors within the conventional RS correction range. The number of combinations grows with the number of cells assigned temporary values. | Partial-bit search / dimension limit<br>Priority search cell limit |
+| 6 | Known-bit error search | Useful when unknown cells are mixed with a few errors in known cells. Depending on the setting, hypothesizes error positions in up to one or two cells across the whole QR code and flips their values. Assuming the remaining known-cell values are correct, uses partial-bit constraints to solve for unknown-cell values. | Known-bit error search<br>Partial-bit search / dimension limit |
+| 7 | Additional list decoding, combined with temporary assignments where useful | Uses the remaining time allowance to search further for candidates beyond the conventional RS correction range. Explores cases not reached in the initial pass, as well as cases where temporary assignments to unknown cells reduce erasures. | Extra errors beyond conventional RS<br>Partial-bit search / dimension limit<br>Priority search cell limit |
 
 The following settings apply across stages:
 
@@ -163,13 +164,15 @@ The following settings apply across stages:
 - Force single-segment terminator and padding
 - Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)
 
-**Priority search cell limit** applies when `*` cells are marked. Stage 5 targets the data/ECC region and does not flip protected fixed cells.
+**Priority search cell limit** applies when `*` cells are marked. Stage 6 targets the data/ECC region and does not flip protected fixed cells.
 
-If stage 1 passes QR-structure and input-condition checks and decodes the content, that reading attempt ends. Otherwise, processing proceeds to later stages. Candidates found in stage 2 or later are retained while the search continues. Stage 5 runs only when **Known-bit error search** is enabled and no candidate with decoded content has been found through stage 4. If list decoding is enabled, stage 6 is still attempted if stage 5 finds candidates.
+If stage 1 passes QR-structure and input-condition checks and decodes the content, that reading attempt ends. Otherwise, processing proceeds to later stages. Candidates found in stage 2 or later are retained while the search continues. Stage 6 runs only when **Known-bit error search** is enabled and no candidate with decoded content has been found through stage 5. If list decoding is enabled, stage 7 is still attempted if stage 6 finds candidates.
 
-Selecting OFF for **Extra errors beyond conventional RS** skips stages 2 and 6, including GS, Wu, and KV. The execution conditions for other stages are unchanged. The default remains +1 codeword.
+Selecting OFF for **Extra errors beyond conventional RS** skips stages 3 and 7, including GS, Wu, and KV. The execution conditions for other stages are unchanged. The default remains +1 codeword.
 
-When **Known data/ECC bit error limit** is 0 bits, stages 2, 4, 5, and 6 are skipped. The search looks for solutions in which every compared known-cell value matches the input.
+When **Known data/ECC bit error limit** is 0 bits, stages 2, 3, 5, 6, and 7 are skipped. The search looks for solutions in which every compared known-cell value matches the input.
+
+Temporary image erasures apply only within stage 2. Later stages start from the original observations. Text matrices have no image margins.
 
 ## 5. Conventional RS and bit-level recovery
 

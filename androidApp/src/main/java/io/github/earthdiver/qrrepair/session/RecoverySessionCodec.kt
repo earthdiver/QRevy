@@ -8,7 +8,7 @@ import java.io.IOException
 
 /** Android-independent, bounded and checksummed persistence codec for repair sessions. */
 object RecoverySessionCodec {
-    const val CURRENT_VERSION = 32
+    const val CURRENT_VERSION = 33
     const val MAX_HISTORY_ENTRIES = 40
     const val MAX_SESSION_PAYLOAD_BYTES = 16 * 1024 * 1024
     const val MAX_SESSION_FILE_BYTES = 20 * 1024 * 1024
@@ -53,10 +53,10 @@ object RecoverySessionCodec {
     /** Conservative snapshot accounting, not an exact measurement of the Android heap. */
     fun retainedHistoryEntryBytes(entry: RecoveryHistoryEntry): Long {
         val snapshot = entry.snapshot
-        val cells = listOfNotNull(snapshot.sourceMatrix, snapshot.workingMatrix)
-            .sumOf { it.dimension.toLong() * it.dimension }
+        val matrixBytes = listOfNotNull(snapshot.sourceMatrix, snapshot.workingMatrix)
+            .sumOf { it.dimension.toLong() * it.dimension * (if (it.hasImageMargins) 49L else 48L) }
         val settings = snapshot.preprocessSettings
-        return 4096L + cells * 48 + (entry.id.length + entry.label.length + entry.detail.length) * 2L +
+        return 4096L + matrixBytes + (entry.id.length + entry.label.length + entry.detail.length) * 2L +
             (settings?.preRecoveryEdits?.size ?: 0) * 128L +
             (settings?.preRecoverySoftEdits?.size ?: 0) * 64L +
             (settings?.detectedFinders?.size ?: 0) * 256L +

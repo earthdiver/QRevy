@@ -280,6 +280,9 @@ private fun knownBitSearchExplanation(): String = localizedText(
 
 /** Explain the adopted methods without repeating their per-block calculation records. */
 fun RecoveryCandidate.processingMethodsText(): String = buildList {
+    if (actualBlockMethods.any { it.imageErasures.isNotEmpty() }) add(localizedText(
+        "画像の判定余裕が小さいコード語を一時消失として通常RSで再試行しました。",
+        "Conventional RS was retried with weak image-read codewords temporarily erased."))
     if (usesKnownBitSearch()) add(knownBitSearchExplanation())
     if (usesConventionalRs()) add(if (correctedErrataSymbols > 0)
         localizedText("通常RSによる確認・補完・訂正を使いました。", "Conventional RS was used to check, fill or correct values.")
@@ -379,6 +382,7 @@ fun RecoveryBlockMethod.searchDescription(includeCalculationDetails: Boolean = t
         "によるリスト復号", " list decoding")
     else if (listDecoding != null) listDecoding.method.displayName() + " / " + listDecoding.calculationDescription() + localizedText(
         "／仮置きした不明ビット: $guessedBits", " / assigned unknown bits: $guessedBits")
+    else if (imageErasures.isNotEmpty()) imageErasureDescription(imageErasures)
     else if (knownBitErrors != null) localizedText(
         "既知bit誤り探索：${knownBitErrors.size}bit変更／この計算段階の自由度: $guessedBits",
         "Known-bit error search: ${knownBitErrors.size} changed bits / degrees of freedom at this stage: $guessedBits")

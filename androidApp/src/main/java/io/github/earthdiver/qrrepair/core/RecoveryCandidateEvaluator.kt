@@ -155,7 +155,7 @@ internal class RecoveryCandidateEvaluator(
             conventionalRsDiagnostic = conventionalDiagnostic,
             actualBlockMethods = combination.mapIndexed { blockIndex, result ->
                 RecoveryBlockMethod(blockIndex, result.bitConstraintSolved,
-                    result.rsMargin.takeUnless { result.bitConstraintSolved || result.listDecoding != null || result.knownBitSearch }, result.guessedBits, result.listDecoding, result.knownBitErrors.takeIf { result.knownBitSearch })
+                    result.rsMargin.takeUnless { result.bitConstraintSolved || result.listDecoding != null || result.knownBitSearch }, result.guessedBits, result.listDecoding, result.knownBitErrors.takeIf { result.knownBitSearch }, result.imageErasures)
             },
             blockDerivations = combination.withIndex().filter { it.value.alternativeDerivations.isNotEmpty() }
                 .associate { (block, result) -> block to (listOf(selectedRoutes[block]) +

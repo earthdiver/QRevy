@@ -55,6 +55,7 @@ internal object RecoveryCandidateEvidence {
             localIndex = loc.localIndex,
             originalUnknownMask = originalUnknownByRaw[raw],
             postConstraintUnknownMask = postConstraintUnknownByRaw[raw],
+            temporaryImageErasure = loc.localIndex in selectedRoutes[loc.blockIndex].imageErasures,
             rsErrata = loc.localIndex in selectedRoutes[loc.blockIndex].errataPositions,
             partialEnumerated = loc.localIndex in selectedRoutes[loc.blockIndex].guessedPositions,
             constraintKindsByBit = perBit,

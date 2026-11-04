@@ -72,6 +72,7 @@ internal class PreprocessDialogState(private val initial: PreprocessSettings) {
     fun previewSettings(controls: PreprocessControlSnapshot): PreprocessSettings {
         val (blackMax, whiteMin) = normalizedThresholds(controls)
         return PreprocessSettings(
+            photographicSource = initial.photographicSource,
             imageAdjustment = imageAdjustment,
             distortionCorrection = initial.distortionCorrection,
             mirroredInput = mirroredInput,

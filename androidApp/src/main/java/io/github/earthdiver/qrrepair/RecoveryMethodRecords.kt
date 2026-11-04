@@ -131,7 +131,7 @@ internal fun RecoveryCandidate.selectedBlockDerivations(): Map<Int, PartialCodew
         val block = method.blockIndex
         val recorded = blockDerivations[block]?.firstOrNull()?.takeIf { route ->
             route.bitConstraintSolved == method.bitConstraintSolved && route.guessedBits == method.guessedBits &&
-                route.listDecoding == method.listDecoding && route.knownBitErrors.takeIf { route.knownBitSearch } == method.knownBitErrors &&
+                route.imageErasures == method.imageErasures && route.listDecoding == method.listDecoding && route.knownBitErrors.takeIf { route.knownBitSearch } == method.knownBitErrors &&
                 (method.rsMargin == null || route.rsMargin == method.rsMargin)
         }
         if (recorded != null) return@mapNotNull block to recorded.copy(searchPenalty = 0)
@@ -142,7 +142,7 @@ internal fun RecoveryCandidate.selectedBlockDerivations(): Map<Int, PartialCodew
         val guessed = info.filter { it.partialEnumerated }.map { it.localIndex }
         block to PartialCodewordSolver.Derivation(info.filter { it.rsErrata }.map { it.localIndex },
             method.guessedBits, guessed.size, guessed, method.rsMargin ?: 0, 0, method.bitConstraintSolved, method.listDecoding,
-            knownBitErrors = method.knownBitErrors.orEmpty(), knownBitSearch = method.knownBitErrors != null)
+            knownBitErrors = method.knownBitErrors.orEmpty(), knownBitSearch = method.knownBitErrors != null, imageErasures = method.imageErasures)
     }.toMap()
 }
 

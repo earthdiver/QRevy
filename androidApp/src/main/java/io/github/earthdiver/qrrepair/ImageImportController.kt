@@ -94,6 +94,7 @@ internal class ImageImportController(
                     adjusted.luma, ZxingCppGridDetector.detect(adjusted.bitmap),
                 )
                 val settings = PreprocessSettings(
+                    photographicSource = true,
                     imageAdjustment = imageAdjustment,
                     distortionCorrection = distortionCorrection,
                     automaticThresholds = true,

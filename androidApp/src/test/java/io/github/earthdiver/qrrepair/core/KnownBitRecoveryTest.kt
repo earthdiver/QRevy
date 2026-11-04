@@ -27,6 +27,32 @@ class KnownBitRecoveryTest {
         formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.L,mask), maxKnownDataEccMismatches = 2,
         knownBitErrorLimit = limit, knownBitErrorBudget = budget, trustKnownPayloadCount = trust)
 
+    @Test fun weakImageWordsRecoverWithoutListOrKnownBitSearch() {
+        val matrix = fixture(0)
+        val words = CodewordExtractor.extract(matrix, 1, 0).codewords
+        for ((index, word) in words.withIndex()) if (!word.erased) {
+            for (coord in word.coordinates) matrix.setImageMargin(coord.x, coord.y, if (index in 22..23) 2 else 90)
+        }
+        fun search(input: QrMatrix, limit: Int = 2) = RecoveryEngine().recoverWithDiagnostics(input,
+            formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.L, 0), maxKnownDataEccMismatches = limit,
+            listDecodingAdditionalErrors = 0, knownBitErrorLimit = 0)
+        val candidate = search(matrix.copy()).candidates.single { it.text == "abcdefghijklm" }
+        assertEquals(listOf(22, 23), candidate.actualBlockMethods.single().imageErasures)
+        assertEquals(2, candidate.knownBitMismatchesAfterCorrection)
+        assertEquals(5, candidate.originalErasedCodewords)
+        assertEquals(2, candidate.repairInfo.count { it.temporaryImageErasure })
+        assertFalse(search(matrix, 0).candidates.any { it.text == candidate.text })
+        val edited = words[22].coordinates.first()
+        matrix.set(edited.x, edited.y, matrix[edited.x, edited.y].value, 1f, ModuleSource.USER)
+        assertFalse(search(matrix).candidates.any { it.text == candidate.text })
+        for (word in words.filterNot { it.erased }) for (coord in word.coordinates) {
+            val cell = matrix[coord.x, coord.y]
+            matrix.set(coord.x, coord.y, cell.value, 1f, ModuleSource.IMAGE)
+            matrix.setImageMargin(coord.x, coord.y, 95)
+        }
+        assertFalse(search(matrix).candidates.any { it.text == candidate.text })
+    }
+
     @Test fun repairsMixedFullByteErasuresAndTwoUnknownErrorPositions() {
         for(mask in 0..2) {
             val m = fixture(mask)

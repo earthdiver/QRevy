@@ -66,6 +66,7 @@ data class ModuleRepairTrace(
     val overturnedConstraint: RepairReasonKind? = null,
     val overturnedConstraintValue: Int? = null,
     val alternativeRsDerivations: List<PartialCodewordSolver.Derivation> = emptyList(),
+    val temporaryImageErasure: Boolean = false,
 ) {
     val valueChanged: Boolean get() = originalValue != finalValue
     val provenanceChanged: Boolean get() = originalSource != finalSource
@@ -147,6 +148,8 @@ data class ModuleRepairTrace(
                 "\nPriority 0/1 search assigned ${value.symbol()} to this cell (before removing the QR mask). It was not a known input bit.",
             ))
         }
+        if (temporaryImageErasure) append(localizedText("\nこのコード語は画像の判定余裕から一時消失として計算しました。",
+            "\nThis codeword was temporarily erased using its image sampling margin."))
         if (partialEnumerated) append(localizedText("\n未知bitの限定列挙を行い、RS整合する候補を探索しました。", "\nUnknown bits were enumerated within a limit to find RS-consistent candidates."))
         overturnedConstraint?.let {
             append(localizedText(
@@ -288,6 +291,7 @@ object RepairTraceBuilder {
                 originalCodewordValue = cwBit?.first?.let { candidate?.extraction?.codewords?.getOrNull(it)?.value },
                 originalUnknownMask = info?.originalUnknownMask,
                 correctedCodewordValue = cwBit?.first?.let { candidate?.correctedInterleaved?.getOrNull(it) },
+                temporaryImageErasure = info?.temporaryImageErasure == true,
                 rsErrata = info?.rsErrata == true,
                 partialEnumerated = info?.partialEnumerated == true,
                 originalConfidence = original.confidence,
