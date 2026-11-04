@@ -214,7 +214,7 @@ internal fun PreprocessSettings.searchSummary(): String {
     }
     return "$polarityLabel / " +
         localizedText("表示中のQR格子 / V$version", "displayed QR grid / Version $version") +
-        (if (distortionCorrection) localizedText(" / ゆがみ補正あり", " / distortion correction enabled") else "") +
+        (if (distortionCorrection) localizedText(" / 曲面補正あり", " / distortion correction enabled") else "") +
         (if (mirroredInput) localizedText(" / 鏡像補正あり", " / mirrored input") else "") +
         formatConstraint?.let {
             val ec = it.ecLevel?.toString() ?: localizedText("自動", "auto")

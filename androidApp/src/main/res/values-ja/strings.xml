@@ -232,5 +232,5 @@
     <string name="known_bit_note">欠損と誤りが混在するときの追加探索です。上限はRSブロックごとではなくQR全体に適用されます。操作全体で30秒・100万試行まで。固定セルと信頼したヘッダーの条件を維持します。</string>
     <string name="image_distortion_correction">曲面補正（試験的）</string>
     <string name="image_distortion_help">湾曲した紙やラベルの読み取りを試します。解析時に通常の候補に加えて補正候補を調べます。必要な目印が見つからない場合は通常の解析を続けます。</string>
-    <string name="image_distortion_unavailable">ゆがみ補正に使える目印・座標変換が得られなかったため、通常の解析のみを行いました。</string>
+    <string name="image_distortion_unavailable">曲面補正に使える目印・座標変換が得られなかったため、通常の解析のみを行いました。</string>
 </resources>

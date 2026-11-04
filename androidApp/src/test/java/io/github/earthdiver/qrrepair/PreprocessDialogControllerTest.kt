@@ -90,6 +90,9 @@ class PreprocessDialogControllerTest {
             withDialog(PreprocessSettings(distortionCorrection = true, manualQuad = initialQuad), style,
                 worker = Executor { jobs += it }) { dialog, host, _, _ ->
                 assertEquals(1, jobs.size)
+                val cropLabel = dialog.context.getString(R.string.image_distortion_correction).substringBefore('（')
+                assertTrue(views(dialog.window!!.decorView).filterIsInstance<Button>()
+                    .any { it.text.toString() == "$cropLabel: 計算中…" })
                 views(dialog.window!!.decorView).filterIsInstance<Button>().single { it.text.toString() == "保存" }.performClick()
                 assertTrue(host.saves.isEmpty())
                 val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()

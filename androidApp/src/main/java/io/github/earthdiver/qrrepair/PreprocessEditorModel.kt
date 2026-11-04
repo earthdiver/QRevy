@@ -100,7 +100,7 @@ internal class PreprocessEditorModel(
             FinderPolarity.NORMAL -> false
             else -> controls.polarity == PolarityMode.INVERTED
         })
-        // Automatic slider values are outputs, not a reason to refit the landmarks.
+        // In automatic mode use provisional thresholds for the initial candidate ranking.
         val normalized = if (profile.settings.automaticThresholds) profile.copy(settings = profile.settings.copy(
             blackMax = profile.settings.provisionalBlackMax, whiteMin = profile.settings.provisionalWhiteMin,
         )) else profile
@@ -118,9 +118,7 @@ internal class PreprocessEditorModel(
         val restored = restoreCorrection
         restoreCorrection = null
         if (restored != null && initial.manualQuad == grid.quad && initial.version == controls.version &&
-            initial.polarity == controls.polarity && initial.confirmedFinderPolarity == grid.confirmedFinderPolarity &&
-            initial.automaticThresholds == controls.automaticThresholds &&
-            (controls.automaticThresholds || (initial.blackMax == controls.blackProgress && initial.whiteMin == controls.whiteProgress + 1))) {
+            initial.polarity == controls.polarity && initial.confirmedFinderPolarity == grid.confirmedFinderPolarity) {
             correction.restore(request, restored)
         }
         return request

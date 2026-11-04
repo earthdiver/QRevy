@@ -556,13 +556,13 @@ internal class PreprocessDialogController(
             val state = editor.correction
             correctionControl.isEnabled = state.complete && state.candidates.size > 1
             correctionControl.text = when {
-                !overlay.isLogicalGridAssigned() -> ui("ゆがみ補正: QRの向きを指定してください", "Distortion: assign the QR orientation")
-                geometryDragging -> ui("ゆがみ補正: 指を離すと再計算", "Distortion: release to recalculate")
-                !state.complete -> ui("ゆがみ補正: 計算中…", "Distortion: calculating…")
+                !overlay.isLogicalGridAssigned() -> ui("曲面補正: QRの向きを指定してください", "Distortion: assign the QR orientation")
+                geometryDragging -> ui("曲面補正: 指を離すと再計算", "Distortion: release to recalculate")
+                !state.complete -> ui("曲面補正: 計算中…", "Distortion: calculating…")
                 state.failed && state.selected?.warp != null -> ui("再計算に失敗: 保存した補正を使用", "Recalculation failed: using the saved correction")
                 state.failed -> ui("補正計算に失敗: 直線格子を使用", "Correction failed: using the straight grid")
                 state.selected?.warp == null -> ui("補正点を検出できません: 直線格子を使用", "No correction landmarks: using the straight grid")
-                else -> ui("ゆがみ補正: 候補 ${state.selectedIndex + 1}/${state.candidates.size}",
+                else -> ui("曲面補正: 候補 ${state.selectedIndex + 1}/${state.candidates.size}",
                     "Distortion: candidate ${state.selectedIndex + 1}/${state.candidates.size}")
             }
         }
@@ -1049,7 +1049,7 @@ internal class PreprocessDialogController(
             fun persistPreprocessDraft(): Boolean {
                 if (!editor.correctionReady(controlSnapshot(), geometrySnapshot())) {
                     refreshClassificationMatrix()
-                    Toast.makeText(activity, ui("ゆがみ補正の計算完了後にもう一度操作してください。", "Wait for distortion correction to finish, then try again."), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(activity, ui("曲面補正の計算完了後にもう一度操作してください。", "Wait for distortion correction to finish, then try again."), Toast.LENGTH_SHORT).show()
                     return false
                 }
                 if (!searchControls.requestValidDataEccLimit()) return false

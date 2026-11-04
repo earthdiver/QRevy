@@ -18,12 +18,16 @@ internal class DistortionPreviewState {
     val selected: GridGeometry? get() = candidates.getOrNull(selectedIndex)
 
     fun request(input: Input): Request? {
-        if (current?.input == input) return null
+        if (matches(input)) return null
         invalidate()
         return Request(input).also { current = it }
     }
     fun isCurrent(request: Request): Boolean = current === request
-    fun matches(input: Input): Boolean = current?.input == input
+    // The profile on the request ranks newly generated candidates once. Subsequent cell
+    // classifications use their own current profile on the same selected geometry.
+    fun matches(input: Input): Boolean = current?.input?.let {
+        it.image === input.image && it.base == input.base && it.profile.inverted == input.profile.inverted
+    } == true
     fun invalidate() {
         current = null
         candidates = emptyList()

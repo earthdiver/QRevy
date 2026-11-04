@@ -296,7 +296,7 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
             GeometryModel.AFFINE -> ui("アフィン変換", "Affine")
             GeometryModel.PROJECTIVE -> if (patternRefined) ui("固定パターンで射影補正", "Pattern-refined projective grid") else ui("射影変換", "Projective")
             GeometryModel.MANUAL_PROJECTIVE -> ui("手動射影", "Manual projective")
-            GeometryModel.THIN_PLATE_SPLINE -> ui("ゆがみ補正を使用", "Distortion correction applied")
+            GeometryModel.THIN_PLATE_SPLINE -> ui("曲面補正を使用", "Distortion correction applied")
         }
         val role = when (geometry.role) {
             FinderRole.TOP_LEFT -> ui("左上基準", "top-left reference")

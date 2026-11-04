@@ -25,8 +25,8 @@ class DistortionPreviewTest {
             WarpLandmark(PointD(1.0, 1.0), PointD(0.0, 0.0)),
             WarpLandmark(PointD(.5, .5), PointD(shift, -5.0)),
         ))).reanchored()
-    private fun image() = BitmapUtils.prepare(Bitmap.createBitmap(300, 300, Bitmap.Config.ARGB_8888).apply {
-        setPixels(IntArray(300 * 300) { if (it % 300 > 152) Color.BLACK else Color.WHITE }, 0, 300, 0, 0, 300, 300)
+    private fun image(dark: Int = Color.BLACK) = BitmapUtils.prepare(Bitmap.createBitmap(300, 300, Bitmap.Config.ARGB_8888).apply {
+        setPixels(IntArray(300 * 300) { if (it % 300 > 152) dark else Color.WHITE }, 0, 300, 0, 0, 300, 300)
     })
     private fun editor(source: BitmapUtils.Prepared, initial: PreprocessSettings = settings()) =
         PreprocessEditorModel(initial, source, source, null, null, { true }, { true })
@@ -51,6 +51,37 @@ class DistortionPreviewTest {
             assertEquals(ModuleValue.ZERO, saved.fixedPreRecoveryEdits[fixed])
             val recoveredInput = MatrixSampler(source.luma, SamplingProfile(saved, false)).sample(saved.previewGeometry!!).first
             for (y in 0..32) for (x in 0..32) assertEquals(preview.matrix[x, y].value, recoveredInput[x, y].value)
+        } finally { source.bitmap.recycle() }
+    }
+
+    @Test fun thresholdEditsReuseThePendingFitAndReclassifyCellsOnTheSelectedGrid() {
+        val source = image(Color.rgb(128, 128, 128))
+        try {
+            val savedGrid = geometry()
+            val editor = editor(source, settings().copy(automaticThresholds = true, previewGeometry = savedGrid))
+            val manual = controls.copy(blackProgress = 90)
+            val request = editor.requestCorrection(manual, grid)!!
+            assertEquals(savedGrid, editor.sample(manual, grid)!!.geometry)
+
+            val black = manual.copy(blackProgress = 145)
+            assertNull(editor.requestCorrection(black, grid))
+            assertTrue(editor.correction.isCurrent(request))
+            assertTrue(editor.correction.accept(request, listOf(geometry(2.0), geometry(4.0), savedGrid)))
+            editor.correction.select(1)
+            val order = editor.correction.candidates
+            val selected = order[1]
+            val white = manual.copy(whiteProgress = 110)
+            for ((thresholds, value) in listOf(black to ModuleValue.ONE, white to ModuleValue.ZERO, manual to ModuleValue.ERASED)) {
+                assertNull(editor.requestCorrection(thresholds, grid))
+                assertTrue(editor.correctionReady(thresholds, grid))
+                assertSame(order, editor.correction.candidates)
+                assertSame(selected, editor.correction.selected)
+                val preview = editor.sample(thresholds, grid)!!
+                assertSame(selected, preview.geometry)
+                assertEquals(value, preview.matrix[24, 16].value)
+                assertSame(selected, editor.captureSettings(thresholds, grid).previewGeometry)
+            }
+            assertNull(editor.requestCorrection(manual.copy(automaticThresholds = true), grid))
         } finally { source.bitmap.recycle() }
     }
 
