@@ -15,8 +15,25 @@ internal fun imageWordMargins(de: DeinterleavedQr, extraction: CodewordExtractio
     return margins
 }
 
+internal class ImageErasurePlan(margins: IntArray, room: Int) {
+    val pool = if (room <= 0) emptyList() else margins.indices
+        .filter { margins[it] >= 0 }
+        .sortedWith(compareBy<Int> { margins[it] }.thenBy { it })
+        .take(8)
+    val trialSizes = buildList {
+        if (pool.isEmpty()) return@buildList
+        val odd = room % 2 != 0
+        add(if (odd || pool.size == 1) 1 else 2)
+        val extraSize = if (odd) 3 else 4
+        if (extraSize <= room && extraSize <= pool.size) add(extraSize)
+    }
+    val trialCount: Int get() = trialSizes.sumOf { size ->
+        (1..size).fold(1) { count, i -> count * (pool.size - i + 1) / i }
+    }
+}
+
 internal fun retryImageErasures(
-    block: RsBlockWork, ecc: Int, margins: IntArray, original: ConventionalRsBlockDiagnostic,
+    block: RsBlockWork, ecc: Int, plan: ImageErasurePlan, original: ConventionalRsBlockDiagnostic,
     rs: ReedSolomonErasures, cancellation: RecoveryCancellation, cached: ReedSolomonErasures.Result? = null,
 ): List<PartialCodewordSolver.Result> {
     val erased = block.unknownMasks.indices.filter { block.unknownMasks[it] != 0 }.toIntArray()
@@ -25,13 +42,6 @@ internal fun retryImageErasures(
         val result = cached ?: rs.decode(block.codewords, ecc, erased)
         results += PartialCodewordSolver.Result(result.corrected, result.errataPositions,
             0, 0, intArrayOf(), requireNotNull(original.margin))
-    }
-    val room = ecc - erased.size
-    if (room <= 0) return results
-    val pool = mutableListOf<Int>()
-    for (group in margins.indices.filter { margins[it] >= 0 }.groupBy { margins[it] }.toSortedMap().values) {
-        if (pool.size + group.size > 4) break
-        pool += group
     }
     fun attempt(extra: List<Int>) {
         cancellation.check()
@@ -45,11 +55,21 @@ internal fun retryImageErasures(
         results.add(PartialCodewordSolver.Result(result.corrected, result.errataPositions, 0, 0, intArrayOf(),
             ecc - positions.size - 2 * errors, imageErasures = extra))
     }
-    // With odd room, either singleton covers any decodable pair. With even room,
-    // a decodable singleton has a unit of slack for a second erasure.
-    if (room % 2 == 0 && pool.size >= 2) {
-        for (i in pool.indices) for (j in 0 until i) attempt(listOf(pool[j], pool[i]))
-    } else for (position in pool) attempt(listOf(position))
+    // Enumerate each subset once, trying smaller erasure counts first.
+    for (size in plan.trialSizes) {
+        val positions = IntArray(size)
+        fun choose(remaining: Int, end: Int) {
+            if (remaining == 0) {
+                attempt(positions.toList())
+                return
+            }
+            for (i in remaining - 1 until end) {
+                positions[remaining - 1] = plan.pool[i]
+                choose(remaining - 1, i)
+            }
+        }
+        choose(size, plan.pool.size)
+    }
     return PartialCodewordSolver.mergeCandidates(results)
 }
 

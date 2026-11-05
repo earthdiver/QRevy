@@ -21,7 +21,7 @@ class ImageErasureSuccessTest {
         assertTrue(diagnostic.succeeded)
         assertFalse(expected.contentEquals(diagnostic.correctedInterleaved))
         val retried = retryImageErasures(blocks.blocks.single(), blocks.ecSymbolsPerBlock,
-            imageWordMargins(blocks, extraction, matrix).single(), diagnostic.blocks.single(),
+            ImageErasurePlan(imageWordMargins(blocks, extraction, matrix).single(), 2), diagnostic.blocks.single(),
             ReedSolomonErasures(), RecoveryCancellation.NONE)
         assertTrue(retried.any { it.corrected.contentEquals(diagnostic.correctedInterleaved) && it.imageErasures.isEmpty() })
         assertTrue(retried.any { it.corrected.contentEquals(expected) && it.imageErasures.toSet() == setOf(0, 10) })
@@ -64,14 +64,14 @@ class ImageErasureSuccessTest {
     @Test fun retainsOriginalBlockWhenNoImageRetryCanRun() {
         val rs = ReedSolomonErasures()
         val expected = rs.encode(IntArray(19) { it }, 7)
-        for (erasureCount in listOf(0, 7)) {
+        for ((erasureCount, margin) in listOf(0 to -1, 7 to 90)) {
             val observed = expected.copyOf()
             val unknown = IntArray(expected.size)
             repeat(erasureCount) { observed[it] = 0; unknown[it] = 255 }
             val block = RsBlockWork(19, observed, unknown)
             val diagnostic = ConventionalRsBlockDiagnostic(0, expected.size, 19, 7, erasureCount,
                 0, 7 - erasureCount, ConventionalRsStatus.SUCCESS)
-            val result = retryImageErasures(block, 7, IntArray(expected.size) { 90 }, diagnostic,
+            val result = retryImageErasures(block, 7, ImageErasurePlan(IntArray(expected.size) { margin }, 7 - erasureCount), diagnostic,
                 rs, RecoveryCancellation.NONE).single()
             assertArrayEquals(expected, result.corrected)
             assertTrue(result.imageErasures.isEmpty())
@@ -84,12 +84,45 @@ class ImageErasureSuccessTest {
         val expected = rs.encode(IntArray(19) { it }, 7)
         val block = RsBlockWork(19, expected, IntArray(expected.size))
         val diagnostic = ConventionalRsBlockDiagnostic(0, expected.size, 19, 7, 0, 0, 7, ConventionalRsStatus.SUCCESS)
-        val margins = IntArray(expected.size) { if (it < 2) 1 else 90 }
+        val margins = IntArray(expected.size) { if (it < 2) 1 else -1 }
         val cached = rs.decode(expected, 7, intArrayOf())
-        val result = retryImageErasures(block, 7, margins, diagnostic, rs, RecoveryCancellation.NONE, cached).single()
+        val result = retryImageErasures(block, 7, ImageErasurePlan(margins, 7), diagnostic, rs, RecoveryCancellation.NONE, cached).single()
         assertArrayEquals(expected, result.corrected)
         assertTrue(result.imageErasures.isEmpty())
         assertEquals(setOf(listOf(0), listOf(1)), result.alternativeDerivations.map { it.imageErasures }.toSet())
+    }
+
+    @Test fun recoversWithThreeOrFourTemporaryErasuresFromTiedImageWords() {
+        for ((ecc, selectedErrors, otherErrors) in listOf(
+            Triple(ErrorCorrectionLevel.L, listOf(1, 4, 7), listOf(12, 16)),
+            Triple(ErrorCorrectionLevel.M, listOf(0, 2, 5, 7), listOf(12, 16, 20)),
+        )) {
+            val matrix = imageQr("Tied margins", 1, ecc, 2)
+            val original = CodewordExtractor.extract(matrix, 1, 2)
+            val expected = original.codewords.map { it.value }.toIntArray()
+            for (word in selectedErrors + otherErrors) {
+                flip(matrix, original, word, 0)
+                val cell = original.codewords[word].coordinates.first()
+                matrix.setImageMargin(cell.x, cell.y, 90)
+            }
+            val candidate = RecoveryEngine().recover(matrix,
+                formatConstraint = QrFormatConstraint(ecc, 2),
+                maxKnownDataEccMismatches = selectedErrors.size + otherErrors.size,
+                listDecodingAdditionalErrors = 0, knownBitErrorLimit = 0)
+                .single { it.correctedInterleaved.contentEquals(expected) }
+            assertEquals(selectedErrors, candidate.actualBlockMethods.single().imageErasures)
+        }
+    }
+
+    @Test fun selectsSmallestMarginsThenEarliestCodewordsAtTheCutoff() {
+        val margins = intArrayOf(9, 5, 5, 5, 5, -1, 5, 5, 5, 5, 1, 5)
+        val odd = ImageErasurePlan(margins, 3)
+        val even = ImageErasurePlan(margins, 4)
+        assertEquals(listOf(10, 1, 2, 3, 4, 6, 7, 8), odd.pool)
+        assertEquals(64, odd.trialCount)
+        assertEquals(98, even.trialCount)
+        assertEquals(listOf(1), ImageErasurePlan(margins, 1).trialSizes)
+        assertEquals(listOf(2), ImageErasurePlan(margins, 2).trialSizes)
     }
 
     private fun imageQr(text: String, version: Int, ecc: ErrorCorrectionLevel, mask: Int): QrMatrix {

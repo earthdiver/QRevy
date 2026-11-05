@@ -47,22 +47,30 @@ internal class BlockQrSearch(private val rs: ReedSolomonErasures) {
         val de = input.blocks
         val blockCandidateResults = ArrayList<List<PartialCodewordSolver.Result>>(de.blocks.size)
         val imageRetry = input.phase == RecoveryPhase.IMAGE_ERASURES
+        val imagePlans = if (imageRetry) {
+            val margins = imageWordMargins(de, input.extraction, input.matrix)
+            de.blocks.mapIndexed { index, block ->
+                ImageErasurePlan(margins[index], de.ecSymbolsPerBlock - block.unknownMasks.count { it != 0 })
+            }
+        } else emptyList()
         var blockWorkingBytes = 0L
         if (imageRetry) {
-            // Includes ranked words, the original plus six retry outputs per block, and transient RS work.
-            blockWorkingBytes = 8192L + input.extraction.codewords.size * 640L
+            // Allow for the original result, all retry outputs, and transient RS work.
+            blockWorkingBytes = 8192L + de.blocks.indices.sumOf { index ->
+                val bytesPerWord = maxOf(640L, 192L + 64L * (1 + imagePlans[index].trialCount))
+                de.blocks[index].codewords.size * bytesPerWord
+            }
             if (blockWorkingBytes > availableWorkingBytes()) {
                 onStops(setOf(CombinationSearchStop.WORKING_MEMORY_LIMIT))
                 return Outcome()
             }
         }
-        val margins = if (imageRetry) imageWordMargins(de, input.extraction, input.matrix) else emptyList()
         for ((blockIndex, block) in de.blocks.withIndex()) {
             onBlockAttempt()
             cancellation.check()
             val blockErasures = block.unknownMasks.count { it != 0 }
             if (imageRetry) {
-                val results = retryImageErasures(block, de.ecSymbolsPerBlock, margins[blockIndex],
+                val results = retryImageErasures(block, de.ecSymbolsPerBlock, imagePlans[blockIndex],
                     input.conventional.blocks[blockIndex], rs, cancellation, originalBlock(blockIndex))
                 if (results.isEmpty()) return Outcome()
                 blockCandidateResults += results
