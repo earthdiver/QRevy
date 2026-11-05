@@ -206,21 +206,9 @@ data class GridGeometry(
 
     fun imageToModule(px: Double, py: Double): PointD {
         inverseProjective?.let {
-            var point = it.map(px, py)
-            if (warp == null) return point
-            repeat(20) {
-                val image = moduleToImage(point.x, point.y)
-                val error = PointD(px - image.x, py - image.y)
-                if (error.distanceTo(PointD(0.0, 0.0)) < 1e-5) return point
-                val dx = (moduleToImage(point.x + .001, point.y) - image) * 1000.0
-                val dy = (moduleToImage(point.x, point.y + .001) - image) * 1000.0
-                val det = dx.x * dy.y - dx.y * dy.x
-                if (!det.isFinite() || kotlin.math.abs(det) < 1e-10) return PointD(Double.NaN, Double.NaN)
-                point += PointD((error.x * dy.y - error.y * dy.x) / det,
-                    (dx.x * error.y - dx.y * error.x) / det)
-                if (!point.x.isFinite() || !point.y.isFinite()) return PointD(Double.NaN, Double.NaN)
-            }
-            return PointD(Double.NaN, Double.NaN)
+            if (warp == null) return it.map(px, py)
+            val initial = try { it.map(px, py) } catch (_: IllegalArgumentException) { PointD(Double.NaN, Double.NaN) }
+            return invertCurvedGrid(requireNotNull(projective), warp, dimension, initial, PointD(px, py))
         }
         val dx = px - finderCenterX; val dy = py - finderCenterY
         val c = cos(angleRad); val s = sin(angleRad)
