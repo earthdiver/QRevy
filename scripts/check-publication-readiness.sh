@@ -49,10 +49,10 @@ if [ ! -f LICENSE ] || [ ! -f THIRD_PARTY_NOTICES.md ] || [ ! -f PRIVACY.md ]; t
   blocker 'LICENSE, THIRD_PARTY_NOTICES.md, and PRIVACY.md must be present.'
 fi
 
-EXPECTED_DIST='dce76f55f8e251a3a1f130eb120f30b3d271de2b76c9b0729d316b5a1b6dc01f'
+EXPECTED_DIST='21bd5da2de49b642904077f38c0efdc7778e92b3ed0889392dca61b97e389607'
 EXPECTED_WRAPPER='3b8a25775a69158b5ad2b1d17a80a88dc7b40a352a73eb27d06c612a7ce68e98'
 if ! grep -q "distributionSha256Sum=$EXPECTED_DIST" gradle/wrapper/gradle-wrapper.properties; then
-  blocker 'Gradle 9.8.1 distribution SHA-256 pin is missing or changed.'
+  blocker 'Gradle 9.8.2 distribution SHA-256 pin is missing or changed.'
 fi
 if ! grep -q "WRAPPER_JAR_SHA256=\"$EXPECTED_WRAPPER\"" bootstrap-wrapper.sh; then
   blocker 'Gradle wrapper-JAR SHA-256 verification is missing or changed.'

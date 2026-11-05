@@ -11,17 +11,39 @@ import kotlin.math.roundToInt
 internal class CurvedFinderContours(
     private val image: LumaImage,
     private val inverted: Boolean,
+    private val maxWorkingBytes: Long = DEFAULT_WORKING_BYTES,
     private val stopped: () -> Boolean,
 ) {
     data class Observation(val module: PointD, val image: PointD)
     data class Seed(val base: GridGeometry, val points: List<Observation>)
-    private data class Component(val dark: Boolean, val parent: Int, val hull: List<PointD>, val border: Boolean)
+    private data class Component(val dark: Boolean, val parent: Int, val hull: List<PointD>,
+        val area: Double, var nested: Boolean = false)
+    var memoryLimited = false
+        private set
+    init { require(maxWorkingBytes >= 0) }
     private data class Scale(val image: LumaImage, val sx: Double, val sy: Double)
+    companion object {
+        const val DEFAULT_WORKING_BYTES = 32L * 1024 * 1024
+        private const val QUAD_WORKING_BYTES = 1024L
+        private const val UNVISITED = -1
+        private const val EXCLUDED = -2
+    }
     private val contours by lazy {
+        var retainedBytes = 0L
         listOf(384, 640, 960).map { minOf(it, max(image.width, image.height)) }.distinct().mapNotNull { limit ->
             if (stopped()) null else {
+                val factor = minOf(1.0, limit.toDouble() / max(image.width, image.height))
+                val w = max(1, (image.width * factor).roundToInt())
+                val h = max(1, (image.height * factor).roundToInt())
+                // Source pixels, blur, labels, queue, row extrema and temporary hull collections.
+                val workingBytes = retainedBytes + 8192L + w.toLong() * h * 21 + h * 1024L
+                if (workingBytes > maxWorkingBytes) {
+                    memoryLimited = true
+                    return@mapNotNull null
+                }
                 val scale = resize(limit)
-                val found = nestedQuads(scale.image)
+                val found = nestedQuads(scale.image, workingBytes)
+                retainedBytes += found.size * QUAD_WORKING_BYTES
                 found.map { q -> q.map { PointD((it.x + .5) * scale.sx - .5, (it.y + .5) * scale.sy - .5) } }
             }
         }
@@ -97,7 +119,7 @@ internal class CurvedFinderContours(
         return Scale(LumaImage(w, h, pixels), sx, sy)
     }
 
-    private fun nestedQuads(input: LumaImage): List<List<PointD>> {
+    private fun nestedQuads(input: LumaImage, initialWorkingBytes: Long): List<List<PointD>> {
         val w = input.width; val h = input.height
         // Separable Gaussian, matching the experiment's 41-pixel adaptive window.
         val weights = DoubleArray(41) { exp(-((it - 20.0) * (it - 20.0)) / (2 * 6.5 * 6.5)) }
@@ -117,52 +139,88 @@ internal class CurvedFinderContours(
                 dark[y * w + x] = input.luma(x, y) <= mean.roundToInt() - 5
             }
         }
-        val labels = IntArray(w * h) { -1 }; val queue = IntArray(w * h)
+        val labels = IntArray(w * h) { UNVISITED }
+        val queue = IntArray(w * h)
+        val left = IntArray(h) { w }
+        val right = IntArray(h) { -1 }
         val components = mutableListOf<Component>()
+        var workingBytes = initialWorkingBytes
         for (start in labels.indices) {
-            if (labels[start] >= 0) continue
+            if (labels[start] != UNVISITED) continue
             if (stopped()) return emptyList()
             val color = dark[start]; val label = components.size
-            val parent = if (start >= w) labels[start - w] else -1
+            val parent = if (start >= w) labels[start - w] else EXCLUDED
             var head = 0; var tail = 1; queue[0] = start; labels[start] = label
-            val boundary = mutableListOf<PointD>(); var border = false
+            var border = false
             while (head < tail) {
                 if (head % 4096 == 0 && stopped()) return emptyList()
                 val i = queue[head++]; val x = i % w; val y = i / w
                 if (x == 0 || x == w - 1 || y == 0 || y == h - 1) border = true
-                var edge = false
                 for (j in 0..3) {
                     val nx = x + if (j == 0) -1 else if (j == 1) 1 else 0
                     val ny = y + if (j == 2) -1 else if (j == 3) 1 else 0
-                    if (nx !in 0 until w || ny !in 0 until h) { edge = true; continue }
+                    if (nx !in 0 until w || ny !in 0 until h) continue
                     val ni = ny * w + nx
-                    if (dark[ni] != color) edge = true
-                    else if (labels[ni] < 0) { labels[ni] = label; queue[tail++] = ni }
+                    if (dark[ni] == color && labels[ni] == UNVISITED) {
+                        labels[ni] = label
+                        queue[tail++] = ni
+                    }
                 }
-                if (edge) boundary += PointD(x.toDouble(), y.toDouble())
             }
-            components += Component(color, parent, if (tail >= 9 && !border) hull(boundary) else emptyList(), border)
+            if (tail < 9 || border) {
+                // Children keep this excluded parent, rather than attaching to its ancestor.
+                for (i in 0 until tail) labels[queue[i]] = EXCLUDED
+                continue
+            }
+            val outline = componentHull(queue, tail, w, left, right)
+            // Includes retained geometry and the later candidate sorting/mapping collections.
+            workingBytes += QUAD_WORKING_BYTES + outline.size * 48L
+            if (workingBytes > maxWorkingBytes) {
+                memoryLimited = true
+                // An unvisited competing finder must not turn an ambiguous scale into a match.
+                return emptyList()
+            }
+            val component = Component(color, parent, outline, area(outline))
+            components += component
+            // Ancestors are already complete in raster order. Only parent indices are needed.
+            val white = components.getOrNull(parent)
+            val outer = white?.let { components.getOrNull(it.parent) }
+            if (color && white?.dark == false && outer?.dark == true &&
+                white.area / outer.area in .15..0.85 && component.area / outer.area in .03..0.5) {
+                outer.nested = true
+            }
         }
-        val children = components.indices.groupBy { components[it].parent }
-        return components.indices.mapNotNull { i ->
-            val c = components[i]
-            if (!c.dark || c.border || c.hull.size < 4) return@mapNotNull null
-            val area = area(c.hull)
-            if (area < 40) return@mapNotNull null
-            val nested = children[i].orEmpty().any { child ->
-                val white = components[child]
-                !white.dark && area(white.hull) / area in .15..0.85 && children[child].orEmpty().any { grand ->
-                    components[grand].dark && area(components[grand].hull) / area in .03..0.5
-                }
-            }
-            if (!nested) return@mapNotNull null
-            val q = c.hull.toMutableList()
+        return components.mapNotNull { component ->
+            if (stopped()) return emptyList()
+            if (!component.dark || !component.nested || component.hull.size < 4 || component.area < 40)
+                return@mapNotNull null
+            val q = component.hull.toMutableList()
             while (q.size > 4) {
                 val remove = q.indices.minBy { k -> abs(cross(q[(k + q.size - 1) % q.size], q[k], q[(k + 1) % q.size])) }
                 q.removeAt(remove)
             }
-            if (area(q) / area < .90) null else q
+            if (area(q) / component.area < .90) null else q
         }
+    }
+
+    /** Row endpoints have exactly the same convex hull as all component boundary pixels. */
+    private fun componentHull(queue: IntArray, count: Int, width: Int, left: IntArray, right: IntArray): List<PointD> {
+        var firstRow = left.size
+        var lastRow = -1
+        for (i in 0 until count) {
+            val x = queue[i] % width; val y = queue[i] / width
+            left[y] = minOf(left[y], x); right[y] = maxOf(right[y], x)
+            firstRow = minOf(firstRow, y); lastRow = maxOf(lastRow, y)
+        }
+        val endpoints = ArrayList<PointD>(2 * (lastRow - firstRow + 1))
+        for (y in firstRow..lastRow) {
+            if (right[y] >= 0) {
+                endpoints += PointD(left[y].toDouble(), y.toDouble())
+                if (left[y] != right[y]) endpoints += PointD(right[y].toDouble(), y.toDouble())
+                left[y] = width; right[y] = -1
+            }
+        }
+        return hull(endpoints)
     }
 
     private fun hull(points: List<PointD>): List<PointD> {

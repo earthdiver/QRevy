@@ -6,6 +6,7 @@ import io.github.earthdiver.qrrepair.core.*
 internal class DistortionPreviewState {
     data class Input(val image: LumaImage, val base: GridGeometry, val profile: SamplingProfile)
     class Request(val input: Input)
+    data class Calculation(val candidates: List<GridGeometry>, val memoryLimited: Boolean = false)
     @Volatile private var current: Request? = null
     var candidates: List<GridGeometry> = emptyList()
         private set
@@ -14,6 +15,8 @@ internal class DistortionPreviewState {
     var complete = false
         private set
     var failed = false
+        private set
+    var memoryLimited = false
         private set
     val selected: GridGeometry? get() = candidates.getOrNull(selectedIndex)
 
@@ -34,13 +37,15 @@ internal class DistortionPreviewState {
         selectedIndex = 0
         complete = false
         failed = false
+        memoryLimited = false
     }
     fun restore(request: Request, geometry: GridGeometry) {
         if (isCurrent(request)) candidates = listOf(geometry)
     }
-    fun accept(request: Request, result: List<GridGeometry>, failed: Boolean = false): Boolean {
+    fun accept(request: Request, result: List<GridGeometry>, failed: Boolean = false, memoryLimited: Boolean = false): Boolean {
         if (!isCurrent(request)) return false
         this.failed = failed
+        this.memoryLimited = memoryLimited
         val retained = selected
         candidates = (result + listOfNotNull(retained)).distinct().ifEmpty { listOf(request.input.base) }
         selectedIndex = candidates.indexOf(retained).coerceAtLeast(0)
@@ -52,9 +57,10 @@ internal class DistortionPreviewState {
         selectedIndex = index
     }
 
-    fun calculate(request: Request): List<GridGeometry> {
+    fun calculate(request: Request): Calculation {
         val (image, base, profile) = request.input
-        return CurvedGridDetector(image, profile, stopRequested = { !isCurrent(request) })
-            .candidates(base).distinct().sortedBy { quickGeometryScore(image, it, profile) }
+        val detector = CurvedGridDetector(image, profile, stopRequested = { !isCurrent(request) })
+        val candidates = detector.candidates(base).distinct().sortedBy { quickGeometryScore(image, it, profile) }
+        return Calculation(candidates, detector.contourMemoryLimited)
     }
 }

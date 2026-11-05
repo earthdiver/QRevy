@@ -90,12 +90,7 @@ internal object StrictQrPayloadValidator {
         }
         fun issue(value: Issue) { current = current?.copy(issue = value) }
         fun count(value: Int, mode: Int, available: Int): Int {
-            val required = when (mode) {
-                1 -> value / 3 * 10 + intArrayOf(0, 4, 7)[value % 3]
-                2 -> value / 2 * 11 + value % 2 * 6
-                4 -> value * 8
-                else -> value * 13
-            }
+            val required = requireNotNull(QrPayloadLayout.payloadBits(mode, value))
             current = current?.copy(count = value, requiredBits = required, availableBits = available)
             return value
         }
@@ -311,17 +306,8 @@ internal object StrictQrPayloadValidator {
         return bits.available == 0
     }
 
-    private fun countBits(mode: Int, version: Int): Int {
-        val group = when (version) { in 1..9 -> 0; in 10..26 -> 1; else -> 2 }
-        return when (mode) {
-            1 -> intArrayOf(10, 12, 14)[group]
-            2 -> intArrayOf(9, 11, 13)[group]
-            4 -> intArrayOf(8, 16, 16)[group]
-            8 -> intArrayOf(8, 10, 12)[group]
-            13 -> intArrayOf(8, 10, 12)[group]
-            else -> error("Mode has no character count")
-        }
-    }
+    private fun countBits(mode: Int, version: Int): Int =
+        QrPayloadLayout.characterCountBits(mode, version) ?: error("Mode has no character count")
 
     private class Bits(private val bytes: ByteArray, private val unknownMasks: IntArray?, private val bitLength: Int, private val trace: Trace? = null) {
         var position = 0

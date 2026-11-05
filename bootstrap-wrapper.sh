@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
 set -eu
 
-GRADLE_VERSION="9.8.1"
-DIST_SHA256="dce76f55f8e251a3a1f130eb120f30b3d271de2b76c9b0729d316b5a1b6dc01f"
+GRADLE_VERSION="9.8.2"
+DIST_SHA256="21bd5da2de49b642904077f38c0efdc7778e92b3ed0889392dca61b97e389607"
 WRAPPER_JAR_SHA256="3b8a25775a69158b5ad2b1d17a80a88dc7b40a352a73eb27d06c612a7ce68e98"
 DIST_URL="https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
 

@@ -268,13 +268,7 @@ class RsPayloadTraversal(
                             val countStart = position + if (mode == 13) 8 else 4
                             if (countStart > totalBits) continue
                             if (mode == 13 && !(0 until 4).all { constrain(position + 4 + it, if (it == 3) 1 else 0) }) continue
-                            val group = if (version <= 9) 0 else if (version <= 26) 1 else 2
-                            val width = when (mode) {
-                                1 -> intArrayOf(10, 12, 14)[group]
-                                2 -> intArrayOf(9, 11, 13)[group]
-                                4 -> intArrayOf(8, 16, 16)[group]
-                                else -> intArrayOf(8, 10, 12)[group]
-                            }
+                            val width = requireNotNull(QrPayloadLayout.characterCountBits(mode, version.coerceAtLeast(1)))
                             val body = countStart + width
                             if (body > totalBits) continue
                             val remaining = totalBits - body
@@ -285,12 +279,7 @@ class RsPayloadTraversal(
                                 else -> remaining / 13
                             }
                             for (count in field(countStart, width, maximum)) {
-                                val length = when (mode) {
-                                    1 -> count / 3 * 10 + intArrayOf(0, 4, 7)[count % 3]
-                                    2 -> count / 2 * 11 + count % 2 * 6
-                                    4 -> count * 8
-                                    else -> count * 13
-                                }
+                                val length = requireNotNull(QrPayloadLayout.payloadBits(mode, count))
                                 val valueStart = pendingValues.size
                                 if (mode == 4 && assumeUtf8ByteSegments) {
                                     repeat(count) { i -> pendingValues += ValueGroup(body + i * 8, 8, 255, count - i - 1) }
