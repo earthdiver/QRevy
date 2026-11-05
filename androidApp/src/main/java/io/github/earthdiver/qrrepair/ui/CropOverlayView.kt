@@ -101,10 +101,14 @@ class CropOverlayView(context: Context) : View(context) {
                 if (dragMode == MOVE) {
                     crop.offset(dx.coerceIn(-crop.left, source.width - crop.right), dy.coerceIn(-crop.top, source.height - crop.bottom))
                 } else {
-                    if (dragMode and LEFT != 0) crop.left = x.coerceIn(0f, crop.right - minSize)
-                    if (dragMode and RIGHT != 0) crop.right = x.coerceIn(crop.left + minSize, source.width.toFloat())
-                    if (dragMode and TOP != 0) crop.top = y.coerceIn(0f, crop.bottom - minSize)
-                    if (dragMode and BOTTOM != 0) crop.bottom = y.coerceIn(crop.top + minSize, source.height.toFloat())
+                    // Small images and restored crops can already be below the usual minimum.
+                    // Let them expand without forcing the opposite edge outside the image.
+                    val minWidth = min(minSize, crop.width())
+                    val minHeight = min(minSize, crop.height())
+                    if (dragMode and LEFT != 0) crop.left = x.coerceIn(0f, crop.right - minWidth)
+                    if (dragMode and RIGHT != 0) crop.right = x.coerceIn(crop.left + minWidth, source.width.toFloat())
+                    if (dragMode and TOP != 0) crop.top = y.coerceIn(0f, crop.bottom - minHeight)
+                    if (dragMode and BOTTOM != 0) crop.bottom = y.coerceIn(crop.top + minHeight, source.height.toFloat())
                 }
                 lastX = x; lastY = y
                 invalidate()

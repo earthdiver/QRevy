@@ -11,6 +11,8 @@ data class RecoveryDisplayConditions(
     val dataEccLimit: Int?,
     val partialBitSearchLimit: Int = PartialBitSearchLimit.DEFAULT,
     val listDecodingAdditionalErrors: Int = ListDecodingLimit.DEFAULT,
+    val knownBitErrorLimit: Int = 0,
+    val assumeUtf8ByteSegments: Boolean = false,
 )
 
 fun inputAgreementText(known: Int, mismatches: Int, format: Boolean, compact: Boolean = false): String {
@@ -44,14 +46,19 @@ fun RecoveryDisplayConditions.limitText(formatRegion: Boolean): String {
         "$nameEn mismatch limit: ${limit?.let { "$it bits" } ?: "none"}")
 }
 
+fun RecoveryDisplayConditions.listDecodingLimitText(): String = if (listDecodingAdditionalErrors == 0)
+    localizedText("リスト復号: OFF（GS・Wu・KV）", "List decoding: OFF (GS/Wu/KV)")
+else localizedText("通常RSからの追加探索上限: ＋${listDecodingAdditionalErrors}語／RSブロック（GS・Wu）",
+    "List-decoding extension limit: +$listDecodingAdditionalErrors symbols per RS block (GS/Wu)")
+
 fun RecoveryCandidate.conditionText(): String = buildString {
     val conditions = displayConditions
     conditions?.let {
+        append(localizedText("既知bit誤り探索: ${it.knownBitErrorLimit}bit（0はOFF）\n", "Known-bit error search: ${it.knownBitErrorLimit} bits (0 is off)\n"))
         append(it.limitText(true)).append('\n').append(it.limitText(false))
         append(localizedText("\n部分bit探索・自由度の上限: ${it.partialBitSearchLimit}bit／RSブロック",
             "\nPartial-bit search / dimension limit: ${it.partialBitSearchLimit} bits per RS block"))
-        append(localizedText("\n通常RSからの追加探索上限: ＋${it.listDecodingAdditionalErrors}語／RSブロック（GS・Wu）",
-            "\nList-decoding extension limit: +${it.listDecodingAdditionalErrors} symbols per RS block (GS/Wu)"))
+        append('\n').append(it.listDecodingLimitText())
         append(localizedText("\n形式の選択: ECC ", "\nFormat selection: ECC "))
         append(if (it.format?.ecLevel != null) localizedText("指定", "specified") else localizedText("自動", "automatic"))
         append(localizedText(" / マスク ", " / mask "))
@@ -73,13 +80,13 @@ fun RecoveryCandidate.conditionText(): String = buildString {
         }
     }
     if (constraintForcedByUserSetting) {
-        append(localizedText("\n単一セグメントの仮定: この候補の補完に使用しました。",
-            "\nSingle-segment assumption: used to fill this candidate."))
+        append(localizedText("\n単一セグメントの終端後構造の強制: この候補の補完に使用しました。",
+            "\nSingle-segment terminator and padding forcing: used to fill this candidate."))
     } else if (conditions != null) {
         append(if (conditions.trustSingleSegment) localizedText(
-            "\n単一セグメントの仮定: 設定はONですが、この候補の補完には使用していません。",
-            "\nSingle-segment assumption: enabled, but not used to fill this candidate.",
-        ) else localizedText("\n単一セグメントの仮定: 使用していません。",
-            "\nSingle-segment assumption: not used."))
+            "\n単一セグメントの終端後構造の強制: 設定はONですが、この候補の補完には使用していません。",
+            "\nSingle-segment terminator and padding forcing: enabled, but not used to fill this candidate.",
+        ) else localizedText("\n単一セグメントの終端後構造の強制: 使用していません。",
+            "\nSingle-segment terminator and padding forcing: not used."))
     }
 }.trim()

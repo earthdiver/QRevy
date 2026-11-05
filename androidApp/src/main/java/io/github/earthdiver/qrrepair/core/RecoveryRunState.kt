@@ -10,7 +10,7 @@ internal enum class RecordedRecoveryCandidate(val parsed: Boolean) {
 }
 
 internal enum class RecoveryPhase {
-    ORIGINAL_RS, EARLY_LIST, BIT_CONSTRAINTS, PARTIAL_RS, ADDITIONAL_LIST;
+    ORIGINAL_RS, IMAGE_ERASURES, EARLY_LIST, BIT_CONSTRAINTS, PARTIAL_RS, ADDITIONAL_LIST, KNOWN_BIT_ERRORS;
 
     val isListDecoding: Boolean get() = this == EARLY_LIST || this == ADDITIONAL_LIST
     val usesAssignments: Boolean get() = this == BIT_CONSTRAINTS || this == PARTIAL_RS || this == ADDITIONAL_LIST
@@ -24,12 +24,21 @@ internal class RecoveryRunState(
     val partialBitSearchLimit: Int,
     val listDecodingBudget: ListDecodingBudget,
     val listDecodingAdditionalErrors: Int = ListDecodingLimit.DEFAULT,
+    private val discoveryCounter: RecoveryDiscoveryCounter = RecoveryDiscoveryCounter(),
+    val knownBitErrorLimit: Int = 0,
+    val knownBitErrorBudget: KnownBitErrorBudget = KnownBitErrorBudget(),
 ) {
+    val knownBitTrialsAtStart = knownBitErrorBudget.trials
+    var knownBitSearchAttempted = false
     var phase = RecoveryPhase.ORIGINAL_RS
     val listDecodingPhase: Boolean get() = phase.isListDecoding
     var listDecodingSummary: ListDecodingSummary? = null
     val listDecodingCache = ListDecodingTrialCache(minOf(256L * 1024, retentionBudget.workingLimitBytes / 16))
-    val availableWorkingBytes: Long get() = retentionBudget.workingLimitBytes - listDecodingCache.workingBytes
+    val bitSolver = RsBitConstraintSolver(maximumCacheBytes = minOf(128L * 1024, retentionBudget.workingLimitBytes / 32))
+    val originalBlocks = mutableMapOf<Triple<ErrorCorrectionLevel, Int, Int>, ReedSolomonErasures.Result>()
+    var originalBlockBytes = 0L
+    val listSearchWorkingBytes: Long get() = retentionBudget.workingLimitBytes - originalBlockBytes - bitSolver.cacheWorkingBytes
+    val availableWorkingBytes: Long get() = listSearchWorkingBytes - listDecodingCache.workingBytes
     val listDecodingStatuses = ListDecodingStage.entries.associateWith { ListDecodingStatus.NOT_REACHED }.toMutableMap()
     val listDecodingNewTrials = mutableMapOf<ListDecodingStage, Int>()
     val listDecodingStops = linkedSetOf<CombinationSearchStop>()
@@ -51,6 +60,9 @@ internal class RecoveryRunState(
     val candidateRejections = linkedSetOf<RecoveryCandidateRejection>()
     val singleSegmentStatuses = linkedSetOf<SingleSegmentStatus>()
     val priorityHeaderHypotheses = linkedSetOf<String>()
+    var singleSegmentRetryAvailable = false
+    var decodedCandidate = false
+        private set
     var acceptedCandidate = false
         private set
     var unresolvedCalculations = false
@@ -66,6 +78,8 @@ internal class RecoveryRunState(
         is RecoveryCandidateEvaluation.Accepted -> {
             if (evaluation.decoderFailed) incompleteReasons += SearchIncompleteReason.INTERNAL_ERROR
             acceptedCandidate = true
+            decodedCandidate = decodedCandidate || evaluation.candidate.payloadParsed
+            discoveryCounter.record(evaluation.candidate)
             val alreadyParsed = candidates.containsParsed(evaluation.candidate)
             candidates.add(evaluation.candidate)
             when {
@@ -109,11 +123,15 @@ internal class RecoveryRunState(
             inputBlocker = earlyBlocker ?: blockers.singleOrNull()?.takeIf { allInputsChecked },
             candidateRejections = candidateRejections.toSet(),
             listDecoding = listDecodingSummary,
+            knownBitSearchAttempted = knownBitSearchAttempted,
+            knownBitTrials = knownBitErrorBudget.trials - knownBitTrialsAtStart,
             listDecodingExecution = ListDecodingExecution(listDecodingStatuses.mapValues { setOf(it.value) },
                 newTrials = listDecodingNewTrials.toMap()),
             singleSegmentStatuses = singleSegmentStatuses.toSet(),
             priorityHeaderHypotheses = priorityHeaderHypotheses.toSet(),
             acceptedCandidate = acceptedCandidate,
+            decodedCandidate = decodedCandidate,
+            singleSegmentRetryAvailable = singleSegmentRetryAvailable,
             unresolvedCalculations = unresolvedCalculations,
             unsearched = incompleteReasons.isNotEmpty() || combinationSearch.unsearched,
             incompleteReasons = incompleteReasons + combinationSearch.incompleteReasons,

@@ -1,5 +1,6 @@
 package io.github.earthdiver.qrrepair.core
 
+import com.google.zxing.qrcode.decoder.Version
 import io.github.earthdiver.qrrepair.localizedText
 import kotlin.math.abs
 import kotlin.math.asin
@@ -16,6 +17,7 @@ data class GeometryHypothesis(
     val quickScore: Double,
     val finderRoleMap: Map<FinderRole, Int> = emptyMap(),
     val alignment: AlignmentCandidate? = null,
+    val patternRefined: Boolean = false,
 ) {
     val finderIndex: Int get() = finderIndices.firstOrNull() ?: -1
 }
@@ -44,6 +46,7 @@ data class AutoRecoveryResult(
     val attemptedGeometries: Int = attempts.size,
     val testedHypotheses: List<GeometryHypothesis> = attempts.map { it.hypothesis },
     val interrupted: Boolean = false,
+    val discoveredCandidates: RecoveryDiscoveryCount? = null,
 ) {
     val candidatesTruncated: Boolean get() = searchDiagnostic?.candidatesOmitted == true
     val successfulAttempts: List<GeometryAttempt>
@@ -104,7 +107,10 @@ internal fun confirmedFinderCandidate(
     )
 }
 
-class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEngine()) {
+class AutoRecoveryEngine(
+    private val recoveryEngine: RecoveryEngine = RecoveryEngine(),
+    private val maxContourWorkingBytes: Long = CurvedFinderContours.DEFAULT_WORKING_BYTES,
+) {
     fun run(
         image: LumaImage,
         maxFinders: Int = 6,
@@ -116,13 +122,20 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
         stopRequested: () -> Boolean = { false },
         onPriorityProgress: ((done: Int, total: Int) -> Unit)? = null,
         listDecodingBudget: ListDecodingBudget = ListDecodingBudget(),
+        knownBitErrorBudget: KnownBitErrorBudget = KnownBitErrorBudget(),
+        discoveryCounter: RecoveryDiscoveryCounter = RecoveryDiscoveryCounter(),
         onProgress: ((done: Int, total: Int, message: String) -> Unit)? = null,
     ): AutoRecoveryResult {
         cancellation.check()
         require(maxFinders >= 0) { "maxFinders must be non-negative" }
         require(maxGeometryAttempts >= 0) { "maxGeometryAttempts must be non-negative" }
-        val settings = profile?.settings ?: return AutoRecoveryResult(emptyList(), emptyList(), profile)
-        val seeds = manualGeometrySeeds(settings)
+        val settings = profile?.settings ?: return AutoRecoveryResult(emptyList(), emptyList(), profile,
+            discoveredCandidates = discoveryCounter.snapshot)
+        val preview = settings.previewGeometry?.takeIf {
+            settings.distortionCorrection && settings.logicalQuad != null && it.version == settings.version
+        }?.let { GeometryHypothesis(emptyList(), it, quickGeometryScore(image, it, profile)) }
+        val seeds = if (preview != null && !settings.searchQuadNeighborhood) emptyList()
+            else manualGeometrySeeds(settings)
         val selectedSeeds = seeds.take(maxGeometryAttempts)
         val baseHypotheses = selectedSeeds.mapNotNull { (version, quad) ->
             cancellation.check()
@@ -153,7 +166,22 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
             if (score > base.quickScore + 12.0) return@mapNotNull null
             base.copy(geometry = refined.first, quickScore = score, alignment = refined.second)
         }
-        val hypotheses = (baseHypotheses + refinedHypotheses).take(maxGeometryAttempts)
+        // Keep the ordinary attempt budget intact. Non-rigid candidates have a separate bounded budget.
+        val ordinary = (baseHypotheses + refinedHypotheses).take(maxGeometryAttempts)
+        val patternLimitReached = settings.searchQuadNeighborhood && ordinary.isNotEmpty() && ordinary.size >= maxGeometryAttempts
+        val patternFit = if (settings.searchQuadNeighborhood && !patternLimitReached)
+            projectivePatternHypothesis(image, profile, ordinary) { cancellation.check(); stopRequested() }
+        else null
+        val curvedDetector = if (settings.distortionCorrection) CurvedGridDetector(image, profile, cancellation, stopRequested,
+            minOf(maxContourWorkingBytes, retentionBudget.workingLimitBytes, RecoveryMemoryPolicy.current().workingBytes)) else null
+        val curved = if (curvedDetector != null) ordinary.sortedBy { it.quickScore }.take(4).flatMap { base ->
+            cancellation.check()
+            curvedDetector.candidates(base.geometry).map { geometry ->
+                base.copy(geometry = geometry, quickScore = quickGeometryScore(image, geometry, profile))
+            }
+        } else emptyList()
+        if (curvedDetector?.contourMemoryLimited == true) resultAccumulator.markIncomplete(SearchIncompleteReason.WORKING_MEMORY_LIMIT)
+        val hypotheses = (listOfNotNull(preview).take(maxGeometryAttempts) + ordinary + listOfNotNull(patternFit) + curved).distinctBy { it.geometry }
         val finders = settings.manualFinders.entries.take(maxFinders).map { (_, point) -> confirmedFinderCandidate(settings, point) }
         var completed = 0
         var interrupted = false
@@ -181,8 +209,10 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
                 val outcome = recoveryEngine.recoverWithDiagnostics(
                     matrix,
                     trustKnownPayloadCount = settings.trustKnownPayloadCount,
+                    assumeUtf8ByteSegments = settings.assumeUtf8ByteSegments,
                     partialBitSearchLimit = settings.partialBitSearchLimit,
                     listDecodingAdditionalErrors = settings.listDecodingAdditionalErrors,
+                    knownBitErrorLimit = settings.knownBitErrorLimit,
                     formatConstraint = settings.formatConstraint,
                     maxFormatMismatches = settings.effectiveFormatMismatchLimit,
                     maxKnownDataEccMismatches = ErrorLimitPolicy.data(
@@ -193,7 +223,8 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
                     retentionBudget = retentionBudget.fresh(),
                     cancellation = cancellation,
                     stopRequested = stopRequested,
-                    listDecodingBudget = listDecodingBudget,
+                    listDecodingBudget = listDecodingBudget, knownBitErrorBudget = knownBitErrorBudget,
+                    discoveryCounter = discoveryCounter,
                 ) { done, total ->
                     onPriorityProgress?.invoke(done, total)
                 }
@@ -208,38 +239,62 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
         }
         // Completion counts describe finished attempts, not a late stop-button state.
         if (!interrupted) resultAccumulator.completePolicy(hasExcludedInputs =
-            seeds.size > selectedSeeds.size || selectedSeeds.size != baseHypotheses.size ||
-                baseHypotheses.size + refinedHypotheses.size > hypotheses.size)
-        val result = resultAccumulator.result(finders)
+            patternLimitReached || seeds.size > selectedSeeds.size || selectedSeeds.size != baseHypotheses.size ||
+                baseHypotheses.size + refinedHypotheses.size > ordinary.size ||
+                (settings.distortionCorrection && ordinary.size > 4))
+        val result = resultAccumulator.result(finders).copy(discoveredCandidates = discoveryCounter.snapshot)
         val unfinished = result.searchDiagnostic?.completeness != SearchCompleteness.COMPLETE
         onProgress?.invoke(completed, hypotheses.size, if (unfinished)
             localizedText("試行終了（完了状況は結果を確認してください）", "Trials ended; see results for completion status")
             else localizedText("試行完了", "Trials completed"))
         return result
     }
+}
 
-    private fun quickGeometryScore(image: LumaImage, geometry: GridGeometry, profile: SamplingProfile): Double {
-        val dimension = geometry.dimension
-        var score = 0.0
-        var inside = 0
-        for (gridY in 0..4) for (gridX in 0..4) {
-            val point = geometry.moduleToImage((dimension - 1) * gridX / 4.0, (dimension - 1) * gridY / 4.0)
-            if (image.inBounds(point.x, point.y)) inside++
-        }
-        score += (1.0 - inside / 25.0) * 35.0
-        var known = 0
-        var mismatches = 0
-        for (module in 8..dimension - 9) for ((x, y) in arrayOf(module to 6, 6 to module)) {
-            val point = geometry.moduleToImage(x.toDouble(), y.toDouble())
-            val radius = geometry.localModulePitch(x.toDouble(), y.toDouble()) * .1
-            val luma = image.sampleMean(point.x, point.y, radius) ?: continue
-            known++
-            val black = profile.normalize(luma) <= profile.threshold
-            if (black != ((module and 1) == 0)) mismatches++
-        }
-        score += if (known >= 6) 24.0 * mismatches / known else 12.0
-        return score
+/** Keep the selected grid and up to three distinct starting positions for one joint fit. */
+internal fun projectivePatternHypothesis(
+    image: LumaImage, profile: SamplingProfile, ordinary: List<GeometryHypothesis>, stopped: () -> Boolean,
+): GeometryHypothesis? {
+    val seed = ordinary.firstOrNull()?.geometry ?: return null
+    val starts = mutableListOf(seed.moduleCenterQuad())
+    fun displacement(a: ImageQuad, b: ImageQuad): Double =
+        a.asList().zip(b.asList()).sumOf { (p, q) ->
+            val delta = p - q
+            delta.x * delta.x + delta.y * delta.y
+        } / 8.0
+    val pitch = seed.localModulePitch()
+    for (candidate in ordinary.sortedBy { it.quickScore }) {
+        val quad = candidate.geometry.moduleCenterQuad()
+        if (starts.all { displacement(it, quad) > .25 * .25 * pitch * pitch }) starts += quad
+        if (starts.size == 4) break
     }
+    val centers = Version.getVersionForNumber(seed.version).alignmentPatternCenters
+    val fit = ProjectivePatternRefiner.refine(image, seed, starts, centers, profile.inverted, stopped) ?: return null
+    if (ordinary.any { displacement(it.geometry.moduleCenterQuad(), fit.moduleCenterQuad()) < .0001 * pitch * pitch }) return null
+    return GeometryHypothesis(emptyList(), fit, quickGeometryScore(image, fit, profile), patternRefined = true)
+}
+
+internal fun quickGeometryScore(image: LumaImage, geometry: GridGeometry, profile: SamplingProfile): Double {
+    val dimension = geometry.dimension
+    var score = 0.0
+    var inside = 0
+    for (gridY in 0..4) for (gridX in 0..4) {
+        val point = geometry.moduleToImage((dimension - 1) * gridX / 4.0, (dimension - 1) * gridY / 4.0)
+        if (image.inBounds(point.x, point.y)) inside++
+    }
+    score += (1.0 - inside / 25.0) * 35.0
+    var known = 0
+    var mismatches = 0
+    for (module in 8..dimension - 9) for ((x, y) in arrayOf(module to 6, 6 to module)) {
+        val point = geometry.moduleToImage(x.toDouble(), y.toDouble())
+        val radius = geometry.localModulePitch(x.toDouble(), y.toDouble()) * .1
+        val luma = image.sampleMean(point.x, point.y, radius) ?: continue
+        known++
+        val black = profile.normalize(luma) <= profile.threshold
+        if (black != ((module and 1) == 0)) mismatches++
+    }
+    score += if (known >= 6) 24.0 * mismatches / known else 12.0
+    return score
 }
 
 /** Fits one interior alignment observation by moving only its nearest logical corner. */
@@ -361,7 +416,7 @@ internal fun manualGeometrySeeds(settings: PreprocessSettings): List<Pair<Int, I
         manualQuadNeighborhood(
             quad,
             settings.version,
-            rotationPivotRole = settings.manualFinders.keys.singleOrNull(),
+            rotationPivotRole = (settings.manualFinders.keys + listOfNotNull(settings.visibleFinderRole)).singleOrNull(),
         )
     } else listOf(quad)
     return quads.map { settings.version to it }

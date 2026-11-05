@@ -6,4 +6,5 @@ data class RecoveryOutcome(
     val failure: RecoveryFailure?,
     val searchDiagnostic: RecoverySearchDiagnostic,
     val formatAttempts: Int,
+    val discoveredCandidates: RecoveryDiscoveryCount? = null,
 )

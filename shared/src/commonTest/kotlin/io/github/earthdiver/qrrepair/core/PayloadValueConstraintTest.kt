@@ -29,6 +29,29 @@ class PayloadValueConstraintTest {
         assertTrue(result.filled.any { it.dataBitIndex == 13 && it.kind == PayloadConstraintSolver.ConstraintKind.DATA_VALUE })
     }
 
+    @Test
+    fun propagatedValueBitsMatchExhaustiveCompatibleValues() {
+        for ((mode, width, maximum) in listOf(Triple(1, 4, 9), Triple(2, 6, 44))) {
+            val header = if (mode == 1) 14 else 13
+            for (original in 0..maximum) for (unknown in 0 until (1 shl width)) {
+                val fixture = singleSegment(mode, header - 4, 1, original, width)
+                fixture.erasePayloadOffsets(*(0 until width).filter {
+                    unknown and (1 shl (width - 1 - it)) != 0
+                }.toIntArray())
+                val compatible = (0..maximum).filter { (it xor original) and unknown.inv() == 0 }
+                val expected = (0 until width).mapNotNull { offset ->
+                    val bit = 1 shl (width - 1 - offset)
+                    val values = compatible.map { if (it and bit == 0) 0 else 1 }.distinct()
+                    if (unknown and bit != 0 && values.size == 1) (header + offset) to values.single() else null
+                }
+                val result = PayloadConstraintSolver.apply(fixture.deinterleaved, version = 1)
+                assertEquals(expected, result.filled.filter {
+                    it.kind == PayloadConstraintSolver.ConstraintKind.DATA_VALUE
+                }.map { it.dataBitIndex to it.value })
+            }
+        }
+    }
+
     private fun singleSegment(
         mode: Int,
         countBits: Int,

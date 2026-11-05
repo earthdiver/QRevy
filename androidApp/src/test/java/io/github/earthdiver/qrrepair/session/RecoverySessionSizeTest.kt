@@ -104,7 +104,7 @@ class RecoverySessionSizeTest {
         val invalidFields = listOf(1 to 0, 5 to 4, 9 to 8, 13 to Int.MAX_VALUE, 13 to 25)
         for ((field, invalidValue) in invalidFields) {
             val altered = rewrite(encoded) { raw ->
-                val selectedOffset = raw.size - (1 + 16 + 26 + 2)
+                val selectedOffset = raw.size - (1 + 16 + 26 + 2 + 1)
                 ByteBuffer.wrap(raw).putInt(selectedOffset + field, invalidValue)
                 raw
             }

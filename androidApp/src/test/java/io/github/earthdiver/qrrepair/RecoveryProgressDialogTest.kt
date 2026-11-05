@@ -125,4 +125,35 @@ class RecoveryProgressDialogTest {
         }
     }
 
+    @Test fun discoveriesUpdateDuringSearchAndStoppingWithoutLeakingIntoAnotherDialog() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup()
+        val progress = RecoveryProgressDialog(activity.get(), 0)
+        try {
+            val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+            fun message(): String {
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(250))
+                return dialog.findViewById<TextView>(android.R.id.message).text.toString()
+            }
+            assertTrue(message().contains(localizedText("見つかった候補: 0件", "Candidates found: 0")))
+            progress.candidatesFound(io.github.earthdiver.qrrepair.core.RecoveryDiscoveryCount.Exact(3))
+            assertTrue(message().contains(localizedText("見つかった候補: 3件", "Candidates found: 3")))
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+            progress.candidatesFound(io.github.earthdiver.qrrepair.core.RecoveryDiscoveryCount.AtLeast(4))
+            assertTrue(message().contains(localizedText("見つかった候補: 4件以上", "Candidates found: at least 4")))
+            progress.close()
+            val next = RecoveryProgressDialog(activity.get(), 0)
+            try {
+                progress.candidatesFound(io.github.earthdiver.qrrepair.core.RecoveryDiscoveryCount.Exact(99))
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(250))
+                val nextDialog = ShadowDialog.getLatestDialog() as AlertDialog
+                val text = nextDialog.findViewById<TextView>(android.R.id.message).text.toString()
+                assertTrue(text.contains(localizedText("見つかった候補: 0件", "Candidates found: 0")))
+                assertFalse(text.contains("99"))
+            } finally { next.close() }
+        } finally {
+            progress.close()
+            activity.pause().stop().destroy()
+        }
+    }
+
 }

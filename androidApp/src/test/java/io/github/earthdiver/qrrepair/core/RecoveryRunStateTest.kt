@@ -13,6 +13,16 @@ class RecoveryRunStateTest {
         put(4, 4); put(1, 8); put(character.code, 8)
     }.finish()).first { it.text == character.toString() }
 
+    @Test fun listSearchBudgetIncludesTheLiveCoefficientCache() {
+        val state = run()
+        val limit = state.listSearchWorkingBytes
+        val word = ReedSolomonErasures().encode(intArrayOf(1, 2, 3, 4, 5), 4)
+        state.bitSolver.analyze(RsBlockWork(5, word, IntArray(9) { if (it < 2) 255 else 0 }), 4)
+        assertTrue(state.bitSolver.cacheWorkingBytes > 0)
+        assertEquals(limit - state.bitSolver.cacheWorkingBytes, state.listSearchWorkingBytes)
+        assertEquals(state.listSearchWorkingBytes - state.listDecodingCache.workingBytes, state.availableWorkingBytes)
+    }
+
     @Test fun omittedValidatedCandidatesStillCountAsParsedWithoutImplyingUnsearchedBranches() {
         val state = run(RecoveryRetentionBudget(0))
         val accepted = RecoveryCandidateEvaluation.Accepted(candidate(), decoderFailed = false)

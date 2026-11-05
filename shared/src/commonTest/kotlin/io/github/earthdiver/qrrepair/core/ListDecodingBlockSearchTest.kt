@@ -41,7 +41,7 @@ class ListDecodingBlockSearchTest {
             values[20] = values[20] xor 2
         }
         val block = RsBlockWork(9, received, masks)
-        for (extra in ListDecodingLimit.supported) for (limit in listOf(0, 1)) {
+        for (extra in ListDecodingLimit.enabledExtensions) for (limit in listOf(0, 1)) {
             val search = ListDecodingBlockSearch(block, block, emptyList(), 0, true, emptySet(), limit,
                 additionalErrors = extra)
             while (search.hasNext) search.advance(memory)

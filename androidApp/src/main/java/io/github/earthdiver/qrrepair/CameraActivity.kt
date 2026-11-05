@@ -114,6 +114,7 @@ class CameraActivity : ComponentActivity() {
         const val EXTRA_CONTRAST = "capture_contrast"
         const val EXTRA_BRIGHTNESS = "capture_brightness"
         const val EXTRA_INVERTED = "capture_inverted"
+        const val EXTRA_DISTORTION_CORRECTION = "capture_distortion_correction"
         private const val STATE_EDITOR = "camera.editor"
         private const val STATE_CAPTURE_PATH = "camera.capture_path"
         private const val STATE_CAPTURE_HANDED_OFF = "camera.capture_handed_off"
@@ -308,7 +309,8 @@ class CameraActivity : ComponentActivity() {
                     setResult(RESULT_OK, Intent().putExtra(EXTRA_CAPTURE_PATH, handoff.absolutePath)
                         .putExtra(EXTRA_CONTRAST, adjustment.contrast)
                         .putExtra(EXTRA_BRIGHTNESS, adjustment.brightness)
-                        .putExtra(EXTRA_INVERTED, adjustment.inverted))
+                        .putExtra(EXTRA_INVERTED, adjustment.inverted)
+                        .putExtra(EXTRA_DISTORTION_CORRECTION, editor.distortionCorrection))
                     finish()
                 }
             } catch (error: Throwable) {

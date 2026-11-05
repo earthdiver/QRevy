@@ -74,7 +74,11 @@ class ReedSolomonErasures {
             RsFailureReason.ERASURE_CAPACITY_EXCEEDED)
         erasures.forEach { msg[it] = 0 }
 
-        var synd = calcSyndromes(msg, ecSymbols)
+        return decodeNormalized(msg, ecSymbols, erasures, calcSyndromes(msg, ecSymbols))
+    }
+
+    private fun decodeNormalized(msg: IntArray, ecSymbols: Int, erasures: IntArray, initialSyndromes: IntArray): Result {
+        var synd = initialSyndromes
         if (synd.drop(1).all { it == 0 }) return Result(msg, erasures)
 
         val fsynd = forneySyndromes(synd, erasures, msg.size)
@@ -90,6 +94,50 @@ class ReedSolomonErasures {
         synd = calcSyndromes(corrected, ecSymbols)
         if (synd.drop(1).any { it != 0 }) throw DecodeException("Could not correct RS block")
         return Result(corrected, errata)
+    }
+
+    /** Prepared state owns its syndromes; callers cannot supply unchecked syndrome arrays. */
+    internal inner class BitTrials(
+        initial: IntArray,
+        private val ecSymbols: Int,
+        erasePositions: IntArray,
+        private val coordinates: List<RsBitConstraintSolver.Bit>,
+    ) {
+        private val erasures = erasePositions.sortedArray()
+        private val input = IntArray(initial.size) { initial[it] and 255 }
+        private var index = 0
+        private val contributions: Array<IntArray>
+        private val syndromes: IntArray
+        init {
+            require(ecSymbols > 0 && initial.size <= 255 && coordinates.size <= 20)
+            require(erasures.size <= ecSymbols && erasures.distinct().size == erasures.size)
+            require(erasures.all { it in input.indices })
+            require(coordinates.distinct().size == coordinates.size)
+            require(coordinates.all { it.codeword in input.indices && it.bit in 0..7 && it.codeword !in erasures })
+            require(coordinates.all { input[it.codeword] and (1 shl it.bit) == 0 })
+            val normalized = input.copyOf().also { values -> erasures.forEach { values[it] = 0 } }
+            syndromes = calcSyndromes(normalized, ecSymbols)
+            contributions = Array(coordinates.size) { i ->
+                bitSyndromes(input.size, coordinates[i].codeword, coordinates[i].bit, ecSymbols)
+            }
+        }
+        fun assignment(next: Int): IntArray {
+            require(next in 0 until (1 shl coordinates.size))
+            var changed = index xor next
+            while (changed != 0) {
+                val bit = changed.countTrailingZeroBits()
+                val coordinate = coordinates[bit]
+                input[coordinate.codeword] = input[coordinate.codeword] xor (1 shl coordinate.bit)
+                for (root in 0 until ecSymbols) syndromes[root + 1] = syndromes[root + 1] xor contributions[bit][root]
+                changed = changed and (changed - 1)
+            }
+            index = next
+            return input.copyOf()
+        }
+        fun decode(): Result {
+            val normalized = input.copyOf().also { values -> erasures.forEach { values[it] = 0 } }
+            return decodeNormalized(normalized, ecSymbols, erasures.copyOf(), syndromes)
+        }
     }
 
     /** Encoder is included for deterministic unit tests and diagnostics. */

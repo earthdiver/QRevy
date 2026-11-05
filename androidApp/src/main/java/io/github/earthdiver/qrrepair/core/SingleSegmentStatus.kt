@@ -11,13 +11,13 @@ enum class SingleSegmentStatus {
             "Checked/applied the single-segment structure using the mode and character/byte count.")
         APPLIED_WITH_PRIORITY_HEADER -> localizedText("* の試行で種類・文字数／バイト数を仮定し、単一セグメントの構造を確認・適用しました。画像から読み取れた値ではありません。",
             "Checked/applied the single-segment structure with a mode/count header assigned by * trials, not observed from the image.")
-        INCOMPLETE_HEADER -> localizedText("種類・文字数／バイト数に未確定のbitがあるため、単一セグメントの仮定による構造補完を適用できませんでした。",
+        INCOMPLETE_HEADER -> localizedText("種類・文字数／バイト数に未確定のbitがあるため、単一セグメントの終端後構造の強制による構造補完を適用できませんでした。",
             "Single-segment forcing could not be applied because the mode/count header contained unresolved bits.")
-        UNSUPPORTED_MODE -> localizedText("先頭の種類が数字・英数字・バイト・漢字のいずれでもないため、単一セグメントの仮定による構造補完を適用できませんでした。",
+        UNSUPPORTED_MODE -> localizedText("先頭の種類が数字・英数字・バイト・漢字のいずれでもないため、単一セグメントの終端後構造の強制による構造補完を適用できませんでした。",
             "Single-segment forcing could not be applied because the leading mode was not Numeric, Alphanumeric, Byte or Kanji.")
-        COUNT_EXCEEDS_CAPACITY -> localizedText("文字数／バイト数がQRコードのデータ容量を超えるため、単一セグメントの仮定による構造補完を適用できませんでした。",
+        COUNT_EXCEEDS_CAPACITY -> localizedText("文字数／バイト数がQRコードのデータ容量を超えるため、単一セグメントの終端後構造の強制による構造補完を適用できませんでした。",
             "Single-segment forcing could not be applied because the character/byte count exceeded the QR data capacity.")
-        PLAN_LIMIT -> localizedText("構造の候補を調べる上限に達したため、単一セグメントの仮定による構造補完を適用できませんでした。",
+        PLAN_LIMIT -> localizedText("構造の候補を調べる上限に達したため、単一セグメントの終端後構造の強制による構造補完を適用できませんでした。",
             "Single-segment forcing could not be applied because the structure-plan search limit was reached.")
     }
 
@@ -68,12 +68,8 @@ internal fun singleSegmentStatus(data: IntArray, unknown: IntArray, version: Int
 internal fun priorityHeaderHypothesis(data: IntArray, unknown: IntArray, originalUnknown: IntArray, version: Int): String? {
     if (data.isEmpty()) return null
     val mode = if ((unknown[0] and 0xF0) == 0) (data[0] ushr 4) and 15 else null
-    val group = when (version) { in 1..9 -> 0; in 10..26 -> 1; else -> 2 }
     val countWidth = when (mode) {
-        1 -> intArrayOf(10, 12, 14)[group]
-        2 -> intArrayOf(9, 11, 13)[group]
-        4 -> intArrayOf(8, 16, 16)[group]
-        8 -> intArrayOf(8, 10, 12)[group]
+        1, 2, 4, 8 -> requireNotNull(QrPayloadLayout.characterCountBits(mode, version))
         else -> 0
     }
     val width = minOf(4 + countWidth, data.size * 8)
@@ -90,7 +86,7 @@ internal fun priorityHeaderHypothesis(data: IntArray, unknown: IntArray, origina
 }
 
 fun RecoverySearchDiagnostic?.singleSegmentProcessingText(): String = buildString {
-    append(localizedText("単一セグメントの仮定はONです。以下は、探索中の各試行（ECC・マスク候補や * による仮定）の判定を集約したものです。元のQRコードの種類を確定する診断ではありません。",
+    append(localizedText("単一セグメントの終端後構造の強制はONです。以下は、探索中の各試行（ECC・マスク候補や * による仮定）の判定を集約したものです。元のQRコードの種類を確定する診断ではありません。",
         "The single-segment assumption was ON. The following summarizes trial outcomes across ECC/mask candidates and * hypotheses. It does not establish the original QR code's mode."))
     val diagnostic = this@singleSegmentProcessingText
     val statuses = diagnostic?.singleSegmentStatuses.orEmpty()

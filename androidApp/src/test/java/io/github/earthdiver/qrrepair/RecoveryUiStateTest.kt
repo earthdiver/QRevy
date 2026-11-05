@@ -72,4 +72,18 @@ class RecoveryUiStateTest {
         1, ErrorCorrectionLevel.M, mask, "decoded-$mask", byteArrayOf(),
         15, 0, 0, 0, 0, 0, 8, intArrayOf(), CodewordExtraction(emptyList()),
     )
+    @Test fun discoveryCountsSurviveSelectionButDoNotLeakIntoRestoredOrClearedResults() {
+        val state = RecoveryUiState()
+        val count = io.github.earthdiver.qrrepair.core.RecoveryDiscoveryCount.AtLeast(10)
+        state.updateRecoveries(listOf(candidate(0)), 0, null, discoveredCandidates = count)
+        state.selectRecovery(0)
+        assertEquals(count, state.discoveredCandidates)
+        state.restoreAttempt(GridGeometry(1, FinderRole.TOP_LEFT, 10.0, 12.0, 2.0, 0.0), QrMatrix(21), QrMatrix(21))
+        assertNull(state.discoveredCandidates)
+        state.showResults(AutoRecoveryResult(emptyList(), emptyList(), discoveredCandidates = count))
+        assertEquals(count, state.discoveredCandidates)
+        state.clear()
+        assertNull(state.discoveredCandidates)
+    }
+
 }

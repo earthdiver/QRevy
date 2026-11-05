@@ -26,6 +26,16 @@ class ListDecodingDiagnosticPresentationTest {
         assertTrue(settings.runSettingsText().contains(if (ja) "＋3語／RSブロック" else "+3 symbols per RS block"))
     }
 
+    @Test fun disabledListsAreShownAsOffInSavedRunAndCandidateSettings() = inBothLanguages { ja ->
+        val settings = RecoveryDisplayConditions(false, true, null, null, null, listDecodingAdditionalErrors = 0)
+        val expected = if (ja) "リスト復号: OFF（GS・Wu・KV）" else "List decoding: OFF (GS/Wu/KV)"
+        for (text in listOf(settings.runSettingsSection().summary, settings.runSettingsText(),
+            candidate(false).copy(displayConditions = settings).conditionText())) {
+            assertTrue(text, text.contains(expected))
+            assertFalse(text, text.contains(if (ja) "＋0語" else "+0 symbols"))
+        }
+    }
+
     private fun inBothLanguages(check: (Boolean) -> Unit) {
         val app = RuntimeEnvironment.getApplication()
         val previous = AppLanguageManager.current
@@ -67,7 +77,7 @@ class ListDecodingDiagnosticPresentationTest {
 
     @Test fun skippedStagesAreHiddenWithoutAnyDecoderTrials() = inBothLanguages { ja ->
         for (reason in listOf(ListDecodingStatus.ORIGINAL_RS_SUCCEEDED, ListDecodingStatus.ZERO_ERROR_LIMIT,
-            ListDecodingStatus.INPUT_CONSTRAINT)) {
+            ListDecodingStatus.INPUT_CONSTRAINT, ListDecodingStatus.DISABLED)) {
             val diagnostic = wholeSearch.copy(listDecoding = null, listDecodingExecution = ListDecodingExecution(
                 ListDecodingStage.entries.associateWith { setOf(reason) }))
             val presenter = RecoveryDiagnosticPresenter(ja)
@@ -370,8 +380,8 @@ class ListDecodingDiagnosticPresentationTest {
             .sections.single { it.stage == DiagnosticStage.PROCESSING }
         val structure = processing.groups.single { it.id == DiagnosticDetailId.SINGLE_SEGMENT }
         val listDecoding = processing.groups.single { it.id == DiagnosticDetailId.SEARCH }
-        assertEquals(if (ja) "単一セグメントの仮定の適用状況（探索全体）"
-            else "Single-segment assumption application status (whole search)", structure.title)
+        assertEquals(if (ja) "単一セグメントの終端後構造の強制の適用状況（探索全体）"
+            else "Single-segment terminator and padding forcing application status (whole search)", structure.title)
         assertEquals(diagnostic.singleSegmentProcessingText(), structure.text)
         assertFalse(structure.collapsible)
         assertFalse(listDecoding.text.contains(SingleSegmentStatus.APPLIED.trialDescription()))
@@ -387,8 +397,8 @@ class ListDecodingDiagnosticPresentationTest {
         val report = RecoveryDiagnosticPresenter(ja).failureReport(failure, null,
             context(diagnostic, 0).copy(searchDiagnostic = null))
         val structure = report.sections[2].groups.single { it.id == DiagnosticDetailId.SINGLE_SEGMENT }
-        assertEquals(if (ja) "単一セグメントの仮定の適用状況（参考診断の入力）"
-            else "Single-segment assumption application status (reference diagnostic input)", structure.title)
+        assertEquals(if (ja) "単一セグメントの終端後構造の強制の適用状況（参考診断の入力）"
+            else "Single-segment terminator and padding forcing application status (reference diagnostic input)", structure.title)
         assertTrue(structure.summary.contains(if (ja) "探索全体の集計は記録されていません"
             else "Totals across all sampled inputs were not recorded"))
         assertEquals(diagnostic.singleSegmentProcessingText(), structure.text)

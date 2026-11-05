@@ -127,6 +127,7 @@ internal class PreRecoveryDataPage(
     context: Context,
     private val inputProvider: () -> PreRecoveryDataInput?,
     private val formatConstraintProvider: () -> QrFormatConstraint? = { null },
+    private val unavailableText: () -> CharSequence = { context.getString(R.string.data_extract_failed) },
 ) {
     private val strings = preRecoveryDataStrings()
     private val output = TextView(context).apply {
@@ -169,7 +170,7 @@ internal class PreRecoveryDataPage(
     fun refresh() {
         val input = inputProvider()
         if (input == null) {
-            output.setText(R.string.data_extract_failed)
+            output.text = unavailableText()
             return
         }
         val content = buildPreRecoveryDataContent(

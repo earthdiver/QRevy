@@ -35,6 +35,7 @@ class PriorityCellDialogTest {
         override fun save(draft: PreprocessSave) { saved = draft }
         override fun showSavedStatus() = Unit
         override fun startRecovery() = error("Source changes must not start recovery")
+        override fun saveTextMatrix(matrix: io.github.earthdiver.qrrepair.core.QrMatrix) = Unit
         override fun saveDiagnosticInput(bitmap: Bitmap, owned: Boolean) = Unit
     }
     private class Fixture(val dialog: AlertDialog, val host: Host) {

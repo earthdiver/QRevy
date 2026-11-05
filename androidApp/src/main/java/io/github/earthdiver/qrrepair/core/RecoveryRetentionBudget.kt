@@ -135,7 +135,9 @@ internal fun blockCandidateWorkingBytes(
             .forEach { bits -> if (enumeratedBits + bits <= partialBitSearchLimit) enumeratedBits += bits }
     }
     val conventional = if (!allowEnumeration || comfortableErasureDecode) 1L else 1L + (1L shl enumeratedBits)
-    return (exact + conventional).coerceAtLeast(1L) * (384L + block.codewords.size * 16L)
+    val trialWorkspace = if (allowEnumeration && !comfortableErasureDecode)
+        partialBitTrialWorkingBytes(block.codewords.size, ecSymbols, enumeratedBits) else 0L
+    return trialWorkspace + (exact + conventional).coerceAtLeast(1L) * (384L + block.codewords.size * 16L)
 }
 
 /** Generate cell explanations only when inspected; never cache a full list per candidate. */

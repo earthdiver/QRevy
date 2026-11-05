@@ -57,6 +57,8 @@ data class ModuleRepairTrace(
     /** Confidence stored on the input cell, including manual edits; never a correction-assigned value. */
     val originalConfidence: Float = 0f,
     val bitConstraintSolved: Boolean = false,
+    val knownBitSearch: Boolean = false,
+    val knownBitError: Boolean = false,
     val listDecoding: ListDecodingDerivation? = null,
     /** Present only for this coordinate when an explicit priority trial assigned it. */
     val priorityAssignment: ModuleValue? = null,
@@ -64,6 +66,7 @@ data class ModuleRepairTrace(
     val overturnedConstraint: RepairReasonKind? = null,
     val overturnedConstraintValue: Int? = null,
     val alternativeRsDerivations: List<PartialCodewordSolver.Derivation> = emptyList(),
+    val temporaryImageErasure: Boolean = false,
 ) {
     val valueChanged: Boolean get() = originalValue != finalValue
     val provenanceChanged: Boolean get() = originalSource != finalSource
@@ -145,6 +148,8 @@ data class ModuleRepairTrace(
                 "\nPriority 0/1 search assigned ${value.symbol()} to this cell (before removing the QR mask). It was not a known input bit.",
             ))
         }
+        if (temporaryImageErasure) append(localizedText("\nこのコード語は画像の判定余裕から一時消失として計算しました。",
+            "\nThis codeword was temporarily erased using its image sampling margin."))
         if (partialEnumerated) append(localizedText("\n未知bitの限定列挙を行い、RS整合する候補を探索しました。", "\nUnknown bits were enumerated within a limit to find RS-consistent candidates."))
         overturnedConstraint?.let {
             append(localizedText(
@@ -152,6 +157,8 @@ data class ModuleRepairTrace(
                 "\nThe trial ${reasonLabelJa(it)} assigned unmasked bit=$overturnedConstraintValue, which RS later corrected. It is not supporting evidence for the final value.",
             ))
         }
+        if (knownBitSearch) append(localizedText("\n方法: 既知bit誤りの追加探索", "\nMethod: known-bit error search"))
+        if (knownBitError) append(localizedText("（このセルを誤り位置として変更）", " (this cell was changed as a hypothesized error position)"))
         if (supportingReasons.isNotEmpty()) {
             append(localizedText("\n補助根拠: ", "\nSupporting evidence: "))
             append(supportingReasons.distinct().joinToString(" / ") { reasonLabelJa(it) })
@@ -284,10 +291,13 @@ object RepairTraceBuilder {
                 originalCodewordValue = cwBit?.first?.let { candidate?.extraction?.codewords?.getOrNull(it)?.value },
                 originalUnknownMask = info?.originalUnknownMask,
                 correctedCodewordValue = cwBit?.first?.let { candidate?.correctedInterleaved?.getOrNull(it) },
+                temporaryImageErasure = info?.temporaryImageErasure == true,
                 rsErrata = info?.rsErrata == true,
                 partialEnumerated = info?.partialEnumerated == true,
                 originalConfidence = original.confidence,
                 bitConstraintSolved = info?.bitConstraintSolved == true,
+                knownBitSearch = info?.knownBitSearch == true,
+                knownBitError = cwBit?.second in info?.knownBitErrorBits.orEmpty(),
                 listDecoding = info?.listDecoding,
                 priorityAssignment = priorityAssignment,
                 overturnedConstraint = attemptedConstraint?.takeIf { overturned }?.toReasonKind(),

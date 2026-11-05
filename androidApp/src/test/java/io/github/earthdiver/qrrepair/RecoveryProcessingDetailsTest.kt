@@ -59,6 +59,41 @@ class RecoveryProcessingDetailsTest {
         assertTrue(report.fullText().indexOf(calculations.text) < report.fullText().indexOf(search.text))
     }
 
+    @Test fun knownBitExampleKeepsItsMethodAcrossSummariesDetailsAndCalculationRecords() {
+        val directory = java.io.File("../docs/examples/priority-list-decoding")
+        val source = java.io.File(directory, "before.txt").readText()
+        val expected = QrTextMatrixParser.parse(java.io.File(directory, "after.txt").readText()).matrix
+        val words = CodewordExtractor.extract(expected, 1, 0).codewords.map { it.value }.toIntArray()
+        for (keepPriority in listOf(true, false)) {
+            val matrix = QrTextMatrixParser.parse(if (keepPriority) source else source.replace('*', '?')).matrix
+            val outcome = RecoveryEngine().recoverWithDiagnostics(matrix, knownBitErrorLimit = 2,
+                maxFormatMismatches = 6, maxKnownDataEccMismatches = 2, listDecodingBudget = ListDecodingBudget(0))
+            val selected = outcome.candidates.single { it.correctedInterleaved.contentEquals(words) }
+            assertEquals("QRevy repaired.", selected.text)
+            assertEquals(0, selected.constraintFilledBits)
+            assertTrue(selected.priorityAssignments.isEmpty())
+            assertFalse(requireNotNull(selected.conventionalRsDiagnostic).succeeded)
+            val method = selected.actualBlockMethods.single()
+            assertEquals(2, requireNotNull(method.knownBitErrors).size)
+            assertNull(method.listDecoding)
+            assertNull(method.rsMargin)
+            val derivation = selected.selectedBlockDerivations().getValue(0)
+            assertTrue(derivation.knownBitSearch)
+            assertEquals(method.knownBitErrors, derivation.knownBitErrors)
+            inBothLanguages { ja ->
+                val processing = RecoveryDiagnosticPresenter(ja).candidateReport(selected, null, context(null)).sections[2]
+                val methods = processing.groups.single { it.id == DiagnosticDetailId.METHODS }
+                val calculations = processing.groups.single { it.id == DiagnosticDetailId.CALCULATIONS }
+                for (text in listOf(selected.resultExplanationText(), selected.usedMethodsText(), processing.summary,
+                    methods.text, calculations.summary, calculations.text)) {
+                    assertTrue(text, text.contains(if (ja) "既知bit誤り探索" else "known-bit error search", ignoreCase = true))
+                    assertFalse(text, text.contains(if (ja) "通常RS" else "conventional RS", ignoreCase = true))
+                }
+                assertTrue(calculations.text.contains(if (ja) "2bit変更" else "2 changed bits"))
+            }
+        }
+    }
+
     @Test fun inferredAndTentativeValuesAreNotPresentedAsUnchangedOriginalInput() = inBothLanguages { ja ->
         val selected = candidate(bitConstraints = true).copy(
             constraintFilledBits = 24, constraintEvidenceBits = 8, constraintForcedByUserSetting = true,

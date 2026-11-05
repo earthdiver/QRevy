@@ -195,9 +195,10 @@ class CellEditHistoryDialogTest {
 
     @Test fun configurationRecreationRetainsSavedUndoAndRedoInMemory() {
         val activity = activity()
-        val store = field("sessionStore").get(activity) as io.github.earthdiver.qrrepair.session.RecoverySessionStore
+        val store = io.github.earthdiver.qrrepair.session.RecoverySessionStore(activity)
         val id = store.newId()
-        field("sessionId").set(activity, id)
+        val workspaceSession = activity.workspaceSessionForTest()
+        workspaceSession.restoreIdentity(id, workspaceSession.history.entries.toList(), workspaceSession.history.cursor)
         val source = field("prepared").get(activity) as BitmapUtils.Prepared
         store.saveSourceBitmap(id, source.bitmap)
         val dialog = open(activity)
@@ -252,7 +253,7 @@ class CellEditHistoryDialogTest {
             assertEquals(captured.settings, restoredSession.captureDraft().settings)
             assertEquals(PreprocessPage.CELL_EDITOR, restoredSession.captureDraft().page)
             assertEquals(baseline, field("preprocessSettings").get(recreated))
-            if (!saveFirst) assertNull(field("sessionId").get(recreated))
+            if (!saveFirst) assertNull(recreated.workspaceSessionForTest().id)
             count(reopened, 1, 1)
             click(reopened, "Redo")
             count(reopened, 2, 0)

@@ -10,6 +10,7 @@ internal data class RecoveryDiagnosticContext(
     val searchDiagnostic: RecoverySearchDiagnostic?,
     val selectedEntry: RecoveryResultEntry?,
     val selectedCandidateNumber: Int? = null,
+    val discoveredCandidates: RecoveryDiscoveryCount? = null,
 )
 
 /** Builds diagnostic content without retaining an Activity, Views, or mutable UI state. */
@@ -18,18 +19,27 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
         val diagnostic = searchEvidence(context)
         val completeness = diagnostic.completeness
         val reasons = diagnostic.completionReasonsText()
-        if (diagnostic.coverageComplete && diagnostic.completedSteps == 0 &&
+        val description = if (diagnostic.coverageComplete && diagnostic.completedSteps == 0 &&
             SearchIncompleteReason.INTERNAL_ERROR in diagnostic.incompleteReasons) {
-            return completeness.description() + "\n" + reasons
-        }
-        return searchResultText(context.candidateCount, completeness,
+            completeness.description() + "\n" + reasons
+        } else searchResultText(context.candidateCount, completeness,
             context.candidatesOmitted || diagnostic.candidatesOmitted, reasons)
+        val count = context.discoveredCandidates ?: return description
+        return buildString {
+            append(discoveryCountText(count, japanese))
+            if (count is RecoveryDiscoveryCount.AtLeast || count.value != context.candidateCount || context.candidatesOmitted) {
+                append("\n").append(ui("結果一覧: ${context.candidateCount}件", "Results available: ${context.candidateCount}"))
+            }
+            append("\n").append(description)
+        }
     }
 
     fun candidateReport(candidate: RecoveryCandidate, geometry: GridGeometry?, context: RecoveryDiagnosticContext): RecoveryDiagnosticReport {
         val preview = QrContentPreviewParser.parse(candidate)
+        val origin = context.selectedEntry?.attempt?.hypothesis
+        val patternRefined = origin?.patternRefined == true && origin.geometry == geometry
         val input = initialDiagnosticSection(candidate.version, candidate.ecLevel, candidate.dataMask,
-            geometry?.let(::geometryDiagnosticText).orEmpty(), candidate.rsBitDiagnostic,
+            geometry?.let { geometryDiagnosticText(it, patternRefined) }.orEmpty(), candidate.rsBitDiagnostic,
             candidate.extraction.codewords.takeIf { it.isNotEmpty() }?.sumOf { (it.unknownBits and 255).countOneBits() },
             candidate.originalErasedCodewords, candidate.conventionalRsDiagnostic, candidate.correctedInterleaved,
             conditions = candidate.displayConditions)
@@ -58,7 +68,7 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
             append('\n').append(inputAgreementText(candidate.formatMatches + candidate.formatMismatches, candidate.formatMismatches, true, compact = true))
             append('\n').append(inputAgreementText(candidate.knownBitsCompared, candidate.knownBitMismatchesAfterCorrection, false, compact = true))
             if (candidate.constraintForcedByUserSetting) append(ui(
-                "\n指定した単一セグメントの仮定を適用した候補です。",
+                "\n指定した単一セグメントの終端後構造の強制を適用した候補です。",
                 "\nThis candidate uses the specified single-segment assumption."))
         }
         val verificationSummary = candidateChecks + "\n\n" + searchOverview(context)
@@ -208,7 +218,7 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
     private fun singleSegmentProcessingGroup(diagnostic: RecoverySearchDiagnostic?, wholeSearch: Boolean): DiagnosticDetailGroup {
         val scope = searchRecordScope(wholeSearch, hasCandidate = false)
         return DiagnosticDetailGroup(DiagnosticDetailId.SINGLE_SEGMENT,
-            ui("単一セグメントの仮定の適用状況（$scope）", "Single-segment assumption application status ($scope)"),
+            ui("単一セグメントの終端後構造の強制の適用状況（$scope）", "Single-segment terminator and padding forcing application status ($scope)"),
             searchRecordScopeDescription(wholeSearch, hasCandidate = false), diagnostic.singleSegmentProcessingText())
     }
 
@@ -279,13 +289,14 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
         return listOf(processing, shortfall).filter { it.isNotBlank() }.joinToString("\n")
     }
 
-    fun geometryDiagnosticText(geometry: GridGeometry): String {
+    fun geometryDiagnosticText(geometry: GridGeometry, patternRefined: Boolean = false): String {
         val model = when (geometry.model) {
             GeometryModel.SIMILARITY -> ui("相似変換", "Similarity")
             GeometryModel.TWO_FINDER -> ui("2 Finder", "Two Finder patterns")
             GeometryModel.AFFINE -> ui("アフィン変換", "Affine")
-            GeometryModel.PROJECTIVE -> ui("射影変換", "Projective")
+            GeometryModel.PROJECTIVE -> if (patternRefined) ui("固定パターンで射影補正", "Pattern-refined projective grid") else ui("射影変換", "Projective")
             GeometryModel.MANUAL_PROJECTIVE -> ui("手動射影", "Manual projective")
+            GeometryModel.THIN_PLATE_SPLINE -> ui("曲面補正を使用", "Distortion correction applied")
         }
         val role = when (geometry.role) {
             FinderRole.TOP_LEFT -> ui("左上基準", "top-left reference")

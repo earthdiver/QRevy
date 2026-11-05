@@ -1,5 +1,6 @@
 package io.github.earthdiver.qrrepair
 
+import io.github.earthdiver.qrrepair.core.RecoveryDiscoveryCount
 import io.github.earthdiver.qrrepair.core.AutoRecoveryResult
 import io.github.earthdiver.qrrepair.core.CellConfidence
 import io.github.earthdiver.qrrepair.core.CellRecommendation
@@ -20,6 +21,7 @@ import io.github.earthdiver.qrrepair.core.RecoverySearchDiagnostic
  * inspector matrix, or recommendation from leaking into a newly selected geometry.
  */
 internal class RecoveryUiState {
+    var oneTimeSingleSegment = false
     var autoResult: AutoRecoveryResult? = null
     var attemptIndex: Int = -1
     var geometry: GridGeometry? = null
@@ -53,6 +55,9 @@ internal class RecoveryUiState {
     var recoveryIndex: Int = -1
     var confidenceMap: Map<Coord, CellConfidence> = emptyMap()
     var recommendation: CellRecommendation? = null
+    private var directDiscoveredCandidates: RecoveryDiscoveryCount? = null
+    val discoveredCandidates: RecoveryDiscoveryCount?
+        get() = autoResult?.discoveredCandidates ?: directDiscoveredCandidates
     private var directSearchDiagnostic: RecoverySearchDiagnostic? = null
     val searchDiagnostic: RecoverySearchDiagnostic?
         get() = if (autoResult != null) autoResult?.searchDiagnostic
@@ -61,7 +66,9 @@ internal class RecoveryUiState {
             else failure?.searchDiagnostic
 
     fun clear() {
+        oneTimeSingleSegment = false
         directSearchDiagnostic = null
+        directDiscoveredCandidates = null
         autoResult = null
         attemptIndex = -1
         samplingProfile = null
@@ -80,6 +87,7 @@ internal class RecoveryUiState {
 
     fun clearAttempt() {
         directSearchDiagnostic = null
+        directDiscoveredCandidates = null
         samplingProfile = null
         geometry = null
         sourceMatrix = null
@@ -132,6 +140,7 @@ internal class RecoveryUiState {
         preferredIndex: Int,
     ) {
         directSearchDiagnostic = null
+        directDiscoveredCandidates = null
         attemptIndex = index
         samplingProfile = autoResult?.profile
         this.geometry = geometry
@@ -157,8 +166,10 @@ internal class RecoveryUiState {
         preferredIndex: Int,
         attemptFailure: RecoveryFailure?,
         diagnostic: RecoverySearchDiagnostic? = null,
+        discoveredCandidates: RecoveryDiscoveryCount? = null,
     ) {
         directSearchDiagnostic = diagnostic
+        directDiscoveredCandidates = discoveredCandidates
         recoveries = candidates
         failure = attemptFailure
         selectRecovery(preferredIndex)

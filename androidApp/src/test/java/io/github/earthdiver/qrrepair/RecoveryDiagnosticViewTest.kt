@@ -48,7 +48,7 @@ class RecoveryDiagnosticViewTest {
                             "Candidate $candidate, block $it\nMethod: partial-bit constraints\nDegrees of freedom: 4\nComplete evidence: ABC-123 日本語"
                         } + "\nCandidate $candidate: alternative evidence", collapsible = true) else null,
                     if (singleSegment) DiagnosticDetailGroup(DiagnosticDetailId.SINGLE_SEGMENT,
-                        localizedText("単一セグメントの仮定の適用状況（探索全体）", "Single-segment assumption application status (whole search)"),
+                        localizedText("単一セグメントの終端後構造の強制の適用状況（探索全体）", "Single-segment terminator and padding forcing application status (whole search)"),
                         text = "Single-segment application evidence") else null,
                     DiagnosticDetailGroup(DiagnosticDetailId.SEARCH, listDecodingTitle,
                         summary = "New trials: 3\nThese totals also include trials for other candidates.",

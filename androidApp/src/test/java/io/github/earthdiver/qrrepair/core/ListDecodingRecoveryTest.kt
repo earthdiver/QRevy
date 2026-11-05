@@ -35,7 +35,12 @@ class ListDecodingRecoveryTest {
 
     @Test fun widerMultipleBlocksStillShareTheQrMismatchLimit() {
         val f = Fixture(3, ErrorCorrectionLevel.Q)
-        for ((raw, location) in f.de.rawLocations.withIndex()) if (requireNotNull(location).localIndex in 2..12) f.flip(raw, 1)
+        // Parity errors cannot be removed by payload-suffix propagation.
+        for ((raw, location) in f.de.rawLocations.withIndex()) {
+            val loc = requireNotNull(location)
+            val data = f.de.blocks[loc.blockIndex].numDataCodewords
+            if (loc.localIndex in data until data + 11) f.flip(raw, 1)
+        }
         assertTrue(f.recover(additionalErrors = 1).candidates.none { it.correctedInterleaved.contentEquals(f.raw) })
         val restored = f.recover(additionalErrors = 2).candidates.single { it.correctedInterleaved.contentEquals(f.raw) }
         assertEquals(f.text, restored.text)
@@ -69,6 +74,24 @@ class ListDecodingRecoveryTest {
                 maxKnownDataEccMismatches = limit, listDecodingBudget = budget, partialBitSearchLimit = partialBitLimit,
                 listDecodingAdditionalErrors = additionalErrors,
                 retentionBudget = RecoveryRetentionBudget(workingLimitBytes = workingLimit), stopRequested = stop)
+    }
+
+    @Test fun disablingListsPreventsListRecoveryButKeepsConventionalCorrection() {
+        for (errors in listOf(3, 4)) {
+            val f = Fixture()
+            for (i in 2 until 2 + errors) f.flip(i, 1)
+            val budget = ListDecodingBudget(0)
+            val outcome = f.recover(additionalErrors = 0, budget = budget)
+            assertEquals(errors == 3, outcome.candidates.any { it.correctedInterleaved.contentEquals(f.raw) })
+            assertTrue(outcome.candidates.all { it.actualBlockMethods.all { method -> method.listDecoding == null } })
+            assertNull(outcome.searchDiagnostic.listDecoding)
+            assertTrue(outcome.searchDiagnostic.listDecodingExecution!!.stages.values.all {
+                it == setOf(ListDecodingStatus.DISABLED)
+            })
+            assertFalse(SearchIncompleteReason.LIST_DECODING_TIME_LIMIT in outcome.searchDiagnostic.incompleteReasons)
+            assertEquals(0L, budget.elapsedMillis)
+            if (errors == 4) assertTrue(f.recover().candidates.any { it.correctedInterleaved.contentEquals(f.raw) })
+        }
     }
 
     @Test fun fallbackRecoversFourErroneousBytesBeyondVersionOneLowRsCapacity() {
@@ -142,7 +165,8 @@ class ListDecodingRecoveryTest {
         for (raw in 24..25) for (coord in f.extraction.codewords[raw].coordinates) {
             f.matrix.set(coord.x, coord.y, ModuleValue.ERASED, 0f, ModuleSource.USER)
         }
-        for (raw in 9..11) f.flip(raw, 1)
+        // Keep the errors outside the suffix that structural propagation can repair.
+        for (raw in 19..21) f.flip(raw, 1)
         assertTrue(f.recover(budget = ListDecodingBudget(0)).candidates.none { it.correctedInterleaved.contentEquals(f.raw) })
         val outcome = f.recover()
         val restored = outcome.candidates.single { it.correctedInterleaved.contentEquals(f.raw) }
@@ -156,7 +180,9 @@ class ListDecodingRecoveryTest {
     @Test fun multipleBlocksCanNeedListDecodingAndTheirMismatchesShareOneQrCap() {
         val f = Fixture(3, ErrorCorrectionLevel.Q)
         for ((rawIndex, location) in f.de.rawLocations.withIndex()) {
-            if (requireNotNull(location).localIndex in 2..11) f.flip(rawIndex, 1)
+            val loc = requireNotNull(location)
+            val data = f.de.blocks[loc.blockIndex].numDataCodewords
+            if (loc.localIndex in data until data + 10) f.flip(rawIndex, 1)
         }
         val result = f.recover()
         val correct = result.candidates.single { it.correctedInterleaved.contentEquals(f.raw) }

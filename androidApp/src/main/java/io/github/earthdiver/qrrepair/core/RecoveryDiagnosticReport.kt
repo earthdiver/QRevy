@@ -57,15 +57,19 @@ fun RecoveryDisplayConditions?.runSettingsSection(): DiagnosticSection {
         append(localizedText(" / マスク: ", " / Mask: "))
             .append(settings.format?.dataMask?.toString() ?: localizedText("自動", "Automatic"))
         append('\n').append(settings.limitText(true)).append('\n').append(settings.limitText(false))
+        append(localizedText("\n既知bit誤り探索: ${settings.knownBitErrorLimit}bit（0はOFF）", "\nKnown-bit error search: ${settings.knownBitErrorLimit} bits (0 is off)"))
         append(localizedText("\n部分bit探索・自由度の上限: ${settings.partialBitSearchLimit}bit／RSブロック",
             "\nPartial-bit search / dimension limit: ${settings.partialBitSearchLimit} bits per RS block"))
+        append('\n').append(settings.listDecodingLimitText())
         append(localizedText("\n固定セルとの矛盾を許容: ", "\nAllow conflicts with fixed cells: "))
             .append(when (settings.lockManualBits) {
                 true -> "OFF"
                 false -> "ON"
                 null -> localizedText("記録なし", "Not recorded")
             })
-        append(localizedText("\n単一セグメントの仮定: ", "\nSingle-segment assumption: "))
+        append(localizedText("\nバイト区間の UTF-8 仮定: ", "\nUTF-8 assumption for Byte segments: "))
+            .append(if (settings.assumeUtf8ByteSegments) "ON" else "OFF")
+        append(localizedText("\n単一セグメントの終端後構造の強制: ", "\nSingle-segment terminator and padding forcing: "))
             .append(if (settings.trustSingleSegment) "ON" else "OFF")
     } } ?: localizedText("実行時点の設定は記録されていません。", "The settings for this run were not recorded.")
     return DiagnosticSection(DiagnosticStage.SETTINGS, summary, runSettingsText().takeIf { this != null }.orEmpty())
@@ -83,13 +87,15 @@ fun RecoveryDisplayConditions?.runSettingsText(): String = this?.let { settings 
     settings.lockManualBits?.let { locked ->
         append(localizedText("\n固定セルの0/1と矛盾する復元候補を許容する（仮指定セルと同じ扱い）: ", "\nAllow recovery candidates that conflict with fixed 0/1 values (as for tentative cells): ")).append(if (locked) "OFF" else "ON")
     }
-    append(localizedText("\n単一セグメントの仮定: ", "\nSingle-segment assumption: "))
+    append(localizedText("\nバイト区間の UTF-8 仮定: ", "\nUTF-8 assumption for Byte segments: "))
+        .append(if (settings.assumeUtf8ByteSegments) "ON" else "OFF")
+    append(localizedText("\n単一セグメントの終端後構造の強制: ", "\nSingle-segment terminator and padding forcing: "))
         .append(if (settings.trustSingleSegment) "ON" else "OFF")
     append('\n').append(settings.limitText(true)).append('\n').append(settings.limitText(false))
+    append(localizedText("\n既知bit誤り探索: ${settings.knownBitErrorLimit}bit（0はOFF）", "\nKnown-bit error search: ${settings.knownBitErrorLimit} bits (0 is off)"))
     append(localizedText("\n部分bit探索・自由度の上限: ${settings.partialBitSearchLimit}bit／RSブロック",
         "\nPartial-bit search / dimension limit: ${settings.partialBitSearchLimit} bits per RS block"))
-    append(localizedText("\n通常RSからの追加探索上限: ＋${settings.listDecodingAdditionalErrors}語／RSブロック（GS・Wu）",
-        "\nList-decoding extension limit: +${settings.listDecodingAdditionalErrors} symbols per RS block (GS/Wu)"))
+    append('\n').append(settings.listDecodingLimitText())
     if (settings.dataEccLimit == 0) {
         append(localizedText(
             "\n入力のデータ・ECCの0/1と完全に一致する候補だけを採用します。「?」の補完はできます。",
@@ -253,6 +259,7 @@ fun RecoveryCandidate.compactUsedMethodsText(): String = localizedText("使用�
         if (priorityGuessedBits > 0) add(localizedText("優先セルのbit探索", "priority-cell bit search"))
         if (partialGuessedBits > 0) add(localizedText("bit探索", "bit search"))
         if (usesConventionalRs()) add(localizedText("通常RS", "conventional RS"))
+        if (usesKnownBitSearch()) add(localizedText("既知bit誤り探索", "known-bit error search"))
         actualBlockMethods.mapNotNull { it.listDecoding?.method }.distinct().forEach { add(it.displayName()) }
         if (usesBitConstraints()) add(localizedText("部分bit制約", "partial-bit constraints"))
     }.joinToString(localizedText("・", ", "))
@@ -260,11 +267,23 @@ fun RecoveryCandidate.compactUsedMethodsText(): String = localizedText("使用�
 private fun RecoveryCandidate.usesBitConstraints(): Boolean = if (actualBlockMethods.isNotEmpty())
     actualBlockMethods.any { it.bitConstraintSolved } else repairInfo.any { it.bitConstraintSolved }
 
+private fun RecoveryCandidate.usesKnownBitSearch(): Boolean = if (actualBlockMethods.isNotEmpty())
+    actualBlockMethods.any { it.knownBitErrors != null } else repairInfo.any { it.knownBitSearch }
+
 private fun RecoveryCandidate.usesConventionalRs(): Boolean = if (actualBlockMethods.isNotEmpty())
-    actualBlockMethods.any { !it.bitConstraintSolved && it.listDecoding == null } else repairInfo.isEmpty() || repairInfo.any { !it.bitConstraintSolved && it.listDecoding == null }
+    actualBlockMethods.any { !it.bitConstraintSolved && it.listDecoding == null && it.knownBitErrors == null }
+    else repairInfo.isEmpty() || repairInfo.any { !it.bitConstraintSolved && it.listDecoding == null && !it.knownBitSearch }
+
+private fun knownBitSearchExplanation(): String = localizedText(
+    "既知bitの誤り位置を探索し、不明なbitをQRの誤り訂正の条件に合うように求めました（既知bit誤り探索）。",
+    "Known-bit error search explored error positions in observed bits and solved for unknown bits satisfying QR error-correction constraints.")
 
 /** Explain the adopted methods without repeating their per-block calculation records. */
 fun RecoveryCandidate.processingMethodsText(): String = buildList {
+    if (actualBlockMethods.any { it.imageErasures.isNotEmpty() }) add(localizedText(
+        "画像の判定余裕が小さいコード語を一時消失として通常RSで再試行しました。",
+        "Conventional RS was retried with weak image-read codewords temporarily erased."))
+    if (usesKnownBitSearch()) add(knownBitSearchExplanation())
     if (usesConventionalRs()) add(if (correctedErrataSymbols > 0)
         localizedText("通常RSによる確認・補完・訂正を使いました。", "Conventional RS was used to check, fill or correct values.")
         else localizedText("通常RSで、データが誤り訂正の条件を満たすことを確認しました。", "Conventional RS verified that the data satisfies the error-correction conditions."))
@@ -289,15 +308,21 @@ fun RecoveryCandidate.processingMethodsText(): String = buildList {
         add(localizedText("補完・変更したbit数は、処理途中の値です。修復開始時の入力との最終的な不一致数とは異なります。",
             "The filled/changed bit count describes intermediate processing, not the final mismatch count against the input at repair start."))
     }
+    if (displayConditions?.assumeUtf8ByteSegments == true) add(utf8ApplicationText())
     if (displayConditions?.trustSingleSegment == true && !constraintForcedByUserSetting) add(localizedText(
-        "単一セグメントの仮定はONですが、この候補の補完には使用していません。",
+        "単一セグメントの終端後構造の強制はONですが、この候補の補完には使用していません。",
         "The single-segment assumption was ON but was not used to fill this candidate."))
-    if (constraintForcedByUserSetting) add(localizedText("単一セグメントの仮定: この候補に適用", "Single-segment assumption: applied to this candidate"))
+    if (constraintForcedByUserSetting) add(localizedText("単一セグメントの終端後構造の強制: この候補に適用", "Single-segment terminator and padding forcing: applied to this candidate"))
     if (displayConditions?.trustSingleSegment == true) singleSegmentStatus?.let {
         add(it.description() + if (constraintForcedByUserSetting && constraintFilledBits == 0)
             localizedText("（補完・変更は0bit）", " (0 bits filled/changed)") else "")
     }
 }.joinToString("\n")
+
+private fun RecoveryCandidate.utf8ApplicationText() = if (utf8AssumptionApplied)
+    localizedText("文字コード指定のないバイト区間に UTF-8 仮定を適用しました。",
+        "Applied the UTF-8 assumption to Byte segments without an explicit encoding.")
+else localizedText("UTF-8 仮定の対象となるバイト区間はありません。", "No Byte segments required the UTF-8 assumption.")
 
 fun RecoveryCandidate.usedMethodsText(): String = buildString {
     append(localizedText("この候補を得た方法", "Methods used to obtain this candidate"))
@@ -311,14 +336,16 @@ fun RecoveryCandidate.usedMethodsText(): String = buildString {
         "\n優先指定セルの白黒を仮置き: ${priorityGuessedBits}bit",
         "\nTentative values for prioritized cells: $priorityGuessedBits bits"))
     actualBlockMethods.forEach { append('\n').append(it.searchDescription(includeCalculationDetails = false)) }
+    if (usesKnownBitSearch()) append('\n').append(knownBitSearchExplanation())
     if (usesBitConstraints()) append(localizedText(
         "\n部分bit制約で、不明なbitの組合せを計算しました。",
         "\nPartial-bit constraints calculated combinations of unknown bits."))
     if (usesConventionalRs()) append(if (correctedErrataSymbols > 0)
         localizedText("\n通常RSによる確認・補完・訂正を使いました。", "\nConventional RS was used to check, fill or correct values.")
         else localizedText("\n通常RSで条件を確認しました。", "\nConventional RS checked the conditions."))
+    if (displayConditions?.assumeUtf8ByteSegments == true) append('\n').append(utf8ApplicationText())
     if (displayConditions?.trustSingleSegment == true && !constraintForcedByUserSetting) append(localizedText(
-        "\n単一セグメントの仮定はONですが、この候補の補完には使用していません。",
+        "\n単一セグメントの終端後構造の強制はONですが、この候補の補完には使用していません。",
         "\nThe single-segment assumption was ON but was not used to fill this candidate."))
     if (displayConditions?.trustSingleSegment == true) singleSegmentStatus?.let {
         append('\n').append(it.description())
@@ -355,6 +382,10 @@ fun RecoveryBlockMethod.searchDescription(includeCalculationDetails: Boolean = t
         "によるリスト復号", " list decoding")
     else if (listDecoding != null) listDecoding.method.displayName() + " / " + listDecoding.calculationDescription() + localizedText(
         "／仮置きした不明ビット: $guessedBits", " / assigned unknown bits: $guessedBits")
+    else if (imageErasures.isNotEmpty()) imageErasureDescription(imageErasures)
+    else if (knownBitErrors != null) localizedText(
+        "既知bit誤り探索：${knownBitErrors.size}bit変更／この計算段階の自由度: $guessedBits",
+        "Known-bit error search: ${knownBitErrors.size} changed bits / degrees of freedom at this stage: $guessedBits")
     else if (bitConstraintSolved) localizedText(
         "部分bit制約／このブロックの自由度: $guessedBits",
         "Partial-bit constraints / degrees of freedom for this block: $guessedBits")

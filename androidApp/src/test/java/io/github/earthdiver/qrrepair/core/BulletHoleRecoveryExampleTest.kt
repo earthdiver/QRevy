@@ -125,10 +125,12 @@ class BulletHoleRecoveryExampleTest {
         assertEquals(0, candidate.partialGuessedBits)
     }
 
-    @Test fun disablingTheSingleSegmentAssumptionReturnsNoCandidates() {
+    @Test fun defaultSearchRecommendsForcingWithoutPublishingProbeCandidates() {
         val result = recover(single = false)
         completed(result)
         assertTrue(result.entries.isEmpty())
+        assertTrue(result.searchDiagnostic!!.singleSegmentRetryAvailable)
+        assertFalse(result.searchDiagnostic!!.decodedCandidate)
     }
 
     @Test fun removingThePriorityMarkReturnsNoCandidates() {

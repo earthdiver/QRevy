@@ -1,5 +1,6 @@
 package io.github.earthdiver.qrrepair
 
+import io.github.earthdiver.qrrepair.core.RecoveryDiscoveryCount
 import android.app.Activity
 import android.app.AlertDialog
 import android.os.Handler
@@ -12,6 +13,7 @@ import java.util.concurrent.atomic.AtomicReference
 /** Shows repair phases and, only while applicable, priority assignments for the current grid. */
 internal class RecoveryProgressDialog(activity: Activity, priorityCount: Int) {
     val stopped = AtomicBoolean(false)
+    private val discovered = AtomicReference<RecoveryDiscoveryCount>(RecoveryDiscoveryCount.Exact(0))
     private val done = AtomicInteger(0)
     private val total = AtomicInteger(0)
     private val listDecodingMessage = AtomicReference<String?>(null)
@@ -19,7 +21,7 @@ internal class RecoveryProgressDialog(activity: Activity, priorityCount: Int) {
     private val phase = AtomicReference(localizedText("復元を準備中", "Preparing repair"))
     private val started = SystemClock.elapsedRealtime()
     private val handler = Handler(Looper.getMainLooper())
-    private var closed = false
+    @Volatile private var closed = false
     private val dialog = AlertDialog.Builder(activity)
         .setTitle(localizedText("修復の進捗", "Repair progress"))
         .setMessage("")
@@ -33,6 +35,11 @@ internal class RecoveryProgressDialog(activity: Activity, priorityCount: Int) {
             val listMessage = listDecodingMessage.get()
             dialog.setMessage(buildString {
                 append(listMessage ?: phase.get())
+                val count = discovered.get()
+                append("\n").append(discoveryCountText(count, AppLanguageManager.current == AppLanguage.JAPANESE))
+                if (count is RecoveryDiscoveryCount.AtLeast) append("\n").append(localizedText(
+                    "件数の集計上限に達しました。探索は継続します。",
+                    "The counting limit was reached. Search can continue."))
                 if (hasPriority && total.get() > 0) {
                     append("\n").append(localizedText(
                         "現在の格子の*探索: ${done.get()} / ${total.get()}通り",
@@ -58,6 +65,10 @@ internal class RecoveryProgressDialog(activity: Activity, priorityCount: Int) {
         }
         dialog.show()
         handler.post(ticker)
+    }
+    // A cooperative stop still admits candidates until the worker actually finishes.
+    fun candidatesFound(count: RecoveryDiscoveryCount) {
+        if (!closed) discovered.set(count)
     }
     fun priorityProgress(completed: Int, count: Int) {
         if (stopped.get()) return

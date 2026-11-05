@@ -20,7 +20,7 @@ private fun load(path:String):Loaded {
  val gray=IntArray(rgb.size){val p=rgb[it];(299*((p ushr 16)and 255)+587*((p ushr 8)and 255)+114*(p and 255)+500)/1000}
  return Loaded(LumaImage(b.width,b.height,gray),rgb)
 }
-private fun boundary(im:LumaImage):List<ImageQuad> {
+internal fun desktopBoundaries(im:LumaImage):List<ImageQuad> {
  val d=try{Detector(HybridBinarizer(Raw(im)).blackMatrix).detect(mapOf(DecodeHintType.TRY_HARDER to true))}catch(_:ReaderException){return emptyList()}
  val bl=d.points[0];val tl=d.points[1];val tr=d.points[2];val a=d.points.getOrNull(3);val n=d.bits.width
  val brx=a?.x?:(tr.x-tl.x+bl.x);val bry=a?.y?:(tr.y-tl.y+bl.y)
@@ -45,7 +45,7 @@ private fun prepare(input:File,out:File) {
  for(item in cases){val c=item.asJsonObject;val id=c["id"].asString;val path=c["input"].asString
   if(c["kind"].asString=="matrix") {val p=QrTextMatrixParser.parse(File(path).readText());writeMatrix(p.matrix,File(out,"$id.txt"));w.appendLine(gson.toJson(mapOf("id" to id,"version" to p.version,"blackMax" to 96,"whiteMin" to 160)));w.flush();continue}
   val loaded=load(path);val im=loaded.image;val start=System.nanoTime()
-  val external=c.getAsJsonArray("externalQuads")?.map{quad(it.asJsonArray)}?:boundary(im);val e=InitialGridEstimator.estimate(im,external)
+  val external=c.getAsJsonArray("externalQuads")?.map{quad(it.asJsonArray)}?:desktopBoundaries(im);val e=InitialGridEstimator.estimate(im,external)
   val t=InitialThresholdEstimator.estimate(android.graphics.Bitmap(im.width,im.height,loaded.argb))
   val settings=PreprocessSettings(blackMax=t?.blackMax?:96,whiteMin=t?.whiteMin?:160,automaticThresholds=true).withInitialGrid(e).withInitialErrorLimits()
   if(e!=null){val q=e.moduleCenterQuad;val n=17+4*e.version;val pitch=(q.topLeft.distanceTo(q.topRight)+q.topLeft.distanceTo(q.bottomLeft))/(2*(n-1))

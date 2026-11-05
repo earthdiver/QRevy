@@ -224,6 +224,172 @@ class RecoveryMethodRecordsTest {
             blockDerivations = first.actualBlockMethods.associate { it.blockIndex to listOf(conventional, exact) })
     }
 
+    @Test fun equalAppliedLimitsCombineRepeatedCalculationsAndKeepTheirOriginalEvidence() = inBothLanguages { ja ->
+        for (limit in listOf(0, 2, 5, 11)) {
+            val first = conventionalAlternative(recordedCandidate()).copy(
+                displayConditions = RecoveryDisplayConditions(false, true, null, 6, limit),
+                blockDerivations = emptyMap())
+            val selectedBlock = first.selectedBlockDerivations().getValue(0)
+            val bitCalculation = PartialCodewordSolver.Derivation(listOf(0, 1, 2), 0, 0, emptyList(), 0, 0, true)
+            val listCalculation = selectedBlock.copy(listDecoding =
+                ListDecodingDerivation(2, 0, 0, 0, 2, -1, ListDecoderMethod.WU))
+            val other = first.copy(listDecodingMismatchLimit = limit,
+                blockDerivations = mapOf(0 to listOf(selectedBlock, bitCalculation, listCalculation)),
+                constraintPlans = 2, constraintEvidenceBits = 7, derivationsOmitted = true)
+            val displays = listOf(listOf(first, other), listOf(other, first)).map { routes ->
+                val candidate = routes.first().copy(alternativeDerivations = routes.drop(1))
+                val methods = candidate.groupedMethodRecords()
+                assertEquals(1, methods.size)
+                assertSame(candidate, methods.single().representative)
+                assertSame(routes.last(), methods.single().records.last())
+                assertSame(routes.first().repairInfo, candidate.repairInfo)
+                assertSame(routes.first().correctedInterleaved, candidate.correctedInterleaved)
+                assertSame(if (routes.first() === other) candidate else other,
+                    methods.single().recordsFor(0, listCalculation).single())
+                val display = group(candidate, ja)
+                assertFalse(display.summary.contains(if (ja) "方法A" else "Method A"))
+                assertFalse(display.summary.contains(if (ja) "通りの計算" else "calculation methods yielded"))
+                assertTrue(display.summary.contains(if (ja) "保持上限" else "retention limit"))
+                assertTrue(display.text.contains(if (ja) "構造の候補: 2通り" else "Possible structures: 2"))
+                assertTrue(display.text.contains(if (ja) "ブロック1・同じ値を得た別の計算: 2通り"
+                    else "Block 1: 2 other calculations"))
+                assertTrue(display.text.contains(if (ja) "方法: 部分bit制約" else "Method: Partial-bit constraints"))
+                assertTrue(display.text.contains(if (ja) "Wu法によるリスト復号" else "Wu list decoding"))
+                assertTrue(display.text.contains(if (ja) "不一致上限: ${limit}bit（実行設定・追加探索）"
+                    else "mismatch limit: $limit bits (run settings, additional search)"))
+                val listDetails = display.text.substringAfter(if (ja) "方法: Wu" else "Method: Wu")
+                assertTrue(listDetails.contains(if (ja) "不一致上限: ${limit}bit（追加探索）"
+                    else "mismatch limit: $limit bits (additional search)"))
+                display
+            }
+            assertEquals(displays.first(), displays.last())
+            assertEquals(null, first.listDecodingMismatchLimit)
+            assertEquals(3, other.blockDerivations.getValue(0).size)
+            // Display grouping must not relax other claims about identical calculation records.
+            assertEquals(listOf(RecoveryMethodDifference.LIMIT), first.methodDifferences(other))
+            assertFalse(first.sameBlockCalculationInput(other))
+        }
+    }
+
+    @Test fun equivalentLimitRecordsAlsoCombinePartialBitCalculations() {
+        val first = recordedCandidate().copy(displayConditions = RecoveryDisplayConditions(false, true, null, 6, 5))
+        val other = first.copy(listDecodingMismatchLimit = 5)
+        assertEquals(1, first.copy(alternativeDerivations = listOf(other)).groupedMethodRecords().size)
+        assertFalse(first.sameQrWithoutStructureFilling(withoutStructureFilling(other)))
+    }
+
+    @Test fun repeatedRecoveryOfAGeneratedQrUsesOneMethodForEqualAppliedLimits() {
+        val qr = Encoder.encode("abcdefghijklmnop", ErrorCorrectionLevel.L,
+            mapOf(EncodeHintType.QR_VERSION to 1, EncodeHintType.QR_MASK_PATTERN to 0))
+        val matrix = QrMatrix(qr.matrix.width).apply {
+            for (y in 0 until dimension) for (x in 0 until dimension)
+                set(x, y, if (qr.matrix.get(x, y).toInt() == 1) ModuleValue.ONE else ModuleValue.ZERO, 1f, ModuleSource.IMAGE)
+        }
+        val extraction = CodewordExtractor.extract(matrix, 1, qr.maskPattern)
+        // Eight partial erasures and one observed error require tentative assignments before ordinary RS.
+        for (coord in (3..10).map { raw -> extraction.codewords[raw].coordinates.first() })
+            matrix.set(coord.x, coord.y, ModuleValue.ERASED, 0f, ModuleSource.IMAGE)
+        val error = extraction.codewords[2].coordinates.last()
+        matrix.set(error.x, error.y, if (matrix[error.x, error.y].value == ModuleValue.ONE)
+            ModuleValue.ZERO else ModuleValue.ONE, 1f, ModuleSource.IMAGE)
+        val selected = RecoveryEngine().recover(matrix, formatConstraint = QrFormatConstraint(qr.ecLevel, qr.maskPattern),
+            maxKnownDataEccMismatches = 2, displayLockManualBits = true).single { it.text == "abcdefghijklmnop" }
+        val methods = selected.groupedMethodRecords().filter { method ->
+            method.representative.constraintFilledBits == 0 && method.representative.actualBlockMethods.all {
+                !it.bitConstraintSolved && it.listDecoding == null && it.knownBitErrors == null }
+        }
+        assertEquals(1, methods.size)
+        assertEquals(setOf(null, 2), methods.single().records.map { it.listDecodingMismatchLimit }.toSet())
+    }
+
+    @Test fun differentAndUnknownAppliedLimitsStaySeparateAndAreExplained() = inBothLanguages { ja ->
+        val first = conventionalAlternative(recordedCandidate()).copy(
+            displayConditions = RecoveryDisplayConditions(false, true, null, 6, 20))
+        val variants = listOf(
+            first to (if (ja) "不一致上限: 20bit" else "mismatch limit: 20 bits"),
+            first.copy(displayConditions = first.displayConditions!!.copy(dataEccLimit = null)) to
+                (if (ja) "不一致上限: なし" else "mismatch limit: none"),
+            first.copy(displayConditions = null) to
+                (if (ja) "不一致上限: 記録不足のため確認できません" else "mismatch limit: unknown because records are incomplete"),
+        )
+        for ((base, expected) in variants) {
+            val other = base.copy(listDecodingMismatchLimit = 11)
+            val candidate = base.copy(alternativeDerivations = listOf(other))
+            assertEquals(2, candidate.groupedMethodRecords().size)
+            val summary = group(candidate, ja).summary
+            assertTrue(summary, summary.substringBefore(if (ja) "方法B" else "Method B").contains(expected))
+            assertTrue(summary, summary.substringAfter(if (ja) "方法B" else "Method B")
+                .contains(if (ja) "不一致上限: 11bit" else "mismatch limit: 11 bits"))
+        }
+    }
+
+    @Test fun missingListSearchLimitsAreNotInferredFromRunSettings() = inBothLanguages { ja ->
+        val list = ListDecodingDerivation(2, 0, 0, 0, 2, -1, ListDecoderMethod.WU)
+        val first = recordedCandidate().copy(displayConditions = RecoveryDisplayConditions(false, true, null, 6, 5),
+            actualBlockMethods = listOf(RecoveryBlockMethod(0, false, null, 0, list)),
+            repairInfo = recordedCandidate().repairInfo.map { it.copy(bitConstraintSolved = false, listDecoding = list) })
+        val other = first.copy(listDecodingMismatchLimit = 5)
+        val candidate = first.copy(alternativeDerivations = listOf(other))
+        assertEquals(2, candidate.groupedMethodRecords().size)
+        assertTrue(group(candidate, ja).summary.substringBefore(if (ja) "方法B" else "Method B").contains(
+            if (ja) "記録不足のため確認できません" else "unknown because records are incomplete"))
+    }
+
+    @Test fun incompleteCalculationEvidenceDoesNotCombineDifferentLimitRecords() = inBothLanguages { ja ->
+        val first = recordedCandidate().copy(displayConditions = RecoveryDisplayConditions(false, true, null, 6, 5))
+        val variants = listOf(
+            first.copy(repairInfo = emptyList()),
+            first.copy(actualBlockMethods = emptyList()),
+            first.copy(extraction = first.extraction.copy(codewords = first.extraction.codewords.map {
+                it.copy(coordinates = emptyList()) })),
+            first.copy(repairInfo = first.repairInfo.map { it.copy(constraintValuesByBit = emptyMap()) }),
+        )
+        for (base in variants) {
+            val candidate = base.copy(alternativeDerivations = listOf(base.copy(listDecodingMismatchLimit = 5)))
+            assertEquals(2, candidate.groupedMethodRecords().size)
+            assertTrue(group(candidate, ja).summary.contains(if (ja) "計算根拠の記録が不完全"
+                else "calculation evidence is incomplete"))
+        }
+    }
+
+    @Test fun equalLimitsDoNotHideDifferentInputsRepairsTargetsOrFixedCellSettings() = inBothLanguages { ja ->
+        val first = recordedCandidate().copy(displayConditions = RecoveryDisplayConditions(false, true, null, 6, 5))
+        val other = first.copy(listDecodingMismatchLimit = 5)
+        val variants = listOf(
+            other.copy(extraction = other.extraction.copy(codewords = other.extraction.codewords.mapIndexed { index, word ->
+                if (index == 0) word.copy(value = 128, unknownBits = 127) else word })),
+            other.copy(priorityAssignments = mapOf(Coord(10, 10) to ModuleValue.ONE)),
+            other.copy(repairInfo = other.repairInfo.mapIndexed { index, info ->
+                if (index == 0) info.copy(constraintValuesByBit = mapOf(0 to 1)) else info }),
+            other.copy(displayConditions = other.displayConditions!!.copy(lockManualBits = false)),
+            other.copy(blockDerivations = mapOf(0 to listOf(other.selectedBlockDerivations().getValue(0)
+                .copy(errataPositions = listOf(1, 2))))),
+        )
+        for (variant in variants) {
+            assertEquals(2, first.copy(alternativeDerivations = listOf(variant)).groupedMethodRecords().size)
+        }
+        assertTrue(group(first.copy(alternativeDerivations = listOf(variants.last())), ja).summary.contains(
+            if (ja) "補完・訂正対象や仮置き対象が異なります" else "Correction or tentative-assignment targets differ"))
+    }
+
+    @Test fun mergedMethodsKeepAdditionalCalculationsAttachedToTheirOwnSearchConditions() = inBothLanguages { ja ->
+        val first = conventionalAlternative(recordedCandidate()).copy(
+            displayConditions = RecoveryDisplayConditions(false, true, null, 6, 5))
+        val selected = first.selectedBlockDerivations().getValue(0)
+        val alternate = first.blockDerivations.getValue(0).last()
+        val other = first.copy(listDecodingMismatchLimit = 5,
+            blockDerivations = mapOf(0 to listOf(selected, alternate.copy(guessedBits = 1))))
+        for (routes in listOf(listOf(first, other), listOf(other, first))) {
+            val text = group(routes.first().copy(alternativeDerivations = routes.drop(1)), ja).text
+            val firstCalculation = text.substringAfter(if (ja) "このブロックの自由度: 0" else "Degrees of freedom for this block: 0")
+                .substringBefore(if (ja) "ブロック1" else "Block 1")
+            val secondCalculation = text.substringAfter(if (ja) "このブロックの自由度: 1" else "Degrees of freedom for this block: 1")
+                .substringBefore(if (ja) "ブロック1" else "Block 1")
+            assertTrue(firstCalculation, firstCalculation.contains(if (ja) "5bit（実行設定）" else "5 bits (run settings)"))
+            assertTrue(secondCalculation, secondCalculation.contains(if (ja) "5bit（追加探索）" else "5 bits (additional search)"))
+        }
+    }
+
     @Test fun sharedPreparationAndRepeatedBlockCalculationsHaveOneExplanation() = inBothLanguages { ja ->
         val first = recordedCandidate()
         val other = conventionalAlternative(first)
@@ -340,6 +506,37 @@ class RecoveryMethodRecordsTest {
             assertEquals(1, record.text.split(if (ja) "構造補完の記録" else "Structure-filling record").size - 1)
             assertFalse(record.text.contains("→"))
             assertFalse(record.summary.contains(if (ja) "保持している方法" else "Retained methods"))
+        }
+    }
+
+    @Test fun unfilledEvidenceSurvivesMergedMethodsRegardlessOfRepresentativeOrder() = inBothLanguages { ja ->
+        val filled = recordedCandidate().copy(displayConditions = RecoveryDisplayConditions(false, true, null, 6, 5))
+        val filledAdditional = filled.copy(listDecodingMismatchLimit = 5)
+        val unfilled = withoutStructureFilling(filled)
+        val unfilledAdditional = withoutStructureFilling(filledAdditional)
+        val note = if (ja) "補完なしでも同じQR" else "same QR without filling"
+        for (filledOrder in listOf(listOf(filled, filledAdditional), listOf(filledAdditional, filled))) {
+            for (unfilledOrder in listOf(listOf(unfilled, unfilledAdditional), listOf(unfilledAdditional, unfilled))) {
+                val scenarios = listOf(
+                    filledOrder to listOf(unfilledAdditional),
+                    listOf(filledAdditional) to unfilledOrder,
+                    filledOrder to unfilledOrder,
+                )
+                for ((filledRoutes, unfilledRoutes) in scenarios) {
+                    for (routes in listOf(filledRoutes + unfilledRoutes, unfilledRoutes + filledRoutes)) {
+                        val selected = routes.first().copy(alternativeDerivations = routes.drop(1))
+                        val methods = selected.groupedMethodRecords()
+                        assertEquals(2, methods.size)
+                        val summary = group(selected, ja).summary
+                        assertEquals(summary, 1, summary.split(note).size - 1)
+                        val filledIndex = methods.indexOfFirst { it.representative.constraintFilledBits > 0 }
+                        val label = (if (ja) "方法" else "Method ") + recoveryMethodLabel(filledIndex)
+                        val fillingSummary = summary.substringAfter(label)
+                            .substringBefore("\n" + (if (ja) "方法" else "Method "))
+                        assertTrue(summary, fillingSummary.contains(note))
+                    }
+                }
+            }
         }
     }
 

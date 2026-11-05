@@ -13,6 +13,7 @@ internal data class DetailedSettingsPageActions(
     val rotateBy: (Float) -> Unit,
     val resetRotation: () -> Unit,
     val saveDiagnosticInput: () -> Unit,
+    val saveTextMatrix: () -> Unit,
 )
 
 /** Builds the detailed pre-recovery settings page; setting state and image operations stay outside. */
@@ -22,6 +23,7 @@ internal class PreRecoveryDetailedSettingsPage(
     scrollRow: (Array<out View>) -> View,
     polarity: RadioGroup,
     searchQuadNeighborhood: CheckBox,
+    assumeUtf8ByteSegments: CheckBox,
     trustKnownPayloadCount: CheckBox,
     allowFixedCorrections: CheckBox,
     formatMismatchLimitControl: View,
@@ -29,7 +31,6 @@ internal class PreRecoveryDetailedSettingsPage(
     actions: DetailedSettingsPageActions,
     prioritySearchControl: View? = null,
     partialBitSearchControl: View? = null,
-    mirroredInput: CheckBox? = null,
     listDecodingControl: View? = null,
 ) {
     val view: View = ScrollView(context).apply {
@@ -46,10 +47,6 @@ internal class PreRecoveryDetailedSettingsPage(
                 buttonFactory(context.getString(R.string.rotate_right_90)) { actions.rotateBy(90f) },
                 buttonFactory(context.getString(R.string.reset_rotation), actions.resetRotation),
             )))
-            mirroredInput?.let {
-                addSettingsItem(it, 6)
-                addView(TextView(context).apply { setText(R.string.mirrored_input_note); textSize = 12f })
-            }
             addSettingsItem(TextView(context).apply { setText(R.string.thresholding) }, 6)
             addView(polarity)
             partialBitSearchControl?.let { addSettingsItem(it, 6) }
@@ -58,6 +55,11 @@ internal class PreRecoveryDetailedSettingsPage(
             addSettingsItem(searchQuadNeighborhood, 6)
             addView(TextView(context).apply {
                 setText(R.string.geometry_search_note)
+                textSize = 12f
+            })
+            addSettingsItem(assumeUtf8ByteSegments, 6)
+            addView(TextView(context).apply {
+                setText(R.string.assume_utf8_note)
                 textSize = 12f
             })
             addSettingsItem(trustKnownPayloadCount, 6)
@@ -69,6 +71,7 @@ internal class PreRecoveryDetailedSettingsPage(
             addSettingsItem(formatMismatchLimitControl, 6)
             addSettingsItem(dataEccMismatchLimitControl, 6)
             addSettingsItem(buttonFactory(context.getString(R.string.save_debug_input), actions.saveDiagnosticInput), 6)
+            addSettingsItem(buttonFactory(context.getString(R.string.save_pre_recovery_text_matrix), actions.saveTextMatrix), 6)
         })
     }
 

@@ -10,8 +10,13 @@ internal object ListDecodingPlanner {
     }
 
     fun hard(length: Int, dataLength: Int, erasures: Int, availableBytes: Long, additionalErrors: Int,
-        check: () -> Unit): HardPlan? {
-        val parameters = GuruswamiSudanDecoder(length, dataLength).parameters(erasures, Long.MAX_VALUE, additionalErrors, check) ?: return null
+        check: () -> Unit): HardPlan? =
+        hard(length, dataLength, erasures, availableBytes, additionalErrors, check, GuruswamiSudanDecoder(length, dataLength))
+
+    fun hard(length: Int, dataLength: Int, erasures: Int, availableBytes: Long, additionalErrors: Int,
+        check: () -> Unit, decoder: GuruswamiSudanDecoder): HardPlan? {
+        require(decoder.length == length && decoder.dataLength == dataLength)
+        val parameters = decoder.parameters(erasures, Long.MAX_VALUE, additionalErrors, check) ?: return null
         val width = parameters.listDegree + 1L
         // Triangular row-update estimate. Low-multiplicity GS can be cheaper than Wu's
         // field scan; the estimate orders equivalent searches and is not a time guarantee.

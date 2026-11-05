@@ -12,7 +12,7 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
         val multipleMethods = methods.size > 1
         val commonStructure = methods.size == 1 || methods.all { candidate.sameStructurePreparation(it.representative) }
         val commonPriority = methods.all { candidate.samePriorityPreparation(it.representative) }
-        val withoutFilling = methods.map { it.representative }.filter { it.constraintFilledBits == 0 }
+        val withoutFilling = methods.flatMap { it.records }.filter { it.constraintFilledBits == 0 }
         val omitted = methods.any { it.records.any { record -> record.derivationsOmitted } } ||
             selectedEntry?.derivationsOmitted == true
         val summary = buildList {
@@ -25,11 +25,22 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
                 if (multipleMethods) add("\n" + methodName(index) +
                     if (index == 0) ui("［セルの説明に使用］", " [used for cell explanations]") else "")
                 preparation(method.representative, !commonStructure, !commonPriority,
-                    withoutFilling.any { method.representative.sameQrWithoutStructureFilling(it) })
+                    method.records.any { route -> withoutFilling.any { route.sameQrWithoutStructureFilling(it) } })
                     .takeIf(String::isNotBlank)?.let(::add)
                 val blocks = method.representative.actualBlockMethods
                 if (blocks.isEmpty()) add(method.representative.compactUsedMethodsText())
                 else blocks.forEach { add(compactBlock(it, blocks.size > 1)) }
+                val limitPeers = methods.filter { other -> other !== method &&
+                    method.representative.methodDifferences(other.representative) == listOf(RecoveryMethodDifference.LIMIT) }
+                if (limitPeers.isNotEmpty()) {
+                    add(appliedLimitText(method.representative.appliedMethodLimit()))
+                    if (!method.representative.hasCompleteMethodEvidence()) add(ui(
+                        "計算根拠の記録が不完全なため、別の方法として表示しています。",
+                        "Shown separately because calculation evidence is incomplete."))
+                    else if (limitPeers.any { it.representative.appliedMethodLimit() == method.representative.appliedMethodLimit() &&
+                            it.representative.selectedBlockDerivations() != method.representative.selectedBlockDerivations() })
+                        add(ui("補完・訂正対象や仮置き対象が異なります。", "Correction or tentative-assignment targets differ."))
+                }
             }
             selectedEntry?.alternativeDerivations?.size?.takeIf { it > 0 }?.let {
                 add(ui("\n別の読み取り試行: ${it}件", "\nOther sampled-input attempts: $it"))
@@ -75,14 +86,12 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
                     if (route.constraintFilledBits == 0) add(ui("構造による補完・変更はありません。",
                         "No values were filled or changed using QR structure."))
                 }
-                route.listDecodingMismatchLimit?.let {
-                    add(ui("この方法のリスト復号の不一致上限: ${it}bit", "List-decoding mismatch limit for this method: $it bits"))
-                }
+                if (method.records.any { it.listDecodingMismatchLimit != null }) add(searchConditionsText(method.records))
                 add(ui("構造補完・優先セルの仮置きを反映した不明コード語数（全ブロック合計）: ${route.erasedCodewords}",
                     "Unknown codewords after structure filling and priority assignments (all blocks): ${route.erasedCodewords}"))
                 add(ui("補完・訂正対象（全ブロック合計）: ${route.correctedErrataSymbols}コード語",
                     "Target codewords (all blocks): ${route.correctedErrataSymbols}"))
-                if (route.actualBlockMethods.isEmpty() && route.repairInfo.none { it.bitConstraintSolved || it.listDecoding != null })
+                if (route.actualBlockMethods.isEmpty() && route.repairInfo.none { it.bitConstraintSolved || it.listDecoding != null || it.knownBitSearch })
                     add(ui("通常RS訂正余裕（ブロック最小）: ${route.minRsMargin}",
                         "Conventional RS margin (minimum across blocks): ${route.minRsMargin}"))
                 route.actualBlockMethods.forEach { block ->
@@ -106,31 +115,34 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
                             val reference = (0 until index).firstOrNull { earlier ->
                                 val other = methods[earlier].representative
                                 val sameInput = matchingInputs[index][earlier]
-                                    ?: route.sameBlockCalculationInput(other).also { matchingInputs[index][earlier] = it }
+                                    ?: method.records.all { it.sameBlockCalculationInput(other) }
+                                        .also { matchingInputs[index][earlier] = it }
                                 sameInput && selectedBlocks[earlier][block] == derivation.copy(searchPenalty = 0)
                             }
                             if (reference != null) add(ui("${methodName(reference)}のブロック${block + 1}と同じ計算記録",
                                 "Same calculation record as ${methodName(reference)}, block ${block + 1}"))
                             else {
                                 add(blockCalculationText(RecoveryBlockMethod(block, derivation.bitConstraintSolved,
-                                    derivation.rsMargin.takeUnless { derivation.bitConstraintSolved || derivation.listDecoding != null },
-                                    derivation.guessedBits, derivation.listDecoding), derivation.errataPositions.size))
+                                    derivation.rsMargin.takeUnless { derivation.bitConstraintSolved || derivation.listDecoding != null || derivation.knownBitSearch },
+                                    derivation.guessedBits, derivation.listDecoding, derivation.knownBitErrors.takeIf { derivation.knownBitSearch }), derivation.errataPositions.size))
                                 if (selected?.errataPositions != derivation.errataPositions)
                                     add(positionsText("補完・訂正対象", "Target", derivation.errataPositions))
                                 if (derivation.guessedPositions.isNotEmpty())
                                     add(positionsText("仮置き対象", "Tentatively assigned", derivation.guessedPositions))
                             }
+                            if (method.records.map { it.listDecodingMismatchLimit }.distinct().size > 1)
+                                add(searchConditionsText(method.recordsFor(block, derivation)))
                         }
                     }
                 }
             }
-            if (methods.any { it.representative.actualBlockMethods.any { block -> !block.bitConstraintSolved && block.listDecoding == null } })
+            if (methods.any { it.representative.actualBlockMethods.any { block -> !block.bitConstraintSolved && block.listDecoding == null && block.knownBitErrors == null } })
                 add(ui("通常RS訂正余裕 = ECC数 − 消失数 − 2 × 誤りコード語数。その計算での値であり、元入力の残り訂正能力や正しさを示しません。",
                     "Conventional RS margin = ECC − erasures − 2 × errors. This describes that calculation, not remaining input correction capacity or proof of correctness."))
             stopReasons?.let(::add)
             selectedEntry?.alternativeDerivations?.forEachIndexed { index, route ->
                 add(ui("別の読み取り試行${index + 1}", "Other sampled-input attempt ${index + 1}"))
-                add(listOf(route.profile?.label.orEmpty(), RecoveryDiagnosticPresenter(japanese).geometryDiagnosticText(route.hypothesis.geometry))
+                add(listOf(route.profile?.label.orEmpty(), RecoveryDiagnosticPresenter(japanese).geometryDiagnosticText(route.hypothesis.geometry, route.hypothesis.patternRefined))
                     .filter(String::isNotBlank).joinToString(" / "))
                 add(route.candidate.usedMethodsText())
                 route.samplingStats.thresholds?.let { add(ui("閾値: ${it.blackMax} / ${it.whiteMin}", "Thresholds: ${it.blackMax} / ${it.whiteMin}")) }
@@ -141,6 +153,25 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
     }
 
     private fun methodName(index: Int): String = ui("方法", "Method ") + recoveryMethodLabel(index)
+
+    private fun appliedLimitText(limit: RecoveryMethodLimit): String =
+        ui("適用されたデータ・ECCの不一致上限: ", "Applied data/ECC mismatch limit: ") + when (limit) {
+            is RecoveryMethodLimit.Bounded -> ui("${limit.bits}bit", "${limit.bits} bits")
+            RecoveryMethodLimit.Unlimited -> ui("なし", "none")
+            RecoveryMethodLimit.Unknown -> ui("記録不足のため確認できません", "unknown because records are incomplete")
+        }
+
+    private fun searchConditionsText(records: List<RecoveryCandidate>): String = records
+        .groupBy { it.appliedMethodLimit() }.entries.sortedBy { (limit, _) -> when (limit) {
+            is RecoveryMethodLimit.Bounded -> limit.bits
+            RecoveryMethodLimit.Unlimited -> Int.MAX_VALUE - 1
+            RecoveryMethodLimit.Unknown -> Int.MAX_VALUE
+        } }.joinToString("\n") { (limit, sources) ->
+            val conditions = sources.map { it.listDecodingMismatchLimit != null }.distinct().sorted().map { additional ->
+                if (additional) ui("追加探索", "additional search") else ui("実行設定", "run settings")
+            }.joinToString(ui("・", ", "))
+            appliedLimitText(limit) + ui("（$conditions）", " ($conditions)")
+        }
 
     private fun preparation(route: RecoveryCandidate, structure: Boolean, priority: Boolean,
         sameWithoutFilling: Boolean = false): String = buildList {
@@ -158,6 +189,8 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
     private fun compactBlock(method: RecoveryBlockMethod, showBlock: Boolean): String =
         (if (showBlock) ui("ブロック${method.blockIndex + 1}: ", "Block ${method.blockIndex + 1}: ") else "") + when {
             method.listDecoding != null -> method.listDecoding.method.displayName() + ui("によるリスト復号", " list decoding")
+            method.imageErasures.isNotEmpty() -> imageErasureDescription(method.imageErasures)
+            method.knownBitErrors != null -> ui("既知bit誤り探索：${method.knownBitErrors.size}bit変更", "Known-bit error search: ${method.knownBitErrors.size} changed bits")
             method.bitConstraintSolved -> ui("部分bit制約：自由度${method.guessedBits}", "Partial-bit constraints: ${method.guessedBits} degrees of freedom")
             else -> (if (method.guessedBits == 0) "" else ui("不明${method.guessedBits}bitの仮置き＋", "Assign ${method.guessedBits} unknown bits + ")) +
                 ui("通常RS：訂正余裕${method.rsMargin ?: "—"}", "Conventional RS: margin ${method.rsMargin ?: "—"}")
@@ -246,11 +279,16 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
         val list = method.listDecoding
         append(ui("\n方法: ", "\nMethod: ")).append(when {
             list != null -> list.method.displayName() + ui("によるリスト復号", " list decoding")
+            method.imageErasures.isNotEmpty() -> imageErasureDescription(method.imageErasures)
+            method.knownBitErrors != null -> ui("既知bit誤り探索：${method.knownBitErrors.size}bit変更", "Known-bit error search: ${method.knownBitErrors.size} changed bits")
             method.bitConstraintSolved -> ui("部分bit制約", "Partial-bit constraints")
             else -> ui("通常RS", "Conventional RS")
         })
-        append(if (method.bitConstraintSolved) ui("\nこのブロックの自由度: ", "\nDegrees of freedom for this block: ")
-            else ui("\n計算前に仮置きした不明bit: ", "\nUnknown bits assigned before calculation: ")).append(method.guessedBits)
+        append(when {
+            method.knownBitErrors != null -> ui("\nこの計算段階の自由度: ", "\nDegrees of freedom at this stage: ")
+            method.bitConstraintSolved -> ui("\nこのブロックの自由度: ", "\nDegrees of freedom for this block: ")
+            else -> ui("\n計算前に仮置きした不明bit: ", "\nUnknown bits assigned before calculation: ")
+        }).append(method.guessedBits)
         if (list != null) {
             if (list.method == ListDecoderMethod.KOETTER_VARDY) {
                 append(ui("\n一致スコア: ${list.score}\n必要スコア: ${list.scoreThreshold}",
@@ -264,6 +302,9 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
                     else ui("\n多重度: ", "\nMultiplicity: ")).append(list.multiplicity)
                 append(ui("\nY次数: ", "\nY degree: ")).append(list.listDegree)
             }
+        } else if (method.knownBitErrors != null) {
+            append(ui("\n変更位置（ブロック内コード語、LSB=0のbit）: ", "\nChanged positions (block codeword, LSB=0 bit): "))
+            append(method.knownBitErrors.joinToString { "${it.codeword + 1}:${it.bit}" })
         } else if (!method.bitConstraintSolved) append(ui("\nこのブロックの通常RS訂正余裕: ${method.rsMargin ?: "—"}",
             "\nConventional RS correction margin for this block: ${method.rsMargin ?: "—"}"))
     }

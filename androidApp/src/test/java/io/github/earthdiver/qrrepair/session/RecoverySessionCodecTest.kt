@@ -23,6 +23,17 @@ class RecoverySessionCodecTest {
         return RecoveryHistoryEntry(kind = HistoryEventKind.USER_EDIT, label = label, snapshot = snapshot)
     }
 
+    @Test fun oneTimeForcingSurvivesHistoryRoundTripWithoutChangingThePreference() {
+        val settings = PreprocessSettings(trustKnownPayloadCount = false)
+        val history = entry().let { it.copy(snapshot = it.snapshot.copy(
+            preprocessSettings = settings, oneTimeSingleSegment = true)) }
+        val original = RecoverySessionCodec.Payload("one-time", 1L, UiMode.ANALYSIS, listOf(history), 0)
+        val restored = RecoverySessionCodec.decode(RecoverySessionCodec.encode(original)).historyEntries.single().snapshot
+        assertTrue(restored.oneTimeSingleSegment)
+        assertEquals(settings, restored.preprocessSettings)
+        assertEquals(false, restored.preprocessSettings!!.trustKnownPayloadCount)
+    }
+
     @Test fun roundTripPreservesHistory() {
         val original = RecoverySessionCodec.Payload(
             id = "123e4567-e89b-12d3-a456-426614174000",
@@ -100,8 +111,58 @@ class RecoverySessionCodecTest {
             .historyEntries.single().snapshot.preprocessSettings)
     }
 
+    @Test fun visibleFinderRoleRoundTripsWithoutCreatingCenterMeasurements() {
+        val quad = ImageQuad(PointD(0.0, 0.0), PointD(80.0, 0.0), PointD(80.0, 80.0), PointD(0.0, 80.0))
+        for (role in FinderRole.entries) {
+            val settings = PreprocessSettings(manualQuad = quad, visibleFinderRole = role)
+            val bytes = RecoverySessionCodec.encode(settingsPayload(settings))
+            assertEquals(settings, RecoverySessionCodec.decode(bytes).historyEntries.single().snapshot.preprocessSettings)
+            val legacy = schema28Settings(bytes)
+            assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(legacy) }
+        }
+        val old = schema28Settings(RecoverySessionCodec.encode(settingsPayload(PreprocessSettings(manualQuad = quad))))
+        assertEquals(null, RecoverySessionCodec.decode(old).historyEntries.single().snapshot.preprocessSettings!!.visibleFinderRole)
+    }
+
+    @Test fun knownBitSearchSettingsRoundTripAndValidateRange() {
+        for (limit in 0..2) {
+            val settings=PreprocessSettings(knownBitErrorLimit=limit)
+            assertEquals(settings, RecoverySessionCodec.decode(RecoverySessionCodec.encode(settingsPayload(settings)))
+                .historyEntries.single().snapshot.preprocessSettings)
+        }
+        assertThrows(IllegalArgumentException::class.java) { PreprocessSettings(knownBitErrorLimit=3) }
+    }
+
+    @Test fun olderSettingsDefaultOffAndMalformedNewLimitIsRejected() {
+        fun raw(limit:Int):ByteArray {
+            val encoded=RecoverySessionCodec.encode(settingsPayload(PreprocessSettings(knownBitErrorLimit=limit)))
+            val current = GZIPInputStream(ByteArrayInputStream(encoded,48,encoded.size-48)).use { it.readBytes() }
+            // Schema 28 ends after the known-bit search limit.
+            return current.copyOfRange(0, current.size - 6) + current.copyOfRange(current.size - 3, current.size)
+        }
+        fun container(raw:ByteArray,version:Int):ByteArray {
+            val compressed=java.io.ByteArrayOutputStream().also { out -> java.util.zip.GZIPOutputStream(out).use { it.write(raw) } }.toByteArray()
+            return java.io.ByteArrayOutputStream().also { out -> java.io.DataOutputStream(out).use {
+                it.writeInt(0x5152523A);it.writeInt(version);it.writeInt(raw.size);it.writeInt(compressed.size)
+                it.write(java.security.MessageDigest.getInstance("SHA-256").digest(raw));it.write(compressed)
+            } }.toByteArray()
+        }
+        val zero=raw(0);val two=raw(2)
+        val changed=zero.indices.filter { zero[it]!=two[it] }.single()
+        val old=zero.copyOfRange(0,changed-3)+zero.copyOfRange(changed+1,zero.size)
+        assertEquals(0,RecoverySessionCodec.decode(container(old,27)).historyEntries.single().snapshot.preprocessSettings!!.knownBitErrorLimit)
+        two[changed]=3
+        assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(container(two,28)) }
+    }
+
+    private fun schema28Settings(encoded: ByteArray): ByteArray {
+        val raw = QrrContainerCodec.decode(encoded).bytes
+        val legacy = raw.copyOfRange(0, raw.size - 6) + raw.copyOfRange(raw.size - 3, raw.size)
+        return QrrContainerCodec.encode { it.write(legacy) }.also { ByteBuffer.wrap(it).putInt(4, 28) }
+    }
+
     private fun settingsPayload(settings: PreprocessSettings) = RecoverySessionCodec.Payload(
-        "threshold-settings", 2L, UiMode.ANALYSIS, listOf(RecoveryHistoryEntry(kind = HistoryEventKind.SETTINGS,
+        "threshold-settings", 2L, UiMode.ANALYSIS, listOf(RecoveryHistoryEntry(id = "settings-entry", timestampMs = 0L, kind = HistoryEventKind.SETTINGS,
             label = "thresholds", snapshot = RecoverySnapshot(null, null, null, -1, settings))), 0)
 
     @Test fun unsupportedSchemaVersionsAreRejected() {

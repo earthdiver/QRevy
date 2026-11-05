@@ -18,6 +18,19 @@ import org.junit.Test
 class PreprocessDialogStateTest {
     private val quad = ImageQuad(PointD(1.0, 2.0), PointD(22.0, 2.0), PointD(22.0, 23.0), PointD(1.0, 23.0))
 
+    @Test fun importedCorrectionChoiceAndFixedEditsSurviveSettingsCapture() {
+        val edits = mapOf(Coord(12, 12) to ModuleValue.ONE)
+        for (enabled in listOf(true, false)) {
+            val state = PreprocessDialogState(PreprocessSettings(distortionCorrection = enabled))
+            assertEquals(enabled, state.previewSettings(controls()).distortionCorrection)
+            val captured = state.captureSettings(controls().copy(lockManualBits = true),
+                geometry(), edits, emptySet())
+            assertEquals(enabled, captured.distortionCorrection)
+            assertEquals(edits, captured.fixedPreRecoveryEdits)
+            captured.variants().forEach { assertEquals(enabled, it.settings.distortionCorrection) }
+        }
+    }
+
     @Test fun selectedPartialBitLimitSurvivesCaptureAndSamplingProfiles() {
         for (limit in 12..14) {
             val state = PreprocessDialogState(PreprocessSettings())
@@ -31,7 +44,7 @@ class PreprocessDialogStateTest {
     }
 
     @Test fun selectedListExtensionSurvivesCaptureAndSamplingProfiles() {
-        for (limit in 1..3) {
+        for (limit in 0..3) {
             val state = PreprocessDialogState(PreprocessSettings())
             state.search.listDecodingAdditionalErrors = limit
             val captured = state.captureSettings(controls(),

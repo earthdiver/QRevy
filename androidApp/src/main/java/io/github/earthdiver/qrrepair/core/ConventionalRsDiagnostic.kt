@@ -34,7 +34,8 @@ data class ConventionalRsDiagnostic(
 
     companion object {
         fun analyze(de: DeinterleavedQr, rs: ReedSolomonErasures = ReedSolomonErasures(),
-            cancellation: RecoveryCancellation = RecoveryCancellation.NONE): ConventionalRsDiagnostic {
+            cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
+            onSuccess: (Int, ReedSolomonErasures.Result) -> Unit = { _, _ -> }): ConventionalRsDiagnostic {
             val corrected = mutableListOf<IntArray>()
             val blocks = de.blocks.mapIndexed { index, original ->
                 cancellation.check()
@@ -50,7 +51,7 @@ data class ConventionalRsDiagnostic(
                 }
                 val erasedSet = erased.toSet()
                 val errors = result?.errataPositions?.count { it !in erasedSet }
-                result?.let { corrected += it.corrected }
+                result?.let { corrected += it.corrected; onSuccess(index, it) }
                 ConventionalRsBlockDiagnostic(index, block.codewords.size, block.numDataCodewords,
                     de.ecSymbolsPerBlock, erased.size, errors,
                     errors?.let { de.ecSymbolsPerBlock - erased.size - 2 * it }, status)
@@ -68,4 +69,6 @@ data class RecoveryBlockMethod(
     val rsMargin: Int?,
     val guessedBits: Int,
     val listDecoding: ListDecodingDerivation? = null,
+    val knownBitErrors: List<RsBitConstraintSolver.Bit>? = null,
+    val imageErasures: List<Int> = emptyList(),
 )

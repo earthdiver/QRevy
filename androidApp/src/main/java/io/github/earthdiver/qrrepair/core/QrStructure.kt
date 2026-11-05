@@ -3,6 +3,7 @@ package io.github.earthdiver.qrrepair.core
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.google.zxing.qrcode.decoder.Version
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.math.max
 
 object QrFunctionMask {
@@ -107,6 +108,11 @@ class MatrixSampler(
                     (abs(observation.mean - stats.threshold) / max(12.0, contrast * .45)).coerceIn(0.0, 1.0).toFloat()
             }
             matrix.set(x, y, value, confidence, ModuleSource.IMAGE)
+            if (settings.photographicSource && observation != null && value != ModuleValue.ERASED) {
+                val margin = if (value == ModuleValue.ONE) pair.blackMax - observation.high
+                    else observation.low - pair.whiteMin
+                matrix.setImageMargin(x, y, margin.roundToInt().coerceIn(0, 254))
+            }
         }
         return matrix to stats
     }

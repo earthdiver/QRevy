@@ -25,6 +25,7 @@ internal class PreprocessSearchSettingsState(initial: PreprocessSettings) {
         private set
     var partialBitSearchLimit = initial.partialBitSearchLimit
     var listDecodingAdditionalErrors = initial.listDecodingAdditionalErrors
+    var knownBitErrorLimit = initial.knownBitErrorLimit
 
     fun setFormatMismatchLimit(mode: ErrorLimitMode, value: Int?) {
         formatMismatchLimitMode = mode

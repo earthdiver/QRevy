@@ -21,8 +21,12 @@ internal class ListDecodingQrSearch(private val rs: ReedSolomonErasures) {
         onRejection: (RecoveryCandidateRejection) -> Unit,
         onProgress: (Int, ListDecodingBlockSearch) -> Unit,
         onStops: (Set<CombinationSearchStop>) -> Unit,
+        payloadChecks: RecoveryPayloadChecks = RecoveryPayloadChecks(onRejection = onRejection),
         evaluate: (List<PartialCodewordSolver.Result>) -> Boolean,
     ): Boolean {
+        val prefixCacheBudget = minOf(32L * 1024, workingLimitBytes / 64)
+        val prefixCache = QrPrefixValidationCache(version, prefixCacheBudget, payloadChecks::acceptPrefix)
+        val frontier = CompletedProductFrontier(de.blocks.size)
         val searches = mutableListOf<ListDecodingBlockSearch>()
         val spaces = mutableListOf<RsBitConstraintSolver.Space?>()
         val stops = linkedSetOf<CombinationSearchStop>()
@@ -50,7 +54,7 @@ internal class ListDecodingQrSearch(private val rs: ReedSolomonErasures) {
             }
             pinValues[location.blockIndex][location.localIndex] = word.value
         }
-        fun used() = (cache?.workingBytes ?: 0L) + searches.sumOf { it.workingBytes } + spaces.sumOf { it?.restrictionWorkingBytes ?: 0L } +
+        fun used() = prefixCacheBudget + de.blocks.size * 32L + (cache?.workingBytes ?: 0L) + searches.sumOf { it.workingBytes } + spaces.sumOf { it?.restrictionWorkingBytes ?: 0L } +
             de.blocks.sumOf { 256L + it.codewords.size * 28L } +
             if (spaces.any { it != null }) 16_384L + de.blocks.sumOf {
                 2048L + it.codewords.size * 64L + it.numDataCodewords * 4096L
@@ -118,6 +122,12 @@ internal class ListDecodingQrSearch(private val rs: ReedSolomonErasures) {
                 }
                 var parsed = false
                 val symbolic = spaces.any { it != null }
+                val counts = IntArray(searches.size) { searches[it].candidateCount }
+                val revisions = LongArray(searches.size) { searches[it].routeRevision }
+                val relevant = frontier.relevance<PartialCodewordSolver.Result>(counts, revisions) { index, value, count ->
+                    searches[index].admittedAfter(value, count)
+                }
+                var passLimited = false
                 val acceptPrefix: (List<PartialCodewordSolver.Result>) -> Boolean = { prefix ->
                     cancellation.check()
                     if (!symbolic) expanded++
@@ -130,24 +140,27 @@ internal class ListDecodingQrSearch(private val rs: ReedSolomonErasures) {
                         val data = prefix.flatMapIndexed { index, result ->
                             result.corrected.take(de.blocks[index].numDataCodewords).map { it.toByte() }
                         }.toByteArray()
-                        StrictQrPayloadValidator.canBePrefix(data, version).also {
-                            if (!it) onRejection(RecoveryCandidateRejection.QR_STRUCTURE)
-                        }
+                        prefixCache.canBePrefix(data)
                     }
                 }
-                val traversal = if (symbolic) RsPayloadTraversal(groups.indices.map {
+                val traversal = if (symbolic) payloadChecks.traversal(groups.indices.map {
                     RsCandidateSource(de.blocks[it], groups[it], spaces[it], partialBitLimit)
                 }, version, maximum - expanded, cancellation) else null
                 val products = traversal?.combinations(acceptPrefix) ?: bestFirstCartesianProductSequence(groups,
                     { it.orderingPenalty }, affordable,
-                    onLimitReached = { stops += if (expanded >= maximum) CombinationSearchStop.NODE_LIMIT else CombinationSearchStop.WORKING_MEMORY_LIMIT },
+                    onLimitReached = {
+                        passLimited = true
+                        stops += if (expanded >= maximum) CombinationSearchStop.NODE_LIMIT else CombinationSearchStop.WORKING_MEMORY_LIMIT
+                    },
+                    isRelevantPrefix = { prefix -> cancellation.check(); relevant(prefix) },
                     canExtend = acceptPrefix)
                 for (combination in products) {
-                    if (combinations >= maximum) { stops += CombinationSearchStop.COMBINATION_LIMIT; break }
+                    if (combinations >= maximum) { passLimited = true; stops += CombinationSearchStop.COMBINATION_LIMIT; break }
                     cancellation.check()
                     parsed = evaluate(combination) || parsed
                     combinations++
                 }
+                if (!symbolic && !passLimited) frontier.complete(counts, revisions)
                 expanded += traversal?.nodes ?: 0
                 if (traversal?.limited == true) stops += CombinationSearchStop.NODE_LIMIT
                 if (parsed) {

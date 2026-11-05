@@ -44,12 +44,15 @@ class PreRecoveryDetailedSettingsPageTest {
     }
 
     @Test
-    fun errorLimitsAreImmediatelyAboveDebugImageButton() {
+    fun exportButtonsFollowErrorLimitsAndTextMatrixExportIsLast() {
         val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         val formatLimitControl = View(activity)
         val dataEccLimitControl = View(activity)
         val partialBitControl = View(activity)
         val priorityControl = View(activity)
+        val utf8 = CheckBox(activity)
+        val singleSegment = CheckBox(activity)
+        var textExports = 0
         val page = PreRecoveryDetailedSettingsPage(
             context = activity,
             buttonFactory = { label, action -> Button(activity).apply {
@@ -59,11 +62,12 @@ class PreRecoveryDetailedSettingsPageTest {
             scrollRow = { views -> LinearLayout(activity).apply { views.forEach(::addView) } },
             polarity = RadioGroup(activity),
             searchQuadNeighborhood = CheckBox(activity),
-            trustKnownPayloadCount = CheckBox(activity),
+            assumeUtf8ByteSegments = utf8,
+            trustKnownPayloadCount = singleSegment,
             allowFixedCorrections = CheckBox(activity),
             formatMismatchLimitControl = formatLimitControl,
             dataEccMismatchLimitControl = dataEccLimitControl,
-            actions = DetailedSettingsPageActions({}, {}, {}),
+            actions = DetailedSettingsPageActions({}, {}, {}, { textExports++ }),
             partialBitSearchControl = partialBitControl,
             prioritySearchControl = priorityControl,
         )
@@ -71,11 +75,16 @@ class PreRecoveryDetailedSettingsPageTest {
         val content = (page.view as ScrollView).getChildAt(0) as LinearLayout
 
         assertEquals(content.indexOfChild(partialBitControl) + 1, content.indexOfChild(priorityControl))
-        assertSame(formatLimitControl, content.getChildAt(content.childCount - 3))
-        assertSame(dataEccLimitControl, content.getChildAt(content.childCount - 2))
+        assertEquals(content.indexOfChild(utf8) + 2, content.indexOfChild(singleSegment))
+        assertSame(formatLimitControl, content.getChildAt(content.childCount - 4))
+        assertSame(dataEccLimitControl, content.getChildAt(content.childCount - 3))
         assertEquals(
             activity.getString(R.string.save_debug_input),
-            (content.getChildAt(content.childCount - 1) as Button).text,
+            (content.getChildAt(content.childCount - 2) as Button).text,
         )
+        val export = content.getChildAt(content.childCount - 1) as Button
+        assertEquals(activity.getString(R.string.save_pre_recovery_text_matrix), export.text)
+        export.performClick()
+        assertEquals(1, textExports)
     }
 }

@@ -111,6 +111,8 @@ class PreprocessDialogLayoutTest {
     fun listDecodingExtensionCanBeSelectedSavedAndReopened() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
+        val otherController = Robolectric.buildActivity(Activity::class.java).setup()
+        var otherDialog: AlertDialog? = null
         try {
             val bitmap = Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.WHITE) }
             MainActivity::class.java.getDeclaredField("prepared").apply {
@@ -120,43 +122,51 @@ class PreprocessDialogLayoutTest {
             val open = MainActivity::class.java.getDeclaredMethod("showPreprocessDialog").apply { isAccessible = true }
             open.invoke(activity)
             shadowOf(Looper.getMainLooper()).idle()
-            val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+            otherDialog = AlertDialog.Builder(otherController.get()).setMessage("Unrelated dialog").show()
+            assertEquals(otherDialog, ShadowDialog.getLatestDialog())
+            val dialog = preprocessDialog(activity)
             val decor = dialog.window!!.decorView
             findText(decor, "詳細設定")!!.performClick()
             val control = findText(decor, "通常RSからの追加探索上限:")!!
             assertEquals("通常RSからの追加探索上限: ＋1語", control.text.toString())
-            for (limit in listOf(2, 3, 1, 3)) {
+            for (limit in listOf(0, 2, 3, 1, 0)) {
                 control.performClick()
                 val choices = ShadowDialog.getLatestDialog() as AlertDialog
                 val list = choices.listView
-                assertEquals(listOf("RSブロックごとに＋1語", "RSブロックごとに＋2語", "RSブロックごとに＋3語"),
+                assertEquals(listOf("OFF（リスト復号を使わない）", "RSブロックごとに＋1語", "RSブロックごとに＋2語", "RSブロックごとに＋3語"),
                     (0 until list.adapter.count).map { list.adapter.getItem(it).toString() })
-                val index = limit - 1
+                val index = limit
                 list.performItemClick(list.getChildAt(index), index, list.adapter.getItemId(index))
-                assertEquals("通常RSからの追加探索上限: ＋${limit}語", control.text.toString())
+                assertEquals(if (limit == 0) "リスト復号: OFF" else "通常RSからの追加探索上限: ＋${limit}語", control.text.toString())
             }
             findExactText(decor, "保存")!!.performClick()
             shadowOf(Looper.getMainLooper()).idle()
             val saved = MainActivity::class.java.getDeclaredField("preprocessSettings").apply { isAccessible = true }
                 .get(activity) as PreprocessSettings
-            assertEquals(3, saved.listDecodingAdditionalErrors)
+            assertEquals(0, saved.listDecodingAdditionalErrors)
             findExactText(decor, "キャンセル")!!.performClick()
             assertFalse(dialog.isShowing)
             // Finish dismissal callbacks before simulating the next user action.
             shadowOf(Looper.getMainLooper()).idle()
             open.invoke(activity)
             shadowOf(Looper.getMainLooper()).idle()
-            val reopened = ShadowDialog.getLatestDialog() as AlertDialog
+            val reopened = preprocessDialog(activity)
             findText(reopened.window!!.decorView, "詳細設定")!!.performClick()
-            assertEquals("通常RSからの追加探索上限: ＋3語",
-                findText(reopened.window!!.decorView, "通常RSからの追加探索上限:")!!.text.toString())
+            assertEquals("リスト復号: OFF",
+                findText(reopened.window!!.decorView, "リスト復号: OFF")!!.text.toString())
             reopened.dismiss()
-        } finally { controller.pause().stop().destroy() }
+        } finally {
+            otherDialog?.dismiss()
+            otherController.pause().stop().destroy()
+            controller.pause().stop().destroy()
+        }
     }
 
     @Test fun mirroredInputCanBeToggledSavedAndReopenedWithoutMovingImageEdits() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
+        val otherController = Robolectric.buildActivity(Activity::class.java).setup()
+        var otherDialog: AlertDialog? = null
         try {
             val bitmap = Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.WHITE) }
             val prepared = BitmapUtils.prepare(bitmap)
@@ -170,7 +180,9 @@ class PreprocessDialogLayoutTest {
             val open = MainActivity::class.java.getDeclaredMethod("showPreprocessDialog").apply { isAccessible = true }
             open.invoke(activity)
             shadowOf(Looper.getMainLooper()).idle()
-            val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+            otherDialog = AlertDialog.Builder(otherController.get()).setMessage("Unrelated dialog").show()
+            assertEquals(otherDialog, ShadowDialog.getLatestDialog())
+            val dialog = preprocessDialog(activity)
             val decor = dialog.window!!.decorView
             findText(decor, "詳細設定")!!.performClick()
             val mirror = findExactText(decor, "入力画像を鏡像として処理する") as CheckBox
@@ -200,7 +212,11 @@ class PreprocessDialogLayoutTest {
             assertEquals(initial.fixedPreRecoveryEdits, normal.fixedPreRecoveryEdits)
             assertEquals(Color.WHITE, prepared.bitmap.getPixel(0, 0))
             reopened.dismiss()
-        } finally { controller.pause().stop().destroy() }
+        } finally {
+            otherDialog?.dismiss()
+            otherController.pause().stop().destroy()
+            controller.pause().stop().destroy()
+        }
     }
 
     @Test fun perspectiveCorrectionKeepsMirrorInTheGridAndPreservesFixedEdits() {
@@ -430,8 +446,8 @@ class PreprocessDialogLayoutTest {
         )
         val store = RecoverySessionStore(activity)
         store.save(id, UiMode.SIMPLE, listOf(entry), 0)
-        val sessionIdField = MainActivity::class.java.getDeclaredField("sessionId").apply { isAccessible = true }
-        sessionIdField.set(activity, id)
+        val workspaceSession = activity.workspaceSessionForTest()
+        workspaceSession.restoreIdentity(id, workspaceSession.history.entries.toList(), workspaceSession.history.cursor)
 
         MainActivity::class.java.getDeclaredMethod("showRecentSessions").apply {
             isAccessible = true
@@ -471,7 +487,7 @@ class PreprocessDialogLayoutTest {
             Thread.sleep(5)
         }
         assertTrue("確認後も保存済み作業が残っています", deleted)
-        assertNull("削除した作業が自動保存対象に残っています", sessionIdField.get(activity))
+        assertNull("削除した作業が自動保存対象に残っています", workspaceSession.id)
     }
 
     @Test
@@ -539,11 +555,11 @@ class PreprocessDialogLayoutTest {
             isAccessible = true
             invoke(activity, id)
         }
-        val historyField = MainActivity::class.java.getDeclaredField("sessionHistory").apply { isAccessible = true }
+        val workspaceSession = activity.workspaceSessionForTest()
         var imported = false
         for (attempt in 0 until 200) {
             shadowOf(Looper.getMainLooper()).idle()
-            val history = historyField.get(activity) as io.github.earthdiver.qrrepair.core.RecoverySessionHistory
+            val history = workspaceSession.history
             if (history.entries.size == 1) {
                 imported = true
                 break
@@ -611,7 +627,7 @@ class PreprocessDialogLayoutTest {
 
         val resumedDialog = ShadowDialog.getLatestDialog() as AlertDialog
         assertNotNull("最近の作業が保存カーソルから直接再開されません", findText(resumedDialog.window!!.decorView, "修復前設定"))
-        val history = MainActivity::class.java.getDeclaredField("sessionHistory").apply { isAccessible = true }.get(activity) as io.github.earthdiver.qrrepair.core.RecoverySessionHistory
+        val history = activity.workspaceSessionForTest().history
         assertEquals(2, history.entries.size)
         assertEquals(1, history.cursor)
     }
@@ -1136,7 +1152,7 @@ class PreprocessDialogLayoutTest {
         assertNotNull("固定幾何の説明がありません", fixedGeometry)
         val geometrySearch = findText(decor, "サンプリング位置を自動微調整する")
         val geometrySearchNote = findText(decor, "ONでは0.6モジュールの位置・大きさ・一隅のずれを試します")
-        val payloadTrust = findText(decor, "種類・文字数／バイト数を読み取り、または * の試行")
+        val payloadTrust = findText(decor, "単一セグメントの終端後構造を強制する")
         val payloadTrustNote = findText(decor, "数字・英数字・バイト・漢字のいずれか1種類")
         assertNull("Global locking is replaced by per-cell modes", findText(decor, "手動指定した0/1と矛盾する"))
         assertNotNull("四隅近傍探索の説明がありません", geometrySearchNote)

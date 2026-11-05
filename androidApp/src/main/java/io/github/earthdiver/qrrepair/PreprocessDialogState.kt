@@ -22,6 +22,7 @@ internal data class PreprocessControlSnapshot(
     val trustKnownPayloadCount: Boolean = false,
     val lockManualBits: Boolean = false,
     val prioritySearchLimit: Int = 4,
+    val assumeUtf8ByteSegments: Boolean = false,
 )
 
 internal data class PreprocessGeometrySnapshot(
@@ -29,6 +30,7 @@ internal data class PreprocessGeometrySnapshot(
     val quad: ImageQuad,
     val finders: Map<FinderRole, PointD>,
     val confirmedFinderPolarity: FinderPolarity? = null,
+    val visibleFinderRole: FinderRole? = null,
 )
 
 /** Owns non-View state for one pre-repair dialog and assembles reproducible settings. */
@@ -70,7 +72,9 @@ internal class PreprocessDialogState(private val initial: PreprocessSettings) {
     fun previewSettings(controls: PreprocessControlSnapshot): PreprocessSettings {
         val (blackMax, whiteMin) = normalizedThresholds(controls)
         return PreprocessSettings(
+            photographicSource = initial.photographicSource,
             imageAdjustment = imageAdjustment,
+            distortionCorrection = initial.distortionCorrection,
             mirroredInput = mirroredInput,
             polarity = controls.polarity,
             automaticThresholds = controls.automaticThresholds,
@@ -99,6 +103,7 @@ internal class PreprocessDialogState(private val initial: PreprocessSettings) {
             lockVersion = true,
             searchQuadNeighborhood = controls.searchQuadNeighborhood,
             trustKnownPayloadCount = controls.trustKnownPayloadCount,
+            assumeUtf8ByteSegments = controls.assumeUtf8ByteSegments,
             formatConstraint = search.formatConstraint,
             formatMismatchLimit = search.formatMismatchLimit,
             dataEccMismatchLimit = search.dataEccMismatchLimit,
@@ -108,9 +113,11 @@ internal class PreprocessDialogState(private val initial: PreprocessSettings) {
             prioritySearchLimit = controls.prioritySearchLimit,
             partialBitSearchLimit = search.partialBitSearchLimit,
             listDecodingAdditionalErrors = search.listDecodingAdditionalErrors,
+            knownBitErrorLimit = search.knownBitErrorLimit,
             perspectiveCorrectionQuad = perspectiveCorrectionQuad,
             manualQuad = geometry.quad,
             manualFinders = geometry.finders,
+            visibleFinderRole = geometry.visibleFinderRole,
             logicalGridAssigned = geometry.logicalGridAssigned,
             detectedFinders = emptyList(),
             confirmedFinderPolarity = geometry.confirmedFinderPolarity ?: FinderPolarity.UNKNOWN,

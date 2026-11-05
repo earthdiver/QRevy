@@ -59,7 +59,7 @@ class SingleSegmentProcessingTest {
             fun views(view: View): List<View> = listOf(view) + if (view is ViewGroup)
                 (0 until view.childCount).flatMap { views(view.getChildAt(it)) } else emptyList()
             val all = views(dialog.window!!.decorView)
-            val option = all.filterIsInstance<CheckBox>().first { it.text.contains("single segment") }
+            val option = all.filterIsInstance<CheckBox>().first { it.text.toString() == "Force single-segment terminator and padding" }
             val overlay = all.filterIsInstance<PreprocessOverlayView>().single()
             assertFalse(option.isEnabled)
             overlay.onEditCellSelected!!.invoke(headerCell.x, headerCell.y)

@@ -38,7 +38,11 @@ class PreprocessResponsiveLayoutTest {
                     isAccessible = true; invoke(activity)
                 }
                 shadowOf(Looper.getMainLooper()).idle()
-                val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+                // Other UI callbacks may show a notice while the editor is open. Select
+                // the displayed editor whose layout this test is intended to exercise.
+                val dialog = ShadowDialog.getShownDialogs().filterIsInstance<AlertDialog>().last {
+                    it.isShowing && views(it.window!!.decorView).any { view -> view is PreprocessOverlayView }
+                }
                 val decor = dialog.window!!.decorView
                 val overlay = views(decor).filterIsInstance<PreprocessOverlayView>().single()
                 val actions = views(decor).filterIsInstance<Button>().filter { it.text in listOf("Save", "Repair", "Save & repair") }

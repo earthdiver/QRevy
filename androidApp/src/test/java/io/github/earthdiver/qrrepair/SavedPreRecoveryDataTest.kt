@@ -26,8 +26,24 @@ class SavedPreRecoveryDataTest {
     private fun views(view: View): List<View> = listOf(view) +
         if (view is ViewGroup) (0 until view.childCount).flatMap { views(view.getChildAt(it)) } else emptyList()
 
-    private fun call(activity: MainActivity, name: String) =
-        MainActivity::class.java.getDeclaredMethod(name).apply { isAccessible = true }.invoke(activity)
+    private fun call(activity: MainActivity, name: String): Any? {
+        val result = MainActivity::class.java.getDeclaredMethod(name).apply { isAccessible = true }.invoke(activity)
+        if (name == "showCodewordHex") {
+            val executor = MainActivity::class.java.getDeclaredField("executor").apply { isAccessible = true }
+                .get(activity) as java.util.concurrent.ExecutorService
+            executor.submit {}.get(5, java.util.concurrent.TimeUnit.SECONDS)
+            shadowOf(Looper.getMainLooper()).idle()
+        }
+        return result
+    }
+
+    private fun savedData(activity: MainActivity): PreRecoveryDataInput {
+        val source = MainActivity::class.java.getDeclaredField("prepared").apply { isAccessible = true }
+            .get(activity) as BitmapUtils.Prepared
+        val settings = MainActivity::class.java.getDeclaredField("preprocessSettings").apply { isAccessible = true }
+            .get(activity) as PreprocessSettings
+        return requireNotNull(sampleSavedPreRecoveryData(source.luma, settings))
+    }
 
     private fun set(activity: MainActivity, name: String, value: Any) =
         MainActivity::class.java.getDeclaredField(name).apply { isAccessible = true }.set(activity, value)
@@ -84,7 +100,7 @@ class SavedPreRecoveryDataTest {
                 if (!assigned && automatic) assertEquals(ModuleValue.ERASED, expected)
                 views(editor.window!!.decorView).filterIsInstance<Button>().first { it.text == "Save" }.performClick()
                 shadowOf(Looper.getMainLooper()).idle()
-                val data = call(activity, "savedPreRecoveryData") as PreRecoveryDataInput
+                val data = savedData(activity)
                 assertEquals("$style assigned=$assigned automatic=$automatic", expected, data.matrix[10, 10].value)
                 assertEquals(ModuleValue.ONE, data.matrix[11, 11].value)
                 assertEquals(ModuleSource.USER, data.matrix[11, 11].source)

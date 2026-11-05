@@ -13,6 +13,7 @@ import io.github.earthdiver.qrrepair.core.displayedModuleValue
 import io.github.earthdiver.qrrepair.core.RecoveryInputBlocker
 import io.github.earthdiver.qrrepair.core.identity
 import io.github.earthdiver.qrrepair.core.isSelectableRecovery
+import io.github.earthdiver.qrrepair.core.RecoveryDiscoveryCounter
 import io.github.earthdiver.qrrepair.core.RecoveryMemoryPolicy
 import io.github.earthdiver.qrrepair.core.ListDecodingBudget
 import io.github.earthdiver.qrrepair.core.RecoveryRetentionBudget
@@ -25,8 +26,6 @@ import android.content.res.Resources
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Matrix
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
@@ -41,7 +40,6 @@ import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
-import androidx.exifinterface.media.ExifInterface
 import io.github.earthdiver.qrrepair.core.CodewordHex
 import io.github.earthdiver.qrrepair.core.CodewordExtractor
 import io.github.earthdiver.qrrepair.core.Coord
@@ -58,7 +56,6 @@ import com.google.zxing.qrcode.decoder.Version
 import io.github.earthdiver.qrrepair.core.PolarityMode
 import io.github.earthdiver.qrrepair.core.PartialPayloadAnalyzer
 import io.github.earthdiver.qrrepair.core.PreprocessSettings
-import io.github.earthdiver.qrrepair.core.StandardQrDecoder
 import io.github.earthdiver.qrrepair.core.searchSummary
 import io.github.earthdiver.qrrepair.core.QrMatrix
 import io.github.earthdiver.qrrepair.core.QrFunctionMask
@@ -80,7 +77,6 @@ import io.github.earthdiver.qrrepair.core.historyCellChangeCount
 import io.github.earthdiver.qrrepair.core.InitialThresholdEstimator
 import io.github.earthdiver.qrrepair.core.QrContentPreviewParser
 import io.github.earthdiver.qrrepair.core.QrContentPreview
-import io.github.earthdiver.qrrepair.core.UiMode
 import io.github.earthdiver.qrrepair.core.RepairGuidance
 import io.github.earthdiver.qrrepair.core.RepairTraceBuilder
 import io.github.earthdiver.qrrepair.ui.BitmapUtils
@@ -89,7 +85,6 @@ import io.github.earthdiver.qrrepair.ui.ImageAdjustmentEditor
 import io.github.earthdiver.qrrepair.core.ImageAdjustment
 import io.github.earthdiver.qrrepair.session.RecoverySessionStore
 import io.github.earthdiver.qrrepair.session.RecoverySessionCodec
-import io.github.earthdiver.qrrepair.session.SessionSaveQueue
 import io.github.earthdiver.qrrepair.session.StoredSession
 import com.google.zxing.Result
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
@@ -131,11 +126,13 @@ internal fun replaceOwnedBitmap(
 class MainActivity : Activity() {
     companion object {
         private const val STATE_SESSION_ID = "main.session_id"
+        private const val STATE_PENDING_TEXT_MATRIX = "main.pending_text_matrix"
         private const val REQ_OPEN_IMAGE = 1001
         private const val REQ_SAVE_PNG = 1002
         private const val REQ_CAMERA = 1003
         private const val REQ_SAVE_DIAGNOSTIC_INPUT = 1004
         private const val REQ_OPEN_TEXT_MATRIX = 1005
+        private const val REQ_SAVE_TEXT_MATRIX = 1006
     }
 
     private lateinit var activeStyle: AppStyle
@@ -215,19 +212,22 @@ class MainActivity : Activity() {
     private val executor = Executors.newSingleThreadExecutor()
     private val ioExecutor = Executors.newSingleThreadExecutor()
     private val workGeneration = AtomicInteger(0)
+    private val dataRequestGeneration = AtomicInteger(0)
+    private val imageImports by lazy {
+        ImageImportController(contentResolver, executor, { runOnUiThread(it) }, workGeneration::get,
+            { isDestroyed }, ::finishInputImport, { error ->
+                statusText.text = ui("画像の読み込みに失敗: ${error.message ?: error.javaClass.simpleName}",
+                    "Image load failed: ${error.message ?: error.javaClass.simpleName}")
+            })
+    }
     private val recoveryTasks = RecoveryTaskRunner(executor, { runOnUiThread(it) }, workGeneration::get)
     private var recoveryProgressDialog: RecoveryProgressDialog? = null
-    private val sessionSaves = SessionSaveQueue(
-        ioExecutor,
-        save = { id, entries, cursor -> sessionStore.save(id, UiMode.SIMPLE, entries, cursor) },
-        onError = { reportPersistenceFailure(ui("セッションの自動保存に失敗", "Automatic session save failed"), it) },
-    )
     private val finderSearchGeneration = AtomicInteger(0)
     @Volatile private var lastPersistenceWarningAtMs = 0L
     private val recoveryEngine = RecoveryEngine()
-    private lateinit var sessionStore: RecoverySessionStore
-    private val sessionHistory = RecoverySessionHistory(maxEntries = 40)
-    private var sessionId: String? = null
+    private lateinit var workspaceSession: WorkspaceSessionCoordinator
+    private val sessionHistory: RecoverySessionHistory get() = workspaceSession.history
+    private val sessionId: String? get() = workspaceSession.id
     /** Generation of the one history snapshot currently being recalculated, if any. */
     private var historyRestoreToken: Int? = null
 
@@ -245,6 +245,7 @@ class MainActivity : Activity() {
     /** Source transformed according to the active reproducible preprocessing settings. */
     private var analysisPrepared: BitmapUtils.Prepared? = null
     private var pendingDiagnosticBitmap: PendingDiagnosticBitmap? = null
+    private var pendingTextMatrix: String? = null
     private var preprocessSettings = PreprocessSettings().withInitialErrorLimits()
     // In-memory checkpoint for the active work only. Dialogs edit independent copies.
     private var savedCellEditState: PreRecoveryCellEditState? = null
@@ -269,7 +270,10 @@ class MainActivity : Activity() {
         activeStyle = retained?.style ?: AppStylePreferences.selected(this)
         setTheme(activeStyle.theme)
         super.onCreate(savedInstanceState)
-        sessionStore = RecoverySessionStore(this)
+        pendingTextMatrix = savedInstanceState?.getString(STATE_PENDING_TEXT_MATRIX)
+        workspaceSession = WorkspaceSessionCoordinator(RecoverySessionStore(this), ioExecutor,
+            { runOnUiThread(it) },
+            onSaveError = { reportPersistenceFailure(ui("セッションの自動保存に失敗", "Automatic session save failed"), it) })
         purgeStaleCameraCaptures()
         setContentView(buildUi())
         retained?.imageImport?.let { image ->
@@ -278,12 +282,11 @@ class MainActivity : Activity() {
             return
         }
         retained?.editorWork?.let { work ->
-            sessionId = work.sessionId
+            workspaceSession.restoreIdentity(work.sessionId, work.history, work.cursor)
             prepared = work.source
             analysisPrepared = work.source
             preprocessSettings = work.savedSettings
             savedCellEditState = work.savedEdits
-            sessionHistory.replace(work.history, work.cursor)
             retained.immediateResult?.takeIf { it.sessionId == work.sessionId &&
                 it.entryId == sessionHistory.current?.id && it.settings == work.savedSettings }?.let {
                 renderImmediateQrResult(it, showNotice = false)
@@ -303,6 +306,7 @@ class MainActivity : Activity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         sessionId?.let { outState.putString(STATE_SESSION_ID, it) }
+        pendingTextMatrix?.let { outState.putString(STATE_PENDING_TEXT_MATRIX, it) }
         super.onSaveInstanceState(outState)
     }
 
@@ -735,18 +739,15 @@ class MainActivity : Activity() {
         }
         resumeButton.isEnabled = false
         val generation = workGeneration.get()
-        ioExecutor.execute {
-            val recent = runCatching { sessionStore.listRecent().firstOrNull() }
-            runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
-                resumeButton.isEnabled = true
-                if (generation != workGeneration.get()) return@runOnUiThread
-                val entry = recent.getOrNull()
-                if (entry != null) restoreSessionById(entry.id)
-                else Toast.makeText(this, if (recent.isFailure) {
-                    ui("保存した作業を読み込めませんでした。作業一覧から確認してください。", "Could not load saved work. Check the saved work list.")
-                } else ui("保存した作業はありません。カメラまたは画像の選択から始めてください。", "No saved work. Start with the camera or choose an image."), Toast.LENGTH_LONG).show()
-            }
+        workspaceSession.listRecent { recent ->
+            if (isFinishing || isDestroyed) return@listRecent
+            resumeButton.isEnabled = true
+            if (generation != workGeneration.get()) return@listRecent
+            val entry = recent.getOrNull()?.firstOrNull()
+            if (entry != null) restoreSessionById(entry.id)
+            else Toast.makeText(this, if (recent.isFailure) {
+                ui("保存した作業を読み込めませんでした。作業一覧から確認してください。", "Could not load saved work. Check the saved work list.")
+            } else ui("保存した作業はありません。カメラまたは画像の選択から始めてください。", "No saved work. Start with the camera or choose an image."), Toast.LENGTH_LONG).show()
         }
     }
 
@@ -1018,18 +1019,33 @@ class MainActivity : Activity() {
         val results = allResults.take(MAX_DISPLAYED_RECOVERY_CANDIDATES)
         if (results.size <= 1) comparisonCandidate = null
         for (selector in listOf(upperResultSelector, mainResultSelector)) {
-            selector.removeAllViews()
+            // Keep the candidate row attached while selecting within the same result set.
+            // Replacing it also discards its horizontal scroll position and focus.
+            val candidateScroll = (0 until selector.childCount)
+                .map { selector.getChildAt(it) }
+                .filterIsInstance<HorizontalScrollView>()
+                .firstOrNull { it.tag == results }
+            for (childIndex in selector.childCount - 1 downTo 0) {
+                if (selector.getChildAt(childIndex) !== candidateScroll) selector.removeViewAt(childIndex)
+            }
             selector.visibility = if (results.size > 1) View.VISIBLE else View.GONE
             if (results.size <= 1) continue
             selector.addView(TextView(this).apply {
                 text = candidateSelectionLabel(allResults.size)
                 textSize = 12f
                 setPadding(dp(8), dp(4), dp(8), 0)
-            })
-            selector.addView(HorizontalScrollView(this).apply {
-                isHorizontalScrollBarEnabled = false
-                addView(resultRadioGroup(results) { renderMainResultSelection() })
-            })
+            }, 0)
+            if (candidateScroll == null) {
+                selector.addView(HorizontalScrollView(this).apply {
+                    tag = results
+                    isHorizontalScrollBarEnabled = false
+                    addView(resultRadioGroup(results))
+                })
+            } else {
+                val group = candidateScroll.getChildAt(0) as RadioGroup
+                val selected = results.indexOfFirst { it.first == recoveryState.recoveryIndex }
+                if (selected >= 0) group.check(group.getChildAt(selected).id) else group.clearCheck()
+            }
             selector.addView(button(ui("候補の内容一覧", "Candidate contents")) {
                 CandidateContentsDialog(this, results, recoveryState.recoveryIndex,
                     candidateSelectionLabel(allResults.size)) { index ->
@@ -1060,10 +1076,6 @@ class MainActivity : Activity() {
                 })
             }
         }
-    }
-
-    private fun renderMainResultSelection() {
-        refreshMainResultSelector()
     }
 
     private fun resultRadioGroup(
@@ -1167,6 +1179,33 @@ class MainActivity : Activity() {
     }
 
     private fun showCodewordHex() {
+        val request = dataRequestGeneration.incrementAndGet()
+        if (recoveryState.selectedRecovery != null || recoveryState.failure != null) {
+            showCodewordHexContent(null)
+            return
+        }
+        val source = prepared ?: run { showCodewordHexContent(null); return }
+        val settings = preprocessSettings.recoverySnapshot()
+        val token = workGeneration.get()
+        fun stopped() = request != dataRequestGeneration.get() || token != workGeneration.get() ||
+            Thread.currentThread().isInterrupted
+        executor.execute {
+            if (stopped()) return@execute
+            val result = runCatching {
+                val image = BitmapUtils.forSettings(source, settings)
+                try { sampleSavedPreRecoveryData(image.luma, settings, ::stopped) }
+                finally { if (image.bitmap !== source.bitmap) image.bitmap.recycle() }
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed || request != dataRequestGeneration.get() || token != workGeneration.get() ||
+                    prepared !== source || preprocessSettings != settings ||
+                    recoveryState.selectedRecovery != null || recoveryState.failure != null) return@runOnUiThread
+                showCodewordHexContent(result.getOrNull())
+            }
+        }
+    }
+
+    private fun showCodewordHexContent(preRecoveryData: PreRecoveryDataInput?) {
         val attemptedCandidate = recoveryState.selectedRecovery
         val savedData = if (attemptedCandidate == null && recoveryState.failure != null && recoveryState.workingMatrix != null) {
             val matrix = recoveryState.workingMatrix!!
@@ -1176,7 +1215,6 @@ class MainActivity : Activity() {
                 SavedRawData(matrix, CodewordExtractor.extract(matrix, version, failure.dataMask), version, failure.dataMask, failure.ecLevel)
             }.getOrNull()
         } else null
-        val preRecoveryData = if (attemptedCandidate == null && recoveryState.failure == null) savedPreRecoveryData() else null
         val fallbackMatrix = recoveryState.workingMatrix?.takeIf { attemptedCandidate != null } ?: savedData?.matrix
             ?: preRecoveryData?.matrix
             ?: run { Toast.makeText(this, ui("表示できるデータがありません。", "No data is available."), Toast.LENGTH_SHORT).show(); return }
@@ -1293,31 +1331,6 @@ class MainActivity : Activity() {
         val ecLevel: com.google.zxing.qrcode.decoder.ErrorCorrectionLevel?,
     )
 
-    private fun savedPreRecoveryData(): PreRecoveryDataInput? {
-        val prepared = preparedFor(preprocessSettings) ?: return null
-        val quad = preprocessSettings.manualQuad ?: return null
-        val version = preprocessSettings.version
-        val dimension = 17 + 4 * version
-        val pitch = ((quad.topLeft.distanceTo(quad.topRight) + quad.topLeft.distanceTo(quad.bottomLeft)) /
-            (2.0 * (dimension - 1))).coerceAtLeast(.25)
-        val geometry = runCatching {
-            GridGeometry(
-                version, FinderRole.TOP_LEFT, quad.topLeft.x, quad.topLeft.y,
-                pitch, 0.0, quad, io.github.earthdiver.qrrepair.core.GeometryModel.MANUAL_PROJECTIVE,
-            ).reanchored()
-        }.getOrNull() ?: return null
-        val profile = preprocessSettings.variants().first()
-        val matrix = PreRecoveryPreviewSampler().sample(prepared.luma, geometry, profile,
-            preprocessSettings.logicalGridAssigned).first
-        preprocessSettings.preRecoveryEdits.forEach { (coord, value) ->
-            if (coord.x in 0 until matrix.dimension && coord.y in 0 until matrix.dimension) {
-                matrix.set(coord.x, coord.y, value, 1f, preprocessSettings.sourceForPreRecoveryEdit(value, coord))
-                matrix.setPrioritySearch(coord.x, coord.y, coord in preprocessSettings.preRecoveryPrioritySearch)
-            }
-        }
-        return PreRecoveryDataInput(matrix, version)
-    }
-
     private val dialogViews by lazy { DialogViewFactory(this) }
 
     private fun button(label: String, onClick: () -> Unit): Button = dialogViews.button(label, onClick)
@@ -1334,6 +1347,7 @@ class MainActivity : Activity() {
         preprocessSettings = preprocessSettings,
         selectedQr = recoveryState.selectedRecovery?.takeIf { it.isSelectableRecovery }?.let(RecoverySelectionIdentity::from),
         samplingInverted = recoveryState.samplingProfile?.inverted,
+        oneTimeSingleSegment = recoveryState.oneTimeSingleSegment,
     )
 
     private fun preparedFor(settings: PreprocessSettings): BitmapUtils.Prepared? {
@@ -1372,21 +1386,19 @@ class MainActivity : Activity() {
                 kind = HistoryEventKind.AUTO_RECOVERY,
                 label = label,
                 detail = detail,
-                snapshot = RecoverySnapshot(null, null, null, -1, preprocessSettings),
+                snapshot = RecoverySnapshot(null, null, null, -1, preprocessSettings,
+                    oneTimeSingleSegment = recoveryState.oneTimeSingleSegment),
             ),
         )
         persistSessionAsync()
     }
 
     private fun persistSessionAsync() {
-        val id = sessionId ?: return
-        if (sessionHistory.entries.isEmpty()) return
-        val removed = RecoverySessionCodec.trimHistoryToPayloadLimit(sessionHistory, id,
-            maxRetainedBytes = RecoveryMemoryPolicy.current().historyBytes)
-        if (removed > 0) Toast.makeText(this, ui(
-            "履歴の容量上限により古い履歴を${removed}件整理しました。現在の作業は保持しています。",
-            "Removed $removed older history entries at the size limit. Current work is preserved."), Toast.LENGTH_SHORT).show()
-        sessionSaves.enqueue(id, sessionHistory.entries.toList(), sessionHistory.cursor)
+        workspaceSession.persist(RecoveryMemoryPolicy.current().historyBytes) { removed ->
+            Toast.makeText(this, ui(
+                "履歴の容量上限により古い履歴を${removed}件整理しました。現在の作業は保持しています。",
+                "Removed $removed older history entries at the size limit. Current work is preserved."), Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun reportPersistenceFailure(prefix: String, error: Throwable) {
@@ -1548,12 +1560,15 @@ class MainActivity : Activity() {
             return
         }
         val source = snapshot.sourceMatrix?.copy() ?: matrix.copy()
-        val requestSettings = preprocessSettings.recoverySnapshot()
+        recoveryState.oneTimeSingleSegment = snapshot.oneTimeSingleSegment
+        val requestSettings = preprocessSettings.recoverySnapshot().let {
+            if (snapshot.oneTimeSingleSegment) it.copy(trustKnownPayloadCount = true) else it
+        }
         val token = workGeneration.incrementAndGet()
         historyRestoreToken = token
         // A restored snapshot represents one concrete saved geometry even though auto recovery is not persisted.
         recoveryState.restoreAttempt(geometry, source, matrix,
-            snapshot.samplingInverted?.let { SamplingProfile(preprocessSettings, it) })
+            snapshot.samplingInverted?.let { SamplingProfile(requestSettings, it) })
         if (maxOf(requestSettings.preRecoveryPrioritySearch.size, matrix.prioritySearchCoordinates().size) > requestSettings.prioritySearchLimit) {
             historyRestoreToken = null
             refreshMainResultSelector()
@@ -1574,8 +1589,10 @@ class MainActivity : Activity() {
                 recoveryEngine.recoverWithDiagnostics(
                     matrix.copy(),
                     trustKnownPayloadCount = requestSettings.trustKnownPayloadCount,
+                    assumeUtf8ByteSegments = requestSettings.assumeUtf8ByteSegments,
                     partialBitSearchLimit = requestSettings.partialBitSearchLimit,
                     listDecodingAdditionalErrors = requestSettings.listDecodingAdditionalErrors,
+                    knownBitErrorLimit = requestSettings.knownBitErrorLimit,
                     formatConstraint = requestSettings.formatConstraint,
                     maxFormatMismatches = requestSettings.effectiveFormatMismatchLimit,
                     maxKnownDataEccMismatches = requestSettings.effectiveDataEccMismatchLimit,
@@ -1590,6 +1607,7 @@ class MainActivity : Activity() {
                         onProgress = progressDialog::listDecodingProgress,
                         onIdle = progressDialog::listDecodingIdle,
                     ),
+                    discoveryCounter = RecoveryDiscoveryCounter(onChanged = progressDialog::candidatesFound),
                     onPriorityProgress = progressDialog::priorityProgress,
                 )
             },
@@ -1602,6 +1620,7 @@ class MainActivity : Activity() {
                         ?: preferredRecoveryIndex(ranked, snapshot.recoveryIndex),
                     failure,
                     outcome.searchDiagnostic,
+                    outcome.discoveredCandidates,
                 )
                 refreshInspector()
                 updateSummary(if (snapshot.selectedQr != null && recoveryState.selectedRecovery == null)
@@ -1618,47 +1637,45 @@ class MainActivity : Activity() {
     }
 
     private fun showRecentSessions() {
-        ioExecutor.execute {
-            val recent = try { sessionStore.listRecent() } catch (_: Throwable) { emptyList() }
-            runOnUiThread {
-                if (recent.isEmpty()) {
-                    Toast.makeText(this, ui("保存済みの作業はありません。", "No saved work is available."), Toast.LENGTH_SHORT).show()
-                    return@runOnUiThread
-                }
-                val labels = recent.map {
-                    "${DateFormat.format("MM/dd HH:mm", Date(it.updatedAtMs))}  ${it.lastLabel.ifBlank { ui("QR修復", "QR repair") }}  (${it.historyCount}${ui("履歴", " entries")})"
-                }.toTypedArray()
-                val title = LinearLayout(this).apply {
-                    orientation = LinearLayout.VERTICAL
-                    setPadding(dp(24), dp(16), dp(24), dp(8))
-                    addView(TextView(this@MainActivity).apply {
-                        textSize = 20f
-                        text = if (modernStyle) getString(R.string.saved_work) + " (${recent.size}/${RecoverySessionStore.MAX_SAVED_SESSIONS})"
-                            else getString(R.string.recent_work_select_format, recent.size, RecoverySessionStore.MAX_SAVED_SESSIONS)
-                    })
-                    addView(TextView(this@MainActivity).apply {
-                        textSize = 14f
-                        setPadding(0, dp(8), 0, 0)
-                        setText(R.string.saved_work_actions_hint)
-                    })
-                    addView(TextView(this@MainActivity).apply {
-                        textSize = 14f
-                        setPadding(0, dp(8), 0, 0)
-                        text = getString(R.string.saved_work_retention, RecoverySessionStore.MAX_SAVED_SESSIONS)
-                    })
-                }
-                val dialog = AlertDialog.Builder(this)
-                    // Keep guidance outside setMessage, which would hide the session ListView.
-                    .setCustomTitle(title)
-                    .setItems(labels) { _, which -> restoreSessionById(recent[which].id) }
-                    .setNeutralButton(R.string.delete_all) { _, _ -> confirmDeleteAllRecentSessions(recent.size) }
-                    .setNegativeButton(R.string.close, null)
-                    .show()
-                dialog.listView.setOnItemLongClickListener { _, _, position, _ ->
-                    dialog.dismiss()
-                    confirmDeleteRecentSession(recent[position].id)
-                    true
-                }
+        workspaceSession.listRecent { result ->
+            val recent = result.getOrDefault(emptyList())
+            if (recent.isEmpty()) {
+                Toast.makeText(this, ui("保存済みの作業はありません。", "No saved work is available."), Toast.LENGTH_SHORT).show()
+                return@listRecent
+            }
+            val labels = recent.map {
+                "${DateFormat.format("MM/dd HH:mm", Date(it.updatedAtMs))}  ${it.lastLabel.ifBlank { ui("QR修復", "QR repair") }}  (${it.historyCount}${ui("履歴", " entries")})"
+            }.toTypedArray()
+            val title = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(24), dp(16), dp(24), dp(8))
+                addView(TextView(this@MainActivity).apply {
+                    textSize = 20f
+                    text = if (modernStyle) getString(R.string.saved_work) + " (${recent.size}/${RecoverySessionStore.MAX_SAVED_SESSIONS})"
+                        else getString(R.string.recent_work_select_format, recent.size, RecoverySessionStore.MAX_SAVED_SESSIONS)
+                })
+                addView(TextView(this@MainActivity).apply {
+                    textSize = 14f
+                    setPadding(0, dp(8), 0, 0)
+                    setText(R.string.saved_work_actions_hint)
+                })
+                addView(TextView(this@MainActivity).apply {
+                    textSize = 14f
+                    setPadding(0, dp(8), 0, 0)
+                    text = getString(R.string.saved_work_retention, RecoverySessionStore.MAX_SAVED_SESSIONS)
+                })
+            }
+            val dialog = AlertDialog.Builder(this)
+                // Keep guidance outside setMessage, which would hide the session ListView.
+                .setCustomTitle(title)
+                .setItems(labels) { _, which -> restoreSessionById(recent[which].id) }
+                .setNeutralButton(R.string.delete_all) { _, _ -> confirmDeleteAllRecentSessions(recent.size) }
+                .setNegativeButton(R.string.close, null)
+                .show()
+            dialog.listView.setOnItemLongClickListener { _, _, position, _ ->
+                dialog.dismiss()
+                confirmDeleteRecentSession(recent[position].id)
+                true
             }
         }
     }
@@ -1682,36 +1699,16 @@ class MainActivity : Activity() {
     }
 
     private fun deleteAllRecentSessions() {
-        // The active work is included, so detach it before queued deletion runs.
-        sessionId = null
-        ioExecutor.execute {
-            val deleted = try {
-                sessionStore.deleteAll()
-                true
-            } catch (_: Throwable) {
-                false
-            }
-            runOnUiThread {
-                if (deleted) Toast.makeText(this, R.string.all_recent_work_deleted, Toast.LENGTH_SHORT).show()
-                else Toast.makeText(this, R.string.delete_recent_work_failed, Toast.LENGTH_SHORT).show()
-            }
+        workspaceSession.deleteAll { deleted ->
+            if (deleted) Toast.makeText(this, R.string.all_recent_work_deleted, Toast.LENGTH_SHORT).show()
+            else Toast.makeText(this, R.string.delete_recent_work_failed, Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun deleteRecentSession(id: String) {
-        // Stop future snapshots from recreating a session the user has chosen to delete.
-        if (sessionId == id) sessionId = null
-        ioExecutor.execute {
-            val deleted = try {
-                sessionStore.delete(id)
-                true
-            } catch (_: Throwable) {
-                false
-            }
-            runOnUiThread {
-                if (deleted) showRecentSessions()
-                else Toast.makeText(this, R.string.delete_recent_work_failed, Toast.LENGTH_SHORT).show()
-            }
+        workspaceSession.delete(id) { deleted ->
+            if (deleted) showRecentSessions()
+            else Toast.makeText(this, R.string.delete_recent_work_failed, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -1719,30 +1716,12 @@ class MainActivity : Activity() {
         showWorkspace()
         val token = workGeneration.incrementAndGet()
         statusText.text = ui("保存済みセッションを読み込み中…", "Loading saved session…")
-        ioExecutor.execute {
-            val stored = try { sessionStore.load(id) } catch (_: Throwable) { null }
-            val bitmap = stored?.sourceBitmap
-            val p = if (bitmap != null) try { BitmapUtils.prepare(bitmap) } catch (_: Throwable) { null } else null
-            fun recycleLoadedBitmaps() {
-                p?.bitmap?.takeIf { it !== bitmap && !it.isRecycled }?.recycle()
-                bitmap?.takeIf { !it.isRecycled }?.recycle()
+        workspaceSession.load(id, isCurrent = { token == workGeneration.get() }) { loaded ->
+            if (loaded == null) {
+                statusText.text = ui("セッションを読み込めませんでした。", "Could not load the session.")
+                return@load
             }
-            if (token != workGeneration.get()) {
-                recycleLoadedBitmaps()
-                return@execute
-            }
-            runOnUiThread {
-                if (token != workGeneration.get()) {
-                    recycleLoadedBitmaps()
-                    return@runOnUiThread
-                }
-                if (stored == null) {
-                    statusText.text = ui("セッションを読み込めませんでした。", "Could not load the session.")
-                    return@runOnUiThread
-                }
-                bitmap?.takeIf { it !== p?.bitmap && !it.isRecycled }?.recycle()
-                applyStoredSession(stored, p)
-            }
+            applyStoredSession(loaded.stored, loaded.source)
         }
     }
 
@@ -1750,11 +1729,10 @@ class MainActivity : Activity() {
         val retained = pendingRetainedCellHistory
         pendingRetainedCellHistory = null
         savedCellEditState = null
-        sessionId = stored.id
+        workspaceSession.restoreIdentity(stored.id, stored.historyEntries, stored.historyCursor)
         immediateResultShown = false
         prepared = source
         analysisPrepared = source
-        sessionHistory.replace(stored.historyEntries, stored.historyCursor)
         sessionHistory.current?.let {
             restoreSnapshot(it, ui("保存済み作業を復元", "Restored saved work")) {
                 // Consume once, only after the saved work has been restored and checked.
@@ -1884,6 +1862,7 @@ class MainActivity : Activity() {
 
     private fun diagnosticContext() = RecoveryDiagnosticContext(
         candidateCount = searchCandidateCount(),
+        discoveredCandidates = recoveryState.discoveredCandidates,
         unsearched = searchHasUncheckedCombinations(),
         candidatesOmitted = recoveryState.candidatesOmitted,
         searchDiagnostic = recoveryState.searchDiagnostic,
@@ -1926,12 +1905,18 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (resultCode != RESULT_OK) {
             if (requestCode == REQ_SAVE_DIAGNOSTIC_INPUT) releasePendingDiagnosticBitmap()
+            if (requestCode == REQ_SAVE_TEXT_MATRIX) pendingTextMatrix = null
             return
         }
         when (requestCode) {
             REQ_OPEN_IMAGE -> data?.data?.let { loadImage(it) }
             REQ_OPEN_TEXT_MATRIX -> data?.data?.let { loadTextMatrix(it) }
             REQ_SAVE_PNG -> data?.data?.let { savePng(it) }
+            REQ_SAVE_TEXT_MATRIX -> {
+                val text = pendingTextMatrix
+                pendingTextMatrix = null
+                if (text != null) data?.data?.let { saveTextMatrix(it, text) }
+            }
             REQ_SAVE_DIAGNOSTIC_INPUT -> data?.data?.let { saveDiagnosticInput(it) }
                 ?: releasePendingDiagnosticBitmap()
             REQ_CAMERA -> data?.getStringExtra(CameraActivity.EXTRA_CAPTURE_PATH)?.let {
@@ -1941,7 +1926,7 @@ class MainActivity : Activity() {
                         data.getIntExtra(CameraActivity.EXTRA_CONTRAST, 0),
                         data.getIntExtra(CameraActivity.EXTRA_BRIGHTNESS, 0),
                         data.getBooleanExtra(CameraActivity.EXTRA_INVERTED, false),
-                    ))
+                    ), distortionCorrection = data.getBooleanExtra(CameraActivity.EXTRA_DISTORTION_CORRECTION, false))
             }
         }
     }
@@ -1985,37 +1970,11 @@ class MainActivity : Activity() {
         inputProgressGeneration = null
     }
 
-    private fun loadImage(uri: Uri, cleanupFile: File? = null, imageAdjustment: ImageAdjustment = ImageAdjustment()) {
+    private fun loadImage(uri: Uri, cleanupFile: File? = null, imageAdjustment: ImageAdjustment = ImageAdjustment(), distortionCorrection: Boolean = false) {
         val token = beginInputImport(ui("画像を読み込み中…", "Loading image…"))
-        executor.execute {
-            try {
-                val bitmap = decodeReasonablySized(uri)
-                    ?: throw IllegalArgumentException(ui("画像をデコードできません", "Could not decode the image"))
-                if (token != workGeneration.get()) {
-                    bitmap.recycle()
-                    cleanupFile?.let { runCatching { it.delete() } }
-                    return@execute
-                }
-                runOnUiThread {
-                    if (token != workGeneration.get()) {
-                        bitmap.recycle()
-                        cleanupFile?.let { runCatching { it.delete() } }
-                    } else {
-                        finishInputImport(token)
-                        if (cleanupFile == null) showImportedImageAdjustment(bitmap)
-                        else acceptDecodedImage(bitmap, cleanupFile, imageAdjustment)
-                    }
-                }
-            } catch (t: Throwable) {
-                runOnUiThread {
-                    finishInputImport(token)
-                    if (token != workGeneration.get() || isDestroyed) return@runOnUiThread
-                    statusText.text = ui("画像の読み込みに失敗: ${t.message ?: t.javaClass.simpleName}", "Image load failed: ${t.message ?: t.javaClass.simpleName}")
-                }
-                cleanupFile?.let { runCatching { it.delete() } }
-            } finally {
-                runOnUiThread { finishInputImport(token) }
-            }
+        imageImports.load(token, uri, cleanupFile) { bitmap ->
+            if (cleanupFile == null) showImportedImageAdjustment(bitmap)
+            else acceptDecodedImage(bitmap, cleanupFile, imageAdjustment, distortionCorrection)
         }
     }
 
@@ -2103,15 +2062,8 @@ class MainActivity : Activity() {
                     preprocessSettings = settings
                     savedCellEditState = null
                     recoveryState.clear()
-                    sessionId = sessionStore.newId()
-                    sessionHistory.clear()
-                    val newSessionId = sessionId!!
-                    ioExecutor.execute {
-                        try {
-                            sessionStore.saveSourceBitmap(newSessionId, p.bitmap)
-                        } catch (t: Throwable) {
-                            reportPersistenceFailure(ui("疑似画像の保存に失敗", "Synthetic image save failed"), t)
-                        }
+                    workspaceSession.beginNew(p.bitmap) { error ->
+                        reportPersistenceFailure(ui("疑似画像の保存に失敗", "Synthetic image save failed"), error)
                     }
                     sessionHistory.record(
                         RecoveryHistoryEntry(
@@ -2174,7 +2126,7 @@ class MainActivity : Activity() {
         editor = ImageAdjustmentEditor(this, initialBitmap, onCancel = { dialog.dismiss() }, onApply = { adjustment ->
             runCatching { editor.createCrop() }.onSuccess { cropped ->
                 dialog.dismiss()
-                acceptDecodedImage(cropped, imageAdjustment = adjustment)
+                acceptDecodedImage(cropped, imageAdjustment = adjustment, distortionCorrection = editor.distortionCorrection)
             }.onFailure(editor::showError)
         })
         importEditor = editor
@@ -2201,114 +2153,52 @@ class MainActivity : Activity() {
         dialog.show()
     }
 
-    private fun acceptDecodedImage(bitmap: Bitmap, cleanupFile: File? = null, imageAdjustment: ImageAdjustment = ImageAdjustment()) {
+    private fun acceptDecodedImage(bitmap: Bitmap, cleanupFile: File? = null, imageAdjustment: ImageAdjustment = ImageAdjustment(), distortionCorrection: Boolean = false) {
         val token = beginInputImport(ui("画像を解析用に準備中…", "Preparing image for analysis…"))
-        executor.execute {
-            var candidate: BitmapUtils.Prepared? = null
-            var adjustedCandidate: BitmapUtils.Prepared? = null
-            var handedToUi = false
-            try {
-                val p = BitmapUtils.prepare(bitmap)
-                candidate = p
-                if (p.bitmap !== bitmap) bitmap.recycle()
-                val adjusted = BitmapUtils.adjust(p, imageAdjustment)
-                adjustedCandidate = adjusted
-                val standardResult = decodeStandardQr(adjusted.bitmap)
-                val initialEstimate = InitialThresholdEstimator.estimate(adjusted.bitmap)
-                val originalEstimate = if (adjusted === p) initialEstimate else InitialThresholdEstimator.estimate(p.bitmap)
-                val initialGrid = io.github.earthdiver.qrrepair.core.InitialGridEstimator.estimate(
-                    adjusted.luma, io.github.earthdiver.qrrepair.core.ZxingCppGridDetector.detect(adjusted.bitmap),
-                )
-                if (token != workGeneration.get()) {
-                    p.bitmap.recycle()
-                    if (adjusted !== p) adjusted.bitmap.recycle()
-                    return@execute
-                }
-                runOnUiThread {
-                    if (token != workGeneration.get()) {
-                        p.bitmap.recycle()
-                        if (adjusted !== p) adjusted.bitmap.recycle()
-                        return@runOnUiThread
-                    }
-                    finishInputImport(token)
-                    immediateResultShown = false
-                    prepared = p
-                    analysisPrepared = adjusted
-                    savedCellEditState = null
-                    preprocessSettings = PreprocessSettings(
-                        imageAdjustment = imageAdjustment,
-                        automaticThresholds = true,
-                        blackMax = initialEstimate?.blackMax ?: 96,
-                        whiteMin = initialEstimate?.whiteMin ?: 160,
-                        unknownColorClusters = originalEstimate?.unknownColorClusters.orEmpty(),
-                        lockCorners = true,
-                    ).withInitialGrid(initialGrid).withInitialErrorLimits()
-                    sessionId = sessionStore.newId()
-                    sessionHistory.clear()
-                    val newSessionId = sessionId!!
-                    ioExecutor.execute {
-                        try {
-                            sessionStore.saveSourceBitmap(newSessionId, p.bitmap)
-                        } catch (t: Throwable) {
-                            reportPersistenceFailure(ui("元画像の保存に失敗", "Source image save failed"), t)
-                        }
-                    }
-                    sessionHistory.record(
-                        RecoveryHistoryEntry(
-                            kind = HistoryEventKind.IMPORT,
-                            label = ui("画像を読み込み", "Imported image"),
-                            detail = "${p.bitmap.width}×${p.bitmap.height}px" +
-                                (initialGrid?.let {
-                                    val method = when (it.source) {
-                                        io.github.earthdiver.qrrepair.core.InitialGridSource.ZXING_CPP -> "ZXing-C++"
-                                        io.github.earthdiver.qrrepair.core.InitialGridSource.PERIODICITY -> ui("周期推定", "periodicity")
-                                        io.github.earthdiver.qrrepair.core.InitialGridSource.TWO_FINDER -> ui("2つのFinderから推定", "two-Finder estimate")
-                                    }
-                                    ui("; 格子推定: $method / V${it.version}", "; Grid estimate: $method / V${it.version}") +
-                                        if (it.autoAssignedFinders.isNotEmpty()) ui("; Finder位置・役割を自動設定", "; Finder positions and roles assigned automatically") else ""
-                                } ?: ""),
-                            snapshot = RecoverySnapshot(null, null, null, -1, preprocessSettings),
-                        ),
-                    )
-                    persistSessionAsync()
-                    recoveryState.clear()
-                    guideText.text = ui("案内: 修復前設定で閾値・反転・グリッドを確認してください。", "Guide: Review the threshold, polarity, and grid in the pre-repair settings.")
-                    contentPreviewText.text = getString(R.string.no_content_preview)
-                    clearDiagnosticDetails()
-                    refreshMainResultSelector()
-                    statusText.text = ui("画像 ${p.bitmap.width}×${p.bitmap.height}px。修復前設定を確認してください。", "Image ${p.bitmap.width}×${p.bitmap.height}px. Review the pre-repair settings.")
-                    if (standardResult != null) {
-                        showImmediateQrResult(standardResult)
-                    } else {
-                        showPreprocessDialog()
-                    }
-                }
-                handedToUi = true
-            } catch (t: Throwable) {
-                runOnUiThread {
-                    finishInputImport(token)
-                    if (token != workGeneration.get() || isDestroyed) return@runOnUiThread
-                    statusText.text = ui("画像の読み込みに失敗: ${t.message ?: t.javaClass.simpleName}", "Image load failed: ${t.message ?: t.javaClass.simpleName}")
-                }
-            } finally {
-                runOnUiThread { finishInputImport(token) }
-                if (!handedToUi) {
-                    adjustedCandidate?.bitmap?.takeIf { it !== candidate?.bitmap && !it.isRecycled }?.recycle()
-                    candidate?.bitmap?.takeIf { !it.isRecycled }?.recycle()
-                    bitmap.takeIf { it !== candidate?.bitmap && !it.isRecycled }?.recycle()
-                }
-                // CameraActivity hands us a private lossless cache image. It is only a hand-off artifact;
-                // the durable session copy is lossless PNG under noBackupFilesDir.
-                cleanupFile?.let { runCatching { it.delete() } }
+        imageImports.prepare(token, bitmap, cleanupFile, imageAdjustment, distortionCorrection) { result ->
+            val p = result.source
+            val adjusted = result.adjusted
+            val initialGrid = result.initialGrid
+            val standardResult = result.standardResult
+            immediateResultShown = false
+            prepared = p
+            analysisPrepared = adjusted
+            savedCellEditState = null
+            preprocessSettings = result.settings
+            workspaceSession.beginNew(p.bitmap) { error ->
+                reportPersistenceFailure(ui("元画像の保存に失敗", "Source image save failed"), error)
+            }
+            sessionHistory.record(
+                RecoveryHistoryEntry(
+                    kind = HistoryEventKind.IMPORT,
+                    label = ui("画像を読み込み", "Imported image"),
+                    detail = "${p.bitmap.width}×${p.bitmap.height}px" +
+                        (initialGrid?.let {
+                            val method = when (it.source) {
+                                io.github.earthdiver.qrrepair.core.InitialGridSource.ZXING_CPP -> "ZXing-C++"
+                                io.github.earthdiver.qrrepair.core.InitialGridSource.PERIODICITY -> ui("周期推定", "periodicity")
+                                io.github.earthdiver.qrrepair.core.InitialGridSource.TWO_FINDER -> ui("2つのFinderから推定", "two-Finder estimate")
+                            }
+                            ui("; 格子推定: $method / V${it.version}", "; Grid estimate: $method / V${it.version}") +
+                                if (it.autoAssignedFinders.isNotEmpty()) ui("; Finder位置・役割を自動設定", "; Finder positions and roles assigned automatically") else ""
+                        } ?: ""),
+                    snapshot = RecoverySnapshot(null, null, null, -1, preprocessSettings),
+                ),
+            )
+            persistSessionAsync()
+            recoveryState.clear()
+            guideText.text = ui("案内: 修復前設定で閾値・反転・グリッドを確認してください。", "Guide: Review the threshold, polarity, and grid in the pre-repair settings.")
+            contentPreviewText.text = getString(R.string.no_content_preview)
+            clearDiagnosticDetails()
+            refreshMainResultSelector()
+            statusText.text = ui("画像 ${p.bitmap.width}×${p.bitmap.height}px。修復前設定を確認してください。", "Image ${p.bitmap.width}×${p.bitmap.height}px. Review the pre-repair settings.")
+            if (standardResult != null) {
+                showImmediateQrResult(standardResult)
+            } else {
+                showPreprocessDialog()
             }
         }
     }
-
-    private fun decodeStandardQr(bitmap: Bitmap): Result? = runCatching {
-        val pixels = IntArray(bitmap.width * bitmap.height)
-        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-        StandardQrDecoder.decode(bitmap.width, bitmap.height, pixels)
-    }.getOrNull()
 
     private fun immediateQrResult(result: Result) = ImmediateQrResult(
         sessionId, sessionHistory.current?.id, preprocessSettings, result.text, result.rawBytes?.copyOf())
@@ -2343,45 +2233,6 @@ class MainActivity : Activity() {
             .show()
     }
 
-    private fun decodeReasonablySized(uri: Uri): Bitmap? {
-        val orientation = contentResolver.openInputStream(uri)?.use { stream ->
-            runCatching {
-                ExifInterface(stream).getAttributeInt(
-                    ExifInterface.TAG_ORIENTATION,
-                    ExifInterface.ORIENTATION_NORMAL,
-                )
-            }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
-        } ?: ExifInterface.ORIENTATION_NORMAL
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-        var sample = 1
-        val maxSide = maxOf(bounds.outWidth, bounds.outHeight)
-        while (maxSide / sample > 2600) sample *= 2
-        val options = BitmapFactory.Options().apply {
-            inSampleSize = sample
-            inPreferredConfig = Bitmap.Config.ARGB_8888
-        }
-        val decoded = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
-            ?: return null
-        val spec = imageOrientationTransform(orientation)
-        val transform = Matrix().apply {
-            setRotate(spec.rotationDegrees)
-            if (spec.scaleX != 1f || spec.scaleY != 1f) postScale(spec.scaleX, spec.scaleY)
-        }
-        if (orientation == ExifInterface.ORIENTATION_NORMAL || orientation == ExifInterface.ORIENTATION_UNDEFINED) {
-            return decoded
-        }
-        return try {
-            Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, transform, true).also {
-                if (it !== decoded) decoded.recycle()
-            }
-        } catch (t: Throwable) {
-            decoded.recycle()
-            throw t
-        }
-    }
-
     private fun showFormatEditError(conflict: FormatEditConflict, changeRejected: Boolean = true) {
         AlertDialog.Builder(this)
             .setTitle(ui("形式情報の指定エラー", "Format selection error"))
@@ -2393,11 +2244,17 @@ class MainActivity : Activity() {
     private fun settingsFormatConflict(settings: PreprocessSettings): FormatEditConflict? =
         FormatEditPolicy.conflict(settings.version, settings.formatConstraint, settings.fixedPreRecoveryEdits)
 
-    private fun startAutoRecovery() {
+    private val singleSegmentRetryPolicy = SingleSegmentRetryPolicy()
+
+    private fun startAutoRecovery() = startAutoRecovery(oneTimeSingleSegment = false)
+
+    private fun startAutoRecovery(oneTimeSingleSegment: Boolean) {
         if (inputProgressGeneration != null) return
         immediateResultShown = false
         showWorkspace()
-        val requestSettings = preprocessSettings.recoverySnapshot()
+        val savedSettings = preprocessSettings.recoverySnapshot()
+        val requestSettings = if (oneTimeSingleSegment) savedSettings.copy(trustKnownPayloadCount = true) else savedSettings
+        val inputSource = prepared
         if (requestSettings.preRecoveryPrioritySearch.size > requestSettings.prioritySearchLimit) {
             AlertDialog.Builder(this).setMessage(ui(
                 "*の指定数が上限${requestSettings.prioritySearchLimit}を超えています。詳細設定で上限を戻すか、指定数を減らしてください。既存の指定は保持されています。",
@@ -2422,6 +2279,7 @@ class MainActivity : Activity() {
         analysisPrepared = p
         val token = workGeneration.incrementAndGet()
         recoveryState.clear()
+        recoveryState.oneTimeSingleSegment = oneTimeSingleSegment
         updateContentPreview()
         contentPreviewText.text = ""
         guideText.text = ""
@@ -2445,6 +2303,7 @@ class MainActivity : Activity() {
                         onProgress = progressDialog::listDecodingProgress,
                         onIdle = progressDialog::listDecodingIdle,
                     ),
+                    discoveryCounter = RecoveryDiscoveryCounter(onChanged = progressDialog::candidatesFound),
                     onPriorityProgress = progressDialog::priorityProgress,
                     onProgress = { progress ->
                         progressDialog.phase("${progress.profile.label}: ${progress.message} (${progress.done}/${progress.total})")
@@ -2453,6 +2312,20 @@ class MainActivity : Activity() {
             },
             onResult = onResult@{ result ->
                 recoveryState.autoResult = result
+                if (workGeneration.get() == token && prepared === inputSource &&
+                    preprocessSettings.recoverySnapshot() == savedSettings && inputSource != null &&
+                    singleSegmentRetryPolicy.claim(inputSource, requestSettings,
+                        result.searchDiagnostic, progressDialog.stopped.get())) {
+                    AlertDialog.Builder(this)
+                        .setMessage(ui("単一セグメントの終端・埋め草を強制すると、内容を復号できる可能性があります。この条件で今回だけ再実行しますか？",
+                            "Forcing a single segment’s terminator and padding may allow the content to decode. Retry with this condition for this run only?"))
+                        .setPositiveButton(ui("今回だけ再実行", "Retry this time only")) { _, _ ->
+                            if (workGeneration.get() == token && prepared === inputSource &&
+                                preprocessSettings.recoverySnapshot() == savedSettings) startAutoRecovery(oneTimeSingleSegment = true)
+                        }
+                        .setNegativeButton(ui("再実行しない", "Do not retry"), null)
+                        .show()
+                }
                 if (result.searchDiagnostic?.completeness == SearchCompleteness.UNSEARCHED && result.attempts.isEmpty()) {
                     statusText.text = searchResultDescription()
                     guideText.text = ui("保持された候補はありません。復元不能を意味しません。", "No candidates were retained. This does not establish that recovery is impossible.")
@@ -2481,9 +2354,14 @@ class MainActivity : Activity() {
                 val best = result.bestAttempt ?: result.attempts.first()
                 recoveryState.attemptIndex = result.attempts.indexOf(best).coerceAtLeast(0)
                 showAttempt(recoveryState.attemptIndex)
+                if (requestSettings.distortionCorrection && result.testedHypotheses.none { it.geometry.warp != null } &&
+                    result.searchDiagnostic?.completeness == SearchCompleteness.COMPLETE) {
+                    guideText.append("\n" + getString(R.string.image_distortion_unavailable))
+                }
                 recordHistory(
                     HistoryEventKind.AUTO_RECOVERY,
-                    ui("修復処理", "Repair"),
+                    if (oneTimeSingleSegment) ui("修復処理（今回だけ終端後構造を強制）", "Repair (single-segment forcing for this run only)")
+                    else ui("修復処理", "Repair"),
                     ui("試行 ${result.attemptedGeometries}件 / 保持候補 ${recoveryState.selectableEntries.size}件", "${result.attemptedGeometries} attempts / ${recoveryState.selectableEntries.size} retained candidates"),
                 )
             },
@@ -2541,19 +2419,8 @@ class MainActivity : Activity() {
                     draft.events.forEach { event ->
                         recordPreprocessHistory(event.settings, event.label, event.detail)
                     }
-                    // Deletion detaches the open work from storage. Only an explicit save may
-                    // create a new session; never resurrect the deleted session automatically.
-                    if (sessionId == null) {
-                        val newId = sessionStore.newId()
-                        val sourceBitmap = source.bitmap
-                        sessionId = newId
-                        ioExecutor.execute {
-                            try {
-                                sessionStore.saveSourceBitmap(newId, sourceBitmap)
-                            } catch (t: Throwable) {
-                                reportPersistenceFailure(ui("元画像の保存に失敗", "Source image save failed"), t)
-                            }
-                        }
+                    workspaceSession.ensureAttached(source.bitmap) { error ->
+                        reportPersistenceFailure(ui("元画像の保存に失敗", "Source image save failed"), error)
                     }
                     persistSessionAsync()
                     analysisPrepared = draft.image
@@ -2582,6 +2449,8 @@ class MainActivity : Activity() {
                 override fun editorClosed(session: PreprocessEditorSession) {
                     if (preprocessEditor === session) preprocessEditor = null
                 }
+
+                override fun saveTextMatrix(matrix: QrMatrix) = startSaveTextMatrix(matrix)
 
                 override fun saveDiagnosticInput(bitmap: Bitmap, owned: Boolean) =
                     startSaveDiagnosticInput(bitmap, owned)
@@ -2779,6 +2648,43 @@ class MainActivity : Activity() {
         updateContentPreview()
     }
 
+
+    private fun startSaveTextMatrix(matrix: QrMatrix) {
+        // Freeze the draft before opening the picker; later edits must not change this export.
+        pendingTextMatrix = buildString {
+            for (y in 0 until matrix.dimension) {
+                for (x in 0 until matrix.dimension) {
+                    val cell = matrix[x, y]
+                    append(if (cell.prioritySearch) '*' else when (cell.value) {
+                        ModuleValue.ZERO -> '0'
+                        ModuleValue.ONE -> '1'
+                        ModuleValue.ERASED -> '?'
+                    })
+                }
+                append('\n')
+            }
+        }
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TITLE, "QRevy-before-repair.txt")
+        }
+        startActivityForResult(intent, REQ_SAVE_TEXT_MATRIX)
+    }
+
+    private fun saveTextMatrix(uri: Uri, text: String) {
+        executor.execute {
+            val message = try {
+                contentResolver.openOutputStream(uri, "wt")?.use { out ->
+                    out.write(text.toByteArray(Charsets.UTF_8))
+                } ?: throw IllegalStateException(getString(R.string.text_matrix_destination_unavailable))
+                getString(R.string.text_matrix_saved)
+            } catch (error: Exception) {
+                getString(R.string.text_matrix_save_failed, error.message ?: error.javaClass.simpleName)
+            }
+            runOnUiThread { Toast.makeText(this, message, Toast.LENGTH_LONG).show() }
+        }
+    }
 
     private fun startSavePng() {
         val candidate = recoveryState.selectedRecovery

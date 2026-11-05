@@ -5,15 +5,17 @@ import io.github.earthdiver.qrrepair.localizedText
 /** Proven input restrictions, checked across every permitted format before making a run-wide claim. */
 enum class RecoveryInputBlocker { FORMAT_SELECTION, FORMAT_LIMIT, STRUCTURAL_FIXED_CELLS, ZERO_MISMATCH }
 
-enum class RecoveryCandidateRejection { FIXED_CELLS, MISMATCH_LIMIT, QR_STRUCTURE, SINGLE_SEGMENT_STRUCTURE, LIST_DECODING_MISMATCH_LIMIT }
+enum class RecoveryCandidateRejection { FIXED_CELLS, MISMATCH_LIMIT, QR_STRUCTURE, UTF8_BYTE_SEGMENT, SINGLE_SEGMENT_STRUCTURE, LIST_DECODING_MISMATCH_LIMIT }
 
-enum class SearchIncompleteReason { USER_INTERRUPTED, WORKING_MEMORY_LIMIT, LIST_DECODING_TIME_LIMIT, INTERNAL_ERROR }
+enum class SearchIncompleteReason { USER_INTERRUPTED, WORKING_MEMORY_LIMIT, LIST_DECODING_TIME_LIMIT, KNOWN_BIT_SEARCH_LIMIT, KNOWN_BIT_SEARCH_TIME_LIMIT, INTERNAL_ERROR }
 
 /** Evidence from the whole search, independent of the representative candidate or failure. */
 data class RecoverySearchDiagnostic(
     val inputBlocker: RecoveryInputBlocker? = null,
     val candidateRejections: Set<RecoveryCandidateRejection> = emptySet(),
     val acceptedCandidate: Boolean = false,
+    val decodedCandidate: Boolean = false,
+    val singleSegmentRetryAvailable: Boolean = false,
     val unresolvedCalculations: Boolean = false,
     val unsearched: Boolean = false,
     val incompleteReasons: Set<SearchIncompleteReason> = emptySet(),
@@ -31,6 +33,8 @@ data class RecoverySearchDiagnostic(
     /** At most two distinct mode/count bit patterns, to distinguish multiple hypotheses. */
     val priorityHeaderHypotheses: Set<String> = emptySet(),
     val listDecoding: ListDecodingSummary? = null,
+    val knownBitSearchAttempted: Boolean = false,
+    val knownBitTrials: Long = 0,
     val listDecodingExecution: ListDecodingExecution? = null,
 ) {
     val completeness: SearchCompleteness get() = when {
@@ -43,7 +47,13 @@ data class RecoverySearchDiagnostic(
     fun withUnsearched() = copy(unsearched = true)
 
     fun completionReasonsText(): String = buildList {
+        if (RecoveryCandidateRejection.UTF8_BYTE_SEGMENT in candidateRejections) add(localizedText(
+            "UTF-8 として成立しないバイト区間を含む組合せを除外しました。",
+            "Pruned combinations containing Byte segments incompatible with UTF-8."))
+        if (knownBitSearchAttempted) add(localizedText("既知bit誤り探索: $knownBitTrials 試行（設定範囲内の探索）", "Known-bit error search: $knownBitTrials trials (within the configured scope)"))
         incompleteReasons.forEach { reason -> add(when (reason) {
+            SearchIncompleteReason.KNOWN_BIT_SEARCH_TIME_LIMIT -> localizedText("既知bit誤り探索が時間切れで終了しました。", "Known-bit error search reached its time limit.")
+            SearchIncompleteReason.KNOWN_BIT_SEARCH_LIMIT -> localizedText("既知bit誤り探索が試行数の上限に達しました。", "Known-bit error search reached its trial limit.")
             SearchIncompleteReason.USER_INTERRUPTED -> localizedText("利用者が探索を中断しました。", "Search was interrupted by the user.")
             SearchIncompleteReason.WORKING_MEMORY_LIMIT -> localizedText(
                 "計算用メモリの上限により、一部または全部の探索を実行できませんでした。",
@@ -77,11 +87,15 @@ data class RecoverySearchDiagnostic(
                     parts.all { it?.inputBlocker == blocker && it.coverageComplete }
                 },
                 listDecoding = ListDecodingSummary.combine(known.mapNotNull { it.listDecoding }),
+                knownBitSearchAttempted = known.any { it.knownBitSearchAttempted },
+                knownBitTrials = known.sumOf { it.knownBitTrials },
                 listDecodingExecution = ListDecodingExecution.combine(known.mapNotNull { it.listDecodingExecution }),
                 candidateRejections = known.flatMapTo(linkedSetOf()) { it.candidateRejections },
                 singleSegmentStatuses = known.flatMapTo(linkedSetOf()) { it.singleSegmentStatuses },
                 priorityHeaderHypotheses = known.asSequence().flatMap { it.priorityHeaderHypotheses }.distinct().take(2).toSet(),
                 acceptedCandidate = known.any { it.acceptedCandidate },
+                decodedCandidate = known.any { it.decodedCandidate },
+                singleSegmentRetryAvailable = known.any { it.singleSegmentRetryAvailable },
                 unresolvedCalculations = known.any { it.unresolvedCalculations },
                 unsearched = known.any { it.unsearched || it.incompleteReasons.isNotEmpty() },
                 incompleteReasons = known.flatMapTo(linkedSetOf()) { it.incompleteReasons },
@@ -131,6 +145,9 @@ data class RecoverySearchDiagnostic(
             setOf(RecoveryCandidateRejection.LIST_DECODING_MISMATCH_LIMIT) -> localizedText(
                 "リスト復号で得られた候補は、元の既知ビットとの不一致が上限を超えたため、採用できませんでした。",
                 "List-decoded candidates exceeded the mismatch cap against the original known bits.")
+            setOf(RecoveryCandidateRejection.UTF8_BYTE_SEGMENT) -> localizedText(
+                "探索したバイト区間が UTF-8 仮定に一致しませんでした。",
+                "The Byte segments examined were incompatible with the UTF-8 assumption.")
             setOf(RecoveryCandidateRejection.QR_STRUCTURE) -> localizedText(
                 "RSの条件を満たす候補は得られましたが、QRのデータ構造を満たす修復候補は見つかりませんでした。",
                 "RS-consistent candidates were obtained, but no recovery candidate satisfied the QR data structure.")

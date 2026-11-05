@@ -29,6 +29,23 @@ class GridThresholdEstimatorTest {
     private fun edgeGeometry(x: Double, y: Double) =
         GridGeometry(1, FinderRole.TOP_LEFT, x + 12.0, y + 12.0, 4.0, 0.0)
 
+    @Test fun photographicMarginsMeasureTheLeastStableWindowAndSkipUnknownCells() {
+        val source = image { _, _, black -> if (black) 0 else 255 }
+        val settings = PreprocessSettings(version = 2, photographicSource = true, blackMax = 96, whiteMin = 160)
+        val profile = SamplingProfile(settings, false)
+        val observations = GridThresholdEstimator.observe(source, geometry, false)
+        observations[0] = ModuleObservation(90.0, 84.0, 94.0)
+        observations[1] = ModuleObservation(167.0, 161.0, 173.0)
+        observations[2] = ModuleObservation(127.0, 115.0, 140.0)
+        val sampler = MatrixSampler(source, profile)
+        val matrix = sampler.sampleObserved(geometry, profile, observations).first
+        assertEquals(2, matrix.imageMargin(0, 0))
+        assertEquals(1, matrix.imageMargin(1, 0))
+        assertEquals(-1, matrix.imageMargin(2, 0))
+        assertFalse(sampler.sampleObserved(geometry, profile.copy(settings = settings.copy(photographicSource = false)),
+            observations).first.hasImageMargins)
+    }
+
     @Test fun partialEdgeWindowsAverageOnlyValidSamplesInBothPolarities() {
         for (tone in listOf(0, 100, 255)) for (inverted in listOf(false, true)) {
             val image = LumaImage(100, 100, IntArray(10000) { tone })

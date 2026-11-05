@@ -63,10 +63,17 @@ object PayloadConstraintSolver {
         /** True when an explicitly trusted, fully observed mode/count header forced the suffix. */
         val forcedByTrustedHeader: Boolean = false,
         val trustedStructure: TrustedStructure? = null,
+        /** A suffix hypothesis was withheld by the evidence or mismatch gate. */
+        val suffixBlocked: Boolean = false,
     )
 
     private data class Ref(val blockIndex: Int, val block: RsBlockWork, val byteIndex: Int)
     private data class Forced(val value: Int, val kind: ConstraintKind)
+    private val forcedBits = Array(ConstraintKind.entries.size) { kind ->
+        Array(2) { value -> Forced(value, ConstraintKind.entries[kind]) }
+    }
+    private fun forced(value: Int, kind: ConstraintKind): Forced = forcedBits[kind.ordinal][value]
+
     private data class Plan(
         val mode: Int,
         val count: Int,
@@ -87,7 +94,10 @@ object PayloadConstraintSolver {
         trustKnownCount: Boolean = false,
         cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
         evidenceInput: DeinterleavedQr? = null,
+        /** Null permits unlimited ordinary suffix errors; final validation must use original observations. */
+        maxSuffixMismatches: Int? = 0,
     ): Result {
+        require(maxSuffixMismatches == null || maxSuffixMismatches >= 0)
         cancellation.check()
         val refs = buildList {
             for ((blockIndex, block) in de.blocks.withIndex()) {
@@ -123,25 +133,6 @@ object PayloadConstraintSolver {
 
         fun bitPatternValue(value: Int, width: Int, offset: Int): Int =
             (value shr (width - 1 - offset)) and 1
-
-        fun modeCountBits(mode: Int): Int {
-            val group = when (version) { in 1..9 -> 0; in 10..26 -> 1; else -> 2 }
-            return when (mode) {
-                1 -> intArrayOf(10, 12, 14)[group]      // Numeric
-                2 -> intArrayOf(9, 11, 13)[group]       // Alphanumeric
-                4 -> intArrayOf(8, 16, 16)[group]       // Byte
-                8 -> intArrayOf(8, 10, 12)[group]       // Kanji
-                else -> 0
-            }
-        }
-
-        fun payloadBits(mode: Int, count: Int): Int = when (mode) {
-            1 -> (count / 3) * 10 + when (count % 3) { 1 -> 4; 2 -> 7; else -> 0 }
-            2 -> (count / 2) * 11 + if ((count and 1) != 0) 6 else 0
-            4 -> count * 8
-            8 -> count * 13
-            else -> Int.MAX_VALUE
-        }
 
         fun dataGroups(plan: Plan): List<DataGroup> = buildList {
             var cursor = plan.headerBits
@@ -239,34 +230,34 @@ object PayloadConstraintSolver {
         fun forcedAt(plan: Plan, bitIndex: Int): Forced? {
             if (bitIndex !in 0 until totalBits) return null
             if (bitIndex < 4) {
-                return Forced(bitPatternValue(plan.mode, 4, bitIndex), ConstraintKind.MODE)
+                return forced(bitPatternValue(plan.mode, 4, bitIndex), ConstraintKind.MODE)
             }
             if (bitIndex < plan.headerBits) {
                 val offset = bitIndex - 4
-                return Forced(bitPatternValue(plan.count, plan.countBits, offset), ConstraintKind.COUNT)
+                return forced(bitPatternValue(plan.count, plan.countBits, offset), ConstraintKind.COUNT)
             }
             if (bitIndex < plan.payloadEnd) return null
 
             var cursor = plan.payloadEnd
             val terminatorEnd = min(totalBits, cursor + 4)
-            if (bitIndex < terminatorEnd) return Forced(0, ConstraintKind.TERMINATOR)
+            if (bitIndex < terminatorEnd) return forced(0, ConstraintKind.TERMINATOR)
             cursor = terminatorEnd
             val alignmentEnd = min(totalBits, ((cursor + 7) / 8) * 8)
-            if (bitIndex < alignmentEnd) return Forced(0, ConstraintKind.BYTE_ALIGNMENT)
+            if (bitIndex < alignmentEnd) return forced(0, ConstraintKind.BYTE_ALIGNMENT)
             cursor = alignmentEnd
             if (bitIndex < cursor || cursor >= totalBits) return null
 
             val byteOffset = (bitIndex - cursor) / 8
             val bitFromMsb = (bitIndex - cursor) % 8
             val padByte = if ((byteOffset and 1) == 0) 0xEC else 0x11
-            return Forced((padByte shr (7 - bitFromMsb)) and 1, ConstraintKind.PAD)
+            return forced((padByte shr (7 - bitFromMsb)) and 1, ConstraintKind.PAD)
         }
 
         val plans = ArrayList<Plan>(min(maxPlans, 4096))
         var truncated = false
         val modes = intArrayOf(1, 2, 4, 8)
         loop@ for (mode in modes) {
-            val countBits = modeCountBits(mode)
+            val countBits = requireNotNull(QrPayloadLayout.characterCountBits(mode, version))
             val headerBits = 4 + countBits
             if (headerBits > totalBits) continue
 
@@ -301,7 +292,7 @@ object PayloadConstraintSolver {
                 }
                 if (!countCompatible) continue
 
-                val end = headerBits + payloadBits(mode, count)
+                val end = headerBits + requireNotNull(QrPayloadLayout.payloadBits(mode, count))
                 if (end > totalBits) continue
                 val (mismatches, fillerKnownMatches) = fillerScore(end)
                 plans += Plan(mode, count, countBits, headerBits, end, mismatches, fillerKnownMatches)
@@ -323,10 +314,16 @@ object PayloadConstraintSolver {
         val trustedHeaderPlan = if (trustKnownCount) plans.singleOrNull { plan ->
             (0 until plan.headerBits).all { known[it] >= 0 }
         } else null
-        val zeroMismatch = if (trustedHeaderPlan == null) {
+        val boundedHeaderPlan = if (!trustKnownCount) plans.singleOrNull { plan ->
+            (0 until plan.headerBits).all { known[it] >= 0 }
+        }?.takeIf { plan ->
+            plan.mismatches > 0 && (maxSuffixMismatches == null || plan.mismatches <= maxSuffixMismatches) &&
+                payloadValuesCompatible(plan)
+        } else null
+        val zeroMismatch = if (boundedHeaderPlan != null) listOf(boundedHeaderPlan) else if (trustedHeaderPlan == null) {
             val minMismatch = plans.minOf { it.mismatches }
-            // Without explicit trust, never force speculative structure over observed data.
-            if (minMismatch != 0) return Result(0, 0, null, null, 0)
+            // Unresolved headers cannot justify replacing observed suffix bits.
+            if (minMismatch != 0) return Result(0, 0, null, null, 0, suffixBlocked = true)
             plans.filter { it.mismatches == 0 && payloadValuesCompatible(it) }
                 .also { if (it.isEmpty()) return Result(0, 0, null, null, 0) }
         } else emptyList()
@@ -340,10 +337,10 @@ object PayloadConstraintSolver {
         // Keep the trial score above for eligibility and report only the original known suffix.
         val reportedEvidence = if (evidenceInput == null) bestEvidence
             else viable.maxOf { observedFillerMatches(it.payloadEnd) }
-        val inferredMode = viable.map { it.mode }.distinct().singleOrNull()
-        val inferredCount = viable.map { it.count }.distinct().singleOrNull()
+        val inferredMode = viable[0].mode.takeIf { mode -> viable.all { it.mode == mode } }
+        val inferredCount = viable[0].count.takeIf { count -> viable.all { it.count == count } }
         if (trustedHeaderPlan == null && bestEvidence < 6) {
-            return Result(0, viable.size, inferredMode, inferredCount, reportedEvidence)
+            return Result(0, viable.size, inferredMode, inferredCount, reportedEvidence, suffixBlocked = true)
         }
 
         val filledTrace = mutableListOf<FilledBit>()
@@ -368,10 +365,11 @@ object PayloadConstraintSolver {
             val wasUnknown = (ref.block.unknownMasks[ref.byteIndex] and mask) != 0
             val observed = (ref.block.codewords[ref.byteIndex] shr bit) and 1
             if (!wasUnknown) {
-                // Only the explicitly trusted plan may replace a known image-derived suffix bit.
+                // Only a resolved header may justify replacing an observed suffix bit.
                 // Header and payload values remain untouched. Platform-level USER pins are
                 // validated separately and reject a candidate when manual-bit locking is enabled.
-                if (trustedHeaderPlan == null || bitIndex < trustedHeaderPlan.payloadEnd || observed == first.value) return
+                val suffixPlan = trustedHeaderPlan ?: boundedHeaderPlan
+                if (suffixPlan == null || bitIndex < suffixPlan.payloadEnd || observed == first.value) return
             }
             if (first.value == 1) ref.block.codewords[ref.byteIndex] = ref.block.codewords[ref.byteIndex] or mask
             else ref.block.codewords[ref.byteIndex] = ref.block.codewords[ref.byteIndex] and mask.inv()
@@ -395,18 +393,30 @@ object PayloadConstraintSolver {
         if (inferredMode != null && inferredCount != null && inferredMode in setOf(1, 2)) {
             for (group in dataGroups(viable[0])) {
                 cancellation.check()
-                val values = (0..group.maxValue).filter { value ->
-                    (0 until group.width).all { offset ->
-                        val observed = known[group.start + offset]
-                        observed < 0 || observed == bitPatternValue(value, group.width, offset)
+                var observedMask = 0
+                var observedValue = 0
+                for (offset in 0 until group.width) {
+                    val observed = known[group.start + offset]
+                    if (observed >= 0) {
+                        val bit = 1 shl (group.width - 1 - offset)
+                        observedMask = observedMask or bit
+                        if (observed == 1) observedValue = observedValue or bit
                     }
                 }
-                if (values.isEmpty()) continue
+                var commonOnes = (1 shl group.width) - 1
+                var anyOnes = 0
+                var found = false
+                for (value in 0..group.maxValue) if (value and observedMask == observedValue) {
+                    found = true
+                    commonOnes = commonOnes and value
+                    anyOnes = anyOnes or value
+                }
+                if (!found) continue
                 for (offset in 0 until group.width) {
                     val bitIndex = group.start + offset
                     if (known[bitIndex] >= 0) continue
-                    val value = bitPatternValue(values[0], group.width, offset)
-                    if (values.all { bitPatternValue(it, group.width, offset) == value }) {
+                    val value = bitPatternValue(commonOnes, group.width, offset)
+                    if (bitPatternValue(commonOnes xor anyOnes, group.width, offset) == 0) {
                         val ref = refs[bitIndex / 8]
                         val bit = 7 - bitIndex % 8
                         val mask = 1 shl bit

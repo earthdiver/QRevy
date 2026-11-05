@@ -14,6 +14,8 @@ internal data class PreRecoveryCellValue(
 
 internal enum class CellEditSource { IMAGE, TENTATIVE, FIXED }
 
+internal enum class CellEditOutcome { CHANGED, UNCHANGED, REJECTED }
+
 internal enum class PriorityEditResult { CHANGED, UNCHANGED, LIMIT_EXCEEDED }
 
 /** Owns pre-recovery cell edits and undo transactions independently of Android Views. */
@@ -30,8 +32,13 @@ internal class PreRecoveryCellEditState(
     }
     private val mutableEdits = linkedMapOf<Coord, ModuleValue>().apply { putAll(initialEdits) }
     private val mutablePrioritySearch = linkedSetOf<Coord>().apply { addAll(initialPrioritySearch) }
-    private val undo = ArrayDeque<Map<Coord, PreRecoveryCellValue?>>()
-    private val redo = ArrayDeque<Map<Coord, PreRecoveryCellValue?>>()
+    private data class Transaction(val values: Map<Coord, PreRecoveryCellValue?>, val selection: CellEditSelection)
+    private val undo = ArrayDeque<Transaction>()
+    private val redo = ArrayDeque<Transaction>()
+    var lastEditOutcome = CellEditOutcome.UNCHANGED
+        private set
+    var lastChangedCells: Set<Coord> = emptySet()
+        private set
 
     val edits: Map<Coord, ModuleValue> get() = mutableEdits
     val prioritySearch: Set<Coord> get() = mutablePrioritySearch
@@ -42,8 +49,9 @@ internal class PreRecoveryCellEditState(
         in mutableEdits -> CellEditSource.FIXED
         else -> CellEditSource.IMAGE
     }
-    var selectedCells: Set<Coord> = emptySet()
+    var selection: CellEditSelection = CellEditSelection.EMPTY
         private set
+    val selectedCells: Set<Coord> get() = selection.cells
     val undoCount: Int get() = undo.size
     val redoCount: Int get() = redo.size
     val compactCountLabel: String
@@ -67,13 +75,35 @@ internal class PreRecoveryCellEditState(
         // Persisted edits predate this dialog's in-memory history. Keep them undoable as one
         // transaction instead of presenting an impossible zero-actions/nonzero-cells state.
         if (mutableEdits.isNotEmpty() || mutablePrioritySearch.isNotEmpty()) {
-            undo.addLast((mutableEdits.keys + mutablePrioritySearch).associateWith { null })
+            val targets = CellEditSelection.of(mutableEdits.keys + mutablePrioritySearch, false)
+            undo.addLast(Transaction(targets.cells.associateWith { null }, targets))
         }
     }
 
-    fun select(coords: Collection<Coord>): Set<Coord> {
-        selectedCells = coords.toSet()
+    fun select(coords: Collection<Coord>, asRectangle: Boolean = false, focus: Coord? = coords.firstOrNull()): Set<Coord> {
+        if (selectedCells != coords.toSet() || selection.isRectangle != asRectangle || selection.focus != focus) {
+            selection = CellEditSelection.of(coords, asRectangle, focus)
+        }
         return selectedCells
+    }
+
+    private fun selectTargets(coords: Collection<Coord>) {
+        if (coords.isNotEmpty() && selectedCells != coords.toSet()) select(coords)
+        lastEditOutcome = CellEditOutcome.UNCHANGED
+        lastChangedCells = emptySet()
+    }
+
+    private fun rejected(): Set<Coord> {
+        lastEditOutcome = CellEditOutcome.REJECTED
+        return emptySet()
+    }
+
+    private fun record(previous: Map<Coord, PreRecoveryCellValue?>): Set<Coord> {
+        undo.addLast(Transaction(previous, selection))
+        redo.clear()
+        lastEditOutcome = CellEditOutcome.CHANGED
+        lastChangedCells = previous.keys
+        return previous.keys
     }
 
     fun clearSelection() = select(emptySet())
@@ -85,8 +115,8 @@ internal class PreRecoveryCellEditState(
         mutableEdits, mutablePrioritySearch, priorityLimit, validateEdits, mutableSoftEdits,
     ).also { copy ->
         copy.undo.clear()
-        copy.undo.addAll(undo.map { it.toMap() })
-        copy.redo.addAll(redo.map { it.toMap() })
+        copy.undo.addAll(undo)
+        copy.redo.addAll(redo)
     }
 
     fun clearAll() {
@@ -95,7 +125,9 @@ internal class PreRecoveryCellEditState(
         mutablePrioritySearch.clear()
         undo.clear()
         redo.clear()
-        selectedCells = emptySet()
+        selection = CellEditSelection.EMPTY
+        lastChangedCells = emptySet()
+        lastEditOutcome = CellEditOutcome.UNCHANGED
     }
 
     /** Keeps edits attached to the same physical modules when the provisional grid is rotated. */
@@ -126,12 +158,15 @@ internal class PreRecoveryCellEditState(
         val priority = mutablePrioritySearch.mapTo(linkedSetOf(), transform)
         mutablePrioritySearch.clear()
         mutablePrioritySearch.addAll(priority)
-        selectedCells = selectedCells.mapTo(linkedSetOf(), transform)
+        val transformedSelections = mutableMapOf<CellEditSelection, CellEditSelection>()
+        fun CellEditSelection.transformedOnce() = transformedSelections.getOrPut(this) { transformed(transform) }
+        selection = selection.transformedOnce()
+        lastChangedCells = lastChangedCells.mapTo(linkedSetOf(), transform)
 
-        val transformedUndo = undo.map { it.transformed() }
+        val transformedUndo = undo.map { Transaction(it.values.transformed(), it.selection.transformedOnce()) }
         undo.clear()
         undo.addAll(transformedUndo)
-        val transformedRedo = redo.map { it.transformed() }
+        val transformedRedo = redo.map { Transaction(it.values.transformed(), it.selection.transformedOnce()) }
         redo.clear()
         redo.addAll(transformedRedo)
     }
@@ -141,11 +176,12 @@ internal class PreRecoveryCellEditState(
         value: ModuleValue,
         baselineValue: (Coord) -> ModuleValue?,
     ): Set<Coord> {
+        val baselines = coords.distinct().mapNotNull { coord -> baselineValue(coord)?.let { coord to it } }.toMap()
+        selectTargets(baselines.keys)
         val previous = linkedMapOf<Coord, PreRecoveryCellValue?>()
         val proposed = mutableEdits.toMutableMap()
         val soft = mutableSoftEdits.toMutableSet()
-        for (coord in coords.distinct()) {
-            val baseline = baselineValue(coord) ?: continue
+        for ((coord, baseline) in baselines) {
             val before = currentValue(coord)
             // An unchanged image value is not an explicit confirmation. Once edited, values
             // remain manual until the source button (or Undo) removes the override.
@@ -158,15 +194,14 @@ internal class PreRecoveryCellEditState(
             proposed[coord] = value
             if (tentative) soft.add(coord) else soft.remove(coord)
         }
-        if (previous.isEmpty() || !accept(proposed, soft)) return emptySet()
+        if (previous.isEmpty()) return emptySet()
+        if (!accept(proposed, soft)) return rejected()
         previous.keys.forEach(mutablePrioritySearch::remove)
         mutableSoftEdits.clear()
         mutableSoftEdits.addAll(soft)
         mutableEdits.clear()
         mutableEdits.putAll(proposed)
-        undo.addLast(previous)
-        redo.clear()
-        return select(previous.keys)
+        return record(previous)
     }
 
     /** Mixed selections return to the image together, rather than inverting each cell. */
@@ -182,14 +217,16 @@ internal class PreRecoveryCellEditState(
         baselineValue: (Coord) -> ModuleValue?,
     ): Set<Coord> {
         if (source == CellEditSource.IMAGE) return restoreImage(coords)
+        val targets = coords.distinct().filter { currentValue(it) != null || baselineValue(it) != null }
+        selectTargets(targets)
         val previous = linkedMapOf<Coord, PreRecoveryCellValue?>()
         val proposed = mutableEdits.toMutableMap()
         val soft = mutableSoftEdits.toMutableSet()
-        for (coord in coords.distinct()) {
+        for (coord in targets) {
             val before = currentValue(coord)
             val value = before?.value ?: baselineValue(coord) ?: continue
             // Reject a mixed batch atomically; unknowns have no fixed state.
-            if (source == CellEditSource.FIXED && value == ModuleValue.ERASED) return emptySet()
+            if (source == CellEditSource.FIXED && value == ModuleValue.ERASED) return rejected()
             val tentative = source == CellEditSource.TENTATIVE
             val after = PreRecoveryCellValue(value, before?.prioritySearch == true, tentative)
             if (before == after) continue
@@ -197,18 +234,18 @@ internal class PreRecoveryCellEditState(
             proposed[coord] = value
             if (tentative) soft.add(coord) else soft.remove(coord)
         }
-        if (previous.isEmpty() || !accept(proposed, soft)) return emptySet()
+        if (previous.isEmpty()) return emptySet()
+        if (!accept(proposed, soft)) return rejected()
         mutableEdits.clear()
         mutableEdits.putAll(proposed)
         mutableSoftEdits.clear()
         mutableSoftEdits.addAll(soft)
-        undo.addLast(previous)
-        redo.clear()
-        return select(previous.keys)
+        return record(previous)
     }
 
     /** Removing the override also removes *; the image will be sampled using current settings. */
     fun restoreImage(coords: Collection<Coord>): Set<Coord> {
+        selectTargets(coords)
         val previous = linkedMapOf<Coord, PreRecoveryCellValue?>()
         for (coord in coords.distinct()) {
             val before = currentValue(coord) ?: continue
@@ -220,16 +257,18 @@ internal class PreRecoveryCellEditState(
             mutableSoftEdits.remove(it)
             mutablePrioritySearch.remove(it)
         }
-        undo.addLast(previous)
-        redo.clear()
-        return select(previous.keys)
+        return record(previous)
     }
 
     fun setPrioritySearch(coords: Collection<Coord>): PriorityEditResult {
         val distinct = coords.distinct()
+        selectTargets(distinct)
         if (distinct.isEmpty()) return PriorityEditResult.UNCHANGED
         val additions = distinct.count { it !in mutablePrioritySearch }
-        if (mutablePrioritySearch.size + additions > priorityLimit) return PriorityEditResult.LIMIT_EXCEEDED
+        if (mutablePrioritySearch.size + additions > priorityLimit) {
+            rejected()
+            return PriorityEditResult.LIMIT_EXCEEDED
+        }
 
         val previous = linkedMapOf<Coord, PreRecoveryCellValue?>()
         distinct.forEach { coord ->
@@ -241,9 +280,7 @@ internal class PreRecoveryCellEditState(
             mutablePrioritySearch += coord
         }
         if (previous.isEmpty()) return PriorityEditResult.UNCHANGED
-        undo.addLast(previous)
-        redo.clear()
-        select(previous.keys)
+        record(previous)
         return PriorityEditResult.CHANGED
     }
 
@@ -251,10 +288,10 @@ internal class PreRecoveryCellEditState(
     fun revalidatePrioritySearch(isAllowed: (Coord) -> Boolean): Set<Coord> {
         val removed = mutablePrioritySearch.filterNot(isAllowed).toSet()
         mutablePrioritySearch.removeAll(removed)
-        fun sanitize(history: ArrayDeque<Map<Coord, PreRecoveryCellValue?>>) {
-            val revised = history.map { entry -> entry.mapValues { (coord, value) ->
+        fun sanitize(history: ArrayDeque<Transaction>) {
+            val revised = history.map { entry -> entry.copy(values = entry.values.mapValues { (coord, value) ->
                 if (value?.prioritySearch == true && !isAllowed(coord)) value.copy(prioritySearch = false) else value
-            } }
+            }) }
             history.clear()
             history.addAll(revised)
         }
@@ -263,22 +300,23 @@ internal class PreRecoveryCellEditState(
         return removed
     }
 
-    fun undo(): Set<Coord> {
-        val previous = undo.lastOrNull() ?: return emptySet()
-        if (!accept(restoredEdits(previous), restoredSoftEdits(previous))) return emptySet()
-        undo.removeLast()
-        redo.addLast(previous.keys.associateWith(::currentValue))
-        restore(previous)
-        return select(previous.keys)
-    }
+    fun undo(): Set<Coord> = restoreTransaction(undo, redo)
 
-    fun redo(): Set<Coord> {
-        val next = redo.lastOrNull() ?: return emptySet()
-        if (!accept(restoredEdits(next), restoredSoftEdits(next))) return emptySet()
-        redo.removeLast()
-        undo.addLast(next.keys.associateWith(::currentValue))
-        restore(next)
-        return select(next.keys)
+    fun redo(): Set<Coord> = restoreTransaction(redo, undo)
+
+    private fun restoreTransaction(from: ArrayDeque<Transaction>, to: ArrayDeque<Transaction>): Set<Coord> {
+        lastEditOutcome = CellEditOutcome.UNCHANGED
+        lastChangedCells = emptySet()
+        val transaction = from.lastOrNull() ?: return emptySet()
+        val values = transaction.values
+        if (!accept(restoredEdits(values), restoredSoftEdits(values))) return rejected()
+        from.removeLast()
+        to.addLast(Transaction(values.keys.associateWith(::currentValue), transaction.selection))
+        restore(values)
+        selection = transaction.selection
+        lastEditOutcome = CellEditOutcome.CHANGED
+        lastChangedCells = values.keys
+        return values.keys
     }
 
     private fun restoredEdits(values: Map<Coord, PreRecoveryCellValue?>): Map<Coord, ModuleValue> =
