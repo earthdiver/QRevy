@@ -185,6 +185,7 @@ data class GridGeometry(
         }
     }
     private val inverseProjective: Homography? by lazy { projective?.inverse() }
+    internal val usableWarp: Boolean by lazy { validateWarp() }
 
     fun finderModulePoint(which: FinderRole = role): PointD = when (which) {
         FinderRole.TOP_LEFT -> PointD(3.0, 3.0)

@@ -118,6 +118,8 @@ internal class PreprocessDialogController(
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, fixedHeight)
         }
         var cellEditorPageVisible = false
+        var samplingPending = false
+        overlay.setOnTouchListener { _, _ -> cellEditorPageVisible && samplingPending }
         var geometryDragging = false
         var userGeometryEdited = false
         overlay.onGeometryEdited = { userGeometryEdited = true }
@@ -506,7 +508,20 @@ internal class PreprocessDialogController(
             confirmedFinderPolarity = overlay.confirmedFinderPolarity(),
         )
         fun sampleImageMatrix(): Pair<GridGeometry, QrMatrix>? {
-            val preview = editor.sample(controlSnapshot(), geometrySnapshot()) ?: return null
+            editor.requestObservations(controlSnapshot(), geometrySnapshot())?.let { request ->
+                executor.execute {
+                    val result = runCatching { editor.calculateObservations(request) }
+                    runOnUiThread {
+                        if (editor.acceptObservations(request, result)) {
+                            refreshClassificationMatrix()
+                            refreshPreRecoveryDataPage()
+                        }
+                    }
+                }
+            }
+            val preview = editor.sample(controlSnapshot(), geometrySnapshot())
+            samplingPending = preview == null
+            if (preview == null) return null
             preview.stats.thresholds?.let { pair ->
                 updatingThresholdControls = true
                 black.progress = pair.blackMax; white.progress = pair.whiteMin - 1
@@ -578,6 +593,7 @@ internal class PreprocessDialogController(
                 .setTitle(ui("表示・修復に使う補正候補", "Correction for preview and repair"))
                 .setSingleChoiceItems(choices, editor.correction.selectedIndex) { selection, index ->
                     editor.correction.select(index)
+                    editor.invalidateSampling()
                     selection.dismiss()
                     refreshClassificationMatrix()
                     refreshPreRecoveryDataPage()
@@ -588,33 +604,46 @@ internal class PreprocessDialogController(
         }.apply { visibility = if (preprocessSettings.distortionCorrection) View.VISIBLE else View.GONE }
         fun updateCorrectionControl() {
             val state = editor.correction
-            correctionControl.isEnabled = state.complete && state.candidates.size > 1
+            correctionControl.isEnabled = state.complete && (state.candidates.size > 1 || editor.samplingFailed)
             correctionControl.text = when {
                 !overlay.isLogicalGridAssigned() -> ui("曲面補正: QRの向きを指定してください", "Distortion: assign the QR orientation")
                 geometryDragging -> ui("曲面補正: 指を離すと再計算", "Distortion: release to recalculate")
                 !state.complete -> ui("曲面補正: 計算中…", "Distortion: calculating…")
+                editor.samplingFailed -> ui("格子の読み取りに失敗: タップして再試行", "Grid sampling failed: tap to retry")
+                samplingPending -> ui("曲面補正: セルを読み取り中…", "Distortion: reading cells…")
                 state.failed && state.selected?.warp != null -> ui("再計算に失敗: 保存した補正を使用", "Recalculation failed: using the saved correction")
                 state.failed -> ui("補正計算に失敗: 直線格子を使用", "Correction failed: using the straight grid")
                 state.selected?.warp == null -> ui("補正点を検出できません: 直線格子を使用", "No correction landmarks: using the straight grid")
                 else -> ui("曲面補正: 候補 ${state.selectedIndex + 1}/${state.candidates.size}",
                     "Distortion: candidate ${state.selectedIndex + 1}/${state.candidates.size}")
-            }
+            } + if (state.memoryLimited) ui("\nメモリ上限により補正探索の一部を省略しました", "\nSome correction searches were omitted due to the memory limit") else ""
         }
         refreshClassificationMatrix = {
             if (!geometryDragging) editor.requestCorrection(controlSnapshot(), geometrySnapshot())?.let { request ->
                 executor.execute {
                     val result = runCatching { editor.correction.calculate(request) }
                     runOnUiThread {
-                        if (editor.correction.accept(request, result.getOrDefault(emptyList()), result.isFailure)) {
+                        val calculation = result.getOrDefault(DistortionPreviewState.Calculation(emptyList()))
+                        if (editor.correction.accept(request, calculation.candidates, result.isFailure, calculation.memoryLimited)) {
                             refreshClassificationMatrix()
                             refreshPreRecoveryDataPage()
                         }
                     }
                 }
             }
-            updateCorrectionControl()
             refreshSourceControls()
-            refreshPreRecoveryMatrix()?.let { (geometry, matrix) ->
+            val preview = refreshPreRecoveryMatrix()
+            updateCorrectionControl()
+            largeCellEditor?.editorView?.visibility = if (preview == null) View.INVISIBLE else View.VISIBLE
+            if (preview == null) {
+                val tool = overlay.cellEditorTool
+                overlay.clearCellEditing()
+                overlay.cellEditorTool = tool
+                classificationLegend?.text = if (editor.samplingFailed)
+                    ui("格子の読み取りに失敗しました", "Grid sampling failed")
+                else ui("セルを読み取り中…", "Reading cells…")
+            }
+            preview?.let { (geometry, matrix) ->
                 if (cellEditorPageVisible) overlay.setCellEditing(geometry, matrix, cellEditState.selection.focus)
                 else overlay.setCellEditPreview(geometry, matrix)
                 overlay.setCellSelection(cellEditState.selectedCells, cellEditState.selection.isRectangle, cellEditState.selection.focus)
@@ -626,6 +655,7 @@ internal class PreprocessDialogController(
         overlay.onGeometryEdited = {
             geometryDragging = true
             editor.correction.invalidate()
+            editor.invalidateSampling()
             updateCorrectionControl()
             userGeometryEdited = true
             overlay.removeCallbacks(refreshDraggedGrid)
@@ -787,9 +817,18 @@ internal class PreprocessDialogController(
                 }
             },
             formatConstraintProvider = { searchSettings.formatConstraint },
+            unavailableText = {
+                if (samplingPending && !editor.samplingFailed) ui("セルを読み取り中…", "Reading cells…")
+                else getString(R.string.data_extract_failed)
+            },
         )
         val preRecoveryDataPage = createDataPage()
-        refreshPreRecoveryDataPage = preRecoveryDataPage::refresh
+        var openDataPage: PreRecoveryDataPage? = null
+        var openDataDialog: AlertDialog? = null
+        refreshPreRecoveryDataPage = {
+            preRecoveryDataPage.refresh()
+            openDataPage?.refresh()
+        }
         val hexPage = preRecoveryDataPage.view
         var eccConstraintButton: Button? = null
         var maskConstraintButton: Button? = null
@@ -970,7 +1009,15 @@ internal class PreprocessDialogController(
             onDataRequested = {
                 val data = createDataPage()
                 data.refresh()
-                showDataDialog(activity, data.view)
+                openDataPage = data
+                openDataDialog = showDataDialog(activity, data.view).apply {
+                    setOnDismissListener {
+                        if (openDataPage === data) {
+                            openDataPage = null
+                            openDataDialog = null
+                        }
+                    }
+                }
             },
             onPageShown = { page ->
                 cellEditorPageVisible = page == PreprocessPage.CELL_EDITOR
@@ -1028,6 +1075,7 @@ internal class PreprocessDialogController(
             host.editorClosed(session)
             finderSearchGeneration.incrementAndGet()
             overlay.removeCallbacks(refreshDraggedGrid)
+            openDataDialog?.dismiss()
             editor.release()
         }
         cancelPreprocess = { dialog.dismiss() }
@@ -1081,6 +1129,13 @@ internal class PreprocessDialogController(
                 noteDraftChange("quad", ui("四隅を調整", "Adjusted corners"), ui("ドラッグまたは矢印で調整", "Adjusted by drag or arrow keys"))
             }
             fun persistPreprocessDraft(): Boolean {
+                if (!editor.samplingReady(controlSnapshot(), geometrySnapshot())) {
+                    refreshClassificationMatrix()
+                    Toast.makeText(activity, if (editor.samplingFailed)
+                        ui("格子の読み取りを再試行してください。", "Retry grid sampling.")
+                    else ui("セルの読み取り完了後にもう一度操作してください。", "Wait for cell sampling to finish, then try again."), Toast.LENGTH_SHORT).show()
+                    return false
+                }
                 if (!editor.correctionReady(controlSnapshot(), geometrySnapshot())) {
                     refreshClassificationMatrix()
                     Toast.makeText(activity, ui("曲面補正の計算完了後にもう一度操作してください。", "Wait for distortion correction to finish, then try again."), Toast.LENGTH_SHORT).show()

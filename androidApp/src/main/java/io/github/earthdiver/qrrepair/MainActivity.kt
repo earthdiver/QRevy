@@ -214,6 +214,7 @@ class MainActivity : Activity() {
     private val executor = Executors.newSingleThreadExecutor()
     private val ioExecutor = Executors.newSingleThreadExecutor()
     private val workGeneration = AtomicInteger(0)
+    private val dataRequestGeneration = AtomicInteger(0)
     private val imageImports by lazy {
         ImageImportController(contentResolver, executor, { runOnUiThread(it) }, workGeneration::get,
             { isDestroyed }, ::finishInputImport, { error ->
@@ -1187,6 +1188,33 @@ class MainActivity : Activity() {
     }
 
     private fun showCodewordHex() {
+        val request = dataRequestGeneration.incrementAndGet()
+        if (recoveryState.selectedRecovery != null || recoveryState.failure != null) {
+            showCodewordHexContent(null)
+            return
+        }
+        val source = prepared ?: run { showCodewordHexContent(null); return }
+        val settings = preprocessSettings.recoverySnapshot()
+        val token = workGeneration.get()
+        fun stopped() = request != dataRequestGeneration.get() || token != workGeneration.get() ||
+            Thread.currentThread().isInterrupted
+        executor.execute {
+            if (stopped()) return@execute
+            val result = runCatching {
+                val image = BitmapUtils.forSettings(source, settings)
+                try { sampleSavedPreRecoveryData(image.luma, settings, ::stopped) }
+                finally { if (image.bitmap !== source.bitmap) image.bitmap.recycle() }
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed || request != dataRequestGeneration.get() || token != workGeneration.get() ||
+                    prepared !== source || preprocessSettings != settings ||
+                    recoveryState.selectedRecovery != null || recoveryState.failure != null) return@runOnUiThread
+                showCodewordHexContent(result.getOrNull())
+            }
+        }
+    }
+
+    private fun showCodewordHexContent(preRecoveryData: PreRecoveryDataInput?) {
         val attemptedCandidate = recoveryState.selectedRecovery
         val savedData = if (attemptedCandidate == null && recoveryState.failure != null && recoveryState.workingMatrix != null) {
             val matrix = recoveryState.workingMatrix!!
@@ -1196,7 +1224,6 @@ class MainActivity : Activity() {
                 SavedRawData(matrix, CodewordExtractor.extract(matrix, version, failure.dataMask), version, failure.dataMask, failure.ecLevel)
             }.getOrNull()
         } else null
-        val preRecoveryData = if (attemptedCandidate == null && recoveryState.failure == null) savedPreRecoveryData() else null
         val fallbackMatrix = recoveryState.workingMatrix?.takeIf { attemptedCandidate != null } ?: savedData?.matrix
             ?: preRecoveryData?.matrix
             ?: run { Toast.makeText(this, ui("表示できるデータがありません。", "No data is available."), Toast.LENGTH_SHORT).show(); return }
@@ -1312,31 +1339,6 @@ class MainActivity : Activity() {
         val mask: Int,
         val ecLevel: com.google.zxing.qrcode.decoder.ErrorCorrectionLevel?,
     )
-
-    private fun savedPreRecoveryData(): PreRecoveryDataInput? {
-        val prepared = preparedFor(preprocessSettings) ?: return null
-        val quad = preprocessSettings.manualQuad ?: return null
-        val version = preprocessSettings.version
-        val dimension = 17 + 4 * version
-        val pitch = ((quad.topLeft.distanceTo(quad.topRight) + quad.topLeft.distanceTo(quad.bottomLeft)) /
-            (2.0 * (dimension - 1))).coerceAtLeast(.25)
-        val geometry = runCatching {
-            GridGeometry(
-                version, FinderRole.TOP_LEFT, quad.topLeft.x, quad.topLeft.y,
-                pitch, 0.0, quad, io.github.earthdiver.qrrepair.core.GeometryModel.MANUAL_PROJECTIVE,
-            ).reanchored()
-        }.getOrNull() ?: return null
-        val profile = preprocessSettings.variants().first()
-        val matrix = PreRecoveryPreviewSampler().sample(prepared.luma, geometry, profile,
-            preprocessSettings.logicalGridAssigned).first
-        preprocessSettings.preRecoveryEdits.forEach { (coord, value) ->
-            if (coord.x in 0 until matrix.dimension && coord.y in 0 until matrix.dimension) {
-                matrix.set(coord.x, coord.y, value, 1f, preprocessSettings.sourceForPreRecoveryEdit(value, coord))
-                matrix.setPrioritySearch(coord.x, coord.y, coord in preprocessSettings.preRecoveryPrioritySearch)
-            }
-        }
-        return PreRecoveryDataInput(matrix, version)
-    }
 
     private val dialogViews by lazy { DialogViewFactory(this) }
 

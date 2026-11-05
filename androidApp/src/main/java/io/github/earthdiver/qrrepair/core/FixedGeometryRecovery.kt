@@ -107,7 +107,10 @@ internal fun confirmedFinderCandidate(
     )
 }
 
-class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEngine()) {
+class AutoRecoveryEngine(
+    private val recoveryEngine: RecoveryEngine = RecoveryEngine(),
+    private val maxContourWorkingBytes: Long = CurvedFinderContours.DEFAULT_WORKING_BYTES,
+) {
     fun run(
         image: LumaImage,
         maxFinders: Int = 6,
@@ -169,13 +172,15 @@ class AutoRecoveryEngine(private val recoveryEngine: RecoveryEngine = RecoveryEn
         val patternFit = if (settings.searchQuadNeighborhood && !patternLimitReached)
             projectivePatternHypothesis(image, profile, ordinary) { cancellation.check(); stopRequested() }
         else null
-        val curvedDetector = if (settings.distortionCorrection) CurvedGridDetector(image, profile, cancellation, stopRequested) else null
+        val curvedDetector = if (settings.distortionCorrection) CurvedGridDetector(image, profile, cancellation, stopRequested,
+            minOf(maxContourWorkingBytes, retentionBudget.workingLimitBytes, RecoveryMemoryPolicy.current().workingBytes)) else null
         val curved = if (curvedDetector != null) ordinary.sortedBy { it.quickScore }.take(4).flatMap { base ->
             cancellation.check()
             curvedDetector.candidates(base.geometry).map { geometry ->
                 base.copy(geometry = geometry, quickScore = quickGeometryScore(image, geometry, profile))
             }
         } else emptyList()
+        if (curvedDetector?.contourMemoryLimited == true) resultAccumulator.markIncomplete(SearchIncompleteReason.WORKING_MEMORY_LIMIT)
         val hypotheses = (listOfNotNull(preview).take(maxGeometryAttempts) + ordinary + listOfNotNull(patternFit) + curved).distinctBy { it.geometry }
         val finders = settings.manualFinders.entries.take(maxFinders).map { (_, point) -> confirmedFinderCandidate(settings, point) }
         var completed = 0

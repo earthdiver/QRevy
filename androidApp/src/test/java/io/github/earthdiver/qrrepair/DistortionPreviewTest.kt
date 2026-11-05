@@ -31,18 +31,26 @@ class DistortionPreviewTest {
     private fun editor(source: BitmapUtils.Prepared, initial: PreprocessSettings = settings()) =
         PreprocessEditorModel(initial, source, source, null, null, { true }, { true })
 
+    private fun sampleReady(editor: PreprocessEditorModel, controls: PreprocessControlSnapshot,
+        grid: PreprocessGeometrySnapshot): PreprocessEditorModel.Preview {
+        editor.requestObservations(controls, grid)?.let { request ->
+            assertTrue(editor.acceptObservations(request, runCatching { editor.calculateObservations(request) }))
+        }
+        return requireNotNull(editor.sample(controls, grid))
+    }
+
     @Test fun displayedCellsAndSavedRepairInputUseTheSelectedCorrectionWithoutLosingFixedEdits() {
         val source = image()
         try {
             val editor = editor(source)
             val fixed = Coord(18, 18)
             editor.cells.applyValues(listOf(fixed), ModuleValue.ZERO) { ModuleValue.ONE }
-            assertEquals(ModuleValue.ZERO, editor.sample(controls, grid)!!.matrix[16, 16].value)
+            assertEquals(ModuleValue.ZERO, sampleReady(editor, controls, grid).matrix[16, 16].value)
             val request = editor.requestCorrection(controls, grid)!!
             assertFalse(editor.correctionReady(controls, grid))
             editor.correction.accept(request, listOf(geometry(2.0), geometry()))
             editor.correction.select(1)
-            val preview = editor.sample(controls, grid)!!
+            val preview = sampleReady(editor, controls, grid)
             assertEquals(geometry(), preview.geometry)
             assertEquals(ModuleValue.ONE, preview.matrix[16, 16].value)
             val saved = editor.captureSettings(controls, grid)
@@ -61,7 +69,7 @@ class DistortionPreviewTest {
             val editor = editor(source, settings().copy(automaticThresholds = true, previewGeometry = savedGrid))
             val manual = controls.copy(blackProgress = 90)
             val request = editor.requestCorrection(manual, grid)!!
-            assertEquals(savedGrid, editor.sample(manual, grid)!!.geometry)
+            assertEquals(savedGrid, sampleReady(editor, manual, grid).geometry)
 
             val black = manual.copy(blackProgress = 145)
             assertNull(editor.requestCorrection(black, grid))
@@ -76,7 +84,7 @@ class DistortionPreviewTest {
                 assertTrue(editor.correctionReady(thresholds, grid))
                 assertSame(order, editor.correction.candidates)
                 assertSame(selected, editor.correction.selected)
-                val preview = editor.sample(thresholds, grid)!!
+                val preview = sampleReady(editor, thresholds, grid)
                 assertSame(selected, preview.geometry)
                 assertEquals(value, preview.matrix[24, 16].value)
                 assertSame(selected, editor.captureSettings(thresholds, grid).previewGeometry)
@@ -97,7 +105,7 @@ class DistortionPreviewTest {
             assertFalse(editor.correction.isCurrent(old))
             assertFalse(editor.correction.accept(old, listOf(geometry())))
             editor.correction.accept(latest, emptyList())
-            assertNull(editor.sample(controls, moved)!!.geometry.warp)
+            assertNull(sampleReady(editor, controls, moved).geometry.warp)
             assertEquals(moved.quad, editor.captureSettings(controls, moved).previewGeometry!!.imageQuad)
             val version = controls.copy(version = 3)
             assertNotNull(editor.requestCorrection(version, moved))
@@ -114,7 +122,7 @@ class DistortionPreviewTest {
             val initial = settings().copy(automaticThresholds = true, previewGeometry = geometry())
             val editor = editor(source, initial)
             val request = editor.requestCorrection(automatic, grid)!!
-            assertEquals(geometry(), editor.sample(automatic, grid)!!.geometry)
+            assertEquals(geometry(), sampleReady(editor, automatic, grid).geometry)
             editor.correction.accept(request, listOf(geometry(2.0), geometry()))
             assertEquals(geometry(), editor.correction.selected)
             assertEquals(1, editor.correction.selectedIndex)
@@ -137,5 +145,69 @@ class DistortionPreviewTest {
             assertFalse(editor.correction.accept(request, listOf(geometry())))
             assertNotNull(editor.requestCorrection(controls, grid))
         } finally { source.bitmap.recycle(); replacement.bitmap.recycle() }
+    }
+
+    @Test fun automaticInvertedRankingSeparatesTheCorrectTimingPhaseFromAShiftedGrid() {
+        val source = BitmapUtils.prepare(Bitmap.createBitmap(300, 300, Bitmap.Config.ARGB_8888).apply {
+            setPixels(IntArray(300 * 300) { index ->
+                val x = index % 300; val y = index / 300
+                val value = if (((x - 16) / 8 + (y - 16) / 8) % 2 == 0) 120 else 20
+                Color.rgb(value, value, value)
+            }, 0, 300, 0, 0, 300, 300)
+        })
+        try {
+            val editor = editor(source, settings().copy(provisionalBlackMax = 70, provisionalWhiteMin = 71))
+            val input = editor.requestCorrection(controls.copy(polarity = PolarityMode.INVERTED, automaticThresholds = true),
+                grid.copy(confirmedFinderPolarity = FinderPolarity.INVERTED))!!.input
+            assertEquals(184, input.profile.settings.blackMax)
+            assertEquals(185, input.profile.settings.whiteMin)
+            assertEquals(0.0, quickGeometryScore(input.image, input.base, input.profile), 1e-6)
+            assertEquals(24.0, quickGeometryScore(input.image, input.base.adjusted(dxPixels = 8.0), input.profile), 1e-6)
+        } finally { source.bitmap.recycle() }
+    }
+
+    @Test fun curvedCellsWaitForWorkerObservationsAndUseCurrentThresholdsAndEdits() {
+        val source = image(Color.rgb(128, 128, 128))
+        try {
+            val editor = editor(source, settings().copy(previewGeometry = geometry()))
+            editor.requestCorrection(controls, grid)
+            assertNull(editor.sample(controls, grid))
+            assertFalse(editor.samplingReady(controls, grid))
+            val request = editor.requestObservations(controls, grid)!!
+            val thresholds = controls.copy(blackProgress = 145)
+            assertNull(editor.requestObservations(thresholds, grid))
+            val fixed = Coord(24, 16)
+            editor.cells.applyValues(listOf(fixed), ModuleValue.ZERO) { ModuleValue.ONE }
+            assertTrue(editor.acceptObservations(request, runCatching { editor.calculateObservations(request) }))
+            assertTrue(editor.samplingReady(thresholds, grid))
+            val preview = editor.sample(thresholds, grid)!!
+            assertEquals(ModuleValue.ONE, preview.matrix[fixed.x, fixed.y].value)
+            editor.cells.applyTo(preview.matrix, false)
+            assertEquals(ModuleValue.ZERO, preview.matrix[fixed.x, fixed.y].value)
+            assertEquals(ModuleSource.USER, preview.matrix[fixed.x, fixed.y].source)
+            assertEquals(ModuleValue.ONE, editor.sample(thresholds, grid)!!.matrix[fixed.x, fixed.y].value)
+        } finally { source.bitmap.recycle() }
+    }
+
+    @Test fun obsoleteCurvedObservationWorkIsCancelledAndCannotReplaceANewerSelection() {
+        val source = image()
+        try {
+            val editor = editor(source)
+            val correction = editor.requestCorrection(controls, grid)!!
+            editor.correction.accept(correction, listOf(geometry(2.0), geometry(7.0)))
+            val first = editor.requestObservations(controls, grid)!!
+            editor.correction.select(1)
+            val latest = editor.requestObservations(controls, grid)!!
+            assertTrue(runCatching { editor.calculateObservations(first) }.exceptionOrNull() is RecoveryCancelledException)
+            assertFalse(editor.acceptObservations(first, Result.success(arrayOfNulls(33 * 33))))
+            assertNull(editor.sample(controls, grid))
+            assertTrue(editor.acceptObservations(latest, runCatching { editor.calculateObservations(latest) }))
+            assertEquals(geometry(7.0), editor.sample(controls, grid)!!.geometry)
+            editor.correction.select(0)
+            val closing = editor.requestObservations(controls, grid)!!
+            editor.release()
+            assertTrue(runCatching { editor.calculateObservations(closing) }.exceptionOrNull() is RecoveryCancelledException)
+            assertFalse(editor.acceptObservations(closing, Result.success(arrayOfNulls(33 * 33))))
+        } finally { source.bitmap.recycle() }
     }
 }

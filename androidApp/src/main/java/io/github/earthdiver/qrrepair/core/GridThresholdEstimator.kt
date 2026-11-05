@@ -23,8 +23,10 @@ internal object GridThresholdEstimator {
     private val offsets = doubleArrayOf(-.16, 0.0, .16)
     private val shifts = doubleArrayOf(-.1, 0.0, .1)
 
-    fun observe(image: LumaImage, geometry: GridGeometry, inverted: Boolean): Array<ModuleObservation?> =
+    fun observe(image: LumaImage, geometry: GridGeometry, inverted: Boolean,
+        stopRequested: () -> Boolean = { false }): Array<ModuleObservation?> =
         Array(geometry.dimension * geometry.dimension) { index ->
+            if (index % geometry.dimension == 0 && stopRequested()) throw RecoveryCancelledException()
             val x = index % geometry.dimension
             val y = index / geometry.dimension
             val center = geometry.moduleToImage(x.toDouble(), y.toDouble())
