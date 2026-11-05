@@ -212,7 +212,8 @@ object FormatSolver {
      * Returns a format candidate that is safe to try alone first.
      *
      * A complete copy must be within BCH's three-error correction radius. When only one copy is
-     * complete, every known bit in the damaged copy must agree with the corrected codeword.
+     * complete, the known bits in the damaged copy must uniquely identify the corrected format
+     * among all 32 formats.
      */
     fun trustedCandidate(matrix: QrMatrix): FormatCandidate? {
         val observed = copies(matrix.dimension).map { coords ->
@@ -230,11 +231,14 @@ object FormatSolver {
                 ?.first
         }
 
+        fun uniquelyMatchingFormat(bits: List<Int?>): Int? =
+            (0..31).singleOrNull { agreesWithKnown(bits, formatCodeword(it)) }
+
         val decoded = observed.map(::decode)
         val fiveBits = when {
             complete.all { it } -> decoded[0]?.takeIf { it == decoded[1] }
-            complete[0] -> decoded[0]?.takeIf { candidate -> agreesWithKnown(observed[1], formatCodeword(candidate)) }
-            else -> decoded[1]?.takeIf { candidate -> agreesWithKnown(observed[0], formatCodeword(candidate)) }
+            complete[0] -> decoded[0]?.takeIf { it == uniquelyMatchingFormat(observed[1]) }
+            else -> decoded[1]?.takeIf { it == uniquelyMatchingFormat(observed[0]) }
         } ?: return null
 
         val codeword = formatCodeword(fiveBits)

@@ -28,7 +28,7 @@ class FormatBchTest {
         assertNull(FormatSolver.matchingInformationCandidate(matrix))
     }
 
-    @Test fun trustsOneCompleteCopyOnlyWhenAllKnownBitsInOtherCopyAgree() {
+    @Test fun trustsOneCompleteCopyWhenOtherCopyUniquelyAgrees() {
         val matrix = emptyMatrix()
         writeCopy(matrix, 0, fiveBits = 0b01011, flippedBits = setOf(4, 10))
         writeCopy(matrix, 1, fiveBits = 0b01011, erasedBits = setOf(2, 5, 9, 12))
@@ -38,6 +38,43 @@ class FormatBchTest {
         val conflicting = formatCoordinates(matrix.dimension)[1][7]
         matrix.set(conflicting.first, conflicting.second, opposite(matrix[conflicting.first, conflicting.second].value), 1f, ModuleSource.IMAGE)
         assertNull(FormatSolver.trustedCandidate(matrix))
+    }
+
+    @Test fun trustsCorrectableCompleteCopyWithUniquePartialEvidenceForEveryFormat() {
+        for (fiveBits in 0..31) for (completeCopy in 0..1) {
+            for (errors in 0..3) for (erasedBits in listOf((5..14).toSet(), (0..4).toSet())) {
+                val matrix = emptyMatrix()
+                writeCopy(matrix, completeCopy, fiveBits, flippedBits = (0 until errors).toSet())
+                writeCopy(matrix, 1 - completeCopy, fiveBits, erasedBits = erasedBits)
+
+                assertEquals("format=$fiveBits, completeCopy=$completeCopy, errors=$errors, erased=$erasedBits",
+                    FormatSolver.formatCodeword(fiveBits), FormatSolver.trustedCandidate(matrix)?.maskedCodeword)
+            }
+        }
+    }
+
+    @Test fun doesNotTrustCompleteCopyWhenOtherCopyIsAmbiguousOrEntirelyUnknown() {
+        for (fiveBits in 0..31) for (completeCopy in 0..1) {
+            for (errors in 0..3) for (erasedBits in listOf((4..14).toSet(), (0..14).toSet())) {
+                val matrix = emptyMatrix()
+                writeCopy(matrix, completeCopy, fiveBits, flippedBits = (0 until errors).toSet())
+                // Four information bits leave two formats possible; no known bits leave all 32.
+                writeCopy(matrix, 1 - completeCopy, fiveBits, erasedBits = erasedBits)
+
+                assertNull("format=$fiveBits, completeCopy=$completeCopy, errors=$errors, erased=$erasedBits",
+                    FormatSolver.trustedCandidate(matrix))
+            }
+        }
+    }
+
+    @Test fun doesNotTrustCompleteCopyWhenOtherCopyUniquelyIdentifiesADifferentFormat() {
+        for (fiveBits in 0..31) for (completeCopy in 0..1) {
+            val matrix = emptyMatrix()
+            writeCopy(matrix, completeCopy, fiveBits, flippedBits = setOf(5, 8, 13))
+            writeCopy(matrix, 1 - completeCopy, fiveBits xor 1, erasedBits = (5..14).toSet())
+
+            assertNull("format=$fiveBits, completeCopy=$completeCopy", FormatSolver.trustedCandidate(matrix))
+        }
     }
 
     @Test fun provisionallyUsesMatchingInformationBitsWhenBchEvidenceIsDamaged() {

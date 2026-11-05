@@ -136,7 +136,7 @@ There are up to 32 formats: four ECC levels combined with eight masks. A QR code
 Format information uses Bose–Chaudhuri–Hocquenghem (**BCH**) error correction. The main conditions for QRevy to confirm a format are:
 
 - If both copies are fully readable, each can be corrected within three bits to the same format.
-- If only one copy is fully readable, that copy can be corrected and every known bit in the other copy agrees with the corrected format.
+- If only one copy is fully readable, that copy can be corrected and the known bits in the other copy are consistent only with the corrected format among all 32 formats.
 
 The app also checks that mismatches against the format-information input are within the error limit and that the format does not conflict with fixed cells whose correction is disallowed. When these conditions are met, the format for that reading attempt is confirmed.
 
