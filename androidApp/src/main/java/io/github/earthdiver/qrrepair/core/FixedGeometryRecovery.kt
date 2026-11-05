@@ -174,14 +174,18 @@ class AutoRecoveryEngine(
         else null
         val curvedDetector = if (settings.distortionCorrection) CurvedGridDetector(image, profile, cancellation, stopRequested,
             minOf(maxContourWorkingBytes, retentionBudget.workingLimitBytes, RecoveryMemoryPolicy.current().workingBytes)) else null
-        val curved = if (curvedDetector != null) ordinary.sortedBy { it.quickScore }.take(4).flatMap { base ->
+        // The joint fit adds one seed without displacing the four ordinary curvature seeds.
+        val curvedSeeds = (listOfNotNull(patternFit) + ordinary.sortedBy { it.quickScore }.take(4))
+            .distinctBy { it.geometry }
+        val curved = if (curvedDetector != null) curvedSeeds.flatMap { base ->
             cancellation.check()
             curvedDetector.candidates(base.geometry).map { geometry ->
                 base.copy(geometry = geometry, quickScore = quickGeometryScore(image, geometry, profile))
             }
         } else emptyList()
         if (curvedDetector?.contourMemoryLimited == true) resultAccumulator.markIncomplete(SearchIncompleteReason.WORKING_MEMORY_LIMIT)
-        val hypotheses = (listOfNotNull(preview).take(maxGeometryAttempts) + ordinary + listOfNotNull(patternFit) + curved).distinctBy { it.geometry }
+        // Honor the displayed grid first, then try the joint pattern fit before neighborhood candidates.
+        val hypotheses = (listOfNotNull(preview).take(maxGeometryAttempts) + listOfNotNull(patternFit) + ordinary + curved).distinctBy { it.geometry }
         val finders = settings.manualFinders.entries.take(maxFinders).map { (_, point) -> confirmedFinderCandidate(settings, point) }
         var completed = 0
         var interrupted = false

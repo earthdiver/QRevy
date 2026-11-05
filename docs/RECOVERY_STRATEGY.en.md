@@ -77,6 +77,8 @@ The app chooses starting grids from these candidates and projects the black and 
 
 If the fit improves and yields a grid distinct from the other candidates, the app adds that grid as one more candidate. The total per polarity is therefore **at most 39**, or **at most 43** with exactly one assigned Finder role. With fine-tuning disabled, repair uses the displayed grid alone. Distortion correction has a separate candidate budget.
 
+When fine-tuning is enabled, repair tries the selected preview grid first, if present, followed by the LM-fitted grid, the specified grid and its neighborhood/alignment corrections, and finally additional distortion-correction grids. Duplicate grids are tried only once.
+
 ### Distortion correction
 
 Experimental distortion correction uses landmarks from all three Finders and other patterns to build grids that follow curvature. The orange dots below mark the landmarks. The left diagram shows one Finder; the right shows one alignment pattern.
@@ -91,7 +93,9 @@ Retain candidates from each stage for comparison, and reject maps that fold over
 
 The settings screen computes up to twelve correction candidates from the specified four-corner grid and orders them by agreement with the timing pattern and other image checks. Grid lines, cell values, cell selection, and repair share the selected candidate. The corner handles edit the underlying grid before distortion correction; landmarks are measured again when the adjustment finishes. The selected candidate is also saved in the session.
 
-With “Automatically fine-tune sampling position” enabled, repair explores ordinary grid candidates in addition to the displayed grid. It selects up to four ordinary grids based on agreement with the timing pattern and other image checks, then tries distortion correction on each. It adds up to twelve correction candidates per selected grid, for a total of at most 48 additional candidates per polarity.
+With “Automatically fine-tune sampling position” enabled, repair attempts recovery in this order: the selected preview grid, the LM-fitted grid, and the specified grid with its neighborhood/alignment corrections. Grids that have not been selected or generated are skipped.
+
+With distortion correction enabled, it selects up to four ordinary grids based on agreement with the timing pattern and other image checks. It applies correction first to the LM-fitted grid, if available, and then to each selected ordinary grid. Each grid serves as the reference for generating up to twelve correction candidates, for a total of at most 60 additional candidates per polarity (48 when no LM-fitted grid is available).
 
 ### Measuring brightness and marking unknown cells
 
