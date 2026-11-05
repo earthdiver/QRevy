@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="380" viewBox="0 0 860 380" role="img" aria-labelledby="title desc">
+<title id="title">Landmarks in QR Finder and alignment patterns</title>
+<desc id="desc">Orange dots mark the centers of the four corner cells of a seven by seven Finder, and the single center cell of a five by five alignment pattern. Three Finders supply twelve landmarks; each alignment pattern supplies one.</desc>
+<rect width="860" height="380" fill="#ffffff"/>
+<rect x="16" y="12" width="424" height="336" rx="12" fill="#f4f7fb"/>
+<rect x="460" y="12" width="384" height="336" rx="12" fill="#f4f7fb"/>
+<text x="228" y="39" text-anchor="middle" font-family="sans-serif" font-size="21" font-weight="bold" fill="#17263c">Finder</text>
+<text x="228" y="65" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="normal" fill="#17263c">7 × 7 cells</text>
+<text x="652" y="39" text-anchor="middle" font-family="sans-serif" font-size="21" font-weight="bold" fill="#17263c">Alignment pattern</text>
+<text x="652" y="65" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="normal" fill="#17263c">5 × 5 cells</text>
+<rect x="123" y="88" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="153" y="88" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="183" y="88" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="213" y="88" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="243" y="88" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="273" y="88" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="303" y="88" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="123" y="118" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="153" y="118" width="30" height="30" fill="#ffffff" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="183" y="118" width="30" height="30" fill="#ffffff" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="213" y="118" width="30" height="30" fill="#ffffff" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="243" y="118" width="30" height="30" fill="#ffffff" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="273" y="118" width="30" height="30" fill="#ffffff" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="303" y="118" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="123" y="148" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="153" y="148" width="30" height="30" fill="#ffffff" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="183" y="148" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="213" y="148" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="243" y="148" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="273" y="148" width="30" height="30" fill="#ffffff" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="303" y="148" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="123" y="178" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="153" y="178" width="30" height="30" fill="#ffffff" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="183" y="178" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="213" y="178" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="243" y="178" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="273" y="178" width="30" height="30" fill="#ffffff" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="303" y="178" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="123" y="208" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="153" y="208" width="30" height="30" fill="#ffffff" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="183" y="208" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="213" y="208" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="243" y="208" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="273" y="208" width="30" height="30" fill="#ffffff" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="303" y="208" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="123" y="238" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="153" y="238" width="30" height="30" fill="#ffffff" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="183" y="238" width="30" height="30" fill="#ffffff" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="213" y="238" width="30" height="30" fill="#ffffff" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="243" y="238" width="30" height="30" fill="#ffffff" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="273" y="238" width="30" height="30" fill="#ffffff" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="303" y="238" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="123" y="268" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="153" y="268" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="183" y="268" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="213" y="268" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="243" y="268" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="273" y="268" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="303" y="268" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<circle cx="138" cy="103" r="6" fill="#ff9e2c" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="318" cy="103" r="6" fill="#ff9e2c" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="318" cy="283" r="6" fill="#ff9e2c" stroke="#ffffff" stroke-width="1.5"/>
+<circle cx="138" cy="283" r="6" fill="#ff9e2c" stroke="#ffffff" stroke-width="1.5"/>
+<rect x="577" y="118" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="607" y="118" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="637" y="118" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="667" y="118" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="697" y="118" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="577" y="148" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="607" y="148" width="30" height="30" fill="#ffffff" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="637" y="148" width="30" height="30" fill="#ffffff" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="667" y="148" width="30" height="30" fill="#ffffff" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="697" y="148" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="577" y="178" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="607" y="178" width="30" height="30" fill="#ffffff" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="637" y="178" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="667" y="178" width="30" height="30" fill="#ffffff" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="697" y="178" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="577" y="208" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="607" y="208" width="30" height="30" fill="#ffffff" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="637" y="208" width="30" height="30" fill="#ffffff" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="667" y="208" width="30" height="30" fill="#ffffff" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="697" y="208" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="577" y="238" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="607" y="238" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="637" y="238" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="667" y="238" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<rect x="697" y="238" width="30" height="30" fill="#17263c" stroke="#a7b4c4" stroke-width="0.6"/>
+<circle cx="652" cy="193" r="6" fill="#ff9e2c" stroke="#ffffff" stroke-width="1.5"/>
+<text x="228" y="327" text-anchor="middle" font-family="sans-serif" font-size="17" font-weight="normal" fill="#17263c">4 points × 3 Finders = 12 points</text>
+<text x="652" y="309" text-anchor="middle" font-family="sans-serif" font-size="17" font-weight="normal" fill="#17263c">1 point per pattern</text>
+<text x="652" y="332" text-anchor="middle" font-family="sans-serif" font-size="15" font-weight="normal" fill="#17263c">Up to 8 patterns; V4 has 1</text>
+<text x="430" y="370" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="normal" fill="#17263c">Orange dots: cell centers used as landmarks</text>
+</svg>

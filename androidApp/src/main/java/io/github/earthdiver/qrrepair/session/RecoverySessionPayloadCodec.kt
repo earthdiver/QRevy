@@ -108,7 +108,7 @@ internal object RecoverySessionPayloadCodec {
         writeMatrix(out, snapshot.sourceMatrix)
         writeMatrix(out, snapshot.workingMatrix)
         out.writeInt(snapshot.recoveryIndex)
-        out.writeBoolean(snapshot.preprocessSettings != null)
+        out.writeByte(when { snapshot.preprocessSettings == null -> 0; snapshot.preprocessSettings.photographicSource -> 2; else -> 1 })
         snapshot.preprocessSettings?.let { writePreprocessSettings(out, it) }
         out.writeBoolean(snapshot.selectedQr != null)
         snapshot.selectedQr?.let { selection ->
@@ -125,9 +125,9 @@ internal object RecoverySessionPayloadCodec {
     }
 
     private fun readSnapshot(input: DataInputStream, formatVersion: Int): RecoverySnapshot {
-        val geometry = readGeometry(input)
-        val source = readMatrix(input)
-        val working = readMatrix(input)
+        val geometry = readGeometry(input, formatVersion)
+        val source = readMatrix(input, formatVersion)
+        val working = readMatrix(input, formatVersion)
         requireCorrupt(source == null || validPrioritySearch(source), "invalid source priority-search modules")
         requireCorrupt(working == null || validPrioritySearch(working), "invalid working priority-search modules")
         if (source != null && working != null) requireCorrupt(source.dimension == working.dimension, "matrix dimension mismatch")
@@ -137,7 +137,10 @@ internal object RecoverySessionPayloadCodec {
         }
         val recoveryIndex = input.readInt()
         requireCorrupt(recoveryIndex >= -1 && recoveryIndex <= 100_000, "invalid recovery index")
-        val settings = if (input.readBoolean()) readPreprocessSettings(input, formatVersion) else null
+        val settingsTag = input.readUnsignedByte()
+        requireCorrupt(settingsTag in 0..(if (formatVersion >= 33) 2 else 1), "invalid preprocessing settings tag")
+        val settings = if (settingsTag == 0) null else
+            readPreprocessSettings(input, formatVersion).copy(photographicSource = settingsTag == 2)
         val selectedQr = if (input.readBoolean()) {
             val version = input.readInt()
             val ecLevel = input.readInt()
@@ -173,6 +176,7 @@ internal object RecoverySessionPayloadCodec {
         snapshot.preprocessSettings?.let(::validatePreprocessSettings)
         for (matrix in listOfNotNull(snapshot.sourceMatrix, snapshot.workingMatrix)) {
             for (y in 0 until matrix.dimension) for (x in 0 until matrix.dimension) {
+                if (matrix.imageMargin(x, y) >= 0) require(matrix[x, y].source == ModuleSource.IMAGE && matrix[x, y].value != ModuleValue.ERASED)
                 require(matrix[x, y].confidence.isFinite() && matrix[x, y].confidence in 0f..1f)
             }
         }
@@ -231,7 +235,8 @@ internal object RecoverySessionPayloadCodec {
         settings.manualQuad?.asList()?.forEach { point ->
             out.writeDouble(point.x); out.writeDouble(point.y)
         }
-        out.writeBoolean(settings.logicalGridAssigned)
+        // Schema 29 extends the orientation byte: 0/1 retain their legacy meanings.
+        out.writeByte(settings.visibleFinderRole?.let { 2 + it.ordinal } ?: if (settings.logicalGridAssigned) 1 else 0)
         out.writeInt(settings.manualFinders.size)
         settings.manualFinders.forEach { (role, point) ->
             out.writeInt(role.ordinal); out.writeDouble(point.x); out.writeDouble(point.y)
@@ -265,6 +270,12 @@ internal object RecoverySessionPayloadCodec {
         out.writeBoolean(settings.mirroredInput)
         out.writeInt(settings.listDecodingAdditionalErrors)
         out.writeInt(settings.knownBitErrorLimit)
+        out.writeBoolean(settings.distortionCorrection)
+        settings.previewGeometry?.let {
+            require(settings.distortionCorrection && settings.logicalQuad != null && it.version == settings.version)
+        }
+        writeGeometry(out, settings.previewGeometry)
+        out.writeBoolean(settings.assumeUtf8ByteSegments)
     }
 
     private fun readPreprocessSettings(input: DataInputStream, formatVersion: Int): PreprocessSettings {
@@ -319,7 +330,11 @@ internal object RecoverySessionPayloadCodec {
             val points = List(4) { PointD(input.readDouble(), input.readDouble()) }
             ImageQuad(points[0], points[1], points[2], points[3])
         } else null
-        val logicalGridAssigned = input.readBoolean()
+        val orientation = input.readUnsignedByte()
+        requireCorrupt(orientation in 0..(if (formatVersion >= 29) 1 + FinderRole.entries.size else 1), "invalid grid orientation")
+        val logicalGridAssigned = orientation != 0
+        val visibleFinderRole = FinderRole.entries.getOrNull(orientation - 2)
+        requireCorrupt(visibleFinderRole == null || quad != null, "role without grid")
         val finderCount = input.readInt()
         requireCorrupt(finderCount in 0..3, "invalid confirmed finder count")
         val manualFinders = linkedMapOf<FinderRole, PointD>()
@@ -391,6 +406,17 @@ internal object RecoverySessionPayloadCodec {
                 } else false,
                 listDecodingAdditionalErrors = if (formatVersion >= 26) input.readInt() else ListDecodingLimit.DEFAULT,
                 knownBitErrorLimit = if (formatVersion >= 28) input.readInt() else 0,
+                distortionCorrection = if (formatVersion >= 30) {
+                    val flag = input.readUnsignedByte()
+                    requireCorrupt(flag in 0..1, "invalid distortion correction flag")
+                    flag == 1
+                } else false,
+                previewGeometry = if (formatVersion >= 31) readGeometry(input, formatVersion) else null,
+                assumeUtf8ByteSegments = if (formatVersion >= 32) {
+                    val flag = input.readUnsignedByte()
+                    requireCorrupt(flag in 0..1, "invalid UTF-8 assumption flag")
+                    flag == 1
+                } else false,
                 rotationDegrees = rotation,
                 polarity = polarity,
                 automaticThresholds = automaticThresholds,
@@ -415,13 +441,19 @@ internal object RecoverySessionPayloadCodec {
                 perspectiveCorrectionQuad = perspectiveQuad,
                 manualQuad = quad,
                 manualFinders = manualFinders,
+                visibleFinderRole = visibleFinderRole,
                 logicalGridAssigned = logicalGridAssigned,
                 detectedFinders = candidates,
                 confirmedFinderPolarity = confirmedPolarity,
                 preRecoveryEdits = edits,
                 preRecoverySoftEdits = softEdits,
                 preRecoveryPrioritySearch = priority,
-            )
+            ).also { settings ->
+                settings.previewGeometry?.let {
+                    requireCorrupt(settings.distortionCorrection && settings.logicalQuad != null &&
+                        it.version == settings.version, "preview geometry does not match settings")
+                }
+            }
         } catch (e: IllegalArgumentException) {
             throw CorruptSessionException("invalid preprocessing settings", e)
         }
@@ -432,6 +464,7 @@ internal object RecoverySessionPayloadCodec {
         require(settings.version in 1..40)
         require(settings.blackMax in 0..254 && settings.whiteMin in 1..255 && settings.blackMax < settings.whiteMin)
         require(settings.unknownColorClusters.size <= 4)
+        require(settings.visibleFinderRole == null || (settings.logicalGridAssigned && settings.manualQuad != null))
         require(settings.manualFinders.size <= 3 && settings.detectedFinders.size <= 64)
         val dimension = 17 + 4 * settings.version
         require(settings.preRecoveryEdits.size <= dimension * dimension)
@@ -464,11 +497,11 @@ internal object RecoverySessionPayloadCodec {
     }
 
     private fun writeMatrix(out: DataOutputStream, matrix: QrMatrix?) {
-        out.writeBoolean(matrix != null)
+        out.writeByte(when { matrix == null -> 0; matrix.hasImageMargins -> 2; else -> 1 })
         if (matrix == null) return
         out.writeInt(matrix.dimension)
         if (out is SizingDataOutputStream) {
-            out.counter.written += matrix.dimension.toLong() * matrix.dimension * 7
+            out.counter.written += matrix.dimension.toLong() * matrix.dimension * (if (matrix.hasImageMargins) 8 else 7)
             return
         }
         for (y in 0 until matrix.dimension) for (x in 0 until matrix.dimension) {
@@ -478,11 +511,14 @@ internal object RecoverySessionPayloadCodec {
             out.writeByte(c.source.ordinal)
             out.writeFloat(c.confidence)
             out.writeBoolean(c.prioritySearch)
+            if (matrix.hasImageMargins) out.writeByte(matrix.imageMargin(x, y) + 1)
         }
     }
 
-    private fun readMatrix(input: DataInputStream): QrMatrix? {
-        if (!input.readBoolean()) return null
+    private fun readMatrix(input: DataInputStream, formatVersion: Int): QrMatrix? {
+        val tag = input.readUnsignedByte()
+        requireCorrupt(tag in 0..(if (formatVersion >= 33) 2 else 1), "invalid matrix tag")
+        if (tag == 0) return null
         val d = input.readInt()
         requireCorrupt(isValidQrDimension(d), "invalid QR dimension $d")
         val matrix = QrMatrix(d)
@@ -495,6 +531,13 @@ internal object RecoverySessionPayloadCodec {
             if (input.readBoolean()) {
                 requireCorrupt(value == ModuleValue.ERASED, "priority-search module must be erased")
                 matrix.setPrioritySearch(x, y, true)
+            }
+            if (tag == 2) {
+                val margin = input.readUnsignedByte() - 1
+                if (margin >= 0) {
+                    requireCorrupt(source == ModuleSource.IMAGE && value != ModuleValue.ERASED, "invalid image margin")
+                    matrix.setImageMargin(x, y, margin)
+                }
             }
         }
         return matrix
@@ -511,10 +554,18 @@ internal object RecoverySessionPayloadCodec {
         out.writeInt(g.model.ordinal)
         out.writeBoolean(g.imageQuad != null)
         g.imageQuad?.asList()?.forEach { p -> out.writeDouble(p.x); out.writeDouble(p.y) }
+        out.writeInt(g.warp?.landmarks?.size ?: 0)
+        g.warp?.landmarks?.forEach { mark ->
+            out.writeDouble(mark.position.x); out.writeDouble(mark.position.y)
+            out.writeDouble(mark.displacement.x); out.writeDouble(mark.displacement.y)
+            out.writeDouble(mark.smoothing)
+        }
     }
 
-    private fun readGeometry(input: DataInputStream): GridGeometry? {
-        if (!input.readBoolean()) return null
+    private fun readGeometry(input: DataInputStream, formatVersion: Int): GridGeometry? {
+        val present = input.readUnsignedByte()
+        requireCorrupt(present in 0..1, "invalid geometry presence flag")
+        if (present == 0) return null
         val version = input.readInt()
         requireCorrupt(version in 1..40, "invalid geometry version")
         val role = enumStrict<FinderRole>(input.readInt(), "finder role")
@@ -526,13 +577,22 @@ internal object RecoverySessionPayloadCodec {
             repeat(4) { p += PointD(input.readDouble(), input.readDouble()) }
             ImageQuad(p[0], p[1], p[2], p[3])
         } else null
-        val result = GridGeometry(version, role, cx, cy, pitch, angle, quad, model)
+        val warp = if (formatVersion >= 30) {
+            val count = input.readInt()
+            requireCorrupt(count == 0 || count in 3..64, "invalid warp landmark count")
+            if (count == 0) null else ThinPlateWarp(List(count) {
+                WarpLandmark(PointD(input.readDouble(), input.readDouble()),
+                    PointD(input.readDouble(), input.readDouble()), input.readDouble())
+            })
+        } else null
+        val result = GridGeometry(version, role, cx, cy, pitch, angle, quad, model, warp)
         requireCorrupt(runCatching { validateGeometry(result) }.isSuccess, "invalid geometry values")
         return result
     }
 
     private fun validateGeometry(g: GridGeometry) {
         require(g.version in 1..40)
+        require(g.hasUsableWarp()) { "Folded or excessive warp" }
         require(g.finderCenterX.isFinite() && kotlin.math.abs(g.finderCenterX) <= MAX_COORD_ABS)
         require(g.finderCenterY.isFinite() && kotlin.math.abs(g.finderCenterY) <= MAX_COORD_ABS)
         require(g.modulePitch.isFinite() && g.modulePitch in 0.05..100_000.0)

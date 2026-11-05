@@ -446,8 +446,8 @@ class PreprocessDialogLayoutTest {
         )
         val store = RecoverySessionStore(activity)
         store.save(id, UiMode.SIMPLE, listOf(entry), 0)
-        val sessionIdField = MainActivity::class.java.getDeclaredField("sessionId").apply { isAccessible = true }
-        sessionIdField.set(activity, id)
+        val workspaceSession = activity.workspaceSessionForTest()
+        workspaceSession.restoreIdentity(id, workspaceSession.history.entries.toList(), workspaceSession.history.cursor)
 
         MainActivity::class.java.getDeclaredMethod("showRecentSessions").apply {
             isAccessible = true
@@ -487,7 +487,7 @@ class PreprocessDialogLayoutTest {
             Thread.sleep(5)
         }
         assertTrue("確認後も保存済み作業が残っています", deleted)
-        assertNull("削除した作業が自動保存対象に残っています", sessionIdField.get(activity))
+        assertNull("削除した作業が自動保存対象に残っています", workspaceSession.id)
     }
 
     @Test
@@ -555,11 +555,11 @@ class PreprocessDialogLayoutTest {
             isAccessible = true
             invoke(activity, id)
         }
-        val historyField = MainActivity::class.java.getDeclaredField("sessionHistory").apply { isAccessible = true }
+        val workspaceSession = activity.workspaceSessionForTest()
         var imported = false
         for (attempt in 0 until 200) {
             shadowOf(Looper.getMainLooper()).idle()
-            val history = historyField.get(activity) as io.github.earthdiver.qrrepair.core.RecoverySessionHistory
+            val history = workspaceSession.history
             if (history.entries.size == 1) {
                 imported = true
                 break
@@ -627,7 +627,7 @@ class PreprocessDialogLayoutTest {
 
         val resumedDialog = ShadowDialog.getLatestDialog() as AlertDialog
         assertNotNull("最近の作業が保存カーソルから直接再開されません", findText(resumedDialog.window!!.decorView, "修復前設定"))
-        val history = MainActivity::class.java.getDeclaredField("sessionHistory").apply { isAccessible = true }.get(activity) as io.github.earthdiver.qrrepair.core.RecoverySessionHistory
+        val history = activity.workspaceSessionForTest().history
         assertEquals(2, history.entries.size)
         assertEquals(1, history.cursor)
     }

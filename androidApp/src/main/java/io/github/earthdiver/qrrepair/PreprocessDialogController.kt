@@ -3,10 +3,13 @@ package io.github.earthdiver.qrrepair
 import android.app.Activity
 import android.app.AlertDialog
 import android.graphics.Bitmap
+import android.text.InputType
 import android.view.Gravity
 import android.view.View
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.CheckBox
+import android.widget.EditText
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.RadioButton
@@ -74,6 +77,12 @@ internal class PreprocessDialogController(
         var validateCellEdits: (Map<Coord, ModuleValue>) -> Boolean = { true }
         val editor = PreprocessEditorModel(preprocessSettings, source, initialWorking,
             savedCellEditState, restoredDraft, host::retains) { validateCellEdits(it) }
+        var refreshClassificationMatrix: () -> Unit = {}
+        var refreshPreRecoveryDataPage: () -> Unit = {}
+        val previewCoordinator = PreprocessPreviewCoordinator(editor, executor, { runOnUiThread(it) }) {
+            refreshClassificationMatrix()
+            refreshPreRecoveryDataPage()
+        }
         val dialogState = editor.settings
         val searchSettings = dialogState.search
         val cellEditState = editor.cells
@@ -108,11 +117,14 @@ internal class PreprocessDialogController(
                 if (preprocessSettings.logicalGridAssigned) setImageQuad(it) else setPhysicalImageQuad(it)
             } ?: if (preprocessSettings.logicalGridAssigned) setImageQuad(imageQuad()) else Unit
             setFinderPoints(preprocessSettings.manualFinders)
+            visibleFinderRole = preprocessSettings.visibleFinderRole
             setConfirmedFinderPolarity(preprocessSettings.confirmedFinderPolarity)
             onClassificationSummaryChanged = { summary -> classificationLegend?.text = summary }
             val fixedHeight = (resources.displayMetrics.heightPixels * .42).toInt().coerceIn(dp(240), dp(420))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, fixedHeight)
         }
+        var cellEditorPageVisible = false
+        overlay.setOnTouchListener { _, _ -> cellEditorPageVisible && previewCoordinator.samplingPending }
         var userGeometryEdited = false
         overlay.onGeometryEdited = { userGeometryEdited = true }
         val polarityModes = listOf(PolarityMode.AUTO, PolarityMode.NORMAL, PolarityMode.INVERTED)
@@ -141,6 +153,10 @@ internal class PreprocessDialogController(
         val searchQuadNeighborhood = CheckBox(this).apply {
             text = ui("サンプリング位置を自動微調整する", "Automatically fine-tune sampling position")
             isChecked = preprocessSettings.searchQuadNeighborhood
+        }
+        val assumeUtf8ByteSegments = CheckBox(this).apply {
+            setText(R.string.assume_utf8_byte_segments)
+            isChecked = preprocessSettings.assumeUtf8ByteSegments
         }
         val trustKnownPayloadCount = CheckBox(this).apply {
             text = ui("単一セグメントの終端後構造を強制する", "Force single-segment terminator and padding")
@@ -181,8 +197,6 @@ internal class PreprocessDialogController(
         var committedVersion = preprocessSettings.version
         var versionConfirmationShowing = false
         var checkVersionErrorLimit: () -> Unit = {}
-        var refreshClassificationMatrix: () -> Unit = {}
-        var refreshPreRecoveryDataPage: () -> Unit = {}
         fun invalidateSamplingPreview() {
             finderSearchGeneration.incrementAndGet()
             overlay.clearCornerSelection()
@@ -207,6 +221,7 @@ internal class PreprocessDialogController(
             lockVersion = true,
             searchQuadNeighborhood = searchQuadNeighborhood.isChecked,
             trustKnownPayloadCount = trustKnownPayloadCount.isChecked,
+            assumeUtf8ByteSegments = assumeUtf8ByteSegments.isChecked,
             lockManualBits = !allowFixedCorrections.isChecked,
             prioritySearchLimit = cellEditState.priorityLimit,
         )
@@ -220,7 +235,9 @@ internal class PreprocessDialogController(
             blackLabel.text = blackText
             whiteLabel.text = whiteText
         }
+        var refreshCornerControls: () -> Unit = {}
         fun refreshLabels() {
+            refreshCornerControls()
             updateThresholdLabels()
             val selectedVersion = version.progress + 1
             val selectedDimension = 17 + 4 * selectedVersion
@@ -232,30 +249,55 @@ internal class PreprocessDialogController(
             activePreviewProfile = profile
             refreshClassificationMatrix()
         }
-        val listener = object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (updatingThresholdControls) return
-                updatingThresholdControls = true
-                if (fromUser) automaticThresholds.isChecked = false
-                if (black.progress >= white.progress + 1) {
-                    if (seekBar === black) white.progress = black.progress
-                    else black.progress = white.progress
-                }
-                updatingThresholdControls = false
-                if (fromUser) invalidateSamplingPreview()
-                refreshLabels()
+        fun updateThreshold(slider: SeekBar, progress: Int, manual: Boolean) {
+            if (updatingThresholdControls) return
+            updatingThresholdControls = true
+            if (manual) automaticThresholds.isChecked = false
+            slider.progress = progress
+            if (black.progress > white.progress) {
+                if (slider === black) white.progress = black.progress
+                else black.progress = white.progress
             }
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {
-                overlay.clearCornerSelection()
-            }
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                when (seekBar) {
-                    black -> noteDraftChange("black", ui("QRの黒の閾値を変更", "Changed QR black threshold"), black.progress.toString())
-                    white -> noteDraftChange("white", ui("QRの白の閾値を変更", "Changed QR white threshold"), (white.progress + 1).toString())
-                }
+            updatingThresholdControls = false
+            if (manual) invalidateSamplingPreview()
+            refreshLabels()
+        }
+        fun recordThresholdChange(slider: SeekBar) {
+            if (slider === black) {
+                noteDraftChange("black", ui("QRの黒の閾値を変更", "Changed QR black threshold"), black.progress.toString())
+            } else {
+                noteDraftChange("white", ui("QRの白の閾値を変更", "Changed QR white threshold"), (white.progress + 1).toString())
             }
         }
-        black.setOnSeekBarChangeListener(listener); white.setOnSeekBarChangeListener(listener)
+        val listener = object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                updateThreshold(seekBar, progress, fromUser)
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar) {
+                overlay.clearCornerSelection()
+            }
+            override fun onStopTrackingTouch(seekBar: SeekBar) {
+                recordThresholdChange(seekBar)
+            }
+        }
+        black.setOnSeekBarChangeListener(listener)
+        white.setOnSeekBarChangeListener(listener)
+        fun bindThresholdInput(label: TextView, slider: SeekBar, offset: Int) {
+            label.setOnLongClickListener {
+                val inverted = previewInverted()
+                fun imageValue(logical: Int) = if (inverted) 255 - logical else logical
+                val first = imageValue(offset)
+                val last = imageValue(slider.max + offset)
+                showThresholdInput(label.text, imageValue(slider.progress + offset), minOf(first, last)..maxOf(first, last)) { value ->
+                    val logical = if (inverted) 255 - value else value
+                    updateThreshold(slider, logical - offset, manual = true)
+                    recordThresholdChange(slider)
+                }
+                true
+            }
+        }
+        bindThresholdInput(blackLabel, black, offset = 0)
+        bindThresholdInput(whiteLabel, white, offset = 1)
         fun commitVersion(requested: Int) {
             val nextVersion = requested.coerceIn(1, 40)
             val perspectiveQuad = dialogState.perspectiveCorrectionQuad
@@ -383,6 +425,7 @@ internal class PreprocessDialogController(
                         Toast.makeText(this, ui("周辺でFinderを確定できませんでした。指定点をヒントとして解析します。", "The Finder could not be confirmed nearby. The selected point will be used as a hint."), Toast.LENGTH_LONG).show()
                     } else {
                         overlay.setVerifiedFinder(role, refined)
+                        refreshCornerControls()
                         refreshClassificationMatrix()
                         Toast.makeText(this, ui("Finder位置を自動補正しました（モジュール幅 ${"%.1f".format(refined.moduleSize)}px）", "Finder position refined (module width ${"%.1f".format(refined.moduleSize)} px)"), Toast.LENGTH_SHORT).show()
                     }
@@ -390,6 +433,7 @@ internal class PreprocessDialogController(
             }
         }
         overlay.onFinderRemoved = { role ->
+            refreshCornerControls()
             // A refinement launched when this Finder was placed may still be running. Do not
             // allow its delayed result to confirm the Finder again after the user removed it.
             finderSearchGeneration.incrementAndGet()
@@ -462,10 +506,12 @@ internal class PreprocessDialogController(
             logicalGridAssigned = overlay.isLogicalGridAssigned(),
             quad = overlay.imageQuad(),
             finders = overlay.finderPoints(),
+            visibleFinderRole = overlay.visibleFinderRole,
             confirmedFinderPolarity = overlay.confirmedFinderPolarity(),
         )
         fun sampleImageMatrix(): Pair<GridGeometry, QrMatrix>? {
-            val preview = editor.sample(controlSnapshot(), geometrySnapshot()) ?: return null
+            val preview = previewCoordinator.sample(::controlSnapshot, ::geometrySnapshot)
+            if (preview == null) return null
             preview.stats.thresholds?.let { pair ->
                 updatingThresholdControls = true
                 black.progress = pair.blackMax; white.progress = pair.whiteMin - 1
@@ -491,8 +537,8 @@ internal class PreprocessDialogController(
             buttonFactory = ::button,
             scrollRow = { views -> scrollRow(*views) },
             polarity = polarity,
-            mirroredInput = mirroredInput,
             searchQuadNeighborhood = searchQuadNeighborhood,
+            assumeUtf8ByteSegments = assumeUtf8ByteSegments,
             trustKnownPayloadCount = trustKnownPayloadCount,
             allowFixedCorrections = allowFixedCorrections,
             formatMismatchLimitControl = searchControls.formatMismatchLimitControl,
@@ -529,10 +575,55 @@ internal class PreprocessDialogController(
             preEditSourceControl?.update(cellEditState, baseline, allowFixedCorrections.isChecked)
             largeCellEditor?.sourceControl?.update(cellEditState, baseline, allowFixedCorrections.isChecked)
         }
+        val correctionControl = button("") {
+            val choices = editor.correction.candidates.indices.map { index ->
+                ui("補正候補 ${index + 1}", "Correction candidate ${index + 1}")
+            }.toTypedArray()
+            AlertDialog.Builder(activity)
+                .setTitle(ui("表示・修復に使う補正候補", "Correction for preview and repair"))
+                .setSingleChoiceItems(choices, editor.correction.selectedIndex) { selection, index ->
+                    previewCoordinator.selectCorrection(index)
+                    selection.dismiss()
+                    refreshClassificationMatrix()
+                    refreshPreRecoveryDataPage()
+                    noteDraftChange("correction-candidate", ui("補正候補を選択", "Selected correction candidate"), "${index + 1}")
+                }
+                .setNegativeButton(R.string.close, null)
+                .show()
+        }.apply { visibility = if (preprocessSettings.distortionCorrection) View.VISIBLE else View.GONE }
+        fun updateCorrectionControl() {
+            val state = editor.correction
+            correctionControl.isEnabled = state.complete && (state.candidates.size > 1 || editor.samplingFailed)
+            correctionControl.text = when {
+                !overlay.isLogicalGridAssigned() -> ui("曲面補正: QRの向きを指定してください", "Distortion: assign the QR orientation")
+                previewCoordinator.geometryDragging -> ui("曲面補正: 指を離すと再計算", "Distortion: release to recalculate")
+                !state.complete -> ui("曲面補正: 計算中…", "Distortion: calculating…")
+                editor.samplingFailed -> ui("格子の読み取りに失敗: タップして再試行", "Grid sampling failed: tap to retry")
+                previewCoordinator.samplingPending -> ui("曲面補正: セルを読み取り中…", "Distortion: reading cells…")
+                state.failed && state.selected?.warp != null -> ui("再計算に失敗: 保存した補正を使用", "Recalculation failed: using the saved correction")
+                state.failed -> ui("補正計算に失敗: 直線格子を使用", "Correction failed: using the straight grid")
+                state.selected?.warp == null -> ui("補正点を検出できません: 直線格子を使用", "No correction landmarks: using the straight grid")
+                else -> ui("曲面補正: 候補 ${state.selectedIndex + 1}/${state.candidates.size}",
+                    "Distortion: candidate ${state.selectedIndex + 1}/${state.candidates.size}")
+            } + if (state.memoryLimited) ui("\nメモリ上限により補正探索の一部を省略しました", "\nSome correction searches were omitted due to the memory limit") else ""
+        }
         refreshClassificationMatrix = {
+            previewCoordinator.requestCorrection(controlSnapshot(), geometrySnapshot())
             refreshSourceControls()
-            refreshPreRecoveryMatrix()?.let { (geometry, matrix) ->
-                overlay.setCellEditPreview(geometry, matrix)
+            val preview = refreshPreRecoveryMatrix()
+            updateCorrectionControl()
+            largeCellEditor?.editorView?.visibility = if (preview == null) View.INVISIBLE else View.VISIBLE
+            if (preview == null) {
+                val tool = overlay.cellEditorTool
+                overlay.clearCellEditing()
+                overlay.cellEditorTool = tool
+                classificationLegend?.text = if (editor.samplingFailed)
+                    ui("格子の読み取りに失敗しました", "Grid sampling failed")
+                else ui("セルを読み取り中…", "Reading cells…")
+            }
+            preview?.let { (geometry, matrix) ->
+                if (cellEditorPageVisible) overlay.setCellEditing(geometry, matrix, cellEditState.selection.focus)
+                else overlay.setCellEditPreview(geometry, matrix)
                 overlay.setCellSelection(cellEditState.selectedCells, cellEditState.selection.isRectangle, cellEditState.selection.focus)
                 largeCellEditor?.editorView?.setDocument(editor.working.bitmap, geometry, matrix, keepViewport = true)
                 largeCellEditor?.editorView?.setSelection(cellEditState.selectedCells, cellEditState.selection.isRectangle, cellEditState.selection.focus)
@@ -540,6 +631,8 @@ internal class PreprocessDialogController(
         }
         val refreshDraggedGrid = Runnable { if (overlay.isAttachedToWindow) refreshClassificationMatrix() }
         overlay.onGeometryEdited = {
+            previewCoordinator.geometryEdited()
+            updateCorrectionControl()
             userGeometryEdited = true
             overlay.removeCallbacks(refreshDraggedGrid)
             overlay.postDelayed(refreshDraggedGrid, 120L)
@@ -700,9 +793,18 @@ internal class PreprocessDialogController(
                 }
             },
             formatConstraintProvider = { searchSettings.formatConstraint },
+            unavailableText = {
+                if (previewCoordinator.samplingPending && !editor.samplingFailed) ui("セルを読み取り中…", "Reading cells…")
+                else getString(R.string.data_extract_failed)
+            },
         )
         val preRecoveryDataPage = createDataPage()
-        refreshPreRecoveryDataPage = preRecoveryDataPage::refresh
+        var openDataPage: PreRecoveryDataPage? = null
+        var openDataDialog: AlertDialog? = null
+        refreshPreRecoveryDataPage = {
+            preRecoveryDataPage.refresh()
+            openDataPage?.refresh()
+        }
         val hexPage = preRecoveryDataPage.view
         var eccConstraintButton: Button? = null
         var maskConstraintButton: Button? = null
@@ -779,11 +881,28 @@ internal class PreprocessDialogController(
             addView(formatSearchCount)
         }
         refreshFormatConstraintControls()
+        val cornerControls = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(mirroredInput)
+        }
+        val clearVisible = button(ui("位置未測定の役割指定を解除", "Clear role without a center")) {
+            overlay.visibleFinderRole = null
+            if (overlay.finderPoints().isEmpty()) overlay.setPhysicalImageQuad(overlay.imageQuad())
+            userGeometryEdited = true
+            refreshLabels()
+            noteDraftChange("corner-orientation", ui("役割指定を解除", "Cleared Finder role"), "")
+        }
+        cornerControls.addView(clearVisible)
+        refreshCornerControls = {
+            clearVisible.visibility = if (overlay.visibleFinderRole != null) View.VISIBLE else View.GONE
+        }
+        refreshCornerControls()
         val basicPage = PreRecoveryBasicSettingsPage(
             this,
             buttonFactory = ::button,
             compactRow = { views -> compactRow(*views) },
             versionButton = requireNotNull(versionButton),
+            cornerControls = cornerControls,
             automaticThresholds = automaticThresholds,
             blackLabel = blackLabel,
             blackSeekBar = black,
@@ -837,7 +956,9 @@ internal class PreprocessDialogController(
                     overlay.clearCornerSelection()
                     overlay.finderPlacementRole = role
                 },
-                beginFinderRemoval = overlay::beginFinderRemoval,
+                beginFinderRemoval = {
+                    overlay.beginFinderRemoval()
+                },
             ),
         ).view
         val pages = mapOf(
@@ -864,9 +985,21 @@ internal class PreprocessDialogController(
             onDataRequested = {
                 val data = createDataPage()
                 data.refresh()
-                showDataDialog(activity, data.view)
+                openDataPage = data
+                openDataDialog = showDataDialog(activity, data.view).apply {
+                    setOnDismissListener {
+                        if (openDataPage === data) {
+                            openDataPage = null
+                            openDataDialog = null
+                        }
+                    }
+                }
             },
             onPageShown = { page ->
+                cellEditorPageVisible = page == PreprocessPage.CELL_EDITOR
+                refreshClassificationMatrix()
+                overlay.showCornerRoles = page == PreprocessPage.BASIC
+                refreshCornerControls()
                 overlay.clearCornerSelection()
                 overlay.highlightManualOnly = manualFocus && page == PreprocessPage.CELL_EDITOR
                 if (page == PreprocessPage.CELL_EDITOR) {
@@ -893,7 +1026,7 @@ internal class PreprocessDialogController(
                 })
             workflowNavigation.view.contentDescription = getString(R.string.workflow_help)
         }
-        val scaffold = PreprocessDialogScaffold(this, overlay, pageHost.view, workflowNavigation?.view)
+        val scaffold = PreprocessDialogScaffold(this, overlay, pageHost.view, workflowNavigation?.view, correctionControl)
         updatePageLayout = { page -> scaffold.showPage(page) }
         classificationLegend = scaffold.classificationLegend
         val root = scaffold.view
@@ -917,7 +1050,9 @@ internal class PreprocessDialogController(
         dialog.setOnDismissListener {
             host.editorClosed(session)
             finderSearchGeneration.incrementAndGet()
-            editor.release()
+            overlay.removeCallbacks(refreshDraggedGrid)
+            openDataDialog?.dismiss()
+            previewCoordinator.release()
         }
         cancelPreprocess = { dialog.dismiss() }
         dialog.setOnShowListener {
@@ -963,11 +1098,25 @@ internal class PreprocessDialogController(
                 editor.noteChange(key, label, detail, capturePreprocessSettings())
             }
             overlay.onGeometryEditFinished = {
+                previewCoordinator.geometryEditFinished()
+                refreshCornerControls()
                 overlay.removeCallbacks(refreshDraggedGrid)
                 refreshClassificationMatrix()
                 noteDraftChange("quad", ui("四隅を調整", "Adjusted corners"), ui("ドラッグまたは矢印で調整", "Adjusted by drag or arrow keys"))
             }
             fun persistPreprocessDraft(): Boolean {
+                if (!editor.samplingReady(controlSnapshot(), geometrySnapshot())) {
+                    refreshClassificationMatrix()
+                    Toast.makeText(activity, if (editor.samplingFailed)
+                        ui("格子の読み取りを再試行してください。", "Retry grid sampling.")
+                    else ui("セルの読み取り完了後にもう一度操作してください。", "Wait for cell sampling to finish, then try again."), Toast.LENGTH_SHORT).show()
+                    return false
+                }
+                if (!editor.correctionReady(controlSnapshot(), geometrySnapshot())) {
+                    refreshClassificationMatrix()
+                    Toast.makeText(activity, ui("曲面補正の計算完了後にもう一度操作してください。", "Wait for distortion correction to finish, then try again."), Toast.LENGTH_SHORT).show()
+                    return false
+                }
                 if (!searchControls.requestValidDataEccLimit()) return false
                 val captured = capturePreprocessSettings()
                 searchSettings.formatConflict(captured.version, captured.fixedPreRecoveryEdits)?.let { showFormatEditError(it); return false }
@@ -997,6 +1146,37 @@ internal class PreprocessDialogController(
     private fun compactRow(vararg children: View): LinearLayout = dialogViews.compactRow(*children)
 
     private fun scrollRow(vararg children: View): HorizontalScrollView = dialogViews.scrollRow(*children)
+
+    private fun showThresholdInput(title: CharSequence, current: Int, range: IntRange, applyValue: (Int) -> Unit) {
+        val input = EditText(activity).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setSingleLine()
+            setText(current.toString())
+            selectAll()
+        }
+        val rangeHint = activity.getString(R.string.threshold_input_range, range.first, range.last)
+        val dialog = AlertDialog.Builder(activity)
+            .setTitle(title)
+            .setMessage(rangeHint)
+            .setView(input)
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.image_apply, null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val value = input.text.toString().toIntOrNull()
+                if (value == null || value !in range) {
+                    input.error = rangeHint
+                } else {
+                    applyValue(value)
+                    dialog.dismiss()
+                }
+            }
+        }
+        input.requestFocus()
+        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+        dialog.show()
+    }
 
     private fun dp(value: Int): Int = (value * activity.resources.displayMetrics.density).toInt()
 

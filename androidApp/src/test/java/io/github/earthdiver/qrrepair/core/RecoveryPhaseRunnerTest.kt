@@ -48,6 +48,39 @@ class RecoveryPhaseRunnerTest {
         }
     }
 
+    @Test fun imageRetryRunsAfterOriginalRsRegardlessOfItsCandidate() {
+        val parsed = candidate()
+        for (originalSucceeded in listOf(false, true)) {
+            val run = state()
+            run.diagnosticInput.set(10, 10, ModuleValue.ZERO, 1f, ModuleSource.IMAGE)
+            run.diagnosticInput.setImageMargin(10, 10, 95)
+            val visited = mutableListOf<RecoveryPhase>()
+            RecoveryPhaseRunner(run, 2, RecoveryCancellation.NONE, { false }, searchPhase = {
+                visited += run.phase
+                if (run.phase == RecoveryPhase.IMAGE_ERASURES || originalSucceeded) run.accept(parsed)
+            }, finish = { it }).execute()
+            assertEquals(if (originalSucceeded) listOf(RecoveryPhase.ORIGINAL_RS, RecoveryPhase.IMAGE_ERASURES) else
+                allPhases.take(1) + RecoveryPhase.IMAGE_ERASURES + allPhases.drop(1), visited)
+        }
+    }
+
+    @Test fun imageRetryHonorsZeroMismatchAndInputBlockersAfterOriginalRs() {
+        val parsed = candidate()
+        for (blocked in listOf(false, true)) {
+            val run = state()
+            run.diagnosticInput.set(10, 10, ModuleValue.ZERO, 1f, ModuleSource.IMAGE)
+            run.diagnosticInput.setImageMargin(10, 10, 1)
+            if (blocked) run.earlyBlocker = RecoveryInputBlocker.STRUCTURAL_FIXED_CELLS
+            val visited = mutableListOf<RecoveryPhase>()
+            val found = RecoveryPhaseRunner(run, if (blocked) 2 else 0, RecoveryCancellation.NONE, { false }, searchPhase = {
+                visited += run.phase
+                if (run.phase == RecoveryPhase.ORIGINAL_RS) run.accept(parsed)
+            }, finish = { it }).execute()
+            assertEquals(listOf(RecoveryPhase.ORIGINAL_RS), visited)
+            assertSame(parsed, found.single())
+        }
+    }
+
     @Test fun zeroErrorLimitStillRunsExactConstraintsAfterOriginalRsFails() {
         val run = state()
         val parsed = candidate()
@@ -104,7 +137,7 @@ class RecoveryPhaseRunnerTest {
         val found = RecoveryPhaseRunner(run, 3, RecoveryCancellation.NONE, { false }, searchPhase = {
             visited += run.phase
             when (run.phase) {
-                RecoveryPhase.ORIGINAL_RS, RecoveryPhase.KNOWN_BIT_ERRORS -> Unit
+                RecoveryPhase.ORIGINAL_RS, RecoveryPhase.IMAGE_ERASURES, RecoveryPhase.KNOWN_BIT_ERRORS -> Unit
                 RecoveryPhase.EARLY_LIST, RecoveryPhase.ADDITIONAL_LIST -> {
                     val summary = requireNotNull(run.listDecodingSummary)
                     run.listDecodingSummary = summary.copy(trials = summary.trials + 1)

@@ -12,6 +12,7 @@ data class RecoveryDisplayConditions(
     val partialBitSearchLimit: Int = PartialBitSearchLimit.DEFAULT,
     val listDecodingAdditionalErrors: Int = ListDecodingLimit.DEFAULT,
     val knownBitErrorLimit: Int = 0,
+    val assumeUtf8ByteSegments: Boolean = false,
 )
 
 fun inputAgreementText(known: Int, mismatches: Int, format: Boolean, compact: Boolean = false): String {

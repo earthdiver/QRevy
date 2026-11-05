@@ -27,9 +27,11 @@ In Classic, choose **Repair** to open the settings. In Modern, use **01 Repair s
 3. Check **QR Version** and align the orange corner handles with the centers of the outermost cells. Version 1 has 21 cells per side; each subsequent version adds four.
 4. Review the cell values in the preview. Adjust the white/unknown/black thresholds if damaged areas are being read as definite `0` or `1` values.
 
+**Distortion correction (experimental)** can be enabled in the crop screen for curved paper or labels; it is off by default. The settings preview displays the corrected, curved grid and recalculates it when you finish adjusting the corners. When several candidates are available, select one with “Distortion: candidate”; repair uses the displayed grid. If no correction landmarks are found, the screen reports this and uses a straight grid. See [how distortion correction works and its limits](RECOVERY_STRATEGY.en.md#distortion-correction).
+
 Automatic estimates may need correction. If only an outline appears, select **QR Version**, even if the displayed value is already correct, to show a grid. Until a Finder role is assigned, provisional alignment guides appear at all four corners and along all four sides, with dashed outlines. Adjust the corners and assign a Finder role as described below. **Rectify selection to a square** clears Finder roles and orientation; assign a role again afterward.
 
-**Set thresholds automatically** starts enabled for image imports. It recalculates thresholds when the grid changes. Moving a slider switches to manual thresholds; turning the option off keeps the current values. Manual thresholds stay unchanged during corner adjustment and sampling fine-tuning. Turn the option on to recalculate them. Saved work retains the mode and values.
+**Set thresholds automatically** starts enabled for image imports. It recalculates thresholds when the grid changes. To enter an exact value, long-press the label above either slider and tap **Apply**. Applying a value or moving a slider switches to manual thresholds. Turning the option off keeps the current values. Manual thresholds stay unchanged during corner adjustment and sampling fine-tuning. Turn the option on to recalculate them. Saved work retains the mode and values.
 
 Unstable readings can also become `?`. Manual edits override image readings. Enable **Treat detected color clusters as unknown (?)** only when detected colored damage should be treated as unknown. It starts disabled and is available only when color clusters were detected.
 
@@ -39,6 +41,7 @@ The three large square patterns near a QR code’s corners are **Finder patterns
 
 Image and text imports may assign roles automatically. Check the green Finder markers. **At least one Finder role must be assigned before repair.**
 
+- In basic settings, enable **Treat input image as mirrored** for a mirror image. Once orientation is assigned, the image shows the role of each corner.
 - To assign a role, choose **Top left**, **Top right**, or **Bottom left**, then tap the center of the corresponding visible pattern. The app refines the position when it detects a nearby pattern.
 - To remove an incorrect role, choose **Clear** and tap its green marker. Clearing all roles also clears orientation, while keeping corners and cell edits. Assign a role again before repair.
 - A hidden Finder does not need an assignment. An incorrect role can prevent recovery, so use only roles you can identify.
@@ -98,7 +101,6 @@ If you know the error-correction level or mask, choose it under **ECC: Auto** or
 | **Partial-bit search / dimension limit** | Choose 12, 13, or 14 bits per RS block; the default is 12. Each extra bit doubles the maximum number of combinations. |
 | **Known-bit error search** | Off by default. Choose up to 1 or 2 incorrect known bits across the whole QR. Runs as a fallback with a shared 30-second / 1,000,000-trial allowance, plus existing memory and candidate limits. Fixed cells, trusted headers and the data/ECC mismatch limit remain enforced. |
 | **List-decoding extension (symbols)** | Open this control to choose **Extra errors beyond conventional RS**: OFF, or +1, +2, or +3 codewords per block; the default is +1. OFF skips GS, Wu, and KV in both list-decoding stages. A higher limit can take much longer and may not find more candidates. |
-| **Treat input image as mirrored** | Enable for a mirrored QR image. The top-right and bottom-left Finder roles exchange; the displayed image is unchanged and edits stay on the same image cells. It defaults to off and is saved with the work. |
 
 Searches also have time and memory limits. Raising a setting does not guarantee that all combinations will be checked.
 
@@ -111,6 +113,10 @@ Both controls offer **Default**, **Exact match (0 bits)**, **Strict**, **Relaxed
 Presets recalculate when the version changes. Manual keeps the entered number; if it becomes invalid, enter a valid number. Exact match requires agreement with all compared known cells. See [Understanding repair results](RECOVERY_RESULT_FIELDS.en.md#input-agreement-and-qr-settings) for cells excluded from comparison. Unlimited removes that control’s limit; fixed-cell protection and explicit QR settings still apply.
 
 List decoding explores alternatives beyond conventional RS correction. It also limits known data/ECC bit disagreements to 5% of all data/ECC bits, rounded up, or the selected data/ECC limit if smaller. A zero data/ECC limit disables list decoding.
+
+### Assume UTF-8 text in Byte mode
+
+Enable this option when Byte segments without an explicit encoding contain UTF-8 text. Repair uses UTF-8 byte ranges to prune incompatible branches during search and to decode the surviving text. Each Byte segment must end on a character boundary. An explicit ECI encoding takes precedence. This option defaults to off and works independently of single-segment forcing.
 
 ### Force single-segment terminator and padding
 
@@ -150,7 +156,7 @@ Tap an entry in **Saved work** or **Recent work** to reopen it. Long-press to de
 
 ### Saved-work compatibility
 
-QRR is the app’s saved-work format. The app writes format version **28** and reads versions **23–28**; other versions are rejected. Older files restore settings they did not store as follows: Known-bit error search is off for all versions 23–27.
+QRR is the app’s saved-work format. The app writes format version **33** and reads versions **23–33**; other versions are rejected. Older files restore settings they did not store as follows: Known-bit error search is off for all versions 23–27. Distortion correction is off for versions 23–29. Versions 23–30 do not store the selected preview grid. The UTF-8 assumption defaults to off for versions 23–31. Versions 23–32 have no image sampling margins for temporary image erasures.
 
 | File version | Restored defaults |
 | --- | --- |

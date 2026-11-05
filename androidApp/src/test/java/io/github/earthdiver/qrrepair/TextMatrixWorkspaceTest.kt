@@ -378,7 +378,7 @@ class TextMatrixWorkspaceTest {
             assertEquals(initial.preRecoveryPrioritySearch, saved.preRecoveryPrioritySearch)
             val io = field("ioExecutor").get(activity) as ExecutorService
             io.submit {}.get(30, TimeUnit.SECONDS)
-            val id = field("sessionId").get(activity) as String
+            val id = requireNotNull(activity.workspaceSessionForTest().id)
             // Replace in-memory settings so the assertions require restoring the saved work.
             field("preprocessSettings").set(activity, initial)
             MainActivity::class.java.getDeclaredMethod("restoreSessionById", String::class.java)

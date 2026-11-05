@@ -34,6 +34,7 @@ internal class PreRecoveryBasicSettingsPage(
     useUnknownColors: CheckBox,
     scrollContentFooter: View? = null,
     automaticThresholds: CheckBox? = null,
+    cornerControls: View? = null,
     private val actions: BasicSettingsPageActions,
 ) {
     private val nudgeSteps = listOf(.05, .10, .25, .50, 1.0)
@@ -90,6 +91,7 @@ internal class PreRecoveryBasicSettingsPage(
                     }
                 })
             }
+            cornerControls?.let { addSettingsItem(it, 6) }
             addSettingsItem(TextView(context).apply { setText(R.string.finder_manual) }, 6)
             addView(compactRow(arrayOf(
                 finderPlacementButton(buttonFactory, context.getString(R.string.top_left), FinderRole.TOP_LEFT),

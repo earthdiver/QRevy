@@ -24,30 +24,6 @@ import kotlin.math.max
 import kotlin.math.min
 
 
-enum class EditorTool {
-    NAVIGATE,
-    BRUSH_ZERO,
-    BRUSH_ONE,
-    BRUSH_ERASURE,
-    BRUSH_ERASURE_WIDE,
-    RECT_SELECT,
-    STAMP_ERASURE_SMALL,
-    STAMP_ERASURE_MEDIUM,
-    STAMP_ERASURE_LARGE,
-}
-
-internal fun moduleFootprint(center: Coord, size: Int, dimension: Int): Set<Coord> {
-    require(size > 0 && size % 2 == 1)
-    val radius = size / 2
-    return buildSet {
-        for (y in center.y - radius..center.y + radius) {
-            for (x in center.x - radius..center.x + radius) {
-                if (x in 0 until dimension && y in 0 until dimension) add(Coord(x, y))
-            }
-        }
-    }
-}
-
 class QrEditorView(context: Context) : View(context) {
     private var bitmap: Bitmap? = null
     private var geometry: GridGeometry? = null
@@ -71,10 +47,7 @@ class QrEditorView(context: Context) : View(context) {
     var editorTool: EditorTool = EditorTool.NAVIGATE
         set(value) {
             field = value
-            activeStroke.clear()
-            rangeStart = null
-            rangeEnd = null
-            editGestureCancelledByMultiTouch = false
+            cellGesture.reset()
             navigatingViewport = false
             invalidate()
         }
@@ -97,11 +70,8 @@ class QrEditorView(context: Context) : View(context) {
     private var fitScale = 1f
     private var offsetX = 0f
     private var offsetY = 0f
-    private val activeStroke = linkedSetOf<Coord>()
+    private val cellGesture = CellEditGesture()
     private val boundaryPath = Path()
-    private var rangeStart: Coord? = null
-    private var rangeEnd: Coord? = null
-    private var editGestureCancelledByMultiTouch = false
     private var pendingClickCell: Coord? = null
     private var navigatingViewport = false
 
@@ -264,31 +234,10 @@ class QrEditorView(context: Context) : View(context) {
         val g = geometry ?: return null
         val p = viewToImage(viewX, viewY) ?: return null
         val module = g.imageToModule(p.x, p.y)
+        if (!module.x.isFinite() || !module.y.isFinite()) return null
         val x = floor(module.x + 0.5).toInt()
         val y = floor(module.y + 0.5).toInt()
         return if (x in 0 until g.dimension && y in 0 until g.dimension) Coord(x, y) else null
-    }
-
-    private fun rectCells(a: Coord, b: Coord): Set<Coord> = buildSet {
-        for (y in minOf(a.y, b.y)..maxOf(a.y, b.y)) for (x in minOf(a.x, b.x)..maxOf(a.x, b.x)) add(Coord(x, y))
-    }
-
-    private fun footprint(center: Coord, size: Int): Set<Coord> {
-        val dimension = geometry?.dimension ?: return emptySet()
-        return moduleFootprint(center, size, dimension)
-    }
-
-    private fun EditorTool.brushSize(): Int? = when (this) {
-        EditorTool.BRUSH_ZERO, EditorTool.BRUSH_ONE, EditorTool.BRUSH_ERASURE -> 1
-        EditorTool.BRUSH_ERASURE_WIDE -> 3
-        else -> null
-    }
-
-    private fun EditorTool.stampSize(): Int? = when (this) {
-        EditorTool.STAMP_ERASURE_SMALL -> 3
-        EditorTool.STAMP_ERASURE_MEDIUM -> 5
-        EditorTool.STAMP_ERASURE_LARGE -> 7
-        else -> null
     }
 
     private fun drawRange(canvas: Canvas, g: GridGeometry, cells: Set<Coord>, invScale: Float) {
@@ -297,17 +246,8 @@ class QrEditorView(context: Context) : View(context) {
         val maxX = cells.maxOf { it.x }
         val minY = cells.minOf { it.y }
         val maxY = cells.maxOf { it.y }
-        val corners = listOf(
-            g.moduleToImage(minX - .5, minY - .5),
-            g.moduleToImage(maxX + .5, minY - .5),
-            g.moduleToImage(maxX + .5, maxY + .5),
-            g.moduleToImage(minX - .5, maxY + .5),
-        )
-        val path = Path().apply {
-            moveTo(corners[0].x.toFloat(), corners[0].y.toFloat())
-            for (index in 1..3) lineTo(corners[index].x.toFloat(), corners[index].y.toFloat())
-            close()
-        }
+        val path = mappedOutline(g, listOf(PointD(minX - .5, minY - .5), PointD(maxX + .5, minY - .5),
+            PointD(maxX + .5, maxY + .5), PointD(minX - .5, maxY + .5)))
         rangeBorderPaint.strokeWidth = 3f * invScale
         canvas.drawPath(path, rangeFillPaint)
         canvas.drawPath(path, rangeBorderPaint)
@@ -338,11 +278,9 @@ class QrEditorView(context: Context) : View(context) {
         canvas.save(); canvas.translate(offsetX, offsetY); canvas.scale(viewScale, viewScale); canvas.drawBitmap(b, 0f, 0f, bitmapPaint)
         if (g != null && m != null) {
             val invScale = 1f / max(viewScale, 0.001f); boundaryPaint.strokeWidth = 2f * invScale
-            val corners = listOf(g.moduleToImage(-0.5, -0.5), g.moduleToImage(g.dimension - 0.5, -0.5), g.moduleToImage(g.dimension - 0.5, g.dimension - 0.5), g.moduleToImage(-0.5, g.dimension - 0.5))
-            boundaryPath.rewind()
-            boundaryPath.moveTo(corners[0].x.toFloat(), corners[0].y.toFloat())
-            for (i in 1 until 4) boundaryPath.lineTo(corners[i].x.toFloat(), corners[i].y.toFloat())
-            boundaryPath.close()
+            val last = g.dimension - .5
+            boundaryPath.set(mappedOutline(g, listOf(PointD(-.5, -.5), PointD(last, -.5),
+                PointD(last, last), PointD(-.5, last))))
             canvas.drawPath(boundaryPath, boundaryPaint)
 
             // Navigation changes only the viewport. Skip the cell-sized overlay loops until
@@ -360,14 +298,14 @@ class QrEditorView(context: Context) : View(context) {
             }
             val drawImageStates = onScreenPitch >= 5.0
             val drawValues = onScreenPitch >= 12.0
-            val previewRange = rangeStart?.let { a -> rangeEnd?.let { rectCells(a, it) } }.orEmpty()
+            val previewRange = cellGesture.rangeCells
             when {
                 previewRange.isNotEmpty() -> drawRange(canvas, g, previewRange, invScale)
                 selectionIsRectangle -> drawRange(canvas, g, selectedCells, invScale)
             }
             for (y in 0 until g.dimension) for (x in 0 until g.dimension) {
                 val cell = m[x, y]
-                val selected = selectedCells.any { it.x == x && it.y == y } || activeStroke.any { it.x == x && it.y == y }
+                val selected = selectedCells.any { it.x == x && it.y == y } || cellGesture.strokeCells.any { it.x == x && it.y == y }
                 if (highlightManualOnly && !cell.source.isUserEdit && !selected) continue
                 val important = cell.value == ModuleValue.ERASED || cell.source != ModuleSource.IMAGE || selected
                 if (!important && !drawImageStates) continue
@@ -406,10 +344,10 @@ class QrEditorView(context: Context) : View(context) {
                 manualCellMarker.draw(canvas, point.x.toFloat(), point.y.toFloat(), halfSize, 1.5f * invScale, m[x, y].source == ModuleSource.USER_SOFT || m[x, y].value == ModuleValue.ERASED)
             }
 
-            if (activeStroke.isNotEmpty() || previewRange.isNotEmpty()) {
+            if (cellGesture.strokeCells.isNotEmpty() || previewRange.isNotEmpty()) {
                 overlayPaint.style = Paint.Style.FILL
                 overlayPaint.color = Color.argb(75, 0, 210, 255)
-                for (coord in activeStroke + previewRange) {
+                for (coord in cellGesture.strokeCells + previewRange) {
                     val p = g.moduleToImage(coord.x.toDouble(), coord.y.toDouble())
                     val r = (g.localModulePitch(coord.x.toDouble(), coord.y.toDouble()) * .36).toFloat()
                     canvas.drawCircle(p.x.toFloat(), p.y.toFloat(), r, overlayPaint)
@@ -510,18 +448,33 @@ class QrEditorView(context: Context) : View(context) {
         canvas.drawText(label, p.x.toFloat(), baseline, codewordTextPaint)
     }
 
+    /** Subdivide module-space edges so outlines follow non-rigid sampling coordinates. */
+    private fun mappedOutline(g: GridGeometry, points: List<PointD>, closed: Boolean = true): Path = Path().apply {
+        val first = g.moduleToImage(points[0].x, points[0].y)
+        moveTo(first.x.toFloat(), first.y.toFloat())
+        for (index in 0 until if (closed) points.size else points.size - 1) {
+            val a = points[index]; val b = points[(index + 1) % points.size]
+            val steps = if (g.warp == null) 1 else kotlin.math.ceil(a.distanceTo(b)).toInt().coerceIn(1, 256)
+            for (step in 1..steps) {
+                val m = a + (b - a) * (step.toDouble() / steps)
+                val p = g.moduleToImage(m.x, m.y)
+                lineTo(p.x.toFloat(), p.y.toFloat())
+            }
+        }
+        if (closed) close()
+    }
+
     private fun drawQrStructures(canvas: Canvas, g: GridGeometry, invScale: Float) {
         overlayPaint.style = Paint.Style.STROKE; overlayPaint.color = Color.rgb(0, 255, 120); overlayPaint.strokeWidth = 2.0f * invScale
         fun box(x0: Int, y0: Int, size: Int) {
-            val points = listOf(g.moduleToImage(x0 - .5, y0 - .5), g.moduleToImage(x0 + size - .5, y0 - .5), g.moduleToImage(x0 + size - .5, y0 + size - .5), g.moduleToImage(x0 - .5, y0 + size - .5))
-            val path = Path().apply { moveTo(points[0].x.toFloat(), points[0].y.toFloat()); for (i in 1..3) lineTo(points[i].x.toFloat(), points[i].y.toFloat()); close() }
+            val path = mappedOutline(g, listOf(PointD(x0 - .5, y0 - .5), PointD(x0 + size - .5, y0 - .5),
+                PointD(x0 + size - .5, y0 + size - .5), PointD(x0 - .5, y0 + size - .5)))
             canvas.drawPath(path, overlayPaint)
         }
         box(0, 0, 7); box(g.dimension - 7, 0, 7); box(0, g.dimension - 7, 7)
-        val h0 = g.moduleToImage(8.0, 6.0); val h1 = g.moduleToImage((g.dimension - 9).toDouble(), 6.0)
-        val v0 = g.moduleToImage(6.0, 8.0); val v1 = g.moduleToImage(6.0, (g.dimension - 9).toDouble())
-        canvas.drawLine(h0.x.toFloat(), h0.y.toFloat(), h1.x.toFloat(), h1.y.toFloat(), overlayPaint)
-        canvas.drawLine(v0.x.toFloat(), v0.y.toFloat(), v1.x.toFloat(), v1.y.toFloat(), overlayPaint)
+        val last = (g.dimension - 9).toDouble()
+        canvas.drawPath(mappedOutline(g, listOf(PointD(8.0, 6.0), PointD(last, 6.0)), false), overlayPaint)
+        canvas.drawPath(mappedOutline(g, listOf(PointD(6.0, 8.0), PointD(6.0, last)), false), overlayPaint)
     }
 
     private fun drawHeatmap(canvas: Canvas, g: GridGeometry, invScale: Float) {
@@ -615,97 +568,17 @@ class QrEditorView(context: Context) : View(context) {
             }
         }
 
-        if (editorTool != EditorTool.NAVIGATE) {
-            if (event.actionMasked == MotionEvent.ACTION_POINTER_DOWN || event.pointerCount > 1) {
-                editGestureCancelledByMultiTouch = true
-                activeStroke.clear(); rangeStart = null; rangeEnd = null
-                parent?.requestDisallowInterceptTouchEvent(false)
-                invalidate()
-                return true
+        cellGesture.handle(event, editorTool, geometry?.dimension ?: 0, ::positionToCell)?.let { update ->
+            update.disallowIntercept?.let { parent?.requestDisallowInterceptTouchEvent(it) }
+            update.commit?.let { commit ->
+                setSelection(commit.cells, asRectangle = commit.asRectangle)
+                if (commit.cells.isNotEmpty()) {
+                    if (commit.value != null) onBrushApplied?.invoke(commit.cells, commit.value)
+                    else onRangeSelected?.invoke(commit.cells)
+                }
             }
-            if (editGestureCancelledByMultiTouch) {
-                if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
-                    editGestureCancelledByMultiTouch = false
-                }
-                return true
-            }
-        }
-
-        if (editorTool != EditorTool.NAVIGATE && event.pointerCount == 1) {
-            val cell = eventToCell(event)
-            when (editorTool) {
-                EditorTool.BRUSH_ZERO, EditorTool.BRUSH_ONE, EditorTool.BRUSH_ERASURE, EditorTool.BRUSH_ERASURE_WIDE -> {
-                    val brushSize = editorTool.brushSize() ?: 1
-                    fun appendSamples() {
-                        for (index in 0 until event.historySize) {
-                            positionToCell(event.getHistoricalX(index), event.getHistoricalY(index))?.let {
-                                activeStroke += footprint(it, brushSize)
-                            }
-                        }
-                        cell?.let { activeStroke += footprint(it, brushSize) }
-                    }
-                    when (event.actionMasked) {
-                        MotionEvent.ACTION_DOWN -> { activeStroke.clear(); appendSamples(); parent?.requestDisallowInterceptTouchEvent(true); invalidate(); return true }
-                        MotionEvent.ACTION_MOVE -> { appendSamples(); invalidate(); return true }
-                        MotionEvent.ACTION_UP -> {
-                            appendSamples()
-                            val value = when (editorTool) {
-                                EditorTool.BRUSH_ZERO -> ModuleValue.ZERO
-                                EditorTool.BRUSH_ONE -> ModuleValue.ONE
-                                else -> ModuleValue.ERASED
-                            }
-                            val changed = activeStroke.toSet(); activeStroke.clear(); parent?.requestDisallowInterceptTouchEvent(false)
-                            if (changed.isNotEmpty()) {
-                                setSelection(changed)
-                                onBrushApplied?.invoke(changed, value)
-                            }
-                            invalidate(); return true
-                        }
-                        MotionEvent.ACTION_CANCEL -> { activeStroke.clear(); parent?.requestDisallowInterceptTouchEvent(false); invalidate(); return true }
-                    }
-                }
-                EditorTool.STAMP_ERASURE_SMALL, EditorTool.STAMP_ERASURE_MEDIUM, EditorTool.STAMP_ERASURE_LARGE -> {
-                    val stampSize = editorTool.stampSize() ?: 3
-                    when (event.actionMasked) {
-                        MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
-                            activeStroke.clear()
-                            cell?.let { activeStroke += footprint(it, stampSize) }
-                            parent?.requestDisallowInterceptTouchEvent(true)
-                            invalidate(); return true
-                        }
-                        MotionEvent.ACTION_UP -> {
-                            activeStroke.clear()
-                            val changed = cell?.let { footprint(it, stampSize) }.orEmpty()
-                            parent?.requestDisallowInterceptTouchEvent(false)
-                            if (changed.isNotEmpty()) {
-                                setSelection(changed, asRectangle = true)
-                                onBrushApplied?.invoke(changed, ModuleValue.ERASED)
-                            }
-                            invalidate(); return true
-                        }
-                        MotionEvent.ACTION_CANCEL -> { activeStroke.clear(); parent?.requestDisallowInterceptTouchEvent(false); invalidate(); return true }
-                    }
-                }
-                EditorTool.RECT_SELECT -> {
-                    when (event.actionMasked) {
-                        MotionEvent.ACTION_DOWN -> { rangeStart = cell; rangeEnd = cell; parent?.requestDisallowInterceptTouchEvent(true); invalidate(); return true }
-                        MotionEvent.ACTION_MOVE -> { if (cell != null) rangeEnd = cell; invalidate(); return true }
-                        MotionEvent.ACTION_UP -> {
-                            if (cell != null) rangeEnd = cell
-                            val a = rangeStart; val b = rangeEnd
-                            val cells = if (a != null && b != null) rectCells(a, b) else emptySet()
-                            rangeStart = null; rangeEnd = null; parent?.requestDisallowInterceptTouchEvent(false)
-                            selectedCells = cells
-                            selected = cells.firstOrNull()?.let { it.x to it.y }
-                            selectionIsRectangle = cells.isNotEmpty()
-                            if (cells.isNotEmpty()) onRangeSelected?.invoke(cells)
-                            invalidate(); return true
-                        }
-                        MotionEvent.ACTION_CANCEL -> { rangeStart = null; rangeEnd = null; parent?.requestDisallowInterceptTouchEvent(false); invalidate(); return true }
-                    }
-                }
-                EditorTool.NAVIGATE -> Unit
-            }
+            if (update.redraw) invalidate()
+            return true
         }
 
         val scaleHandled = scaleDetector.onTouchEvent(event)

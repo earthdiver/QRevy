@@ -29,6 +29,10 @@ data class QrFormatConstraint(
 
 data class PreprocessSettings(
     val imageAdjustment: ImageAdjustment = ImageAdjustment(),
+    /** Add image-measured non-rigid sampling candidates while retaining ordinary geometry. */
+    val distortionCorrection: Boolean = false,
+    /** The displayed sampling map, retained for reproducible repair and session restore. */
+    val previewGeometry: GridGeometry? = null,
     /** Rotation applied reproducibly to the persisted source image before sampling. */
     val rotationDegrees: Float = 0f,
     /** Logical axes are transposed in manualQuad and edits; source pixels are unchanged. */
@@ -86,6 +90,10 @@ data class PreprocessSettings(
     val partialBitSearchLimit: Int = PartialBitSearchLimit.DEFAULT,
     val listDecodingAdditionalErrors: Int = ListDecodingLimit.DEFAULT,
     val knownBitErrorLimit: Int = 0,
+    /** User-identified Finder role with no measured center. */
+    val visibleFinderRole: FinderRole? = null,
+    val assumeUtf8ByteSegments: Boolean = false,
+    val photographicSource: Boolean = false,
 ) {
     val effectiveFormatMismatchLimit: Int?
         get() = ErrorLimitPolicy.format(formatMismatchLimitMode, formatMismatchLimit)
@@ -100,8 +108,10 @@ data class PreprocessSettings(
 
     /** An imported boundary has logical orientation only when Finder roles were assigned. */
     fun withInitialGrid(estimate: InitialGridEstimate?) = copy(
+        previewGeometry = null,
         version = estimate?.version ?: 1,
         manualQuad = estimate?.moduleCenterQuad,
+        visibleFinderRole = null,
         manualFinders = estimate?.autoAssignedFinders.orEmpty(),
         logicalGridAssigned = estimate?.autoAssignedFinders?.isNotEmpty() == true,
         confirmedFinderPolarity = estimate?.confirmedPolarity ?: FinderPolarity.UNKNOWN,
@@ -206,6 +216,7 @@ internal fun PreprocessSettings.searchSummary(): String {
     }
     return "$polarityLabel / " +
         localizedText("表示中のQR格子 / V$version", "displayed QR grid / Version $version") +
+        (if (distortionCorrection) localizedText(" / 曲面補正あり", " / distortion correction enabled") else "") +
         (if (mirroredInput) localizedText(" / 鏡像補正あり", " / mirrored input") else "") +
         formatConstraint?.let {
             val ec = it.ecLevel?.toString() ?: localizedText("自動", "auto")

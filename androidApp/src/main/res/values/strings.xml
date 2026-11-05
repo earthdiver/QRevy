@@ -86,14 +86,17 @@
     <string name="top_right">Top right</string>
     <string name="bottom_left">Bottom left</string>
     <string name="finder_manual">Assign Finder centers and logical roles</string>
-    <string name="fixed_geometry_summary">Recovery uses the displayed QR grid position and orientation with the selected Version. To release a green Finder, including an automatically assigned one, press Clear and tap it. Release all assigned Finders to reassign the logical roles.</string>
+    <string name="fixed_geometry_summary">Recovery uses the displayed QR grid position and orientation with the selected Version. To release a green Finder, including an automatically assigned one, press Clear and tap it.</string>
     <string name="tap_finder_to_remove">Tap a green Finder to remove it.</string>
     <string name="no_confirmed_finder">No Finder is confirmed.</string>
     <string name="finder_placement_help">Tap near the logical %1$s Finder center. Its center is refined when a nearby Finder can be detected; otherwise the tapped point is used.</string>
     <string name="image_rotation">Image rotation</string>
     <string name="reset_rotation">Reset rotation</string>
+    <string name="threshold_input_range">Enter an integer from %1$d to %2$d.</string>
     <string name="thresholding">Thresholding</string>
     <string name="geometry_search_note">When enabled, recovery tests 0.6-module position, size, and one-corner adjustments. If exactly one Finder role is assigned, it also tests clockwise and counterclockwise rotation around that corner.</string>
+    <string name="assume_utf8_byte_segments">Assume UTF-8 text in Byte mode</string>
+    <string name="assume_utf8_note">Prune branches that cannot form UTF-8 in Byte segments without an explicit encoding. Leave off for other encodings or binary data.</string>
     <string name="payload_header_trust_note">Use only for a single numeric, alphanumeric, byte, or Kanji segment. Selectable when the leading mode and character/byte count are known or can be assigned by * trials. Unresolved ? bits in the header do not qualify. ECI, FNC1, structured append, and Hanzi are unsupported. Do not use with multiple segments.\nThe terminator, byte-alignment, and padding region is corrected from the observed or trial-assigned mode and count.</string>
     <string name="format_mismatch_limit">Format-information error limit</string>
     <string name="format_mismatch_limit_unlimited">Unlimited</string>
@@ -234,4 +237,7 @@
     <string name="known_bit_one">Known-bit error search: up to 1 bit</string>
     <string name="known_bit_two">Known-bit error search: up to 2 bits</string>
     <string name="known_bit_note">Optional fallback for mixed missing and incorrect cells. The limit applies to the whole QR, not each RS block. Shares a 30-second / 1,000,000-trial allowance across the operation. Fixed cells and trusted header conditions remain enforced.</string>
+    <string name="image_distortion_correction">Distortion correction (experimental)</string>
+    <string name="image_distortion_help">Try reading curved paper or labels. Analysis also tries distortion-corrected candidates. Ordinary analysis continues when the required landmarks cannot be found.</string>
+    <string name="image_distortion_unavailable">No usable landmarks or distortion mapping were found. Only ordinary analysis was performed.</string>
 </resources>

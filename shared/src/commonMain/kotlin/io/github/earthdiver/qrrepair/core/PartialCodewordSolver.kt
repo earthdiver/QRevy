@@ -14,6 +14,7 @@ class PartialCodewordSolver(private val rs: ReedSolomonErasures) {
         val listDecoding: ListDecodingDerivation? = null,
         val knownBitErrors: List<RsBitConstraintSolver.Bit> = emptyList(),
         val knownBitSearch: Boolean = false,
+        val imageErasures: List<Int> = emptyList(),
     )
 
     data class Result(
@@ -36,9 +37,15 @@ class PartialCodewordSolver(private val rs: ReedSolomonErasures) {
         val knownBitSearch: Boolean = false,
         /** Original pre-inference observation; populated by the list-decoding integration. */
         val originalKnownMismatches: Int? = null,
+        val imageErasures: List<Int> = emptyList(),
     ) {
         fun derivation() = Derivation(errataPositions.toList(), guessedBits, guessedBytes,
-            guessedPositions.toList(), rsMargin, searchPenalty, bitConstraintSolved, listDecoding, knownBitErrors, knownBitSearch)
+            guessedPositions.toList(), rsMargin, searchPenalty, bitConstraintSolved, listDecoding, knownBitErrors, knownBitSearch, imageErasures)
+    }
+
+    companion object {
+        fun mergeCandidates(candidates: List<Result>): List<Result> =
+            BlockCandidateAccumulator().apply { candidates.forEach(::add) }.results()
     }
 
     /** Supplement, never replace, errors+erasures decoding when observed-bit errors are allowed. */

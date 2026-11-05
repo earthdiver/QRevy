@@ -10,7 +10,7 @@ internal enum class RecordedRecoveryCandidate(val parsed: Boolean) {
 }
 
 internal enum class RecoveryPhase {
-    ORIGINAL_RS, EARLY_LIST, BIT_CONSTRAINTS, PARTIAL_RS, ADDITIONAL_LIST, KNOWN_BIT_ERRORS;
+    ORIGINAL_RS, IMAGE_ERASURES, EARLY_LIST, BIT_CONSTRAINTS, PARTIAL_RS, ADDITIONAL_LIST, KNOWN_BIT_ERRORS;
 
     val isListDecoding: Boolean get() = this == EARLY_LIST || this == ADDITIONAL_LIST
     val usesAssignments: Boolean get() = this == BIT_CONSTRAINTS || this == PARTIAL_RS || this == ADDITIONAL_LIST
@@ -35,7 +35,9 @@ internal class RecoveryRunState(
     var listDecodingSummary: ListDecodingSummary? = null
     val listDecodingCache = ListDecodingTrialCache(minOf(256L * 1024, retentionBudget.workingLimitBytes / 16))
     val bitSolver = RsBitConstraintSolver(maximumCacheBytes = minOf(128L * 1024, retentionBudget.workingLimitBytes / 32))
-    val listSearchWorkingBytes: Long get() = retentionBudget.workingLimitBytes - bitSolver.cacheWorkingBytes
+    val originalBlocks = mutableMapOf<Triple<ErrorCorrectionLevel, Int, Int>, ReedSolomonErasures.Result>()
+    var originalBlockBytes = 0L
+    val listSearchWorkingBytes: Long get() = retentionBudget.workingLimitBytes - originalBlockBytes - bitSolver.cacheWorkingBytes
     val availableWorkingBytes: Long get() = listSearchWorkingBytes - listDecodingCache.workingBytes
     val listDecodingStatuses = ListDecodingStage.entries.associateWith { ListDecodingStatus.NOT_REACHED }.toMutableMap()
     val listDecodingNewTrials = mutableMapOf<ListDecodingStage, Int>()

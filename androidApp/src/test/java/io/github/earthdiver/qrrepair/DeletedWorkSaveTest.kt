@@ -37,13 +37,14 @@ class DeletedWorkSaveTest {
             (field("ioExecutor").get(activity) as ExecutorService).submit {}.get(30, TimeUnit.SECONDS)
             shadowOf(Looper.getMainLooper()).idle()
         }
-        val store = field("sessionStore").get(activity) as RecoverySessionStore
+        val store = RecoverySessionStore(activity)
+        val workspaceSession = activity.workspaceSessionForTest()
         val source = BitmapUtils.prepare(Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.WHITE) })
         try {
             store.deleteAll()
             field("prepared").set(activity, source)
             val importedId = store.newId()
-            field("sessionId").set(activity, importedId)
+            workspaceSession.restoreIdentity(importedId, workspaceSession.history.entries.toList(), workspaceSession.history.cursor)
             store.saveSourceBitmap(importedId, source.bitmap)
             field("preprocessSettings").set(activity, PreprocessSettings(manualQuad = ImageQuad(
                 PointD(20.0, 20.0), PointD(220.0, 20.0), PointD(220.0, 220.0), PointD(20.0, 220.0))))
@@ -55,14 +56,14 @@ class DeletedWorkSaveTest {
             click(first, "保存")
             first.dismiss()
             drain()
-            val oldId = field("sessionId").get(activity) as String
+            val oldId = requireNotNull(workspaceSession.id)
             assertNotNull(store.load(oldId))
             if (deleteAll) invoke("deleteAllRecentSessions") else {
                 MainActivity::class.java.getDeclaredMethod("deleteRecentSession", String::class.java)
                     .apply { isAccessible = true }.invoke(activity, oldId)
             }
             drain()
-            assertNull(field("sessionId").get(activity))
+            assertNull(workspaceSession.id)
             assertNull(store.load(oldId))
             assertTrue(store.listRecent().isEmpty())
             invoke("showPreprocessDialog")
@@ -72,7 +73,7 @@ class DeletedWorkSaveTest {
             click(second, "保存")
             second.dismiss()
             drain()
-            val newId = field("sessionId").get(activity) as String
+            val newId = requireNotNull(workspaceSession.id)
             assertNotEquals(oldId, newId)
             assertNull(store.load(oldId))
             val restored = requireNotNull(store.load(newId))

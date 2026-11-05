@@ -55,7 +55,7 @@ Initial estimation uses the QR detection library ZXing-C++ to detect the QR code
 
 If that grid cannot be accepted, the app estimates a grid from the repeating cell spacing, then considers an estimate using two Finders if necessary. It may decline an estimate when, for example, boundaries of different QR codes are detected or normal and inverted readings give conflicting estimates. Text decoded by the detection library is not used as the recovery result.
 
-A projective transformation maps the four corners to cell positions in the image. It describes a flat surface viewed at an angle and cannot accurately represent the distortion of a QR code printed on a curved surface.
+Ordinary grid candidates use a projective transformation to map the four corners to cell positions in the image. This models a flat surface viewed at an angle. The optional distortion candidates described below add non-rigid displacement for curved surfaces.
 
 The basic refinement candidates are:
 
@@ -69,9 +69,29 @@ The basic refinement candidates are:
 
 The reference displacement is 0.6 cell widths. When exactly one Finder role is assigned, the app also tries small clockwise and counterclockwise rotations around the corresponding corner. These two additions give at most 21 grid candidates. Each translation, scaling, or rotation is applied separately to the specified grid.
 
-For version 2 and above, an alignment pattern, a small pattern used to align the grid, can add at most one corrected grid for each grid candidate. If its observed position differs from its predicted position by 0.1–1.25 cell widths, the nearest grid corner is moved. Corrections that substantially worsen agreement with the timing pattern, the alternating black and white pattern indicating cell spacing, are rejected. The original grid candidate is also retained.
+For version 2 and above, an alignment pattern, a small pattern used to align the grid, can add at most one corrected grid for each grid candidate. If its observed position differs from its predicted position by 0.1–1.25 cell widths, the nearest grid corner is moved. Corrections that substantially worsen agreement with the timing pattern, the alternating black and white pattern indicating cell spacing, are rejected. The app tries both the original grid and any accepted correction.
 
-Including corrected grids, there are at most 38 candidates, or 42 with exactly one assigned Finder role. With refinement disabled, only the specified grid is used.
+These steps yield at most 38 candidates per polarity. With exactly one assigned Finder role, rotations about the corresponding corner bring the maximum to 42.
+
+The app chooses starting grids from these candidates and projects the black and white patterns of the Finders, their white separators, and the alignment patterns onto the image. The Levenberg–Marquardt (LM) method adjusts all eight parameters of the projective transform together to match the projected patterns to the observed brightness. Version 1 uses only Finders and their separators. Timing patterns help select starting grids but are excluded from the LM objective.
+
+If the fit improves and yields a grid distinct from the other candidates, the app adds that grid as one more candidate. The total per polarity is therefore **at most 39**, or **at most 43** with exactly one assigned Finder role. With fine-tuning disabled, repair uses the displayed grid alone. Distortion correction has a separate candidate budget.
+
+### Distortion correction
+
+Experimental distortion correction uses landmarks from all three Finders and other patterns to build grids that follow curvature. The orange dots below mark the landmarks. The left diagram shows one Finder; the right shows one alignment pattern.
+
+![Four landmarks at the centers of the black corner cells in a 7 by 7 Finder, and one landmark at the center of the black central cell in a 5 by 5 alignment pattern](diagrams/distortion-landmarks.svg)
+
+1. **Obtain twelve points from the Finders.** Search for nested dark/light/dark Finder outlines at multiple image sizes, with maximum side lengths of 384, 640, and 960 pixels. For each Finder, use **the centers of the black cells at the four corners of its 7×7 grid: four points per Finder, twelve across all three Finders**. Calculate these four cell-center positions in the image from the detected outline corners.
+2. **Bend the grid using these twelve points.** First fit a projective transformation, then use a **thin-plate spline (TPS)** to smoothly interpolate the remaining displacement. This transformation determines where each cell is sampled.
+3. **Refine using additional patterns.** For alignment patterns, use **the center of the black central cell in the 5×5 pattern: one point per pattern**. Match the pattern near its predicted position and add up to eight usable observations. V4 has one such point, giving thirteen points together with the twelve Finder landmarks. Then track the alternating black and white timing patterns, adding up to sixteen observations per axis. Timing observations receive softer constraints than the other landmarks.
+
+Retain candidates from each stage for comparison, and reject maps that fold over or have excessive displacement or local stretching. Local Finder-template matching also supplies candidates. If contour extraction reaches its memory limit, the app reports that part of correction search is unfinished and continues local pattern matching and ordinary repair.
+
+The settings screen computes up to twelve correction candidates from the specified four-corner grid and orders them by agreement with the timing pattern and other image checks. Grid lines, cell values, cell selection, and repair share the selected candidate. The corner handles edit the underlying grid before distortion correction; landmarks are measured again when the adjustment finishes. The selected candidate is also saved in the session.
+
+With “Automatically fine-tune sampling position” enabled, repair explores ordinary grid candidates in addition to the displayed grid. It selects up to four ordinary grids based on agreement with the timing pattern and other image checks, then tries distortion correction on each. It adds up to twelve correction candidates per selected grid, for a total of at most 48 additional candidates per polarity.
 
 ### Measuring brightness and marking unknown cells
 
@@ -129,26 +149,30 @@ Codeword extraction also preserves the positions of unknown bits. **Deinterleavi
 | Stage | Processing | Purpose and strengths | Related settings |
 | --- | --- | --- | --- |
 | 1 | Conventional RS on the input before filling or temporary assignments | Useful when erroneous and erased codewords fall within the conventional RS correction range in every block. A codeword containing even one unknown cell is treated as a whole-codeword erasure. | Common settings only |
-| 2 | Initial list decoding with a short time allowance | Looks for candidates beyond the conventional RS correction range in a short pass without temporary assignments. KV also uses weights to incorporate the known-cell information remaining in codewords that contain unknown cells. | Extra errors beyond conventional RS |
-| 3 | RS partial-bit constraints, narrowed using QR structure | Useful when known-cell values are correct and unknown cells are scattered a few at a time across many codewords. Uses the known-cell values remaining in each codeword and QR structure to narrow unknown-cell values. Does not correct known-cell values supplied as constraints. | Partial-bit search / dimension limit<br>Priority search cell limit |
-| 4 | Partial-bit search with conventional RS | Assigns temporary values to codewords with few unknown cells to reduce erasures, looking for combinations that bring the remaining erasures and known-cell errors within the conventional RS correction range. The number of combinations grows with the number of cells assigned temporary values. | Partial-bit search / dimension limit<br>Priority search cell limit |
-| 5 | Known-bit error search | Useful when unknown cells are mixed with a few errors in known cells. Depending on the setting, hypothesizes error positions in up to one or two cells across the whole QR code and flips their values. Assuming the remaining known-cell values are correct, uses partial-bit constraints to solve for unknown-cell values. | Known-bit error search<br>Partial-bit search / dimension limit |
-| 6 | Additional list decoding, combined with temporary assignments where useful | Uses the remaining time allowance to search further for candidates beyond the conventional RS correction range. Explores cases not reached in the initial pass, as well as cases where temporary assignments to unknown cells reduce erasures. | Extra errors beyond conventional RS<br>Partial-bit search / dimension limit<br>Priority search cell limit |
+| 2 | Retry conventional RS with low-reliability image-derived codewords temporarily erased | When a block has just too many erroneous codewords for conventional RS, marking a misread codeword as an erasure reduces its cost from two ECC codewords to one. This is especially useful when three or more cells in one image-read codeword are wrong. Stage 6 (known-bit error search) can flip at most two cells across the entire QR code.<br>In each block, regardless of conventional RS success, consider only codewords with all eight cells read from the image. Select up to four by how close their least reliable cell is to its black or white threshold, starting with the smallest margin. Select codewords with the same margin together. If adding all of them would exceed four, stop and use only the codewords already selected. Subtract the original erasure count from the ECC codeword count. If no capacity remains, do not attempt conventional RS with additional temporary erasures. If the remainder is odd or only one codeword was selected, try each selected codeword alone. If the remainder is even and at least two codewords were selected, try every pair. Each block gets at most six trials. | Common settings only |
+| 3 | Initial list decoding with a short time allowance | Looks for candidates beyond the conventional RS correction range in a short pass without temporary assignments. KV also uses weights to incorporate the known-cell information remaining in codewords that contain unknown cells. | Extra errors beyond conventional RS |
+| 4 | RS partial-bit constraints, narrowed using QR structure | Useful when known-cell values are correct and unknown cells are scattered a few at a time across many codewords. Uses the known-cell values remaining in each codeword and QR structure to narrow unknown-cell values. Does not correct known-cell values supplied as constraints. | Partial-bit search / dimension limit<br>Priority search cell limit |
+| 5 | Partial-bit search with conventional RS | Assigns temporary values to codewords with few unknown cells to reduce erasures, looking for combinations that bring the remaining erasures and known-cell errors within the conventional RS correction range. The number of combinations grows with the number of cells assigned temporary values. | Partial-bit search / dimension limit<br>Priority search cell limit |
+| 6 | Known-bit error search | Useful when unknown cells are mixed with a few errors in known cells. Depending on the setting, hypothesizes error positions in up to one or two cells across the whole QR code and flips their values. Assuming the remaining known-cell values are correct, uses partial-bit constraints to solve for unknown-cell values. | Known-bit error search<br>Partial-bit search / dimension limit |
+| 7 | Additional list decoding, combined with temporary assignments where useful | Uses the remaining time allowance to search further for candidates beyond the conventional RS correction range. Explores cases not reached in the initial pass, as well as cases where temporary assignments to unknown cells reduce erasures. | Extra errors beyond conventional RS<br>Partial-bit search / dimension limit<br>Priority search cell limit |
 
 The following settings apply across stages:
 
 - Format-information error limit
 - Known data/ECC bit error limit
+- Assume UTF-8 text in Byte mode
 - Force single-segment terminator and padding
 - Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)
 
-**Priority search cell limit** applies when `*` cells are marked. Stage 5 targets the data/ECC region and does not flip protected fixed cells.
+**Priority search cell limit** applies when `*` cells are marked. Stage 6 targets the data/ECC region and does not flip protected fixed cells.
 
-If stage 1 passes QR-structure and input-condition checks and decodes the content, that reading attempt ends. Otherwise, processing proceeds to later stages. Candidates found in stage 2 or later are retained while the search continues. Stage 5 runs only when **Known-bit error search** is enabled and no candidate with decoded content has been found through stage 4. If list decoding is enabled, stage 6 is still attempted if stage 5 finds candidates.
+If stage 1 passes QR-structure and input-condition checks and decodes the content, stage 2 still runs when eligible and retains the original candidate; stages 3 through 7 are skipped. Otherwise, processing proceeds to later stages. Candidates found in stage 2 or later are retained while the search continues. Stage 6 runs when **Known-bit error search** is enabled, even if stages 2 through 5 have found candidates with decoded content. If list decoding is enabled, stage 7 is still attempted if stage 6 finds candidates.
 
-Selecting OFF for **Extra errors beyond conventional RS** skips stages 2 and 6, including GS, Wu, and KV. The execution conditions for other stages are unchanged. The default remains +1 codeword.
+Selecting OFF for **Extra errors beyond conventional RS** skips stages 3 and 7, including GS, Wu, and KV. The execution conditions for other stages are unchanged. The default remains +1 codeword.
 
-When **Known data/ECC bit error limit** is 0 bits, stages 2, 4, 5, and 6 are skipped. The search looks for solutions in which every compared known-cell value matches the input.
+When **Known data/ECC bit error limit** is 0 bits, stages 2, 3, 5, 6, and 7 are skipped. The search looks for solutions in which every compared known-cell value matches the input.
+
+For a codeword temporarily erased in stage 2, each cell that differs from the original image reading still counts as one bit toward the known data/ECC bit error limit. Temporary image erasures apply only within stage 2. Later stages start from the original observations. Text matrices have no image margins.
 
 ## 5. Conventional RS and bit-level recovery
 
@@ -204,6 +228,8 @@ When `*` cells are marked, the app first attempts recovery with those cells left
 
 First, the search removes RS conditions that can be satisfied by choosing unknown-bit values and checks for discrepancies that unknown-bit assignments alone cannot remove. It tries no flips, one flipped bit, and, when enabled, two flipped bits. For hypotheses compatible with the remaining conditions, it solves linear equations for the unknown bits. QR-structure constraints are applied to the values after the hypothesized flips, and block solutions are combined and validated.
 
+For two flips in one block, a lookup table uses the first bit’s projected discrepancy to find possible partners. Each pair is checked against the full discrepancy. If the table exceeds the available working memory, the search checks pairs sequentially.
+
 This search starts from the original input without inheriting structure fills or assignments to `*` cells from earlier stages. A `*` cell remains unknown. Protected fixed cells cannot be flipped. The data/ECC error limit, selected version and orientation, and explicit ECC/mask selections still apply. When single-segment terminator and padding forcing is on, its header and suffix conditions remain enforced. When it is off, the encoding mode and character or byte count can be reconsidered for each flip hypothesis.
 
 This is separate from conventional errors-and-erasures RS and list decoding. Later list decoding searches independently from the original input without inheriting these hypothesized known-bit flips. Candidates retain the hypothesized error positions and the calculation records used to solve unknown bits under those conditions. More than one candidate can satisfy the conditions.
@@ -225,6 +251,8 @@ QR structure serves three purposes:
 | Validating completed candidates | Check that the complete data stream follows QR rules. |
 
 For example, three decimal digits use ten bits and must represent a value from 0 to 999. Even if the bits satisfy RS conditions, a value of 1,000 or more is invalid for three decimal digits.
+
+With **Assume UTF-8 text in Byte mode** enabled, the search restricts unlabelled Byte segments by the ranges for UTF-8 leading and continuation bytes. It can discard a branch before materializing an RS assignment or extending a block combination. A character may span blocks as long as it fits within the declared Byte segment. An explicit ECI encoding takes precedence.
 
 After the terminator marking the end of the data, zero bits align the stream to the next eight-bit boundary. The remaining space is filled with alternating hexadecimal `EC` and `11` padding codewords. At the end of the available capacity, the app also checks cases where the terminator is shortened or omitted according to the remaining bit count.
 

@@ -221,7 +221,7 @@ object PartialPayloadAnalyzer {
                 stoppedAtInvalidValue = true, hanziSubset = subset)
             subset
         } else null
-        val countWidth = countBits(mode, version)
+        val countWidth = QrPayloadLayout.characterCountBits(mode, version)
         if (countWidth == null) {
             val note = if (mode in setOf(0, 3, 5, 7, 9)) null else "Mode 0x${mode.toString(16).uppercase()} is not interpreted by this diagnostic view."
             return PartialPayloadReport(mode, null, false, emptyList(), "", false, note = note)
@@ -293,17 +293,6 @@ object PartialPayloadAnalyzer {
         }
         if (prefix.size < count) stoppedAtUnknown = true
         return PartialPayloadReport(mode, count, true, prefix, "", stoppedAtUnknown)
-    }
-
-    private fun countBits(mode: Int, version: Int): Int? {
-        val group = when (version) { in 1..9 -> 0; in 10..26 -> 1; else -> 2 }
-        return when (mode) {
-            1 -> intArrayOf(10, 12, 14)[group]
-            2 -> intArrayOf(9, 11, 13)[group]
-            4 -> intArrayOf(8, 16, 16)[group]
-            8, 13 -> intArrayOf(8, 10, 12)[group]
-            else -> null
-        }
     }
 
     private fun qrKanji(value: Int): String? {

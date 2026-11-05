@@ -8,7 +8,6 @@ import android.widget.TextView
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.google.zxing.qrcode.encoder.Encoder
 import io.github.earthdiver.qrrepair.core.HistoryEventKind
-import io.github.earthdiver.qrrepair.core.RecoverySessionHistory
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -54,7 +53,7 @@ class ImmediateResultRestorationTest {
         try {
             val activity = controller.get()
             load(activity)
-            val history = field(activity, "sessionHistory") as RecoverySessionHistory
+            val history = activity.workspaceSessionForTest().history
             history.record(history.current!!.copy(id = "settings-checkpoint", kind = HistoryEventKind.SETTINGS))
             MainActivity::class.java.getDeclaredMethod("persistSessionAsync").apply { isAccessible = true; invoke(activity) }
             drain(activity)

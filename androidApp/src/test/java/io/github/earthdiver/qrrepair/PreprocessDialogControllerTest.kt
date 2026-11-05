@@ -8,7 +8,10 @@ import android.graphics.Canvas
 import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.CheckBox
+import android.widget.EditText
+import android.widget.SeekBar
 import android.widget.TextView
 import io.github.earthdiver.qrrepair.core.*
 import io.github.earthdiver.qrrepair.ui.BitmapUtils
@@ -32,6 +35,8 @@ class PreprocessDialogControllerTest {
         val saves = mutableListOf<PreprocessSave>()
         val effects = mutableListOf<String>()
         var diagnostic: Bitmap? = null
+        var session: PreprocessEditorSession? = null
+        override fun editorOpened(session: PreprocessEditorSession) { this.session = session }
         override fun retains(image: BitmapUtils.Prepared) =
             saves.lastOrNull()?.image === image || diagnostic === image.bitmap
         override fun save(draft: PreprocessSave) { saves += draft; effects += "save" }
@@ -55,7 +60,8 @@ class PreprocessDialogControllerTest {
 
     private fun withDialog(settings: PreprocessSettings? = null, style: AppStyle = AppStyle.CLASSIC, sourceBitmap: Bitmap? = null,
                            savedCellEdits: PreRecoveryCellEditState? = null,
-                           block: (AlertDialog, Host, BitmapUtils.Prepared, BitmapUtils.Prepared) -> Unit) {
+                           worker: Executor = Executor { it.run() },
+                           block: (AlertDialog, Host, BitmapUtils.Prepared, BitmapUtils.Prepared) -> Unit) = withTestAppLanguage(AppLanguage.JAPANESE) {
         val activity = Robolectric.buildActivity(Activity::class.java).setup()
         activity.get().setTheme(style.theme)
         val source = BitmapUtils.prepare(sourceBitmap ?: Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888).apply {
@@ -66,7 +72,7 @@ class PreprocessDialogControllerTest {
         PreprocessDialogController(activity.get(), settings ?: PreprocessSettings(version = 1, rotationDegrees = 15f,
             manualQuad = ImageQuad(PointD(20.0, 20.0), PointD(220.0, 20.0),
                 PointD(220.0, 220.0), PointD(20.0, 220.0))),
-            source, working, savedCellEdits, Executor { it.run() }, AtomicInteger(), RecoveryEngine(), host).show()
+            source, working, savedCellEdits, worker, AtomicInteger(), RecoveryEngine(), host).show()
         shadowOf(Looper.getMainLooper()).idle()
         val dialog = ShadowDialog.getLatestDialog() as AlertDialog
         try { block(dialog, host, source, working) } finally {
@@ -76,6 +82,128 @@ class PreprocessDialogControllerTest {
             if (!working.bitmap.isRecycled) working.bitmap.recycle()
             if (!source.bitmap.isRecycled) source.bitmap.recycle()
             host.saves.map { it.image.bitmap }.distinct().forEach { if (!it.isRecycled) it.recycle() }
+        }
+    }
+
+    @Test fun japaneseDialogFixtureHandlesAndRestoresAnEnglishIncomingLanguage() =
+        withTestAppLanguage(AppLanguage.ENGLISH) {
+            withDialog { dialog, _, _, _ ->
+                assertEquals(AppLanguage.JAPANESE, AppLanguageManager.current)
+                assertEquals("ja", dialog.context.resources.configuration.locales[0].language)
+                assertNotNull(automaticThresholdControl(dialog))
+                click(dialog, "保存")
+            }
+            assertEquals(AppLanguage.ENGLISH, AppLanguageManager.current)
+        }
+
+    @Test fun pendingCorrectionCannotBeSavedAndSupersededJobsDoNotRestoreTheOldGrid() {
+        for (style in AppStyle.entries) {
+            val jobs = mutableListOf<Runnable>()
+            val initialQuad = ImageQuad(PointD(20.0, 20.0), PointD(220.0, 20.0), PointD(220.0, 220.0), PointD(20.0, 220.0))
+            withDialog(PreprocessSettings(distortionCorrection = true, manualQuad = initialQuad), style,
+                worker = Executor { jobs += it }) { dialog, host, _, _ ->
+                assertEquals(1, jobs.size)
+                val cropLabel = dialog.context.getString(R.string.image_distortion_correction).substringBefore('（')
+                assertTrue(views(dialog.window!!.decorView).filterIsInstance<Button>()
+                    .any { it.text.toString() == "$cropLabel: 計算中…" })
+                views(dialog.window!!.decorView).filterIsInstance<Button>().single { it.text.toString() == "保存" }.performClick()
+                assertTrue(host.saves.isEmpty())
+                val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
+                val moved = initialQuad.copy(topLeft = PointD(24.0, 20.0))
+                overlay.setImageQuad(moved)
+                overlay.onGeometryEdited!!.invoke()
+                overlay.onGeometryEditFinished!!.invoke()
+                assertEquals(2, jobs.size)
+                jobs[0].run()
+                assertTrue(views(dialog.window!!.decorView).filterIsInstance<Button>().any { it.text.toString().contains("計算中") })
+                host.session!!.open(PreprocessPage.CELL_EDITOR)
+                jobs[1].run()
+                shadowOf(Looper.getMainLooper()).idle()
+                overlay.layout(0, 0, 600, 600)
+                var selected: Coord? = null
+                overlay.onEditCellSelected = { x, y -> selected = Coord(x, y) }
+                val point = overlay.previewGeometry()!!.moduleToImage(10.0, 10.0)
+                for (action in listOf(android.view.MotionEvent.ACTION_DOWN, android.view.MotionEvent.ACTION_UP)) {
+                    android.view.MotionEvent.obtain(0, 10, action, (point.x * 2.5).toFloat(), (point.y * 2.5).toFloat(), 0).also {
+                        overlay.onTouchEvent(it); it.recycle()
+                    }
+                }
+                assertEquals(Coord(10, 10), selected)
+                host.session!!.open(PreprocessPage.BASIC)
+                assertTrue(views(dialog.window!!.decorView).filterIsInstance<Button>().any { it.text.toString().contains("直線格子") })
+                views(dialog.window!!.decorView).filterIsInstance<Button>().single { it.text.toString() == "保存" }.performClick()
+                assertEquals(moved, host.saves.single().settings.previewGeometry!!.imageQuad)
+                assertEquals(moved, overlay.previewGeometry()!!.imageQuad)
+            }
+        }
+    }
+
+    @Test fun repairSettingsRetainTheCropCorrectionChoiceWithoutOfferingAToggle() {
+        for (style in AppStyle.entries) for (enabled in listOf(false, true)) {
+            withDialog(PreprocessSettings(distortionCorrection = enabled), style) { dialog, host, _, _ ->
+                val label = dialog.context.getString(R.string.image_distortion_correction)
+                assertFalse(views(dialog.window!!.decorView).filterIsInstance<CheckBox>()
+                    .any { it.text.toString() == label })
+                automaticThresholdControl(dialog).isChecked = true
+                click(dialog, "保存")
+                assertEquals(enabled, host.saves.single().settings.distortionCorrection)
+            }
+        }
+    }
+
+    @Test fun restoredCurvedPreviewWaitsForWorkerSamplingAndRefreshesTheOpenModernDataDialog() {
+        val jobs = mutableListOf<Runnable>()
+        val quad = ImageQuad(PointD(20.0, 20.0), PointD(220.0, 20.0), PointD(220.0, 220.0), PointD(20.0, 220.0))
+        val geometry = GridGeometry(1, FinderRole.TOP_LEFT, 50.0, 50.0, 10.0, 0.0,
+            quad, GeometryModel.THIN_PLATE_SPLINE, ThinPlateWarp(listOf(
+                WarpLandmark(PointD(0.0, 0.0), PointD(0.0, 0.0)),
+                WarpLandmark(PointD(1.0, 0.0), PointD(0.0, 0.0)),
+                WarpLandmark(PointD(0.0, 1.0), PointD(0.0, 0.0)),
+                WarpLandmark(PointD(1.0, 1.0), PointD(0.0, 0.0)),
+                WarpLandmark(PointD(.5, .5), PointD(4.0, -3.0)),
+            ))).reanchored()
+        val settings = PreprocessSettings(distortionCorrection = true, manualQuad = quad, previewGeometry = geometry,
+            formatConstraint = QrFormatConstraint(com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.L, 0))
+        withDialog(settings, AppStyle.MODERN, worker = Executor { jobs += it }) { dialog, host, _, _ ->
+            // Construction queues sampling without observing all warped cells on the UI thread.
+            assertEquals(2, jobs.size)
+            val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
+            assertNull(PreprocessOverlayView::class.java.getDeclaredField("editMatrix").run {
+                isAccessible = true; get(overlay)
+            })
+            click(dialog, "保存")
+            assertTrue(host.saves.isEmpty())
+            click(dialog, dialog.context.getString(R.string.data))
+            val dataDialog = ShadowDialog.getLatestDialog() as AlertDialog
+            assertTrue(views(dataDialog.window!!.decorView).filterIsInstance<TextView>()
+                .any { it.text.toString() == "セルを読み取り中…" })
+            jobs[1].run()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(geometry, overlay.previewGeometry())
+            assertTrue(views(dataDialog.window!!.decorView).filterIsInstance<TextView>()
+                .any { it.text.toString().contains("Binary") })
+            assertFalse(views(dataDialog.window!!.decorView).filterIsInstance<TextView>()
+                .any { it.text.toString() == "セルを読み取り中…" })
+            jobs[0].run()
+            shadowOf(Looper.getMainLooper()).idle()
+            dataDialog.dismiss()
+            click(dialog, "保存")
+            assertEquals(geometry, host.saves.single().settings.previewGeometry)
+            click(dialog, dialog.context.getString(R.string.data))
+            val reopened = ShadowDialog.getLatestDialog() as AlertDialog
+            dialog.dismiss()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(reopened.isShowing)
+        }
+    }
+
+    @Test fun cornerLabelsPreferOutsideAndUseTheSideWithSpaceAtTheScreenEdge() {
+        val corners = listOf(PointD(60.0, 4.0), PointD(160.0, 4.0), PointD(160.0, 130.0), PointD(60.0, 130.0))
+        for (quad in listOf(corners, corners.reversed())) {
+            val label = io.github.earthdiver.qrrepair.ui.cornerLabelCenter(quad,
+                quad.indexOf(corners.first()), 12.0, 8.0, 220, 180, 16.0)
+            assertTrue(label.x + 12 < 60)
+            assertTrue(label.y >= 8)
         }
     }
 
@@ -570,6 +698,59 @@ class PreprocessDialogControllerTest {
             assertTrue(automatic.automaticThresholds)
             assertEquals(settings.provisionalBlackMax, automatic.blackMax)
             assertEquals(settings.provisionalWhiteMin, automatic.whiteMin)
+        }
+    }
+
+    @Test fun thresholdLabelEntryUsesDisplayedPolarityAndUpdatesThePreviewAndSavedPair() {
+        for (inverted in listOf(false, true)) {
+            val settings = PreprocessSettings(
+                polarity = if (inverted) PolarityMode.INVERTED else PolarityMode.NORMAL,
+                automaticThresholds = true,
+                manualQuad = ImageQuad(PointD(20.0, 20.0), PointD(220.0, 20.0), PointD(220.0, 220.0), PointD(20.0, 220.0)),
+            )
+            val gray = Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.GRAY) }
+            withDialog(settings, sourceBitmap = gray) { dialog, host, _, _ ->
+                val controls = views(dialog.window!!.decorView)
+                val label = controls.filterIsInstance<TextView>().single { it.text.startsWith("画像の暗部") }
+                val sliders = controls.filterIsInstance<SeekBar>().filter { it.max == 254 }
+                val originalProgress = sliders.map { it.progress }
+                fun openInput(): Pair<AlertDialog, EditText> {
+                    assertTrue(label.performLongClick())
+                    shadowOf(Looper.getMainLooper()).idle()
+                    val popup = ShadowDialog.getLatestDialog() as AlertDialog
+                    return popup to views(popup.window!!.decorView).filterIsInstance<EditText>().single()
+                }
+                val (cancelled, firstInput) = openInput()
+                val current = if (inverted) 255 - (sliders.last().progress + 1) else sliders.first().progress
+                assertEquals(current.toString(), firstInput.text.toString())
+                firstInput.setText("255")
+                cancelled.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+                assertNotNull(firstInput.error)
+                assertTrue(cancelled.isShowing)
+                firstInput.setText("254")
+                cancelled.getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+                assertTrue(automaticThresholdControl(dialog).isChecked)
+                assertEquals(originalProgress, sliders.map { it.progress })
+
+                val (popup, input) = openInput()
+                input.setText("254")
+                popup.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+                assertFalse(popup.isShowing)
+                assertFalse(automaticThresholdControl(dialog).isChecked)
+                assertTrue(label.text.endsWith("254以下"))
+                val progress = if (inverted) 0 else 254
+                assertEquals(listOf(progress, progress), sliders.map { it.progress })
+                val overlay = controls.filterIsInstance<PreprocessOverlayView>().single()
+                val preview = PreprocessOverlayView::class.java.getDeclaredField("editMatrix").run {
+                    isAccessible = true; get(overlay) as QrMatrix
+                }
+                assertEquals(if (inverted) ModuleValue.ZERO else ModuleValue.ONE, preview[10, 10].value)
+                click(dialog, "保存")
+                val saved = host.saves.single().settings
+                assertEquals(progress, saved.blackMax)
+                assertEquals(progress + 1, saved.whiteMin)
+                assertFalse(saved.automaticThresholds)
+            }
         }
     }
 

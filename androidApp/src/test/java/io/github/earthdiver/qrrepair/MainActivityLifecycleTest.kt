@@ -111,10 +111,8 @@ class MainActivityLifecycleTest {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
         val sessionId = "activity-recreation-session"
-        MainActivity::class.java.getDeclaredField("sessionId").apply {
-            isAccessible = true
-            set(activity, sessionId)
-        }
+        val workspaceSession = activity.workspaceSessionForTest()
+        workspaceSession.restoreIdentity(sessionId, workspaceSession.history.entries.toList(), workspaceSession.history.cursor)
         val state = Bundle()
 
         controller.saveInstanceState(state)

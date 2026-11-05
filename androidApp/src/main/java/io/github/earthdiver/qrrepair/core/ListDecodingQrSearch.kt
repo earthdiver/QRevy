@@ -21,10 +21,11 @@ internal class ListDecodingQrSearch(private val rs: ReedSolomonErasures) {
         onRejection: (RecoveryCandidateRejection) -> Unit,
         onProgress: (Int, ListDecodingBlockSearch) -> Unit,
         onStops: (Set<CombinationSearchStop>) -> Unit,
+        payloadChecks: RecoveryPayloadChecks = RecoveryPayloadChecks(onRejection = onRejection),
         evaluate: (List<PartialCodewordSolver.Result>) -> Boolean,
     ): Boolean {
         val prefixCacheBudget = minOf(32L * 1024, workingLimitBytes / 64)
-        val prefixCache = QrPrefixValidationCache(version, prefixCacheBudget)
+        val prefixCache = QrPrefixValidationCache(version, prefixCacheBudget, payloadChecks::acceptPrefix)
         val frontier = CompletedProductFrontier(de.blocks.size)
         val searches = mutableListOf<ListDecodingBlockSearch>()
         val spaces = mutableListOf<RsBitConstraintSolver.Space?>()
@@ -139,12 +140,10 @@ internal class ListDecodingQrSearch(private val rs: ReedSolomonErasures) {
                         val data = prefix.flatMapIndexed { index, result ->
                             result.corrected.take(de.blocks[index].numDataCodewords).map { it.toByte() }
                         }.toByteArray()
-                        prefixCache.canBePrefix(data).also {
-                            if (!it) onRejection(RecoveryCandidateRejection.QR_STRUCTURE)
-                        }
+                        prefixCache.canBePrefix(data)
                     }
                 }
-                val traversal = if (symbolic) RsPayloadTraversal(groups.indices.map {
+                val traversal = if (symbolic) payloadChecks.traversal(groups.indices.map {
                     RsCandidateSource(de.blocks[it], groups[it], spaces[it], partialBitLimit)
                 }, version, maximum - expanded, cancellation) else null
                 val products = traversal?.combinations(acceptPrefix) ?: bestFirstCartesianProductSequence(groups,

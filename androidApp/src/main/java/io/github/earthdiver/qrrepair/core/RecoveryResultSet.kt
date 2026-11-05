@@ -144,7 +144,7 @@ class RecoveryResultAccumulator(
         var matrixBytes = 0L
         fun retain(candidate: RecoveryCandidate?, matrix: QrMatrix?): Boolean {
             val additionalMatrix = if (matrix == null || matrices.containsKey(matrix)) 0L else
-                64L + matrix.dimension.toLong() * matrix.dimension * 48L
+                64L + matrix.dimension.toLong() * matrix.dimension * (if (matrix.hasImageMargins) 49L else 48L)
             if (additionalMatrix > policy.limitBytes - matrixBytes - budget.retainedBytes) return false
             if (candidate != null && !budget.tryRetain(candidate,
                     maxRetainedBytes = policy.limitBytes - matrixBytes - additionalMatrix)) return false

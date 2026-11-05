@@ -228,7 +228,7 @@ class ResultScreenTrialTest {
             assertTrue(snapshot.selectedQr!!.matches(second))
             assertFalse(snapshot.selectedQr.matches(first))
             assertEquals(true, snapshot.samplingInverted)
-            assertEquals(1, field<RecoverySessionHistory>(activity, "sessionHistory").entries.size)
+            assertEquals(1, activity.workspaceSessionForTest().history.entries.size)
             state.showResults(accumulator.result())
             refresh(activity)
             assertEquals(activity.getString(R.string.diagnostic_open_section, DiagnosticStage.VERIFICATION.label()), verification.text.toString())
@@ -356,8 +356,8 @@ class ResultScreenTrialTest {
                     eraseColor(Color.WHITE)
                 }
                 MainActivity::class.java.getDeclaredMethod("acceptDecodedImage", Bitmap::class.java,
-                    File::class.java, ImageAdjustment::class.java).apply { isAccessible = true }
-                    .invoke(activity, bitmap, null, ImageAdjustment())
+                    File::class.java, ImageAdjustment::class.java, Boolean::class.javaPrimitiveType).apply { isAccessible = true }
+                    .invoke(activity, bitmap, null, ImageAdjustment(), false)
                 repeat(2) {
                     executor.submit {}.get(30, TimeUnit.SECONDS)
                     shadowOf(Looper.getMainLooper()).idle()

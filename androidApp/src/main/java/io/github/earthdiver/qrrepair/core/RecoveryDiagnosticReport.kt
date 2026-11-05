@@ -67,6 +67,8 @@ fun RecoveryDisplayConditions?.runSettingsSection(): DiagnosticSection {
                 false -> "ON"
                 null -> localizedText("記録なし", "Not recorded")
             })
+        append(localizedText("\nバイト区間の UTF-8 仮定: ", "\nUTF-8 assumption for Byte segments: "))
+            .append(if (settings.assumeUtf8ByteSegments) "ON" else "OFF")
         append(localizedText("\n単一セグメントの終端後構造の強制: ", "\nSingle-segment terminator and padding forcing: "))
             .append(if (settings.trustSingleSegment) "ON" else "OFF")
     } } ?: localizedText("実行時点の設定は記録されていません。", "The settings for this run were not recorded.")
@@ -85,6 +87,8 @@ fun RecoveryDisplayConditions?.runSettingsText(): String = this?.let { settings 
     settings.lockManualBits?.let { locked ->
         append(localizedText("\n固定セルの0/1と矛盾する復元候補を許容する（仮指定セルと同じ扱い）: ", "\nAllow recovery candidates that conflict with fixed 0/1 values (as for tentative cells): ")).append(if (locked) "OFF" else "ON")
     }
+    append(localizedText("\nバイト区間の UTF-8 仮定: ", "\nUTF-8 assumption for Byte segments: "))
+        .append(if (settings.assumeUtf8ByteSegments) "ON" else "OFF")
     append(localizedText("\n単一セグメントの終端後構造の強制: ", "\nSingle-segment terminator and padding forcing: "))
         .append(if (settings.trustSingleSegment) "ON" else "OFF")
     append('\n').append(settings.limitText(true)).append('\n').append(settings.limitText(false))
@@ -276,6 +280,9 @@ private fun knownBitSearchExplanation(): String = localizedText(
 
 /** Explain the adopted methods without repeating their per-block calculation records. */
 fun RecoveryCandidate.processingMethodsText(): String = buildList {
+    if (actualBlockMethods.any { it.imageErasures.isNotEmpty() }) add(localizedText(
+        "画像の判定余裕が小さいコード語を一時消失として通常RSで再試行しました。",
+        "Conventional RS was retried with weak image-read codewords temporarily erased."))
     if (usesKnownBitSearch()) add(knownBitSearchExplanation())
     if (usesConventionalRs()) add(if (correctedErrataSymbols > 0)
         localizedText("通常RSによる確認・補完・訂正を使いました。", "Conventional RS was used to check, fill or correct values.")
@@ -301,6 +308,7 @@ fun RecoveryCandidate.processingMethodsText(): String = buildList {
         add(localizedText("補完・変更したbit数は、処理途中の値です。修復開始時の入力との最終的な不一致数とは異なります。",
             "The filled/changed bit count describes intermediate processing, not the final mismatch count against the input at repair start."))
     }
+    if (displayConditions?.assumeUtf8ByteSegments == true) add(utf8ApplicationText())
     if (displayConditions?.trustSingleSegment == true && !constraintForcedByUserSetting) add(localizedText(
         "単一セグメントの終端後構造の強制はONですが、この候補の補完には使用していません。",
         "The single-segment assumption was ON but was not used to fill this candidate."))
@@ -310,6 +318,11 @@ fun RecoveryCandidate.processingMethodsText(): String = buildList {
             localizedText("（補完・変更は0bit）", " (0 bits filled/changed)") else "")
     }
 }.joinToString("\n")
+
+private fun RecoveryCandidate.utf8ApplicationText() = if (utf8AssumptionApplied)
+    localizedText("文字コード指定のないバイト区間に UTF-8 仮定を適用しました。",
+        "Applied the UTF-8 assumption to Byte segments without an explicit encoding.")
+else localizedText("UTF-8 仮定の対象となるバイト区間はありません。", "No Byte segments required the UTF-8 assumption.")
 
 fun RecoveryCandidate.usedMethodsText(): String = buildString {
     append(localizedText("この候補を得た方法", "Methods used to obtain this candidate"))
@@ -330,6 +343,7 @@ fun RecoveryCandidate.usedMethodsText(): String = buildString {
     if (usesConventionalRs()) append(if (correctedErrataSymbols > 0)
         localizedText("\n通常RSによる確認・補完・訂正を使いました。", "\nConventional RS was used to check, fill or correct values.")
         else localizedText("\n通常RSで条件を確認しました。", "\nConventional RS checked the conditions."))
+    if (displayConditions?.assumeUtf8ByteSegments == true) append('\n').append(utf8ApplicationText())
     if (displayConditions?.trustSingleSegment == true && !constraintForcedByUserSetting) append(localizedText(
         "\n単一セグメントの終端後構造の強制はONですが、この候補の補完には使用していません。",
         "\nThe single-segment assumption was ON but was not used to fill this candidate."))
@@ -368,6 +382,7 @@ fun RecoveryBlockMethod.searchDescription(includeCalculationDetails: Boolean = t
         "によるリスト復号", " list decoding")
     else if (listDecoding != null) listDecoding.method.displayName() + " / " + listDecoding.calculationDescription() + localizedText(
         "／仮置きした不明ビット: $guessedBits", " / assigned unknown bits: $guessedBits")
+    else if (imageErasures.isNotEmpty()) imageErasureDescription(imageErasures)
     else if (knownBitErrors != null) localizedText(
         "既知bit誤り探索：${knownBitErrors.size}bit変更／この計算段階の自由度: $guessedBits",
         "Known-bit error search: ${knownBitErrors.size} changed bits / degrees of freedom at this stage: $guessedBits")

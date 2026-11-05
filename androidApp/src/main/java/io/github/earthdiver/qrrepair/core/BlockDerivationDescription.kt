@@ -3,7 +3,7 @@ package io.github.earthdiver.qrrepair.core
 import io.github.earthdiver.qrrepair.localizedText
 
 fun PartialCodewordSolver.Derivation.description(): String {
-    val route = if (knownBitSearch) localizedText("既知bit誤り探索（${knownBitErrors.size}bit変更）", "known-bit error search (${knownBitErrors.size} changed bits)") else listDecoding?.method?.displayName() ?: if (bitConstraintSolved) localizedText("部分bit制約", "RS partial-bit constraints")
+    val route = if (imageErasures.isNotEmpty()) imageErasureDescription(imageErasures) else if (knownBitSearch) localizedText("既知bit誤り探索（${knownBitErrors.size}bit変更）", "known-bit error search (${knownBitErrors.size} changed bits)") else listDecoding?.method?.displayName() ?: if (bitConstraintSolved) localizedText("部分bit制約", "RS partial-bit constraints")
         else localizedText("通常RS", "conventional RS")
     val margin = if (knownBitSearch || bitConstraintSolved || listDecoding != null) localizedText("算定対象外", "not applicable") else rsMargin.toString()
     val choices = if (knownBitSearch || bitConstraintSolved) localizedText("この計算段階の自由度 $guessedBits", "degrees of freedom at this stage: $guessedBits")

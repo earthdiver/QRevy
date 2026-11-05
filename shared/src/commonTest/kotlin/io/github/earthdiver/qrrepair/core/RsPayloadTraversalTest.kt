@@ -47,6 +47,28 @@ class RsPayloadTraversalTest {
         assertFalse(traversal.limited)
     }
 
+    @Test fun utf8PrunesBeforeMaterializingRsAssignments() {
+        // Two unknown high bits allow ASCII, stray continuation and illegal 0xFx lead.
+        val data = bytes("010000000001" + "00110001" + "0000")
+        val source = source(data, intArrayOf(0, 0x0c, 0))
+        val traversal = RsPayloadTraversal(listOf(source), 1, 1000, assumeUtf8ByteSegments = true)
+        val found = traversal.combinations { true }.map { it.single().corrected.take(3) }.toSet()
+        assertEquals(setOf(listOf(0x40, 0x13, 0x10), listOf(0x40, 0x17, 0x10)), found)
+        assertEquals(2, traversal.materialized)
+        assertFalse(traversal.limited)
+    }
+
+    @Test fun continuationRangePrunesAcrossRsBlocksAfterFnc1() {
+        // FNC1 + V1 Byte header ends on a byte boundary. E0 requires A0..BF next,
+        // so the unknown high nibble in the second block has only two valid values.
+        val first = source(intArrayOf(0x54, 3, 0xe0), IntArray(3))
+        val second = source(intArrayOf(0x80, 0x80, 0), intArrayOf(0xf0, 0, 0))
+        val traversal = RsPayloadTraversal(listOf(first, second), 1, 1000, assumeUtf8ByteSegments = true)
+        val bodies = traversal.combinations { true }.map { it[1].corrected[0] }.toList()
+        assertEquals(listOf(0xa0, 0xb0), bodies.sorted())
+        assertFalse(traversal.limited)
+    }
+
     @Test fun separateByteSegmentsAreNotForcedIntoASingleSegment() {
         val data = bytes("0100" + "00000001" + "11111111" + "0100" + "00000001" + "10000000" + "0000")
         val source = source(data, IntArray(data.size))

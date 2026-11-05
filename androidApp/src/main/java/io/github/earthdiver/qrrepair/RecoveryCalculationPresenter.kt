@@ -142,7 +142,7 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
             stopReasons?.let(::add)
             selectedEntry?.alternativeDerivations?.forEachIndexed { index, route ->
                 add(ui("別の読み取り試行${index + 1}", "Other sampled-input attempt ${index + 1}"))
-                add(listOf(route.profile?.label.orEmpty(), RecoveryDiagnosticPresenter(japanese).geometryDiagnosticText(route.hypothesis.geometry))
+                add(listOf(route.profile?.label.orEmpty(), RecoveryDiagnosticPresenter(japanese).geometryDiagnosticText(route.hypothesis.geometry, route.hypothesis.patternRefined))
                     .filter(String::isNotBlank).joinToString(" / "))
                 add(route.candidate.usedMethodsText())
                 route.samplingStats.thresholds?.let { add(ui("閾値: ${it.blackMax} / ${it.whiteMin}", "Thresholds: ${it.blackMax} / ${it.whiteMin}")) }
@@ -189,6 +189,7 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
     private fun compactBlock(method: RecoveryBlockMethod, showBlock: Boolean): String =
         (if (showBlock) ui("ブロック${method.blockIndex + 1}: ", "Block ${method.blockIndex + 1}: ") else "") + when {
             method.listDecoding != null -> method.listDecoding.method.displayName() + ui("によるリスト復号", " list decoding")
+            method.imageErasures.isNotEmpty() -> imageErasureDescription(method.imageErasures)
             method.knownBitErrors != null -> ui("既知bit誤り探索：${method.knownBitErrors.size}bit変更", "Known-bit error search: ${method.knownBitErrors.size} changed bits")
             method.bitConstraintSolved -> ui("部分bit制約：自由度${method.guessedBits}", "Partial-bit constraints: ${method.guessedBits} degrees of freedom")
             else -> (if (method.guessedBits == 0) "" else ui("不明${method.guessedBits}bitの仮置き＋", "Assign ${method.guessedBits} unknown bits + ")) +
@@ -278,6 +279,7 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
         val list = method.listDecoding
         append(ui("\n方法: ", "\nMethod: ")).append(when {
             list != null -> list.method.displayName() + ui("によるリスト復号", " list decoding")
+            method.imageErasures.isNotEmpty() -> imageErasureDescription(method.imageErasures)
             method.knownBitErrors != null -> ui("既知bit誤り探索：${method.knownBitErrors.size}bit変更", "Known-bit error search: ${method.knownBitErrors.size} changed bits")
             method.bitConstraintSolved -> ui("部分bit制約", "Partial-bit constraints")
             else -> ui("通常RS", "Conventional RS")

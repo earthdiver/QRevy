@@ -15,6 +15,7 @@ internal object SingleSegmentRetryProbe {
         evidenceExtraction: CodewordExtraction,
         mismatchLimit: Int?,
         cancellation: RecoveryCancellation,
+        payloadChecks: RecoveryPayloadChecks = RecoveryPayloadChecks(),
     ): Boolean {
         val forced = original.copyDeep()
         val structure = PayloadConstraintSolver.apply(forced, version, trustKnownCount = true,
@@ -23,7 +24,7 @@ internal object SingleSegmentRetryProbe {
         val data = forced.blocks.indices.flatMap { index ->
             corrected[index].take(forced.blocks[index].numDataCodewords)
         }.map(Int::toByte).toByteArray()
-        if (!structure.matches(data) || !StrictQrPayloadValidator.isValid(data, version)) return false
+        if (!structure.matches(data) || payloadChecks.rejection(data, version) != null) return false
         val raw = QrBlockInterleaver.reinterleave(forced, corrected)
         if (RecoveryCandidateEvidence.userPinConflicts(matrix, extraction, raw, format.dataMask).isNotEmpty()) return false
         val (_, mismatches) = RecoveryCandidateEvidence.countKnownBitMismatches(
@@ -31,7 +32,7 @@ internal object SingleSegmentRetryProbe {
         if (mismatchLimit != null && mismatches > mismatchLimit) return false
         cancellation.check()
         return try {
-            ZxingPayloadBridge.decodeData(data, version, format.ecLevel, null)?.text != null
+            ZxingPayloadBridge.decodeData(data, version, format.ecLevel, payloadChecks.decodeHints)?.text != null
         } catch (_: FormatException) {
             false
         } catch (_: RuntimeException) {

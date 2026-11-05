@@ -249,7 +249,7 @@ class PrecisionDesignTest {
                 io.submit {}.get(5, java.util.concurrent.TimeUnit.SECONDS)
                 shadowOf(Looper.getMainLooper()).idle()
             }
-            assertEquals("newer-work", field<String>(activity, "sessionId"))
+            assertEquals("newer-work", activity.workspaceSessionForTest().id)
             assertNotNull(field<BitmapUtils.Prepared>(activity, "prepared"))
             assertTrue(field<View>(activity, "workspacePanel").isShown)
             (ShadowDialog.getLatestDialog() as? AlertDialog)?.dismiss()
@@ -273,7 +273,7 @@ class PrecisionDesignTest {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         try {
             val activity = controller.get()
-            val history = field<io.github.earthdiver.qrrepair.core.RecoverySessionHistory>(activity, "sessionHistory")
+            val history = activity.workspaceSessionForTest().history
             history.record(io.github.earthdiver.qrrepair.core.RecoveryHistoryEntry(
                 kind = io.github.earthdiver.qrrepair.core.HistoryEventKind.IMPORT, label = "Synthetic import",
                 snapshot = io.github.earthdiver.qrrepair.core.RecoverySnapshot(null, null, null, -1)))
@@ -293,7 +293,7 @@ class PrecisionDesignTest {
         try {
             val activity = controller.get()
             (ShadowDialog.getLatestDialog() as? AlertDialog)?.dismiss()
-            val history = field<io.github.earthdiver.qrrepair.core.RecoverySessionHistory>(activity, "sessionHistory")
+            val history = activity.workspaceSessionForTest().history
             history.record(io.github.earthdiver.qrrepair.core.RecoveryHistoryEntry(
                 kind = io.github.earthdiver.qrrepair.core.HistoryEventKind.IMPORT, label = "Synthetic import",
                 snapshot = io.github.earthdiver.qrrepair.core.RecoverySnapshot(null, null, null, -1)))
