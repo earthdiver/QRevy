@@ -61,7 +61,7 @@ class PreprocessDialogControllerTest {
     private fun withDialog(settings: PreprocessSettings? = null, style: AppStyle = AppStyle.CLASSIC, sourceBitmap: Bitmap? = null,
                            savedCellEdits: PreRecoveryCellEditState? = null,
                            worker: Executor = Executor { it.run() },
-                           block: (AlertDialog, Host, BitmapUtils.Prepared, BitmapUtils.Prepared) -> Unit) {
+                           block: (AlertDialog, Host, BitmapUtils.Prepared, BitmapUtils.Prepared) -> Unit) = withTestAppLanguage(AppLanguage.JAPANESE) {
         val activity = Robolectric.buildActivity(Activity::class.java).setup()
         activity.get().setTheme(style.theme)
         val source = BitmapUtils.prepare(sourceBitmap ?: Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888).apply {
@@ -84,6 +84,17 @@ class PreprocessDialogControllerTest {
             host.saves.map { it.image.bitmap }.distinct().forEach { if (!it.isRecycled) it.recycle() }
         }
     }
+
+    @Test fun japaneseDialogFixtureHandlesAndRestoresAnEnglishIncomingLanguage() =
+        withTestAppLanguage(AppLanguage.ENGLISH) {
+            withDialog { dialog, _, _, _ ->
+                assertEquals(AppLanguage.JAPANESE, AppLanguageManager.current)
+                assertEquals("ja", dialog.context.resources.configuration.locales[0].language)
+                assertNotNull(automaticThresholdControl(dialog))
+                click(dialog, "保存")
+            }
+            assertEquals(AppLanguage.ENGLISH, AppLanguageManager.current)
+        }
 
     @Test fun pendingCorrectionCannotBeSavedAndSupersededJobsDoNotRestoreTheOldGrid() {
         for (style in AppStyle.entries) {

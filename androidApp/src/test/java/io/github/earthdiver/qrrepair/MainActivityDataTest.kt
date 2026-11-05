@@ -1,5 +1,7 @@
 package io.github.earthdiver.qrrepair
 
+import android.content.Context
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.os.Looper
 import android.view.View
@@ -8,6 +10,7 @@ import android.widget.TextView
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import io.github.earthdiver.qrrepair.core.*
 import io.github.earthdiver.qrrepair.ui.BitmapUtils
+import java.util.Locale
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
@@ -16,6 +19,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowAlertDialog
@@ -56,7 +60,35 @@ class MainActivityDataTest {
         assertSame(prior, ShadowAlertDialog.getLatestAlertDialog())
     }
 
-    private fun withInput(action: (MainActivity, BitmapUtils.Prepared, PreprocessSettings, ExecutorService) -> Unit) {
+    @Test fun dataFixtureRestoresIncomingLanguageStateAfterSuccessAndFailure() =
+        withTestAppLanguage(AppLanguage.JAPANESE) {
+            val context = RuntimeEnvironment.getApplication()
+            val preferences = context.getSharedPreferences("app_language", Context.MODE_PRIVATE)
+            preferences.edit().remove("language").commit()
+            Locale.setDefault(Locale.CANADA_FRENCH)
+            Locale.setDefault(Locale.Category.DISPLAY, Locale.US)
+            val configuration = Configuration(context.resources.configuration)
+            for (fail in listOf(false, true)) {
+                val failure = IllegalStateException("Fixture action failed")
+                val runFixture = {
+                    withInput { _, _, _, _ ->
+                        assertEquals(AppLanguage.ENGLISH, AppLanguageManager.current)
+                        assertEquals("en", context.resources.configuration.locales[0].language)
+                        if (fail) throw failure
+                    }
+                }
+                if (fail) assertSame(failure, assertThrows(IllegalStateException::class.java) { runFixture() })
+                else runFixture()
+                assertEquals(AppLanguage.JAPANESE, AppLanguageManager.current)
+                assertEquals(Locale.CANADA_FRENCH, Locale.getDefault())
+                assertEquals(Locale.US, Locale.getDefault(Locale.Category.DISPLAY))
+                assertEquals(Locale.CANADA_FRENCH, Locale.getDefault(Locale.Category.FORMAT))
+                assertFalse(preferences.contains("language"))
+                assertEquals(configuration, context.resources.configuration)
+            }
+        }
+
+    private fun withInput(action: (MainActivity, BitmapUtils.Prepared, PreprocessSettings, ExecutorService) -> Unit) = withTestAppLanguage(AppLanguage.ENGLISH) {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val bitmap = Bitmap.createBitmap(160, 160, Bitmap.Config.ARGB_8888)
         val source = BitmapUtils.Prepared(bitmap, LumaImage(160, 160,
