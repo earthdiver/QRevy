@@ -516,7 +516,6 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                     },
                 )
             }
-            if (run.phase == RecoveryPhase.IMAGE_ERASURES && conventionalDiagnostic.succeeded) continue
             val originalErasures = evidenceExtraction.codewords.count { it.unknownBits != 0 }
             val priorityCoordinates = matrix.prioritySearchCoordinates().toSet()
             val priorityRawIndices = extraction.codewords.indices.filterTo(hashSetOf()) { raw ->
@@ -731,8 +730,8 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                 val imageRetry = run.phase == RecoveryPhase.IMAGE_ERASURES
                 var blockWorkingBytes = 0L
                 if (imageRetry) {
-                    // Includes ranked words, six block outputs per block and transient RS work.
-                    blockWorkingBytes = 8192L + extraction.codewords.size * 512L
+                    // Includes ranked words, the original plus six retry outputs per block, and transient RS work.
+                    blockWorkingBytes = 8192L + extraction.codewords.size * 640L
                     if (blockWorkingBytes > run.availableWorkingBytes) {
                         run.combinationSearch = run.combinationSearch.afterPass(setOf(CombinationSearchStop.WORKING_MEMORY_LIMIT))
                         continue

@@ -20,19 +20,19 @@ internal fun retryImageErasures(
     rs: ReedSolomonErasures, cancellation: RecoveryCancellation, cached: ReedSolomonErasures.Result? = null,
 ): List<PartialCodewordSolver.Result> {
     val erased = block.unknownMasks.indices.filter { block.unknownMasks[it] != 0 }.toIntArray()
+    val results = mutableListOf<PartialCodewordSolver.Result>()
     if (original.status == ConventionalRsStatus.SUCCESS) {
         val result = cached ?: rs.decode(block.codewords, ecc, erased)
-        return listOf(PartialCodewordSolver.Result(result.corrected, result.errataPositions,
-            0, 0, intArrayOf(), requireNotNull(original.margin)))
+        results += PartialCodewordSolver.Result(result.corrected, result.errataPositions,
+            0, 0, intArrayOf(), requireNotNull(original.margin))
     }
     val room = ecc - erased.size
-    if (room <= 0) return emptyList()
+    if (room <= 0) return results
     val pool = mutableListOf<Int>()
     for (group in margins.indices.filter { margins[it] >= 0 }.groupBy { margins[it] }.toSortedMap().values) {
         if (pool.size + group.size > 4) break
         pool += group
     }
-    val results = mutableListOf<PartialCodewordSolver.Result>()
     fun attempt(extra: List<Int>) {
         cancellation.check()
         val positions = erased + extra.toIntArray()
@@ -45,7 +45,9 @@ internal fun retryImageErasures(
         results.add(PartialCodewordSolver.Result(result.corrected, result.errataPositions, 0, 0, intArrayOf(),
             ecc - positions.size - 2 * errors, imageErasures = extra))
     }
-    if (room >= 2 && pool.size >= 2) {
+    // With odd room, either singleton covers any decodable pair. With even room,
+    // a decodable singleton has a unit of slack for a second erasure.
+    if (room % 2 == 0 && pool.size >= 2) {
         for (i in pool.indices) for (j in 0 until i) attempt(listOf(pool[j], pool[i]))
     } else for (position in pool) attempt(listOf(position))
     return PartialCodewordSolver.mergeCandidates(results)

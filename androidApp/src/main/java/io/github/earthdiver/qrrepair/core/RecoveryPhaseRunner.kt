@@ -19,26 +19,26 @@ internal class RecoveryPhaseRunner(
             if (run.listDecodingAdditionalErrors == 0) skipLists(ListDecodingStatus.DISABLED)
             search(RecoveryPhase.ORIGINAL_RS)
             // This pass uses the original observations: no forced suffix or tentative bits.
-            // Keep its validated result when its success suppresses further searching.
+            // Its validated result can suppress later searches, but not image-erasure retries.
             val originalRsParsed = run.candidates.results().any { candidate ->
                 candidate.payloadParsed && candidate.conventionalRsDiagnostic?.let {
                     it.succeeded && it.matches(candidate.correctedInterleaved) == true
                 } == true
             }
+            val inputBlocked = run.earlyBlocker != null ||
+                run.searchDiagnostic().inputBlocker == RecoveryInputBlocker.STRUCTURAL_FIXED_CELLS
+            if (!inputBlocked && maxKnownDataEccMismatches != 0 && run.diagnosticInput.hasImageMargins) {
+                search(RecoveryPhase.IMAGE_ERASURES)
+            }
+            run.originalBlocks.clear()
+            run.originalBlockBytes = 0L
             when {
-                run.earlyBlocker != null ||
-                    run.searchDiagnostic().inputBlocker == RecoveryInputBlocker.STRUCTURAL_FIXED_CELLS ->
-                    skipLists(ListDecodingStatus.INPUT_CONSTRAINT)
+                inputBlocked -> skipLists(ListDecodingStatus.INPUT_CONSTRAINT)
                 originalRsParsed -> skipLists(if (maxKnownDataEccMismatches == 0)
                     ListDecodingStatus.ZERO_ERROR_LIMIT else ListDecodingStatus.ORIGINAL_RS_SUCCEEDED)
                 else -> {
                     if (maxKnownDataEccMismatches == 0) skipLists(ListDecodingStatus.ZERO_ERROR_LIMIT)
-                    else {
-                        if (run.diagnosticInput.hasImageMargins) search(RecoveryPhase.IMAGE_ERASURES)
-                        run.originalBlocks.clear()
-                        run.originalBlockBytes = 0L
-                        searchLists(early = true)
-                    }
+                    else searchLists(early = true)
                     // Independent passes keep a large tentative RS list from starving exact spaces.
                     search(RecoveryPhase.BIT_CONSTRAINTS)
                     if (maxKnownDataEccMismatches != 0) {
