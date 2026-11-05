@@ -77,7 +77,6 @@ import io.github.earthdiver.qrrepair.core.historyCellChangeCount
 import io.github.earthdiver.qrrepair.core.InitialThresholdEstimator
 import io.github.earthdiver.qrrepair.core.QrContentPreviewParser
 import io.github.earthdiver.qrrepair.core.QrContentPreview
-import io.github.earthdiver.qrrepair.core.UiMode
 import io.github.earthdiver.qrrepair.core.RepairGuidance
 import io.github.earthdiver.qrrepair.core.RepairTraceBuilder
 import io.github.earthdiver.qrrepair.ui.BitmapUtils
@@ -86,7 +85,6 @@ import io.github.earthdiver.qrrepair.ui.ImageAdjustmentEditor
 import io.github.earthdiver.qrrepair.core.ImageAdjustment
 import io.github.earthdiver.qrrepair.session.RecoverySessionStore
 import io.github.earthdiver.qrrepair.session.RecoverySessionCodec
-import io.github.earthdiver.qrrepair.session.SessionSaveQueue
 import io.github.earthdiver.qrrepair.session.StoredSession
 import com.google.zxing.Result
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
@@ -224,17 +222,12 @@ class MainActivity : Activity() {
     }
     private val recoveryTasks = RecoveryTaskRunner(executor, { runOnUiThread(it) }, workGeneration::get)
     private var recoveryProgressDialog: RecoveryProgressDialog? = null
-    private val sessionSaves = SessionSaveQueue(
-        ioExecutor,
-        save = { id, entries, cursor -> sessionStore.save(id, UiMode.SIMPLE, entries, cursor) },
-        onError = { reportPersistenceFailure(ui("セッションの自動保存に失敗", "Automatic session save failed"), it) },
-    )
     private val finderSearchGeneration = AtomicInteger(0)
     @Volatile private var lastPersistenceWarningAtMs = 0L
     private val recoveryEngine = RecoveryEngine()
-    private lateinit var sessionStore: RecoverySessionStore
-    private val sessionHistory = RecoverySessionHistory(maxEntries = 40)
-    private var sessionId: String? = null
+    private lateinit var workspaceSession: WorkspaceSessionCoordinator
+    private val sessionHistory: RecoverySessionHistory get() = workspaceSession.history
+    private val sessionId: String? get() = workspaceSession.id
     /** Generation of the one history snapshot currently being recalculated, if any. */
     private var historyRestoreToken: Int? = null
 
@@ -278,7 +271,9 @@ class MainActivity : Activity() {
         setTheme(activeStyle.theme)
         super.onCreate(savedInstanceState)
         pendingTextMatrix = savedInstanceState?.getString(STATE_PENDING_TEXT_MATRIX)
-        sessionStore = RecoverySessionStore(this)
+        workspaceSession = WorkspaceSessionCoordinator(RecoverySessionStore(this), ioExecutor,
+            { runOnUiThread(it) },
+            onSaveError = { reportPersistenceFailure(ui("セッションの自動保存に失敗", "Automatic session save failed"), it) })
         purgeStaleCameraCaptures()
         setContentView(buildUi())
         retained?.imageImport?.let { image ->
@@ -287,12 +282,11 @@ class MainActivity : Activity() {
             return
         }
         retained?.editorWork?.let { work ->
-            sessionId = work.sessionId
+            workspaceSession.restoreIdentity(work.sessionId, work.history, work.cursor)
             prepared = work.source
             analysisPrepared = work.source
             preprocessSettings = work.savedSettings
             savedCellEditState = work.savedEdits
-            sessionHistory.replace(work.history, work.cursor)
             retained.immediateResult?.takeIf { it.sessionId == work.sessionId &&
                 it.entryId == sessionHistory.current?.id && it.settings == work.savedSettings }?.let {
                 renderImmediateQrResult(it, showNotice = false)
@@ -745,18 +739,15 @@ class MainActivity : Activity() {
         }
         resumeButton.isEnabled = false
         val generation = workGeneration.get()
-        ioExecutor.execute {
-            val recent = runCatching { sessionStore.listRecent().firstOrNull() }
-            runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
-                resumeButton.isEnabled = true
-                if (generation != workGeneration.get()) return@runOnUiThread
-                val entry = recent.getOrNull()
-                if (entry != null) restoreSessionById(entry.id)
-                else Toast.makeText(this, if (recent.isFailure) {
-                    ui("保存した作業を読み込めませんでした。作業一覧から確認してください。", "Could not load saved work. Check the saved work list.")
-                } else ui("保存した作業はありません。カメラまたは画像の選択から始めてください。", "No saved work. Start with the camera or choose an image."), Toast.LENGTH_LONG).show()
-            }
+        workspaceSession.listRecent { recent ->
+            if (isFinishing || isDestroyed) return@listRecent
+            resumeButton.isEnabled = true
+            if (generation != workGeneration.get()) return@listRecent
+            val entry = recent.getOrNull()?.firstOrNull()
+            if (entry != null) restoreSessionById(entry.id)
+            else Toast.makeText(this, if (recent.isFailure) {
+                ui("保存した作業を読み込めませんでした。作業一覧から確認してください。", "Could not load saved work. Check the saved work list.")
+            } else ui("保存した作業はありません。カメラまたは画像の選択から始めてください。", "No saved work. Start with the camera or choose an image."), Toast.LENGTH_LONG).show()
         }
     }
 
@@ -1403,14 +1394,11 @@ class MainActivity : Activity() {
     }
 
     private fun persistSessionAsync() {
-        val id = sessionId ?: return
-        if (sessionHistory.entries.isEmpty()) return
-        val removed = RecoverySessionCodec.trimHistoryToPayloadLimit(sessionHistory, id,
-            maxRetainedBytes = RecoveryMemoryPolicy.current().historyBytes)
-        if (removed > 0) Toast.makeText(this, ui(
-            "履歴の容量上限により古い履歴を${removed}件整理しました。現在の作業は保持しています。",
-            "Removed $removed older history entries at the size limit. Current work is preserved."), Toast.LENGTH_SHORT).show()
-        sessionSaves.enqueue(id, sessionHistory.entries.toList(), sessionHistory.cursor)
+        workspaceSession.persist(RecoveryMemoryPolicy.current().historyBytes) { removed ->
+            Toast.makeText(this, ui(
+                "履歴の容量上限により古い履歴を${removed}件整理しました。現在の作業は保持しています。",
+                "Removed $removed older history entries at the size limit. Current work is preserved."), Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun reportPersistenceFailure(prefix: String, error: Throwable) {
@@ -1649,47 +1637,45 @@ class MainActivity : Activity() {
     }
 
     private fun showRecentSessions() {
-        ioExecutor.execute {
-            val recent = try { sessionStore.listRecent() } catch (_: Throwable) { emptyList() }
-            runOnUiThread {
-                if (recent.isEmpty()) {
-                    Toast.makeText(this, ui("保存済みの作業はありません。", "No saved work is available."), Toast.LENGTH_SHORT).show()
-                    return@runOnUiThread
-                }
-                val labels = recent.map {
-                    "${DateFormat.format("MM/dd HH:mm", Date(it.updatedAtMs))}  ${it.lastLabel.ifBlank { ui("QR修復", "QR repair") }}  (${it.historyCount}${ui("履歴", " entries")})"
-                }.toTypedArray()
-                val title = LinearLayout(this).apply {
-                    orientation = LinearLayout.VERTICAL
-                    setPadding(dp(24), dp(16), dp(24), dp(8))
-                    addView(TextView(this@MainActivity).apply {
-                        textSize = 20f
-                        text = if (modernStyle) getString(R.string.saved_work) + " (${recent.size}/${RecoverySessionStore.MAX_SAVED_SESSIONS})"
-                            else getString(R.string.recent_work_select_format, recent.size, RecoverySessionStore.MAX_SAVED_SESSIONS)
-                    })
-                    addView(TextView(this@MainActivity).apply {
-                        textSize = 14f
-                        setPadding(0, dp(8), 0, 0)
-                        setText(R.string.saved_work_actions_hint)
-                    })
-                    addView(TextView(this@MainActivity).apply {
-                        textSize = 14f
-                        setPadding(0, dp(8), 0, 0)
-                        text = getString(R.string.saved_work_retention, RecoverySessionStore.MAX_SAVED_SESSIONS)
-                    })
-                }
-                val dialog = AlertDialog.Builder(this)
-                    // Keep guidance outside setMessage, which would hide the session ListView.
-                    .setCustomTitle(title)
-                    .setItems(labels) { _, which -> restoreSessionById(recent[which].id) }
-                    .setNeutralButton(R.string.delete_all) { _, _ -> confirmDeleteAllRecentSessions(recent.size) }
-                    .setNegativeButton(R.string.close, null)
-                    .show()
-                dialog.listView.setOnItemLongClickListener { _, _, position, _ ->
-                    dialog.dismiss()
-                    confirmDeleteRecentSession(recent[position].id)
-                    true
-                }
+        workspaceSession.listRecent { result ->
+            val recent = result.getOrDefault(emptyList())
+            if (recent.isEmpty()) {
+                Toast.makeText(this, ui("保存済みの作業はありません。", "No saved work is available."), Toast.LENGTH_SHORT).show()
+                return@listRecent
+            }
+            val labels = recent.map {
+                "${DateFormat.format("MM/dd HH:mm", Date(it.updatedAtMs))}  ${it.lastLabel.ifBlank { ui("QR修復", "QR repair") }}  (${it.historyCount}${ui("履歴", " entries")})"
+            }.toTypedArray()
+            val title = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(24), dp(16), dp(24), dp(8))
+                addView(TextView(this@MainActivity).apply {
+                    textSize = 20f
+                    text = if (modernStyle) getString(R.string.saved_work) + " (${recent.size}/${RecoverySessionStore.MAX_SAVED_SESSIONS})"
+                        else getString(R.string.recent_work_select_format, recent.size, RecoverySessionStore.MAX_SAVED_SESSIONS)
+                })
+                addView(TextView(this@MainActivity).apply {
+                    textSize = 14f
+                    setPadding(0, dp(8), 0, 0)
+                    setText(R.string.saved_work_actions_hint)
+                })
+                addView(TextView(this@MainActivity).apply {
+                    textSize = 14f
+                    setPadding(0, dp(8), 0, 0)
+                    text = getString(R.string.saved_work_retention, RecoverySessionStore.MAX_SAVED_SESSIONS)
+                })
+            }
+            val dialog = AlertDialog.Builder(this)
+                // Keep guidance outside setMessage, which would hide the session ListView.
+                .setCustomTitle(title)
+                .setItems(labels) { _, which -> restoreSessionById(recent[which].id) }
+                .setNeutralButton(R.string.delete_all) { _, _ -> confirmDeleteAllRecentSessions(recent.size) }
+                .setNegativeButton(R.string.close, null)
+                .show()
+            dialog.listView.setOnItemLongClickListener { _, _, position, _ ->
+                dialog.dismiss()
+                confirmDeleteRecentSession(recent[position].id)
+                true
             }
         }
     }
@@ -1713,36 +1699,16 @@ class MainActivity : Activity() {
     }
 
     private fun deleteAllRecentSessions() {
-        // The active work is included, so detach it before queued deletion runs.
-        sessionId = null
-        ioExecutor.execute {
-            val deleted = try {
-                sessionStore.deleteAll()
-                true
-            } catch (_: Throwable) {
-                false
-            }
-            runOnUiThread {
-                if (deleted) Toast.makeText(this, R.string.all_recent_work_deleted, Toast.LENGTH_SHORT).show()
-                else Toast.makeText(this, R.string.delete_recent_work_failed, Toast.LENGTH_SHORT).show()
-            }
+        workspaceSession.deleteAll { deleted ->
+            if (deleted) Toast.makeText(this, R.string.all_recent_work_deleted, Toast.LENGTH_SHORT).show()
+            else Toast.makeText(this, R.string.delete_recent_work_failed, Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun deleteRecentSession(id: String) {
-        // Stop future snapshots from recreating a session the user has chosen to delete.
-        if (sessionId == id) sessionId = null
-        ioExecutor.execute {
-            val deleted = try {
-                sessionStore.delete(id)
-                true
-            } catch (_: Throwable) {
-                false
-            }
-            runOnUiThread {
-                if (deleted) showRecentSessions()
-                else Toast.makeText(this, R.string.delete_recent_work_failed, Toast.LENGTH_SHORT).show()
-            }
+        workspaceSession.delete(id) { deleted ->
+            if (deleted) showRecentSessions()
+            else Toast.makeText(this, R.string.delete_recent_work_failed, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -1750,30 +1716,12 @@ class MainActivity : Activity() {
         showWorkspace()
         val token = workGeneration.incrementAndGet()
         statusText.text = ui("保存済みセッションを読み込み中…", "Loading saved session…")
-        ioExecutor.execute {
-            val stored = try { sessionStore.load(id) } catch (_: Throwable) { null }
-            val bitmap = stored?.sourceBitmap
-            val p = if (bitmap != null) try { BitmapUtils.prepare(bitmap) } catch (_: Throwable) { null } else null
-            fun recycleLoadedBitmaps() {
-                p?.bitmap?.takeIf { it !== bitmap && !it.isRecycled }?.recycle()
-                bitmap?.takeIf { !it.isRecycled }?.recycle()
+        workspaceSession.load(id, isCurrent = { token == workGeneration.get() }) { loaded ->
+            if (loaded == null) {
+                statusText.text = ui("セッションを読み込めませんでした。", "Could not load the session.")
+                return@load
             }
-            if (token != workGeneration.get()) {
-                recycleLoadedBitmaps()
-                return@execute
-            }
-            runOnUiThread {
-                if (token != workGeneration.get()) {
-                    recycleLoadedBitmaps()
-                    return@runOnUiThread
-                }
-                if (stored == null) {
-                    statusText.text = ui("セッションを読み込めませんでした。", "Could not load the session.")
-                    return@runOnUiThread
-                }
-                bitmap?.takeIf { it !== p?.bitmap && !it.isRecycled }?.recycle()
-                applyStoredSession(stored, p)
-            }
+            applyStoredSession(loaded.stored, loaded.source)
         }
     }
 
@@ -1781,11 +1729,10 @@ class MainActivity : Activity() {
         val retained = pendingRetainedCellHistory
         pendingRetainedCellHistory = null
         savedCellEditState = null
-        sessionId = stored.id
+        workspaceSession.restoreIdentity(stored.id, stored.historyEntries, stored.historyCursor)
         immediateResultShown = false
         prepared = source
         analysisPrepared = source
-        sessionHistory.replace(stored.historyEntries, stored.historyCursor)
         sessionHistory.current?.let {
             restoreSnapshot(it, ui("保存済み作業を復元", "Restored saved work")) {
                 // Consume once, only after the saved work has been restored and checked.
@@ -2115,15 +2062,8 @@ class MainActivity : Activity() {
                     preprocessSettings = settings
                     savedCellEditState = null
                     recoveryState.clear()
-                    sessionId = sessionStore.newId()
-                    sessionHistory.clear()
-                    val newSessionId = sessionId!!
-                    ioExecutor.execute {
-                        try {
-                            sessionStore.saveSourceBitmap(newSessionId, p.bitmap)
-                        } catch (t: Throwable) {
-                            reportPersistenceFailure(ui("疑似画像の保存に失敗", "Synthetic image save failed"), t)
-                        }
+                    workspaceSession.beginNew(p.bitmap) { error ->
+                        reportPersistenceFailure(ui("疑似画像の保存に失敗", "Synthetic image save failed"), error)
                     }
                     sessionHistory.record(
                         RecoveryHistoryEntry(
@@ -2225,15 +2165,8 @@ class MainActivity : Activity() {
             analysisPrepared = adjusted
             savedCellEditState = null
             preprocessSettings = result.settings
-            sessionId = sessionStore.newId()
-            sessionHistory.clear()
-            val newSessionId = sessionId!!
-            ioExecutor.execute {
-                try {
-                    sessionStore.saveSourceBitmap(newSessionId, p.bitmap)
-                } catch (t: Throwable) {
-                    reportPersistenceFailure(ui("元画像の保存に失敗", "Source image save failed"), t)
-                }
+            workspaceSession.beginNew(p.bitmap) { error ->
+                reportPersistenceFailure(ui("元画像の保存に失敗", "Source image save failed"), error)
             }
             sessionHistory.record(
                 RecoveryHistoryEntry(
@@ -2486,19 +2419,8 @@ class MainActivity : Activity() {
                     draft.events.forEach { event ->
                         recordPreprocessHistory(event.settings, event.label, event.detail)
                     }
-                    // Deletion detaches the open work from storage. Only an explicit save may
-                    // create a new session; never resurrect the deleted session automatically.
-                    if (sessionId == null) {
-                        val newId = sessionStore.newId()
-                        val sourceBitmap = source.bitmap
-                        sessionId = newId
-                        ioExecutor.execute {
-                            try {
-                                sessionStore.saveSourceBitmap(newId, sourceBitmap)
-                            } catch (t: Throwable) {
-                                reportPersistenceFailure(ui("元画像の保存に失敗", "Source image save failed"), t)
-                            }
-                        }
+                    workspaceSession.ensureAttached(source.bitmap) { error ->
+                        reportPersistenceFailure(ui("元画像の保存に失敗", "Source image save failed"), error)
                     }
                     persistSessionAsync()
                     analysisPrepared = draft.image

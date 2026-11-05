@@ -62,7 +62,7 @@ class SingleSegmentRetryUiTest {
         assertTrue(state.recoveries.any { it.text == "qrevy-a" })
         assertTrue(state.oneTimeSingleSegment)
         assertEquals(saved, field("preprocessSettings").get(activity))
-        val history = field("sessionHistory").get(activity) as RecoverySessionHistory
+        val history = activity.workspaceSessionForTest().history
         val snapshot = history.current!!.snapshot
         assertTrue(snapshot.oneTimeSingleSegment)
         assertFalse(snapshot.preprocessSettings!!.trustKnownPayloadCount)
