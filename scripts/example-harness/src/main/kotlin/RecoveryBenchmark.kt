@@ -25,6 +25,14 @@ private fun shuffled(values: List<Int>, random: Random) = values.toMutableList()
 private const val IMAGE_SCALE = 6
 private fun rowShift(y: Int, side: Int) = (3 * kotlin.math.sin(y * Math.PI / side)).toInt()
 
+private fun initialImageBenchmarkSettings(image: LumaImage): PreprocessSettings {
+    val rgb = IntArray(image.pixels.size) { i -> -0x1000000 or (image.pixels[i] * 0x10101) }
+    val thresholds = InitialThresholdEstimator.estimate(android.graphics.Bitmap(image.width, image.height, rgb))
+    return PreprocessSettings(blackMax = thresholds?.blackMax ?: 96,
+        whiteMin = thresholds?.whiteMin ?: 160, automaticThresholds = true,
+        photographicSource = true).withInitialErrorLimits()
+}
+
 private class BenchmarkFixture(val name: String, val seed: Int) {
     val version = if (name in setOf("burst", "multiple-blocks")) 3 else 1
     val ecc = if (version == 3) ErrorCorrectionLevel.Q else ErrorCorrectionLevel.L
@@ -259,8 +267,39 @@ private fun runBenchmark(f: BenchmarkFixture, checkLimit: Int, guardMillis: Long
         "formatAttempts" to outcome.formatAttempts)
 }
 
+private fun imageBenchmarkSelfTest() {
+    val fixture = BenchmarkFixture("clean", 0)
+    val image = fixture.raster("clean")
+    val weakCell = fixture.extraction.codewords.first().coordinates.first()
+    // One correctly read cell has a smaller optical margin than every other codeword.
+    // The image-erasure retry must still run after the original RS candidate succeeds.
+    val weakLuminance = if (fixture.matrix[weakCell.x, weakCell.y].value == ModuleValue.ONE) 100 else 160
+    for (y in (weakCell.y + 4) * IMAGE_SCALE until (weakCell.y + 5) * IMAGE_SCALE) {
+        for (x in (weakCell.x + 4) * IMAGE_SCALE until (weakCell.x + 5) * IMAGE_SCALE) {
+            image.pixels[y * image.width + x] = weakLuminance
+        }
+    }
+    val settings = fixture.knownGrid(initialImageBenchmarkSettings(image))
+    val geometry = GridGeometry(fixture.version, FinderRole.TOP_LEFT, 0.0, 0.0, IMAGE_SCALE.toDouble(), 0.0,
+        settings.manualQuad, GeometryModel.MANUAL_PROJECTIVE).reanchored()
+    val sampled = MatrixSampler(image, SamplingProfile(settings, inverted = false)).sample(geometry).first
+    check(sampled.hasImageMargins && sampled.imageMargin(weakCell.x, weakCell.y) >= 0)
+    check(CodewordExtractor.extract(sampled, fixture.version, fixture.mask).codewords.map { it.value }
+        .toIntArray().contentEquals(fixture.original))
+    val candidate = RecoveryEngine().recover(sampled,
+        formatConstraint = QrFormatConstraint(fixture.ecc, fixture.mask),
+        maxKnownDataEccMismatches = settings.effectiveDataEccMismatchLimit,
+        listDecodingAdditionalErrors = 0, knownBitErrorLimit = 0)
+        .single { it.correctedInterleaved.contentEquals(fixture.original) }
+    check(candidate.text == fixture.text)
+    check((listOf(candidate) + candidate.alternativeDerivations).any { route ->
+        route.blockDerivations.values.flatten().any { it.imageErasures == listOf(0) }
+    }) { "Image benchmark sampling did not enable the temporary image-erasure RS route" }
+}
+
 private fun benchmarkSelfTest() {
     recoveryProfileSelfTest()
+    imageBenchmarkSelfTest()
     for (name in scenarioNames) {
         val f = BenchmarkFixture(name, 0)
         check(benchmarkJson.toJson(f.metadata()) == benchmarkJson.toJson(BenchmarkFixture(name, 0).metadata()))
@@ -317,10 +356,7 @@ private fun imageBenchmark(args: Array<String>) {
             var checks = 0
             var stop: String? = null
             val result = if (!knownGrid && estimate == null) null else run {
-                val rgb = IntArray(image.pixels.size) { i -> -0x1000000 or (image.pixels[i] * 0x10101) }
-                val thresholds = InitialThresholdEstimator.estimate(android.graphics.Bitmap(image.width, image.height, rgb))
-                val base = PreprocessSettings(blackMax = thresholds?.blackMax ?: 96,
-                    whiteMin = thresholds?.whiteMin ?: 160, automaticThresholds = true).withInitialErrorLimits()
+                val base = initialImageBenchmarkSettings(image)
                 val settings = when {
                     knownGrid -> fixture.knownGrid(base)
                     oriented -> {

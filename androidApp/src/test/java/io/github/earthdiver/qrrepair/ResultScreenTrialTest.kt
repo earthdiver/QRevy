@@ -228,7 +228,7 @@ class ResultScreenTrialTest {
             assertTrue(snapshot.selectedQr!!.matches(second))
             assertFalse(snapshot.selectedQr.matches(first))
             assertEquals(true, snapshot.samplingInverted)
-            assertEquals(1, field<RecoverySessionHistory>(activity, "sessionHistory").entries.size)
+            assertEquals(1, activity.workspaceSessionForTest().history.entries.size)
             state.showResults(accumulator.result())
             refresh(activity)
             assertEquals(activity.getString(R.string.diagnostic_open_section, DiagnosticStage.VERIFICATION.label()), verification.text.toString())

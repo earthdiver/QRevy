@@ -128,4 +128,32 @@ class DistortionSessionCodecTest {
         }))
         assertThrows(IllegalArgumentException::class.java) { RecoverySessionCodec.encode(payload(folded)) }
     }
+
+    @Test fun checksummedLocalFoldInALargeSymbolIsRejectedOnImportAndExport() {
+        for ((span, displacement) in listOf(1.0 to 1.25, .1 to .40110301379474095)) {
+            val last = 176.0
+            val points = listOf(PointD(0.0, 0.0), PointD(last, 0.0), PointD(last, last), PointD(0.0, last),
+                PointD(91.0 - span, 90.0), PointD(91.0 + span, 90.0), PointD(91.0, 90.0 - span), PointD(91.0, 90.0 + span), PointD(91.0, 90.0))
+            val geometry = GridGeometry(40, FinderRole.TOP_LEFT, 3.0, 3.0, 1.0, 0.0,
+                ImageQuad(points[0], points[1], points[2], points[3]), GeometryModel.THIN_PLATE_SPLINE,
+                ThinPlateWarp(points.map { WarpLandmark(it * (1.0 / last), PointD(0.0, 0.0), 1e-6) }))
+            val original = payload(geometry).let { p ->
+                val entry = p.historyEntries.single()
+                p.copy(historyEntries = listOf(entry.copy(snapshot = entry.snapshot.copy(
+                    preprocessSettings = entry.snapshot.preprocessSettings!!.copy(version = 40)))))
+            }
+            val raw = QrrContainerCodec.decode(RecoverySessionCodec.encode(original)).bytes
+            ByteBuffer.wrap(raw).putDouble(warpOffset(raw) + 4 + points.lastIndex * 40 + 16, displacement)
+            assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) {
+                RecoverySessionCodec.decode(QrrContainerCodec.encode { it.write(raw) })
+            }
+            val folded = geometry.copy(warp = ThinPlateWarp(geometry.warp!!.landmarks.mapIndexed { index, mark ->
+                if (index == points.lastIndex) mark.copy(displacement = PointD(displacement, 0.0)) else mark
+            }))
+            val entry = original.historyEntries.single()
+            assertThrows(IllegalArgumentException::class.java) {
+                RecoverySessionCodec.encode(original.copy(historyEntries = listOf(entry.copy(snapshot = entry.snapshot.copy(geometry = folded)))))
+            }
+        }
+    }
 }

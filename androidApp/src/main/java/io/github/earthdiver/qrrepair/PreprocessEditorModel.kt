@@ -5,9 +5,11 @@ import io.github.earthdiver.qrrepair.core.FinderPolarity
 import io.github.earthdiver.qrrepair.core.FinderRole
 import io.github.earthdiver.qrrepair.core.GeometryModel
 import io.github.earthdiver.qrrepair.core.GridGeometry
+import io.github.earthdiver.qrrepair.core.GridThresholdEstimator
 import io.github.earthdiver.qrrepair.core.InitialThresholdEstimator
 import io.github.earthdiver.qrrepair.core.MatrixSampler
 import io.github.earthdiver.qrrepair.core.ModuleValue
+import io.github.earthdiver.qrrepair.core.ModuleObservation
 import io.github.earthdiver.qrrepair.core.PolarityMode
 import io.github.earthdiver.qrrepair.core.PreprocessSettings
 import io.github.earthdiver.qrrepair.core.QrMatrix
@@ -48,6 +50,10 @@ internal class PreprocessEditorModel(
             initialSoftEdits = initial.effectiveSoftEdits)
     private val changes = restoredDraft?.changes?.copyForEditing() ?: PreprocessDraftState(initial)
     private val sampler = PreRecoveryPreviewSampler()
+    class ObservationRequest(val input: PreRecoveryPreviewSampler.ObservationInput)
+    @Volatile private var observationRequest: ObservationRequest? = null
+    var samplingFailed = false
+        private set
     val correction = DistortionPreviewState()
     private var restoreCorrection = initial.previewGeometry
     private var provisionalImage = initialWorking
@@ -57,6 +63,7 @@ internal class PreprocessEditorModel(
     init { cells.priorityLimit = initial.prioritySearchLimit }
 
     fun replaceWorking(replacement: BitmapUtils.Prepared) {
+        invalidateSampling()
         correction.invalidate()
         restoreCorrection = null
         val previous = working
@@ -65,6 +72,7 @@ internal class PreprocessEditorModel(
     }
 
     fun release() {
+        invalidateSampling()
         correction.invalidate()
         releaseIfTemporary(working, source)
     }
@@ -102,7 +110,7 @@ internal class PreprocessEditorModel(
         })
         // In automatic mode use provisional thresholds for the initial candidate ranking.
         val normalized = if (profile.settings.automaticThresholds) profile.copy(settings = profile.settings.copy(
-            blackMax = profile.settings.provisionalBlackMax, whiteMin = profile.settings.provisionalWhiteMin,
+            blackMax = profile.provisionalThresholds.blackMax, whiteMin = profile.provisionalThresholds.whiteMin,
         )) else profile
         return DistortionPreviewState.Input(working.luma, geometry, normalized)
     }
@@ -128,9 +136,50 @@ internal class PreprocessEditorModel(
         !initial.distortionCorrection || !grid.logicalGridAssigned ||
             (previewInput(controls, grid)?.let(correction::matches) == true && correction.complete)
 
+    private fun observationInput(controls: PreprocessControlSnapshot, grid: PreprocessGeometrySnapshot): PreRecoveryPreviewSampler.ObservationInput? {
+        val input = previewInput(controls, grid) ?: return null
+        val geometry = correction.selected?.takeIf { correction.matches(input) } ?: input.base
+        return PreRecoveryPreviewSampler.ObservationInput(input.image, geometry, input.profile.inverted)
+    }
+
+    fun invalidateSampling() {
+        observationRequest = null
+        samplingFailed = false
+    }
+
+    fun requestObservations(controls: PreprocessControlSnapshot, grid: PreprocessGeometrySnapshot): ObservationRequest? {
+        val input = observationInput(controls, grid)
+        if (input?.geometry?.warp == null) {
+            invalidateSampling()
+            return null
+        }
+        if (observationRequest?.input != input) invalidateSampling()
+        if (sampler.hasObservations(input) || observationRequest?.input == input) return null
+        samplingFailed = false
+        return ObservationRequest(input).also { observationRequest = it }
+    }
+
+    fun calculateObservations(request: ObservationRequest): Array<ModuleObservation?> = request.input.let {
+        GridThresholdEstimator.observe(it.image, it.geometry, it.inverted) { observationRequest !== request }
+    }
+
+    fun acceptObservations(request: ObservationRequest, result: Result<Array<ModuleObservation?>>): Boolean {
+        if (observationRequest !== request) return false
+        samplingFailed = result.isFailure
+        result.getOrNull()?.let { sampler.acceptObservations(request.input, it) }
+        return true
+    }
+
+    fun samplingReady(controls: PreprocessControlSnapshot, grid: PreprocessGeometrySnapshot): Boolean {
+        val input = observationInput(controls, grid) ?: return true
+        return input.geometry.warp == null || sampler.hasObservations(input)
+    }
+
     fun sample(controls: PreprocessControlSnapshot, grid: PreprocessGeometrySnapshot): Preview? {
         val input = previewInput(controls, grid) ?: return null
         val geometry = correction.selected?.takeIf { correction.matches(input) } ?: input.base
+        if (geometry.warp != null && !sampler.hasObservations(
+                PreRecoveryPreviewSampler.ObservationInput(input.image, geometry, input.profile.inverted))) return null
         val (matrix, stats) = sampler.sample(input.image, geometry, input.profile, grid.logicalGridAssigned)
         return Preview(geometry, matrix, input.profile, stats)
     }

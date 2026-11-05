@@ -1,13 +1,21 @@
 package io.github.earthdiver.qrrepair.ui
 
 import android.graphics.Bitmap
+import android.os.Looper
+import android.os.SystemClock
+import android.view.MotionEvent
+import android.view.View
 import io.github.earthdiver.qrrepair.core.*
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import java.util.concurrent.TimeUnit
+import kotlin.math.PI
+import kotlin.math.sin
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -85,6 +93,80 @@ class DistortionEditorTest {
             assertEquals(2, outline.points(g.asProjective(), endpoints, false).size)
             view.setImageQuad(g.imageQuad!!.copy(topLeft = PointD(22.0, 20.0)))
             assertNull(view.previewGeometry()!!.warp)
+        } finally { bitmap.recycle() }
+    }
+
+    private fun stronglyCurvedGeometry(): GridGeometry {
+        val quad = ImageQuad(PointD(50.0, 50.0), PointD(210.0, 50.0),
+            PointD(210.0, 210.0), PointD(50.0, 210.0))
+        val landmarks = (0..4).flatMap { iy -> (0..4).map { ix ->
+            WarpLandmark(PointD(ix / 4.0, iy / 4.0),
+                PointD(8.0 * (2.4 + 1.6 * sin(PI * ix + 4.2)), 0.0))
+        } }
+        return GridGeometry(1, FinderRole.TOP_LEFT, 74.0, 74.0, 8.0, 0.0,
+            quad, GeometryModel.THIN_PLATE_SPLINE, ThinPlateWarp(landmarks)).reanchored()
+    }
+
+    private fun tapImagePoint(view: View, point: PointD) {
+        val downTime = SystemClock.uptimeMillis()
+        for ((index, action) in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP).withIndex()) {
+            val event = MotionEvent.obtain(downTime, downTime + index * 10L, action,
+                (point.x * 2.0).toFloat(), (point.y * 2.0).toFloat(), 0)
+            try { view.onTouchEvent(event) } finally { event.recycle() }
+        }
+        shadowOf(Looper.getMainLooper()).idleFor(500, TimeUnit.MILLISECONDS)
+    }
+
+    @Test fun settingsOverlaySelectsAndPaintsStronglyCurvedCellsAtFloatTouchPositions() {
+        val geometry = stronglyCurvedGeometry()
+        assertTrue(geometry.hasUsableWarp())
+        val bitmap = Bitmap.createBitmap(300, 300, Bitmap.Config.ARGB_8888)
+        try {
+            val selected = mutableListOf<Coord>()
+            val painted = mutableListOf<Pair<Set<Coord>, ModuleValue>>()
+            val overlay = PreprocessOverlayView(RuntimeEnvironment.getApplication()).apply {
+                setBitmap(bitmap)
+                setVersion(1)
+                setImageQuad(geometry.imageQuad!!)
+                layout(0, 0, 600, 600)
+                setCellEditing(geometry, QrMatrix(21), null)
+                onEditCellSelected = { x, y -> selected += Coord(x, y) }
+                onCellBrushApplied = { cells, value -> painted += cells to value }
+            }
+            tapImagePoint(overlay, PointD(10.0, 10.0))
+            assertTrue(selected.isEmpty())
+            val target = Coord(14, 2)
+            val point = geometry.moduleToImage(target.x.toDouble(), target.y.toDouble())
+            tapImagePoint(overlay, point)
+            assertEquals(listOf(target), selected)
+            overlay.cellEditorTool = EditorTool.BRUSH_ONE
+            tapImagePoint(overlay, point)
+            assertEquals(listOf(setOf(target) to ModuleValue.ONE), painted)
+        } finally { bitmap.recycle() }
+    }
+
+    @Test fun expandedEditorSelectsAndPaintsStronglyCurvedCellsAtFloatTouchPositions() {
+        val geometry = stronglyCurvedGeometry()
+        assertTrue(geometry.hasUsableWarp())
+        val bitmap = Bitmap.createBitmap(300, 300, Bitmap.Config.ARGB_8888)
+        try {
+            val selected = mutableListOf<Coord>()
+            val painted = mutableListOf<Pair<Set<Coord>, ModuleValue>>()
+            val editor = QrEditorView(RuntimeEnvironment.getApplication()).apply {
+                layout(0, 0, 600, 600)
+                setDocument(bitmap, geometry, QrMatrix(21))
+                onCellSelected = { x, y -> selected += Coord(x, y) }
+                onBrushApplied = { cells, value -> painted += cells to value }
+            }
+            tapImagePoint(editor, PointD(10.0, 10.0))
+            assertTrue(selected.isEmpty())
+            val target = Coord(14, 2)
+            val point = geometry.moduleToImage(target.x.toDouble(), target.y.toDouble())
+            tapImagePoint(editor, point)
+            assertEquals(listOf(target), selected)
+            editor.editorTool = EditorTool.BRUSH_ONE
+            tapImagePoint(editor, point)
+            assertEquals(listOf(setOf(target) to ModuleValue.ONE), painted)
         } finally { bitmap.recycle() }
     }
 

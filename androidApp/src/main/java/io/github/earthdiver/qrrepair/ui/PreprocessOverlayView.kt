@@ -71,12 +71,13 @@ class PreprocessOverlayView(context: Context) : View(context) {
     private var editMatrix: QrMatrix? = null
     private var editCell: Coord? = null
     var cellEditorTool: EditorTool = EditorTool.NAVIGATE
-    private val editStroke = linkedSetOf<Coord>()
-    private var editGestureCancelledByMultiTouch = false
+    private val cellGesture = CellEditGesture(
+        requireCellOnDown = true,
+        keepStampPreviewOutsideGrid = true,
+        includeReleaseInRange = false,
+    )
     private var editSelection: Set<Coord> = emptySet()
     private var editSelectionIsRectangle = false
-    private var editRangeStart: Coord? = null
-    private var editRangeEnd: Coord? = null
     private var cellEditInteractive = false
     private var lastClassificationSummary = ""
 
@@ -177,9 +178,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
         clearCornerSelection()
         editCell = editCell?.let { Coord(it.y, it.x) }
         editSelection = editSelection.mapTo(linkedSetOf()) { Coord(it.y, it.x) }
-        editRangeStart = editRangeStart?.let { Coord(it.y, it.x) }
-        editRangeEnd = editRangeEnd?.let { Coord(it.y, it.x) }
-        editStroke.clear()
+        cellGesture.transposeRange()
         invalidate()
     }
 
@@ -325,8 +324,8 @@ class PreprocessOverlayView(context: Context) : View(context) {
     fun clearCellEditing() {
         sampledQuad = null
         editGeometry = null; editMatrix = null; editCell = null
-        editStroke.clear(); editSelection = emptySet(); editSelectionIsRectangle = false
-        editRangeStart = null; editRangeEnd = null
+        cellGesture.clearPreview()
+        editSelection = emptySet(); editSelectionIsRectangle = false
         cellEditorTool = EditorTool.NAVIGATE
         invalidate()
     }
@@ -349,34 +348,6 @@ class PreprocessOverlayView(context: Context) : View(context) {
         selectedCorner = null; dragCorner = null; dragPoint = null
         dragStartTouch = null; dragStartCorner = null; cornerDragStarted = false
         invalidate()
-    }
-
-    private fun currentEditRangeCells(): Set<Coord> {
-        val start = editRangeStart ?: return emptySet()
-        val end = editRangeEnd ?: return emptySet()
-        return buildSet {
-            for (y in minOf(start.y, end.y)..maxOf(start.y, end.y)) {
-                for (x in minOf(start.x, end.x)..maxOf(start.x, end.x)) add(Coord(x, y))
-            }
-        }
-    }
-
-    private fun editFootprint(center: Coord, size: Int): Set<Coord> {
-        val dimension = editMatrix?.dimension ?: return emptySet()
-        return moduleFootprint(center, size, dimension)
-    }
-
-    private fun EditorTool.editBrushSize(): Int? = when (this) {
-        EditorTool.BRUSH_ZERO, EditorTool.BRUSH_ONE, EditorTool.BRUSH_ERASURE -> 1
-        EditorTool.BRUSH_ERASURE_WIDE -> 3
-        else -> null
-    }
-
-    private fun EditorTool.editStampSize(): Int? = when (this) {
-        EditorTool.STAMP_ERASURE_SMALL -> 3
-        EditorTool.STAMP_ERASURE_MEDIUM -> 5
-        EditorTool.STAMP_ERASURE_LARGE -> 7
-        else -> null
     }
 
     private fun drawEditRange(
@@ -508,7 +479,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
         }
         if (renderSampledCells) editGeometry?.let { geometry ->
             val matrix = editMatrix ?: return@let
-            val activeRange = currentEditRangeCells()
+            val activeRange = cellGesture.rangeCells
             when {
                 activeRange.isNotEmpty() -> drawEditRange(canvas, geometry, activeRange, ::v)
                 editSelectionIsRectangle -> drawEditRange(canvas, geometry, editSelection, ::v)
@@ -526,7 +497,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
                 canvas.drawCircle(q.x.toFloat(), q.y.toFloat(), dp(10f), selectedPaint)
                 drawMagnifier(canvas, source, imagePoint, scale)
             }
-            for (cell in editSelection + editStroke + currentEditRangeCells()) {
+            for (cell in editSelection + cellGesture.strokeCells + cellGesture.rangeCells) {
                 val q = v(geometry.moduleToImage(cell.x.toDouble(), cell.y.toDouble()))
                 selectedPaint.color = Color.YELLOW
                 selectedPaint.strokeWidth = dp(1.5f)
@@ -692,7 +663,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
         val geometry = editGeometry?.takeIf { dragCorner == null && sampledQuad == imageQuad() && it.version == version }
         val matrix = editMatrix
         if (geometry != null && matrix != null) {
-            val selectedCells = editSelection + editStroke + currentEditRangeCells()
+            val selectedCells = editSelection + cellGesture.strokeCells + cellGesture.rangeCells
             val moduleSize = (geometry.localModulePitch(
                 editCell?.x?.toDouble() ?: 0.0,
                 editCell?.y?.toDouble() ?: 0.0,
@@ -815,27 +786,25 @@ class PreprocessOverlayView(context: Context) : View(context) {
             return Coord(kotlin.math.floor(module.x + .5).toInt(), kotlin.math.floor(module.y + .5).toInt())
                 .takeIf { it.x in 0 until dimension && it.y in 0 until dimension }
         }
-        fun appendBrushSamples() {
-            val size = cellEditorTool.editBrushSize() ?: return
-            for (index in 0 until event.historySize) {
-                editCoord(event.getHistoricalX(index), event.getHistoricalY(index))?.let {
-                    editStroke += editFootprint(it, size)
+        if (cellEditInteractive) {
+            cellGesture.handle(event, cellEditorTool, editMatrix?.dimension ?: 0, ::editCoord,
+                enabled = editGeometry != null)?.let { update ->
+                update.disallowIntercept?.let { parent?.requestDisallowInterceptTouchEvent(it) }
+                update.commit?.takeIf { it.cells.isNotEmpty() }?.let { commit ->
+                    if (commit.value != null) {
+                        setCellSelection(commit.cells, asRectangle = commit.asRectangle)
+                        onCellBrushApplied?.invoke(editSelection, commit.value)
+                    } else {
+                        editSelection = commit.cells
+                        editSelectionIsRectangle = true
+                        editCell = editSelection.firstOrNull()
+                        onCellRangeSelected?.invoke(editSelection)
+                    }
                 }
-            }
-            editCoord()?.let { editStroke += editFootprint(it, size) }
-        }
-        if (cellEditInteractive && cellEditorTool != EditorTool.NAVIGATE) {
-            if (event.actionMasked == MotionEvent.ACTION_POINTER_DOWN || event.pointerCount > 1) {
-                editGestureCancelledByMultiTouch = true
-                editStroke.clear(); editRangeStart = null; editRangeEnd = null
-                parent?.requestDisallowInterceptTouchEvent(false)
-                invalidate()
-                return true
-            }
-            if (editGestureCancelledByMultiTouch) {
                 if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
-                    editGestureCancelledByMultiTouch = false
+                    cellGesture.clearPreview()
                 }
+                if (update.redraw) invalidate()
                 return true
             }
         }
@@ -844,21 +813,8 @@ class PreprocessOverlayView(context: Context) : View(context) {
                 if (editGeometry != null && cellEditInteractive) {
                     val cell = editCoord() ?: return true
                     parent?.requestDisallowInterceptTouchEvent(true)
-                    when (cellEditorTool) {
-                        EditorTool.NAVIGATE -> {
-                            editCell = cell
-                            onEditCellSelected?.invoke(cell.x, cell.y)
-                        }
-                        EditorTool.BRUSH_ZERO, EditorTool.BRUSH_ONE, EditorTool.BRUSH_ERASURE, EditorTool.BRUSH_ERASURE_WIDE -> {
-                            editStroke.clear(); appendBrushSamples()
-                        }
-                        EditorTool.STAMP_ERASURE_SMALL, EditorTool.STAMP_ERASURE_MEDIUM, EditorTool.STAMP_ERASURE_LARGE -> {
-                            editStroke.clear(); editStroke += editFootprint(cell, cellEditorTool.editStampSize() ?: 3)
-                        }
-                        EditorTool.RECT_SELECT -> {
-                            editRangeStart = cell; editRangeEnd = cell
-                        }
-                    }
+                    editCell = cell
+                    onEditCellSelected?.invoke(cell.x, cell.y)
                     invalidate()
                     return true
                 }
@@ -924,17 +880,6 @@ class PreprocessOverlayView(context: Context) : View(context) {
             }
             MotionEvent.ACTION_MOVE -> {
                 if (editGeometry != null && cellEditInteractive) {
-                    appendBrushSamples()
-                    editCoord()?.let { cell ->
-                        when (cellEditorTool) {
-                            EditorTool.BRUSH_ZERO, EditorTool.BRUSH_ONE, EditorTool.BRUSH_ERASURE, EditorTool.BRUSH_ERASURE_WIDE -> Unit
-                            EditorTool.STAMP_ERASURE_SMALL, EditorTool.STAMP_ERASURE_MEDIUM, EditorTool.STAMP_ERASURE_LARGE -> {
-                                editStroke.clear(); editStroke += editFootprint(cell, cellEditorTool.editStampSize() ?: 3)
-                            }
-                            EditorTool.RECT_SELECT -> { editRangeEnd = cell }
-                            EditorTool.NAVIGATE -> Unit
-                        }
-                    }
                     invalidate()
                     return true
                 }
@@ -963,43 +908,8 @@ class PreprocessOverlayView(context: Context) : View(context) {
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (editGeometry != null && cellEditInteractive) {
-                    if (event.actionMasked == MotionEvent.ACTION_UP) {
-                        appendBrushSamples()
-                        if (cellEditorTool.editStampSize() != null) {
-                            editStroke.clear()
-                            editCoord()?.let { editStroke += editFootprint(it, cellEditorTool.editStampSize()!!) }
-                        }
-                        if (cellEditorTool == EditorTool.NAVIGATE) performClick()
-                        val brushValue = when (cellEditorTool) {
-                            EditorTool.BRUSH_ZERO -> ModuleValue.ZERO
-                            EditorTool.BRUSH_ONE -> ModuleValue.ONE
-                            EditorTool.BRUSH_ERASURE -> ModuleValue.ERASED
-                            EditorTool.BRUSH_ERASURE_WIDE,
-                            EditorTool.STAMP_ERASURE_SMALL,
-                            EditorTool.STAMP_ERASURE_MEDIUM,
-                            EditorTool.STAMP_ERASURE_LARGE -> ModuleValue.ERASED
-                            else -> null
-                        }
-                        if (brushValue != null && editStroke.isNotEmpty()) {
-                            setCellSelection(editStroke.toSet(), asRectangle = cellEditorTool.editStampSize() != null)
-                            onCellBrushApplied?.invoke(editSelection, brushValue)
-                        }
-                        if (cellEditorTool == EditorTool.RECT_SELECT) {
-                            val start = editRangeStart
-                            val end = editRangeEnd
-                            if (start != null && end != null) {
-                                editSelection = buildSet {
-                                    for (y in minOf(start.y, end.y)..maxOf(start.y, end.y)) {
-                                        for (x in minOf(start.x, end.x)..maxOf(start.x, end.x)) add(Coord(x, y))
-                                    }
-                                }
-                                editSelectionIsRectangle = true
-                                editCell = editSelection.firstOrNull()
-                                onCellRangeSelected?.invoke(editSelection)
-                            }
-                        }
-                    }
-                    editStroke.clear(); editRangeStart = null; editRangeEnd = null
+                    if (event.actionMasked == MotionEvent.ACTION_UP) performClick()
+                    cellGesture.clearPreview()
                     parent?.requestDisallowInterceptTouchEvent(false)
                     invalidate()
                     return true

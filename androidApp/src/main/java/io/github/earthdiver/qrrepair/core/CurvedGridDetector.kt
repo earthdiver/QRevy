@@ -11,11 +11,14 @@ internal class CurvedGridDetector(
     private val profile: SamplingProfile,
     private val cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
     private val stopRequested: () -> Boolean = { false },
+    maxContourWorkingBytes: Long = minOf(CurvedFinderContours.DEFAULT_WORKING_BYTES,
+        RecoveryMemoryPolicy.current().workingBytes),
 ) {
     private data class Sample(val x: Double, val y: Double, val black: Boolean)
     private data class Match(val point: PointD, val dx: Double, val dy: Double, val score: Double)
 
-    private val contours = CurvedFinderContours(image, profile.inverted, ::stopped)
+    private val contours = CurvedFinderContours(image, profile.inverted, maxContourWorkingBytes, ::stopped)
+    val contourMemoryLimited: Boolean get() = contours.memoryLimited
 
     fun candidates(base: GridGeometry): List<GridGeometry> {
         if (base.warp != null || stopped()) return emptyList()

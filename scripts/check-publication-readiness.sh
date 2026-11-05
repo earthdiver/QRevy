@@ -35,8 +35,8 @@ fi
 if ! grep -q 'id("org.jetbrains.kotlin.multiplatform") version "2.4.21"' build.gradle.kts; then
   blocker 'Kotlin Multiplatform 2.4.21 pin is missing or changed.'
 fi
-if ! grep -q 'id("com.android.kotlin.multiplatform.library") version "9.4.1"' build.gradle.kts; then
-  blocker 'Android-KMP library plugin 9.4.1 pin is missing or changed.'
+if ! grep -q 'id("com.android.kotlin.multiplatform.library") version "9.5.0"' build.gradle.kts; then
+  blocker 'Android-KMP library plugin 9.5.0 pin is missing or changed.'
 fi
 if ! grep -q 'baseName = "QRRepairCore"' shared/build.gradle.kts; then
   blocker 'QRRepairCore iOS framework configuration is missing.'

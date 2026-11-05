@@ -61,7 +61,7 @@ class PreprocessDialogControllerTest {
     private fun withDialog(settings: PreprocessSettings? = null, style: AppStyle = AppStyle.CLASSIC, sourceBitmap: Bitmap? = null,
                            savedCellEdits: PreRecoveryCellEditState? = null,
                            worker: Executor = Executor { it.run() },
-                           block: (AlertDialog, Host, BitmapUtils.Prepared, BitmapUtils.Prepared) -> Unit) {
+                           block: (AlertDialog, Host, BitmapUtils.Prepared, BitmapUtils.Prepared) -> Unit) = withTestAppLanguage(AppLanguage.JAPANESE) {
         val activity = Robolectric.buildActivity(Activity::class.java).setup()
         activity.get().setTheme(style.theme)
         val source = BitmapUtils.prepare(sourceBitmap ?: Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888).apply {
@@ -84,6 +84,17 @@ class PreprocessDialogControllerTest {
             host.saves.map { it.image.bitmap }.distinct().forEach { if (!it.isRecycled) it.recycle() }
         }
     }
+
+    @Test fun japaneseDialogFixtureHandlesAndRestoresAnEnglishIncomingLanguage() =
+        withTestAppLanguage(AppLanguage.ENGLISH) {
+            withDialog { dialog, _, _, _ ->
+                assertEquals(AppLanguage.JAPANESE, AppLanguageManager.current)
+                assertEquals("ja", dialog.context.resources.configuration.locales[0].language)
+                assertNotNull(automaticThresholdControl(dialog))
+                click(dialog, "保存")
+            }
+            assertEquals(AppLanguage.ENGLISH, AppLanguageManager.current)
+        }
 
     @Test fun pendingCorrectionCannotBeSavedAndSupersededJobsDoNotRestoreTheOldGrid() {
         for (style in AppStyle.entries) {
@@ -137,6 +148,52 @@ class PreprocessDialogControllerTest {
                 click(dialog, "保存")
                 assertEquals(enabled, host.saves.single().settings.distortionCorrection)
             }
+        }
+    }
+
+    @Test fun restoredCurvedPreviewWaitsForWorkerSamplingAndRefreshesTheOpenModernDataDialog() {
+        val jobs = mutableListOf<Runnable>()
+        val quad = ImageQuad(PointD(20.0, 20.0), PointD(220.0, 20.0), PointD(220.0, 220.0), PointD(20.0, 220.0))
+        val geometry = GridGeometry(1, FinderRole.TOP_LEFT, 50.0, 50.0, 10.0, 0.0,
+            quad, GeometryModel.THIN_PLATE_SPLINE, ThinPlateWarp(listOf(
+                WarpLandmark(PointD(0.0, 0.0), PointD(0.0, 0.0)),
+                WarpLandmark(PointD(1.0, 0.0), PointD(0.0, 0.0)),
+                WarpLandmark(PointD(0.0, 1.0), PointD(0.0, 0.0)),
+                WarpLandmark(PointD(1.0, 1.0), PointD(0.0, 0.0)),
+                WarpLandmark(PointD(.5, .5), PointD(4.0, -3.0)),
+            ))).reanchored()
+        val settings = PreprocessSettings(distortionCorrection = true, manualQuad = quad, previewGeometry = geometry,
+            formatConstraint = QrFormatConstraint(com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.L, 0))
+        withDialog(settings, AppStyle.MODERN, worker = Executor { jobs += it }) { dialog, host, _, _ ->
+            // Construction queues sampling without observing all warped cells on the UI thread.
+            assertEquals(2, jobs.size)
+            val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
+            assertNull(PreprocessOverlayView::class.java.getDeclaredField("editMatrix").run {
+                isAccessible = true; get(overlay)
+            })
+            click(dialog, "保存")
+            assertTrue(host.saves.isEmpty())
+            click(dialog, dialog.context.getString(R.string.data))
+            val dataDialog = ShadowDialog.getLatestDialog() as AlertDialog
+            assertTrue(views(dataDialog.window!!.decorView).filterIsInstance<TextView>()
+                .any { it.text.toString() == "セルを読み取り中…" })
+            jobs[1].run()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(geometry, overlay.previewGeometry())
+            assertTrue(views(dataDialog.window!!.decorView).filterIsInstance<TextView>()
+                .any { it.text.toString().contains("Binary") })
+            assertFalse(views(dataDialog.window!!.decorView).filterIsInstance<TextView>()
+                .any { it.text.toString() == "セルを読み取り中…" })
+            jobs[0].run()
+            shadowOf(Looper.getMainLooper()).idle()
+            dataDialog.dismiss()
+            click(dialog, "保存")
+            assertEquals(geometry, host.saves.single().settings.previewGeometry)
+            click(dialog, dialog.context.getString(R.string.data))
+            val reopened = ShadowDialog.getLatestDialog() as AlertDialog
+            dialog.dismiss()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(reopened.isShowing)
         }
     }
 

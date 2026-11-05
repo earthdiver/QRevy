@@ -134,25 +134,6 @@ object PayloadConstraintSolver {
         fun bitPatternValue(value: Int, width: Int, offset: Int): Int =
             (value shr (width - 1 - offset)) and 1
 
-        fun modeCountBits(mode: Int): Int {
-            val group = when (version) { in 1..9 -> 0; in 10..26 -> 1; else -> 2 }
-            return when (mode) {
-                1 -> intArrayOf(10, 12, 14)[group]      // Numeric
-                2 -> intArrayOf(9, 11, 13)[group]       // Alphanumeric
-                4 -> intArrayOf(8, 16, 16)[group]       // Byte
-                8 -> intArrayOf(8, 10, 12)[group]       // Kanji
-                else -> 0
-            }
-        }
-
-        fun payloadBits(mode: Int, count: Int): Int = when (mode) {
-            1 -> (count / 3) * 10 + when (count % 3) { 1 -> 4; 2 -> 7; else -> 0 }
-            2 -> (count / 2) * 11 + if ((count and 1) != 0) 6 else 0
-            4 -> count * 8
-            8 -> count * 13
-            else -> Int.MAX_VALUE
-        }
-
         fun dataGroups(plan: Plan): List<DataGroup> = buildList {
             var cursor = plan.headerBits
             when (plan.mode) {
@@ -276,7 +257,7 @@ object PayloadConstraintSolver {
         var truncated = false
         val modes = intArrayOf(1, 2, 4, 8)
         loop@ for (mode in modes) {
-            val countBits = modeCountBits(mode)
+            val countBits = requireNotNull(QrPayloadLayout.characterCountBits(mode, version))
             val headerBits = 4 + countBits
             if (headerBits > totalBits) continue
 
@@ -311,7 +292,7 @@ object PayloadConstraintSolver {
                 }
                 if (!countCompatible) continue
 
-                val end = headerBits + payloadBits(mode, count)
+                val end = headerBits + requireNotNull(QrPayloadLayout.payloadBits(mode, count))
                 if (end > totalBits) continue
                 val (mismatches, fillerKnownMatches) = fillerScore(end)
                 plans += Plan(mode, count, countBits, headerBits, end, mismatches, fillerKnownMatches)

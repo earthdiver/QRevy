@@ -122,9 +122,7 @@ object CodewordHex {
         }
         val mode = read(4) ?: return localizedText("モード: 不明（先頭bitに ? があります）", "Mode: unknown (? in leading bits)")
         val countBits = when (mode) {
-            1 -> if (version <= 9) 10 else if (version <= 26) 12 else 14
-            2 -> if (version <= 9) 9 else if (version <= 26) 11 else 13
-            4 -> if (version <= 9) 8 else 16
+            1, 2, 4 -> requireNotNull(QrPayloadLayout.characterCountBits(mode, version.coerceAtLeast(1)))
             else -> 0
         }
         if (mode == 0) return localizedText("モード: 終端", "Mode: terminator")
