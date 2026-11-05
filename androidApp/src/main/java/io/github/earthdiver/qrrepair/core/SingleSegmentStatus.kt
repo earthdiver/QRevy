@@ -68,12 +68,8 @@ internal fun singleSegmentStatus(data: IntArray, unknown: IntArray, version: Int
 internal fun priorityHeaderHypothesis(data: IntArray, unknown: IntArray, originalUnknown: IntArray, version: Int): String? {
     if (data.isEmpty()) return null
     val mode = if ((unknown[0] and 0xF0) == 0) (data[0] ushr 4) and 15 else null
-    val group = when (version) { in 1..9 -> 0; in 10..26 -> 1; else -> 2 }
     val countWidth = when (mode) {
-        1 -> intArrayOf(10, 12, 14)[group]
-        2 -> intArrayOf(9, 11, 13)[group]
-        4 -> intArrayOf(8, 16, 16)[group]
-        8 -> intArrayOf(8, 10, 12)[group]
+        1, 2, 4, 8 -> requireNotNull(QrPayloadLayout.characterCountBits(mode, version))
         else -> 0
     }
     val width = minOf(4 + countWidth, data.size * 8)

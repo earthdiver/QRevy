@@ -994,16 +994,7 @@ internal fun completePayloadHeaderAvailable(dataBytes: IntArray, unknownMasks: I
         return value
     }
     fun skipKnown(width: Int): Boolean = read(width) != null
-    fun countWidth(mode: Int): Int {
-        val group = when (version) { in 1..9 -> 0; in 10..26 -> 1; else -> 2 }
-        return when (mode) {
-            1 -> intArrayOf(10, 12, 14)[group]
-            2 -> intArrayOf(9, 11, 13)[group]
-            4 -> intArrayOf(8, 16, 16)[group]
-            8, 13 -> intArrayOf(8, 10, 12)[group]
-            else -> 0
-        }
-    }
+    fun countWidth(mode: Int): Int = QrPayloadLayout.characterCountBits(mode, version) ?: 0
 
     while (position + 4 <= totalBits) {
         when (val mode = read(4) ?: return false) {
