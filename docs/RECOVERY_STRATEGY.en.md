@@ -166,7 +166,7 @@ The following settings apply across stages:
 
 **Priority search cell limit** applies when `*` cells are marked. Stage 6 targets the data/ECC region and does not flip protected fixed cells.
 
-If stage 1 passes QR-structure and input-condition checks and decodes the content, stage 2 still runs when eligible and retains the original candidate; stages 3 through 7 are skipped. Otherwise, processing proceeds to later stages. Candidates found in stage 2 or later are retained while the search continues. Stage 6 runs only when **Known-bit error search** is enabled and no candidate with decoded content has been found through stage 5. If list decoding is enabled, stage 7 is still attempted if stage 6 finds candidates.
+If stage 1 passes QR-structure and input-condition checks and decodes the content, stage 2 still runs when eligible and retains the original candidate; stages 3 through 7 are skipped. Otherwise, processing proceeds to later stages. Candidates found in stage 2 or later are retained while the search continues. Stage 6 runs when **Known-bit error search** is enabled, even if stages 2 through 5 have found candidates with decoded content. If list decoding is enabled, stage 7 is still attempted if stage 6 finds candidates.
 
 Selecting OFF for **Extra errors beyond conventional RS** skips stages 3 and 7, including GS, Wu, and KV. The execution conditions for other stages are unchanged. The default remains +1 codeword.
 

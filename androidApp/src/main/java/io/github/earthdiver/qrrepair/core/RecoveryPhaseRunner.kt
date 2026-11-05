@@ -43,7 +43,7 @@ internal class RecoveryPhaseRunner(
                     search(RecoveryPhase.BIT_CONSTRAINTS)
                     if (maxKnownDataEccMismatches != 0) {
                         search(RecoveryPhase.PARTIAL_RS)
-                        if (run.knownBitErrorLimit > 0 && !run.candidates.results().any { it.payloadParsed }) {
+                        if (run.knownBitErrorLimit > 0) {
                             run.knownBitSearchAttempted = true
                             try { search(RecoveryPhase.KNOWN_BIT_ERRORS) } catch (limit: KnownBitSearchLimit) {
                                 run.incompleteReasons += if (limit.timedOut) SearchIncompleteReason.KNOWN_BIT_SEARCH_TIME_LIMIT
