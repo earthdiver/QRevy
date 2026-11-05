@@ -1,7 +1,6 @@
 package io.github.earthdiver.qrrepair
 
 import android.app.AlertDialog
-import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
@@ -26,9 +25,10 @@ class PrivacyLocalizationTest {
                     .apply { isAccessible = true }.invoke(activity, language)
                 MainActivity::class.java.getDeclaredMethod("showLicensesAndPrivacy")
                     .apply { isAccessible = true }.invoke(activity)
-                shadowOf(Looper.getMainLooper()).idle()
                 val dialog = ShadowDialog.getLatestDialog() as AlertDialog
-                val body = descendants(dialog.window!!.decorView).filterIsInstance<TextView>()
+                assertTrue(dialog.isShowing)
+                // Inspect the supplied content without depending on a scheduled decor traversal.
+                val body = descendants(shadowOf(dialog).view).filterIsInstance<TextView>()
                     .single { it.text.contains("Apache License 2.0") }.text.toString()
                 if (language == AppLanguage.JAPANESE) {
                     assertTrue(body.startsWith("プライバシー"))
