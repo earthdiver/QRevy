@@ -271,9 +271,11 @@ class MainActivity : Activity() {
         setTheme(activeStyle.theme)
         super.onCreate(savedInstanceState)
         pendingTextMatrix = savedInstanceState?.getString(STATE_PENDING_TEXT_MATRIX)
-        workspaceSession = WorkspaceSessionCoordinator(RecoverySessionStore(this), ioExecutor,
+        val storageContext = applicationContext
+        workspaceSession = WorkspaceSessionCoordinator({ RecoverySessionStore(storageContext) }, ioExecutor,
             { runOnUiThread(it) },
-            onSaveError = { reportPersistenceFailure(ui("セッションの自動保存に失敗", "Automatic session save failed"), it) })
+            onSaveError = { reportPersistenceFailure(ui("セッションの自動保存に失敗", "Automatic session save failed"), it) },
+            onInitializationError = { reportPersistenceFailure(ui("保存した作業の初期化に失敗", "Saved work initialization failed"), it) })
         purgeStaleCameraCaptures()
         setContentView(buildUi())
         retained?.imageImport?.let { image ->

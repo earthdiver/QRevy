@@ -10,24 +10,32 @@ import io.github.earthdiver.qrrepair.session.SessionSaveQueue
 import io.github.earthdiver.qrrepair.session.SessionSummary
 import io.github.earthdiver.qrrepair.session.StoredSession
 import io.github.earthdiver.qrrepair.ui.BitmapUtils
+import java.util.UUID
 import java.util.concurrent.Executor
 
 /** Owns active session identity and history; storage operations share the caller's FIFO executor. */
 internal class WorkspaceSessionCoordinator(
-    private val store: RecoverySessionStore,
+    createStore: () -> RecoverySessionStore,
     private val executor: Executor,
     private val dispatchToUi: (() -> Unit) -> Unit,
     onSaveError: (Throwable) -> Unit,
     private val prepareSource: (Bitmap) -> BitmapUtils.Prepared = { BitmapUtils.prepare(it) },
+    onInitializationError: (Throwable) -> Unit = onSaveError,
 ) {
     data class LoadedSession(val stored: StoredSession, val source: BitmapUtils.Prepared?)
 
     var id: String? = null
         private set
     val history = RecoverySessionHistory(maxEntries = 40)
+    // Access only from the FIFO worker, including construction and startup retention checks.
+    private val store by lazy(createStore)
     private val saves = SessionSaveQueue(executor,
         save = { id, entries, cursor -> store.save(id, UiMode.SIMPLE, entries, cursor) },
         onError = onSaveError)
+
+    init {
+        executor.execute { runCatching { store }.onFailure(onInitializationError) }
+    }
 
     fun restoreIdentity(id: String?, entries: List<RecoveryHistoryEntry>, cursor: Int) {
         val restoredEntries = entries.toList()
@@ -36,7 +44,7 @@ internal class WorkspaceSessionCoordinator(
     }
 
     fun beginNew(source: Bitmap, onSourceError: (Throwable) -> Unit): String {
-        val newId = store.newId()
+        val newId = UUID.randomUUID().toString()
         id = newId
         history.clear()
         saveSource(newId, source, onSourceError)
@@ -46,7 +54,7 @@ internal class WorkspaceSessionCoordinator(
     /** Only an explicit save may attach detached work to a new stored session. */
     fun ensureAttached(source: Bitmap, onSourceError: (Throwable) -> Unit): String {
         id?.let { return it }
-        val newId = store.newId()
+        val newId = UUID.randomUUID().toString()
         id = newId
         saveSource(newId, source, onSourceError)
         return newId

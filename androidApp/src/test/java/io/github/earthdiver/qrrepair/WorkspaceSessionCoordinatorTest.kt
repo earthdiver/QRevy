@@ -34,7 +34,7 @@ class WorkspaceSessionCoordinatorTest {
             val worker = Jobs()
             val ui = Jobs()
             val errors = mutableListOf<Throwable>()
-            val session = WorkspaceSessionCoordinator(store, worker, ui::dispatch, errors::add)
+            val session = WorkspaceSessionCoordinator({ store }, worker, ui::dispatch, errors::add)
             val oldId = session.beginNew(source, errors::add)
             val checkpoint = checkpoint()
             session.history.record(checkpoint)
@@ -81,7 +81,7 @@ class WorkspaceSessionCoordinatorTest {
             val originals = mutableListOf<Bitmap>()
             val prepared = mutableListOf<Bitmap>()
             var deliveries = 0
-            val session = WorkspaceSessionCoordinator(store, worker, ui::dispatch,
+            val session = WorkspaceSessionCoordinator({ store }, worker, ui::dispatch,
                 onSaveError = { throw AssertionError(it) },
                 prepareSource = { original ->
                     originals += original
@@ -115,7 +115,7 @@ class WorkspaceSessionCoordinatorTest {
             val ui = Jobs()
             var decodedImage: Bitmap? = null
             var loaded: WorkspaceSessionCoordinator.LoadedSession? = null
-            val session = WorkspaceSessionCoordinator(store, worker, ui::dispatch,
+            val session = WorkspaceSessionCoordinator({ store }, worker, ui::dispatch,
                 onSaveError = { throw AssertionError(it) },
                 prepareSource = { image ->
                     decodedImage = image

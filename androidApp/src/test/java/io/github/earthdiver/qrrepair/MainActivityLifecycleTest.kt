@@ -3,6 +3,9 @@ package io.github.earthdiver.qrrepair
 import android.os.Bundle
 import android.graphics.Bitmap
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -10,11 +13,42 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class MainActivityLifecycleTest {
+    @Test fun firstScreenDoesNotWaitForSavedWorkValidation() {
+        val context = RuntimeEnvironment.getApplication()
+        val folder = File(context.noBackupFilesDir, "qr_sessions/startup-corrupt-session").apply {
+            deleteRecursively()
+            mkdirs()
+        }
+        val corruptSession = File(folder, "session.qrs").apply { writeText("invalid session") }
+        val controller = Robolectric.buildActivity(MainActivity::class.java)
+        val activity = controller.get()
+        val io = MainActivity::class.java.getDeclaredField("ioExecutor").apply { isAccessible = true }
+            .get(activity) as ExecutorService
+        val releaseWorker = CountDownLatch(1)
+        io.execute { releaseWorker.await() }
+        try {
+            controller.setup()
+
+            assertTrue(activity.window.decorView.isShown)
+            assertTrue("Startup must leave validation to the busy I/O worker", corruptSession.isFile)
+
+            releaseWorker.countDown()
+            io.submit {}.get(30, TimeUnit.SECONDS)
+            assertFalse(corruptSession.exists())
+            assertTrue(folder.listFiles().orEmpty().any { it.name.startsWith("session.qrs.corrupt-") })
+        } finally {
+            releaseWorker.countDown()
+            controller.pause().stop().destroy()
+            folder.deleteRecursively()
+        }
+    }
+
     @Test fun imageImportRetainsUnadjustedSourceAndDraftAcrossRecreation() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val original = Bitmap.createBitmap(80, 100, Bitmap.Config.ARGB_8888)
