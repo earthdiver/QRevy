@@ -62,12 +62,12 @@ class CodewordHexTest {
 
     @Test fun eciAndMixedModesKeepByteSegmentBoundaries() {
         val data = PayloadBits().apply {
-            put(7, 4); put(26, 8)
+            put(7, 4); put(3, 8)
             put(1, 4); put(1, 10); put(7, 4)
             put(4, 4); put(1, 8); put(255, 8)
             put(4, 4); put(1, 8); put(0, 8)
         }.finish()
-        val rendered = CodewordHex.interpretedRecovered(data, 1, "7�")
+        val rendered = CodewordHex.interpretedRecovered(data, 1, "7\u00ff")
         assertTrue(rendered.startsWith("モード: 数字 → バイト → バイト"))
         assertTrue(rendered.contains("セグメント 2 / バイト数: 1\n実データ (HEX)\n0000  FF"))
         assertTrue(rendered.contains("セグメント 3 / バイト数: 1\n実データ (HEX)\n0000  00"))

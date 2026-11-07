@@ -200,7 +200,7 @@ class QrContentPreviewTest {
     @Test
     fun resultHandlesMixedSegmentsAndBytesWithoutTextConversion() {
         val data = PayloadBits().apply {
-            put(7, 4); put(26, 8)
+            put(7, 4); put(3, 8)
             put(1, 4); put(1, 10); put(7, 4)
             put(4, 4); put(1, 8); put(255, 8)
         }.finish()

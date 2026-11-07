@@ -43,7 +43,7 @@ internal object StrictQrPayloadValidator {
         var endBit = 0
         var modeStart = 0
         val valid = validate(data, version, false, modes = modes, byteSegments = segments, unknownMasks = unknownMasks,
-            bitLength = bitLength, onTerminator = { terminator = it }, onPayloadEnd = { endBit = it }, onMode = { modeStart = it })
+            bitLength = bitLength, onTerminator = { terminator = it }, onPayloadEnd = { endBit = it }, onMode = { modeStart = it }, validateExplicitUtf8 = false)
         return if (valid) Prefix(terminator, endBit, modes, segments) else {
             onFailure?.invoke(modeStart)
             null
@@ -68,7 +68,7 @@ internal object StrictQrPayloadValidator {
         var terminator: Int? = null
         var end = 0
         val valid = validate(data, version, false, modes, bytes, unknownMasks, bitLength,
-            onTerminator = { terminator = it }, onPayloadEnd = { end = it }, trace = trace)
+            onTerminator = { terminator = it }, onPayloadEnd = { end = it }, trace = trace, validateExplicitUtf8 = false)
         val completed = trace.segments.filter { it.issue == null && it.mode in listOf(1, 2, 4, 8, 13) }
         return Inspection(Prefix(terminator, if (valid) end else trace.segments.lastOrNull { it.issue == null }?.endBit ?: 0,
             completed.map { it.mode!! }, bytes), trace.segments, valid)
@@ -100,11 +100,37 @@ internal object StrictQrPayloadValidator {
         modes: MutableList<Int>? = null, byteSegments: MutableList<Pair<Int, ByteArray>>? = null,
         unknownMasks: IntArray? = null, bitLength: Int = data.size * 8,
         onTerminator: ((Int) -> Unit)? = null, onPayloadEnd: ((Int) -> Unit)? = null, onMode: ((Int) -> Unit)? = null,
-        trace: Trace? = null, assumeUtf8: Boolean = false,
+        trace: Trace? = null, assumeUtf8: Boolean = false, validateExplicitUtf8: Boolean = true,
         onInvalidUtf8: () -> Unit = {}, onAssumedSegment: () -> Unit = {},
     ): Boolean = try {
         val bits = Bits(data, unknownMasks, bitLength, trace)
-        var hasEci = false
+        var currentEci: Int? = null
+        var explicitUtf8States = 1 shl Utf8State.BOUNDARY.ordinal
+        var continuesInNextSymbol = false
+        fun finishExplicitUtf8(endOfSymbol: Boolean = false) {
+            if (endOfSymbol && continuesInNextSymbol) return
+            if (validateExplicitUtf8 && currentEci == 26 && explicitUtf8States and 1 == 0) {
+                onInvalidUtf8()
+                error("Incomplete explicit UTF-8 character")
+            }
+        }
+        fun explicitByte(low: Int, high: Int = low) {
+            if (!validateExplicitUtf8) return
+            if (currentEci != 26) {
+                explicitUtf8States = 1
+                return
+            }
+            var next = 0
+            // ECI spans compaction segments and may continue across Structured Append symbols.
+            for (state in Utf8State.entries) if (explicitUtf8States and (1 shl state.ordinal) != 0) {
+                state.transitions(low, high, 3) { _, _, target -> next = next or (1 shl target.ordinal) }
+            }
+            if (next == 0) {
+                onInvalidUtf8()
+                error("Invalid explicit UTF-8 byte")
+            }
+            explicitUtf8States = next
+        }
         var structuredAppendSeen = false
         var fnc1Seen = false
         var modeSeenAfterStructuredAppend = false
@@ -118,14 +144,23 @@ internal object StrictQrPayloadValidator {
                 if (mode == 1 || mode == 2 || mode == 4 || mode == 8 || mode == 13) modes?.add(mode)
                 when (mode) {
                     0 -> {
+                        finishExplicitUtf8(endOfSymbol = true)
                         if (onTerminator == null) return validateFiller(bits)
                         onPayloadEnd?.invoke(bits.position - 4)
                         onTerminator(bits.position - 4)
                         completed = true
                         return true
                     }
-                    1 -> { modeSeenAfterStructuredAppend = true; validateNumeric(bits, bits.readCount(mode, version)) }
-                    2 -> { modeSeenAfterStructuredAppend = true; validateAlphanumeric(bits, bits.readCount(mode, version)) }
+                    1, 2 -> {
+                        modeSeenAfterStructuredAppend = true
+                        val count = bits.readCount(mode, version)
+                        // Both modes expand to ASCII bytes, incompatible with a pending continuation.
+                        if (count > 0) {
+                            finishExplicitUtf8()
+                            explicitUtf8States = 1
+                        }
+                        if (mode == 1) validateNumeric(bits, count) else validateAlphanumeric(bits, count)
+                    }
                     3 -> {
                         // Structured Append, when present, is the first mode and occurs only once.
                         if (structuredAppendSeen || modeSeenAfterStructuredAppend || fnc1Seen) {
@@ -138,16 +173,35 @@ internal object StrictQrPayloadValidator {
                         val totalMinusOne = sequence and 15
                         if (totalMinusOne == 0 || index > totalMinusOne) return false
                         bits.skip(8) // Parity belongs to the complete set; one symbol cannot verify it.
+                        continuesInNextSymbol = index < totalMinusOne
+                        if (index > 0) explicitUtf8States = (1 shl Utf8State.entries.size) - 1
                     }
                     4 -> {
                         modeSeenAfterStructuredAppend = true
                         val count = bits.readCount(mode, version)
-                        if (assumeUtf8 && !hasEci) {
-                            onAssumedSegment()
-                            if (!validateUtf8(bits, count)) {
+                        if (count > 0 && currentEci != 26) explicitUtf8States = 1
+                        val assumedUtf8 = assumeUtf8 && currentEci == null
+                        // Diagnostic scans retain malformed text for segment-level reporting.
+                        val explicitUtf8 = currentEci == 26 && validateExplicitUtf8
+                        if (assumedUtf8 || explicitUtf8) {
+                            if (assumedUtf8) onAssumedSegment()
+                            val captured = if (byteSegments != null) {
+                                bits.requireAvailable(count * 8)
+                                ByteArray(count)
+                            } else null
+                            if (explicitUtf8) {
+                                repeat(count) { index ->
+                                    val width = minOf(8, bits.available)
+                                    val low = bits.read(width) shl (8 - width)
+                                    explicitByte(low, low + (1 shl (8 - width)) - 1)
+                                    if (width < 8) throw IncompletePayload
+                                    captured?.set(index, low.toByte())
+                                }
+                            } else if (!validateUtf8(bits, count, captured)) {
                                 onInvalidUtf8()
                                 return false
                             }
+                            if (captured != null) byteSegments!!.add(modes!!.size to captured)
                         } else if (byteSegments == null) bits.skip(count * 8)
                         else {
                             bits.requireAvailable(count * 8)
@@ -165,10 +219,22 @@ internal object StrictQrPayloadValidator {
                     7 -> {
                         modeSeenAfterStructuredAppend = true
                         val eci = validateEci(bits)
-                        hasEci = true
+                        if (eci != currentEci) {
+                            finishExplicitUtf8()
+                            if (currentEci != null) explicitUtf8States = 1
+                        }
+                        currentEci = eci
                         trace?.current = trace.current?.copy(eci = eci)
                     }
-                    8 -> { modeSeenAfterStructuredAppend = true; validateCharacters(bits, bits.readCount(mode, version), kanjiValues) }
+                    8 -> {
+                        modeSeenAfterStructuredAppend = true
+                        validateCharacters(bits, bits.readCount(mode, version), kanjiValues) { value ->
+                            val assembled = ((value / 0xC0) shl 8) or (value % 0xC0)
+                            val code = assembled + if (assembled < 0x1F00) 0x8140 else 0xC140
+                            explicitByte(code ushr 8)
+                            explicitByte(code and 255)
+                        }
+                    }
                     9 -> { // FNC1 second position application indicator
                         if (fnc1Seen || modeSeenAfterStructuredAppend) {
                             trace?.issue(Issue.INVALID_CONTEXT)
@@ -181,7 +247,12 @@ internal object StrictQrPayloadValidator {
                     13 -> {
                         modeSeenAfterStructuredAppend = true
                         if (bits.read(4) != 1) return false // QR supports the GB2312 subset only.
-                        validateCharacters(bits, bits.readCount(mode, version), hanziValues)
+                        validateCharacters(bits, bits.readCount(mode, version), hanziValues) { value ->
+                            val assembled = ((value / 0x60) shl 8) or (value % 0x60)
+                            val code = assembled + if (assembled < 0xA00) 0xA1A1 else 0xA6A1
+                            explicitByte(code ushr 8)
+                            explicitByte(code and 255)
+                        }
                     }
                     else -> { trace?.issue(Issue.UNSUPPORTED_MODE); return false }
                 }
@@ -192,6 +263,7 @@ internal object StrictQrPayloadValidator {
         // A prefix may end inside the next mode indicator. Only a complete stream must
         // interpret these remaining bits as a shortened terminator.
         if (!allowIncomplete) {
+            finishExplicitUtf8(endOfSymbol = true)
             if (bits.available > 0) onMode?.invoke(bits.position)
             if (bits.available > 0) {
                 trace?.begin(bits.position)
@@ -248,8 +320,12 @@ internal object StrictQrPayloadValidator {
         }
     }
 
-    private fun validateCharacters(bits: Bits, count: Int, validValues: BooleanArray) {
-        repeat(count) { if (!validValues[bits.read(13)]) error("Invalid QR character code") }
+    private fun validateCharacters(bits: Bits, count: Int, validValues: BooleanArray, onValue: (Int) -> Unit = {}) {
+        repeat(count) {
+            val value = bits.read(13)
+            if (!validValues[value]) error("Invalid QR character code")
+            onValue(value)
+        }
     }
 
     private fun validateNumeric(bits: Bits, count: Int) {
@@ -265,7 +341,7 @@ internal object StrictQrPayloadValidator {
         if ((count and 1) != 0 && bits.read(6) >= 45) error("Invalid alphanumeric character")
     }
 
-    private fun validateUtf8(bits: Bits, count: Int): Boolean {
+    private fun validateUtf8(bits: Bits, count: Int, captured: ByteArray? = null): Boolean {
         var state = Utf8State.BOUNDARY
         repeat(count) { index ->
             // BYTE bodies need not be codeword-aligned. Even the high nibble at a
@@ -277,6 +353,7 @@ internal object StrictQrPayloadValidator {
             state.transitions(low, high, count - index - 1) { _, _, target -> next = target }
             state = next ?: return false
             if (width < 8) throw IncompletePayload
+            captured?.set(index, low.toByte())
         }
         return true
     }
