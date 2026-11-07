@@ -165,7 +165,7 @@ Codeword extraction also preserves the positions of unknown bits. **Deinterleavi
 | Stage | Processing | Purpose and strengths | Related settings |
 | --- | --- | --- | --- |
 | 1 | Conventional RS on the input before filling or temporary assignments | Useful when erroneous and erased codewords fall within the conventional RS correction range in every block. A codeword containing even one unknown cell is treated as a whole-codeword erasure. | Common settings only |
-| 2 | Retry conventional RS with low-reliability image-derived codewords temporarily erased | When a block has just too many erroneous codewords for conventional RS, marking a misread codeword as an erasure reduces its cost from two ECC codewords to one. This is especially useful when three or more cells in one image-read codeword are wrong. Stage 6 (known-bit error search) can flip at most two cells across the entire QR code.<br>In each block, regardless of conventional RS success, consider only codewords with all eight cells read from the image. Select up to eight by how close their least reliable cell is to its black or white threshold, starting with the smallest margin. Break ties by taking earlier codewords in the block first. Subtract the original erasure count from the ECC codeword count. If no capacity remains, do not attempt conventional RS with additional temporary erasures. If the remainder is odd, try each selected codeword alone and every triple if at least three erasure slots remain. If the remainder is even, try every pair and every group of four if at least four erasure slots remain. If only one codeword was selected, try it alone. Each block gets at most 98 trials. | Common settings only |
+| 2 | Retry conventional RS with low-reliability image-derived codewords temporarily erased | Selects up to eight codewords using image margins and tries combinations of temporary erasures. Treating a misread codeword as an erasure reduces its correction cost from two ECC codewords to one. | Common settings only |
 | 3 | Initial list decoding with a short time allowance | Looks for candidates beyond the conventional RS correction range in a short pass without temporary assignments. KV also uses weights to incorporate the known-cell information remaining in codewords that contain unknown cells. | Extra errors beyond conventional RS |
 | 4 | RS partial-bit constraints, narrowed using QR structure | Useful when known-cell values are correct and unknown cells are scattered a few at a time across many codewords. Uses the known-cell values remaining in each codeword and QR structure to narrow unknown-cell values. Does not correct known-cell values supplied as constraints. | Partial-bit search / dimension limit<br>Priority search cell limit |
 | 5 | Partial-bit search with conventional RS | Assigns temporary values to codewords with few unknown cells to reduce erasures, looking for combinations that bring the remaining erasures and known-cell errors within the conventional RS correction range. The number of combinations grows with the number of cells assigned temporary values. | Partial-bit search / dimension limit<br>Priority search cell limit |
@@ -187,6 +187,24 @@ If stage 1 passes QR-structure and input-condition checks and decodes the conten
 Selecting OFF for **Extra errors beyond conventional RS** skips stages 3 and 7, including GS, Wu, and KV. The execution conditions for other stages are unchanged. The default remains +1 codeword.
 
 When **Known data/ECC bit error limit** is 0 bits, stages 2, 3, 5, 6, and 7 are skipped. The search looks for solutions in which every compared known-cell value matches the input.
+
+### Temporary erasures from image evidence (stage 2)
+
+Temporary-erasure retries can help when a block has just too many erroneous codewords for conventional RS. They can also handle three or more erroneous cells concentrated in one image-read codeword, beyond the stage 6 known-bit error search limit of two cells across the entire QR code.
+
+In each block, regardless of conventional RS success, consider only codewords with all eight cells read from the image. Select up to eight as follows:
+
+1. Sort each codeword's cell margins to the black or white threshold in ascending order as m1, m2, m3, ….
+2. Calculate s1 = m1, s2 = m1 + m2, and s3 = m1 + m2 + m3. Rank codewords separately by each value in ascending order, breaking ties by taking earlier codewords in the block first.
+3. Take one codeword from each ranking in the order s1, s2, s3, repeating round robin. Within each turn, skip already selected codewords and take the next unselected codeword from that ranking. Stop at eight codewords or when all eligible codewords have been selected.
+
+Subtract the original erasure count from the ECC codeword count to obtain the remaining erasure capacity. If no capacity remains, do not attempt conventional RS with additional temporary erasures.
+
+- If the remainder is odd, try each selected codeword alone and every triple if at least three erasure slots remain.
+- If the remainder is even, try every pair and every group of four if at least four erasure slots remain.
+- If only one codeword was selected, try it alone.
+
+Each block gets at most 98 trials.
 
 For a codeword temporarily erased in stage 2, each cell that differs from the original image reading still counts as one bit toward the known data/ECC bit error limit. Temporary image erasures apply only within stage 2. Later stages start from the original observations. Text matrices have no image margins.
 

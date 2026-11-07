@@ -71,7 +71,7 @@ class ImageErasureSuccessTest {
             val block = RsBlockWork(19, observed, unknown)
             val diagnostic = ConventionalRsBlockDiagnostic(0, expected.size, 19, 7, erasureCount,
                 0, 7 - erasureCount, ConventionalRsStatus.SUCCESS)
-            val result = retryImageErasures(block, 7, ImageErasurePlan(IntArray(expected.size) { margin }, 7 - erasureCount), diagnostic,
+            val result = retryImageErasures(block, 7, ImageErasurePlan(List(expected.size) { uniformMargins(margin) }, 7 - erasureCount), diagnostic,
                 rs, RecoveryCancellation.NONE).single()
             assertArrayEquals(expected, result.corrected)
             assertTrue(result.imageErasures.isEmpty())
@@ -84,7 +84,7 @@ class ImageErasureSuccessTest {
         val expected = rs.encode(IntArray(19) { it }, 7)
         val block = RsBlockWork(19, expected, IntArray(expected.size))
         val diagnostic = ConventionalRsBlockDiagnostic(0, expected.size, 19, 7, 0, 0, 7, ConventionalRsStatus.SUCCESS)
-        val margins = IntArray(expected.size) { if (it < 2) 1 else -1 }
+        val margins = List(expected.size) { if (it < 2) uniformMargins(1) else null }
         val cached = rs.decode(expected, 7, intArrayOf())
         val result = retryImageErasures(block, 7, ImageErasurePlan(margins, 7), diagnostic, rs, RecoveryCancellation.NONE, cached).single()
         assertArrayEquals(expected, result.corrected)
@@ -114,8 +114,8 @@ class ImageErasureSuccessTest {
         }
     }
 
-    @Test fun selectsSmallestMarginsThenEarliestCodewordsAtTheCutoff() {
-        val margins = intArrayOf(9, 5, 5, 5, 5, -1, 5, 5, 5, 5, 1, 5)
+    @Test fun breaksTiesByCodewordIndexAndKeepsTrialLimits() {
+        val margins = listOf(9, 5, 5, 5, 5, -1, 5, 5, 5, 5, 1, 5).map { uniformMargins(it) }
         val odd = ImageErasurePlan(margins, 3)
         val even = ImageErasurePlan(margins, 4)
         assertEquals(listOf(10, 1, 2, 3, 4, 6, 7, 8), odd.pool)
@@ -124,6 +124,9 @@ class ImageErasureSuccessTest {
         assertEquals(listOf(1), ImageErasurePlan(margins, 1).trialSizes)
         assertEquals(listOf(2), ImageErasurePlan(margins, 2).trialSizes)
     }
+
+    private fun uniformMargins(margin: Int): ImageWordMargins? =
+        if (margin < 0) null else ImageWordMargins(margin, margin * 2, margin * 3)
 
     private fun imageQr(text: String, version: Int, ecc: ErrorCorrectionLevel, mask: Int): QrMatrix {
         val qr = Encoder.encode(text, ecc,

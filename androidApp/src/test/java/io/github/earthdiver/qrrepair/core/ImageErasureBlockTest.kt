@@ -40,6 +40,41 @@ class ImageErasureBlockTest {
         assertEquals(listOf(22), candidate.repairInfo.filter { it.temporaryImageErasure }.map { it.rawIndex })
     }
 
+    @Test fun recoversWithMultipleWeakCellsBeyondTheSingleMarginCutoff() {
+        val text = "abcdefghijklm"
+        val matrix = postTerminatorMatrix(PayloadBits().apply { byteSegment(text) }.finish())
+        val words = CodewordExtractor.extract(matrix, 1, 0).codewords
+        val expected = words.map { it.value }.toIntArray()
+
+        // V1-L has seven parity words. Four erasures leave room for one erasure plus one error.
+        for (index in listOf(5, 6, 19, 20)) for (cell in words[index].coordinates) {
+            matrix.set(cell.x, cell.y, ModuleValue.ERASED, 0f, ModuleSource.IMAGE)
+        }
+        for ((index, bit) in listOf(22 to 0, 23 to 1)) {
+            val cell = words[index].coordinates[bit]
+            val flipped = if (matrix[cell.x, cell.y].value == ModuleValue.ONE) ModuleValue.ZERO else ModuleValue.ONE
+            matrix.set(cell.x, cell.y, flipped, 1f, ModuleSource.IMAGE)
+        }
+        val isolatedWeakWords = setOf(0, 1, 2, 3, 4, 7, 8, 9)
+        for ((index, word) in words.withIndex()) {
+            for ((bit, cell) in word.coordinates.withIndex()) {
+                if (matrix[cell.x, cell.y].value == ModuleValue.ERASED) continue
+                val margin = when {
+                    index in isolatedWeakWords && bit == 0 -> 1
+                    index == 22 && bit < 3 -> 2
+                    else -> 90
+                }
+                matrix.setImageMargin(cell.x, cell.y, margin)
+            }
+        }
+
+        val candidate = RecoveryEngine().recover(matrix, formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.L, 0),
+            maxKnownDataEccMismatches = 2, listDecodingAdditionalErrors = 0, knownBitErrorLimit = 0).single { it.text == text }
+        assertArrayEquals(expected, candidate.correctedInterleaved)
+        assertEquals(listOf(22), candidate.actualBlockMethods.single().imageErasures)
+        assertEquals(listOf(22), candidate.repairInfo.filter { it.temporaryImageErasure }.map { it.rawIndex })
+    }
+
     @Test fun combinesRecoveredShortAndLongBlocksWithIntactBlocks() {
         val format = ErrorCorrectionLevel.Q
         val qr = Encoder.encode("Interleaved image evidence", format,
