@@ -138,7 +138,7 @@ class RecoverySessionCodecTest {
             val encoded=RecoverySessionCodec.encode(settingsPayload(PreprocessSettings(knownBitErrorLimit=limit)))
             val current = GZIPInputStream(ByteArrayInputStream(encoded,48,encoded.size-48)).use { it.readBytes() }
             // Schema 28 ends after the known-bit search limit.
-            return current.copyOfRange(0, current.size - 6) + current.copyOfRange(current.size - 3, current.size)
+            return current.copyOfRange(0, current.size - 7) + current.copyOfRange(current.size - 3, current.size)
         }
         fun container(raw:ByteArray,version:Int):ByteArray {
             val compressed=java.io.ByteArrayOutputStream().also { out -> java.util.zip.GZIPOutputStream(out).use { it.write(raw) } }.toByteArray()
@@ -157,7 +157,7 @@ class RecoverySessionCodecTest {
 
     private fun schema28Settings(encoded: ByteArray): ByteArray {
         val raw = QrrContainerCodec.decode(encoded).bytes
-        val legacy = raw.copyOfRange(0, raw.size - 6) + raw.copyOfRange(raw.size - 3, raw.size)
+        val legacy = raw.copyOfRange(0, raw.size - 7) + raw.copyOfRange(raw.size - 3, raw.size)
         return QrrContainerCodec.encode { it.write(legacy) }.also { ByteBuffer.wrap(it).putInt(4, 28) }
     }
 

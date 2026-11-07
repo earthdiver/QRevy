@@ -3,7 +3,7 @@ package io.github.earthdiver.qrrepair
 import io.github.earthdiver.qrrepair.core.*
 
 /** UI-thread state; workers only read the current immutable request for cancellation. */
-internal class DistortionPreviewState {
+internal class DistortionPreviewState(private val lmOnly: Boolean = false) {
     data class Input(val image: LumaImage, val base: GridGeometry, val profile: SamplingProfile)
     class Request(val input: Input)
     data class Calculation(val candidates: List<GridGeometry>, val memoryLimited: Boolean = false)
@@ -59,6 +59,11 @@ internal class DistortionPreviewState {
 
     fun calculate(request: Request): Calculation {
         val (image, base, profile) = request.input
+        if (lmOnly) {
+            val fit = projectivePatternHypothesis(image, profile,
+                listOf(GeometryHypothesis(emptyList(), base, quickGeometryScore(image, base, profile)))) { !isCurrent(request) }
+            return Calculation(listOfNotNull(fit?.geometry))
+        }
         val detector = CurvedGridDetector(image, profile, stopRequested = { !isCurrent(request) })
         val candidates = detector.candidates(base).distinct().sortedBy { quickGeometryScore(image, it, profile) }
         return Calculation(candidates, detector.contourMemoryLimited)

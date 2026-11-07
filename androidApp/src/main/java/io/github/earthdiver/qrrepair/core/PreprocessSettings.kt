@@ -33,6 +33,7 @@ data class PreprocessSettings(
     val distortionCorrection: Boolean = false,
     /** The displayed sampling map, retained for reproducible repair and session restore. */
     val previewGeometry: GridGeometry? = null,
+    val lmGeometry: GridGeometry? = null,
     /** Rotation applied reproducibly to the persisted source image before sampling. */
     val rotationDegrees: Float = 0f,
     /** Logical axes are transposed in manualQuad and edits; source pixels are unchanged. */
@@ -109,6 +110,7 @@ data class PreprocessSettings(
     /** An imported boundary has logical orientation only when Finder roles were assigned. */
     fun withInitialGrid(estimate: InitialGridEstimate?) = copy(
         previewGeometry = null,
+        lmGeometry = null,
         version = estimate?.version ?: 1,
         manualQuad = estimate?.moduleCenterQuad,
         visibleFinderRole = null,

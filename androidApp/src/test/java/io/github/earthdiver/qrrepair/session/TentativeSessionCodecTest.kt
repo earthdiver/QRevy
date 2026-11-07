@@ -36,8 +36,10 @@ class TentativeSessionCodecTest {
     @Test fun schema32RestoresKnownImageCellsWithoutInventingSamplingMargins() {
         val matrix = QrMatrix(21)
         matrix.set(a.x, a.y, ModuleValue.ONE, 1f, ModuleSource.IMAGE)
-        // A snapshot without optical evidence uses the same record layout as version 32.
-        val encoded = RecoverySessionCodec.encode(payload(PreprocessSettings(), matrix))
+        // Remove the absent optional LM mapping from this single settings record.
+        val raw = QrrContainerCodec.decode(RecoverySessionCodec.encode(payload(PreprocessSettings(), matrix))).bytes
+        val legacy = raw.copyOfRange(0, raw.size - 4) + raw.copyOfRange(raw.size - 3, raw.size)
+        val encoded = QrrContainerCodec.encode { it.write(legacy) }
         java.nio.ByteBuffer.wrap(encoded).putInt(4, 32)
         val snapshot = RecoverySessionCodec.decode(encoded).historyEntries.single().snapshot
         assertFalse(snapshot.preprocessSettings!!.photographicSource)

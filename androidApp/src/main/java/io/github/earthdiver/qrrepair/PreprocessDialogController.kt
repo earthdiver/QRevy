@@ -150,6 +150,21 @@ internal class PreprocessDialogController(
             isChecked = preprocessSettings.useUnknownColorClusters && preprocessSettings.unknownColorClusters.isNotEmpty()
             isEnabled = preprocessSettings.unknownColorClusters.isNotEmpty()
         }
+        val lmCorrection = CheckBox(this).apply {
+            text = ui("LM法で格子を補正", "Correct grid using LM")
+            isChecked = editor.lmEnabled
+        }
+        fun disableLmForEdit() {
+            if (editor.lmEnabled) Toast.makeText(activity,
+                ui("LM補正を解除しました", "LM correction disabled"), Toast.LENGTH_SHORT).show()
+            editor.disableLm()
+        }
+        val lmStatus = TextView(this)
+        val lmControls = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(lmCorrection)
+            addView(lmStatus)
+        }
         val searchQuadNeighborhood = CheckBox(this).apply {
             text = ui("サンプリング位置を自動微調整する", "Automatically fine-tune sampling position")
             isChecked = preprocessSettings.searchQuadNeighborhood
@@ -299,6 +314,7 @@ internal class PreprocessDialogController(
         bindThresholdInput(blackLabel, black, offset = 0)
         bindThresholdInput(whiteLabel, white, offset = 1)
         fun commitVersion(requested: Int) {
+            disableLmForEdit()
             val nextVersion = requested.coerceIn(1, 40)
             val perspectiveQuad = dialogState.perspectiveCorrectionQuad
             // Build before changing the draft so allocation/transform failure cannot leave
@@ -491,6 +507,7 @@ internal class PreprocessDialogController(
             setOnCheckedChangeListener { _, checked ->
                 finderSearchGeneration.incrementAndGet()
                 dialogState.mirroredInput = checked
+                disableLmForEdit()
                 overlay.setMirroredInput(checked)
                 cellEditState.transposeCoordinates()
                 userGeometryEdited = true
@@ -607,8 +624,26 @@ internal class PreprocessDialogController(
                     "Distortion: candidate ${state.selectedIndex + 1}/${state.candidates.size}")
             } + if (state.memoryLimited) ui("\nメモリ上限により補正探索の一部を省略しました", "\nSome correction searches were omitted due to the memory limit") else ""
         }
+        lmCorrection.setOnCheckedChangeListener { _, checked ->
+            if (checked != editor.lmEnabled) {
+                editor.selectLm(checked)
+                refreshClassificationMatrix()
+                refreshPreRecoveryDataPage()
+                noteDraftChange("lm-grid", ui("LM格子補正", "LM grid correction"), if (checked) "ON" else "OFF")
+            }
+        }
         refreshClassificationMatrix = {
             previewCoordinator.requestCorrection(controlSnapshot(), geometrySnapshot())
+            lmCorrection.isChecked = editor.lmEnabled
+            lmCorrection.isEnabled = overlay.isLogicalGridAssigned()
+            lmStatus.text = when {
+                !overlay.isLogicalGridAssigned() -> ui("四隅とFinderの役割を指定してください", "Assign the corners and Finder roles")
+                editor.lmEnabled && !editor.lm.complete -> ui("補正中…", "Correcting…")
+                editor.lmEnabled -> ui("補正済み", "Correction applied")
+                (editor.lm.failed || editor.lmUnavailable) -> ui("補正を適用できませんでした", "Correction could not be applied")
+                editor.lm.complete -> ui("補正はOFFです", "Correction is off")
+                else -> ""
+            }
             refreshSourceControls()
             val preview = refreshPreRecoveryMatrix()
             updateCorrectionControl()
@@ -622,8 +657,8 @@ internal class PreprocessDialogController(
                 else ui("セルを読み取り中…", "Reading cells…")
             }
             preview?.let { (geometry, matrix) ->
-                if (cellEditorPageVisible) overlay.setCellEditing(geometry, matrix, cellEditState.selection.focus)
-                else overlay.setCellEditPreview(geometry, matrix)
+                if (cellEditorPageVisible) overlay.setCellEditing(geometry, matrix, cellEditState.selection.focus, sourceQuad = overlay.imageQuad())
+                else overlay.setCellEditPreview(geometry, matrix, sourceQuad = overlay.imageQuad())
                 overlay.setCellSelection(cellEditState.selectedCells, cellEditState.selection.isRectangle, cellEditState.selection.focus)
                 largeCellEditor?.editorView?.setDocument(editor.working.bitmap, geometry, matrix, keepViewport = true)
                 largeCellEditor?.editorView?.setSelection(cellEditState.selectedCells, cellEditState.selection.isRectangle, cellEditState.selection.focus)
@@ -631,6 +666,7 @@ internal class PreprocessDialogController(
         }
         val refreshDraggedGrid = Runnable { if (overlay.isAttachedToWindow) refreshClassificationMatrix() }
         overlay.onGeometryEdited = {
+            disableLmForEdit()
             previewCoordinator.geometryEdited()
             updateCorrectionControl()
             userGeometryEdited = true
@@ -642,7 +678,7 @@ internal class PreprocessDialogController(
             cellEditState.select(setOf(Coord(x, y)))
             val refreshed = refreshPreRecoveryMatrix()
             refreshed?.let { (geometry, matrix) ->
-                overlay.setCellEditing(geometry, matrix, Coord(x, y))
+                overlay.setCellEditing(geometry, matrix, Coord(x, y), sourceQuad = overlay.imageQuad())
                 largeCellEditor?.editorView?.setDocument(editor.working.bitmap, geometry, matrix, keepViewport = true)
                 largeCellEditor?.editorView?.setSelected(x, y)
             }
@@ -686,7 +722,7 @@ internal class PreprocessDialogController(
                 }
                 override fun refreshEditedCells(changed: Set<Coord>) {
                     refreshPreRecoveryMatrix()?.let { (geometry, matrix) ->
-                        overlay.setCellEditing(geometry, matrix, cellEditState.selection.focus)
+                        overlay.setCellEditing(geometry, matrix, cellEditState.selection.focus, sourceQuad = overlay.imageQuad())
                         largeCellEditor?.editorView?.setDocument(editor.working.bitmap, geometry, matrix, keepViewport = true)
                     }
                     refreshSelection()
@@ -717,7 +753,7 @@ internal class PreprocessDialogController(
             overlay.visibility = View.VISIBLE
             overlay.cellEditorTool = EditorTool.NAVIGATE
             refreshPreRecoveryMatrix()?.let { (geometry, matrix) ->
-                overlay.setCellEditing(geometry, matrix, null)
+                overlay.setCellEditing(geometry, matrix, null, sourceQuad = overlay.imageQuad())
                 overlay.setCellSelection(emptySet())
                 preEditStatus?.text = getString(R.string.tap_cell)
             }
@@ -725,7 +761,7 @@ internal class PreprocessDialogController(
         fun showBulkEditor(tool: EditorTool) {
             overlay.visibility = View.VISIBLE
             refreshPreRecoveryMatrix()?.let { (geometry, matrix) ->
-                overlay.setCellEditing(geometry, matrix, null)
+                overlay.setCellEditing(geometry, matrix, null, sourceQuad = overlay.imageQuad())
             }
             overlay.cellEditorTool = tool
             preEditStatus?.text = ui("ブラシでなぞるか、矩形選択後に0/1/?を押して一括変更します。", "Paint with a brush, or select a rectangle and use 0/1/? to edit it.")
@@ -734,7 +770,7 @@ internal class PreprocessDialogController(
             val initial = refreshPreRecoveryMatrix() ?: return
             cellEditState.clearSelection()
             refreshSourceControls()
-            overlay.setCellEditing(initial.first, initial.second, null)
+            overlay.setCellEditing(initial.first, initial.second, null, sourceQuad = overlay.imageQuad())
             overlay.setCellSelection(emptySet())
             val expanded = PreprocessLargeCellEditor(
                 activity, editor.working.bitmap, initial.first, initial.second,
@@ -750,7 +786,7 @@ internal class PreprocessDialogController(
                 onDismiss = {
                     largeCellEditor = null
                     refreshPreRecoveryMatrix()?.let { (geometry, matrix) ->
-                        overlay.setCellEditing(geometry, matrix, overlay.selectedEditCell())
+                        overlay.setCellEditing(geometry, matrix, overlay.selectedEditCell(), sourceQuad = overlay.imageQuad())
                         overlay.setCellSelection(cellEditState.selectedCells, cellEditState.selection.isRectangle, cellEditState.selection.focus)
                     }
                     updatePreEditCountStatus()
@@ -886,6 +922,7 @@ internal class PreprocessDialogController(
             addView(mirroredInput)
         }
         val clearVisible = button(ui("位置未測定の役割指定を解除", "Clear role without a center")) {
+            disableLmForEdit()
             overlay.visibleFinderRole = null
             if (overlay.finderPoints().isEmpty()) overlay.setPhysicalImageQuad(overlay.imageQuad())
             userGeometryEdited = true
@@ -903,6 +940,7 @@ internal class PreprocessDialogController(
             compactRow = { views -> compactRow(*views) },
             versionButton = requireNotNull(versionButton),
             cornerControls = cornerControls,
+            lmControls = lmControls,
             automaticThresholds = automaticThresholds,
             blackLabel = blackLabel,
             blackSeekBar = black,
@@ -953,6 +991,8 @@ internal class PreprocessDialogController(
                     Toast.makeText(this, R.string.perspective_applied, Toast.LENGTH_LONG).show()
                 },
                 beginFinderPlacement = { role ->
+                    disableLmForEdit()
+                    refreshClassificationMatrix()
                     overlay.clearCornerSelection()
                     overlay.finderPlacementRole = role
                 },
@@ -1005,7 +1045,7 @@ internal class PreprocessDialogController(
                 if (page == PreprocessPage.CELL_EDITOR) {
                     showSingleCellEditor()
                 } else {
-                    refreshPreRecoveryMatrix()?.let { (geometry, matrix) -> overlay.setCellEditPreview(geometry, matrix) }
+                    refreshPreRecoveryMatrix()?.let { (geometry, matrix) -> overlay.setCellEditPreview(geometry, matrix, sourceQuad = overlay.imageQuad()) }
                     overlay.visibility = View.VISIBLE
                 }
                 workflowNavigation?.update(if (page == PreprocessPage.CELL_EDITOR) 1 else 0, canShowResult = host.canShowResult())

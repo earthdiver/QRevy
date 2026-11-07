@@ -35,6 +35,7 @@ internal class PreRecoveryBasicSettingsPage(
     scrollContentFooter: View? = null,
     automaticThresholds: CheckBox? = null,
     cornerControls: View? = null,
+    lmControls: View? = null,
     private val actions: BasicSettingsPageActions,
 ) {
     private val nudgeSteps = listOf(.05, .10, .25, .50, 1.0)
@@ -106,6 +107,7 @@ internal class PreRecoveryBasicSettingsPage(
                 setText(R.string.fixed_geometry_summary)
                 textSize = 12f
             })
+            lmControls?.let { addSettingsItem(it, 4) }
             scrollContentFooter?.let { addView(it) }
         })
     }

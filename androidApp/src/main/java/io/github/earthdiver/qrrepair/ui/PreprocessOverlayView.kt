@@ -308,15 +308,15 @@ class PreprocessOverlayView(context: Context) : View(context) {
     var highlightManualOnly: Boolean = false
         set(value) { field = value; invalidate() }
 
-    fun setCellEditing(geometry: GridGeometry, matrix: QrMatrix, selected: Coord? = editCell) {
-        sampledQuad = if (geometry.warp != null) imageQuad() else geometry.imageQuad ?: imageQuad()
+    fun setCellEditing(geometry: GridGeometry, matrix: QrMatrix, selected: Coord? = editCell, sourceQuad: ImageQuad? = null) {
+        sampledQuad = sourceQuad ?: if (geometry.warp != null) imageQuad() else geometry.imageQuad ?: imageQuad()
         editGeometry = geometry; editMatrix = matrix
         cellEditInteractive = true
         editCell = selected?.takeIf { it.x in 0 until matrix.dimension && it.y in 0 until matrix.dimension }
         invalidate()
     }
-    fun setCellEditPreview(geometry: GridGeometry, matrix: QrMatrix) {
-        sampledQuad = if (geometry.warp != null) imageQuad() else geometry.imageQuad ?: imageQuad()
+    fun setCellEditPreview(geometry: GridGeometry, matrix: QrMatrix, sourceQuad: ImageQuad? = null) {
+        sampledQuad = sourceQuad ?: if (geometry.warp != null) imageQuad() else geometry.imageQuad ?: imageQuad()
         editGeometry = geometry; editMatrix = matrix; editCell = null
         editSelection = emptySet(); editSelectionIsRectangle = false; cellEditInteractive = false
         invalidate()

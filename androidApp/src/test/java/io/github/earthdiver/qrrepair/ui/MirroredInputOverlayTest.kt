@@ -18,6 +18,18 @@ class MirroredInputOverlayTest {
         setImageQuad(quad)
     }
 
+    @Test fun selectedProjectivePreviewDoesNotReplaceEditableCorners() {
+        val overlay = overlay()
+        overlay.setVersion(1)
+        val selected = GridGeometry(1, FinderRole.TOP_LEFT, 20.0, 25.0, 10.0, 0.0,
+            quad.copy(topLeft = PointD(22.0, 27.0)), GeometryModel.PROJECTIVE).reanchored()
+        overlay.setCellEditPreview(selected, QrMatrix(21), sourceQuad = quad)
+        assertEquals(selected, overlay.previewGeometry())
+        assertEquals(quad, overlay.imageQuad())
+        overlay.clearCellEditing()
+        assertEquals(quad, overlay.previewGeometry()!!.moduleCenterQuad())
+    }
+
     @Test fun toggleExchangesRolesAndPreservesConfirmedPolarityAndImagePositions() {
         val overlay = overlay()
         val candidate = FinderCandidate(190.0, 50.0, 10.0, 0.0, 1.0, 5, polarity = FinderPolarity.INVERTED)

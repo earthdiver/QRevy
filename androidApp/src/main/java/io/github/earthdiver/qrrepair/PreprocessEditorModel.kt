@@ -30,6 +30,7 @@ internal data class PreprocessEditorDraft(
     val cellEdits: PreRecoveryCellEditState,
     val changes: PreprocessDraftState,
     val page: PreprocessPage,
+    val lmRequested: Boolean = false,
 )
 
 /** Composes the editable draft, observation cache, and temporary image ownership without Views. */
@@ -55,6 +56,55 @@ internal class PreprocessEditorModel(
     var samplingFailed = false
         private set
     val correction = DistortionPreviewState()
+    val lm = DistortionPreviewState(lmOnly = true)
+    var lmEnabled = restoredDraft?.lmRequested ?: (initial.lmGeometry != null)
+    var lmUnavailable = false
+        private set
+    private var restoreLm = initial.lmGeometry
+    fun selectLm(enabled: Boolean) {
+        lmEnabled = enabled
+        lmUnavailable = false
+        restoreLm = null
+        restoreCorrection = null
+        if (lm.failed || (!enabled && !lm.complete)) lm.invalidate()
+        correction.invalidate()
+        invalidateSampling()
+    }
+    fun disableLm() {
+        lmUnavailable = false
+        restoreCorrection = null
+        lmEnabled = false
+        restoreLm = null
+        lm.invalidate()
+        correction.invalidate()
+        invalidateSampling()
+    }
+    fun requestLm(controls: PreprocessControlSnapshot, grid: PreprocessGeometrySnapshot): DistortionPreviewState.Request? {
+        if (!lmEnabled || !grid.logicalGridAssigned) return null
+        val input = previewInput(controls, grid, useLm = false) ?: run {
+            lmEnabled = false
+            lmUnavailable = true
+            return null
+        }
+        val request = lm.request(input) ?: return null
+        restoreLm?.let {
+            restoreLm = null
+            if (initial.manualQuad == grid.quad && initial.version == controls.version) {
+                lm.accept(request, listOf(it))
+                return null
+            }
+        }
+        return request
+    }
+    fun acceptLm(request: DistortionPreviewState.Request, result: Result<DistortionPreviewState.Calculation>): Boolean {
+        if (!lmEnabled || !lm.isCurrent(request)) return false
+        val candidates = result.getOrNull()?.candidates.orEmpty()
+        lm.accept(request, candidates, result.isFailure || candidates.isEmpty())
+        if (candidates.isEmpty()) lmEnabled = false
+        correction.invalidate()
+        invalidateSampling()
+        return true
+    }
     private var restoreCorrection = initial.previewGeometry
     private var provisionalImage = initialWorking
     var working = initialWorking
@@ -63,6 +113,7 @@ internal class PreprocessEditorModel(
     init { cells.priorityLimit = initial.prioritySearchLimit }
 
     fun replaceWorking(replacement: BitmapUtils.Prepared) {
+        disableLm()
         invalidateSampling()
         correction.invalidate()
         restoreCorrection = null
@@ -72,6 +123,7 @@ internal class PreprocessEditorModel(
     }
 
     fun release() {
+        disableLm()
         invalidateSampling()
         correction.invalidate()
         releaseIfTemporary(working, source)
@@ -90,7 +142,7 @@ internal class PreprocessEditorModel(
         val stats: MatrixSampler.SamplingStats,
     )
 
-    private fun previewInput(controls: PreprocessControlSnapshot, grid: PreprocessGeometrySnapshot): DistortionPreviewState.Input? {
+    private fun previewInput(controls: PreprocessControlSnapshot, grid: PreprocessGeometrySnapshot, useLm: Boolean = true): DistortionPreviewState.Input? {
         val q = grid.quad
         val dimension = 17 + 4 * controls.version
         val pitch = ((q.topLeft.distanceTo(q.topRight) + q.topLeft.distanceTo(q.bottomLeft)) /
@@ -112,7 +164,8 @@ internal class PreprocessEditorModel(
         val normalized = if (profile.settings.automaticThresholds) profile.copy(settings = profile.settings.copy(
             blackMax = profile.provisionalThresholds.blackMax, whiteMin = profile.provisionalThresholds.whiteMin,
         )) else profile
-        return DistortionPreviewState.Input(working.luma, geometry, normalized)
+        val input = DistortionPreviewState.Input(working.luma, geometry, normalized)
+        return if (useLm && lmEnabled && lm.complete && lm.matches(input)) input.copy(base = lm.selected ?: geometry) else input
     }
 
     fun requestCorrection(controls: PreprocessControlSnapshot, grid: PreprocessGeometrySnapshot): DistortionPreviewState.Request? {
@@ -133,8 +186,8 @@ internal class PreprocessEditorModel(
     }
 
     fun correctionReady(controls: PreprocessControlSnapshot, grid: PreprocessGeometrySnapshot): Boolean =
-        !initial.distortionCorrection || !grid.logicalGridAssigned ||
-            (previewInput(controls, grid)?.let(correction::matches) == true && correction.complete)
+        (!lmEnabled || (lm.complete && previewInput(controls, grid, useLm = false)?.let(lm::matches) == true)) && (!initial.distortionCorrection || !grid.logicalGridAssigned ||
+            (previewInput(controls, grid)?.let(correction::matches) == true && correction.complete))
 
     private fun observationInput(controls: PreprocessControlSnapshot, grid: PreprocessGeometrySnapshot): PreRecoveryPreviewSampler.ObservationInput? {
         val input = previewInput(controls, grid) ?: return null
@@ -186,13 +239,17 @@ internal class PreprocessEditorModel(
 
     fun captureSettings(controls: PreprocessControlSnapshot, grid: PreprocessGeometrySnapshot): PreprocessSettings =
         settings.captureSettings(controls, grid, cells.edits.toMap(), cells.prioritySearch.toSet(), cells.softEdits.toSet()).copy(
+            lmGeometry = lm.selected?.takeIf {
+                lmEnabled && lm.complete && grid.logicalGridAssigned &&
+                    previewInput(controls, grid, useLm = false)?.let(lm::matches) == true
+            },
             previewGeometry = correction.selected?.takeIf {
                 grid.logicalGridAssigned && previewInput(controls, grid)?.let(correction::matches) == true
             },
         )
 
     fun captureDraft(current: PreprocessSettings, page: PreprocessPage): PreprocessEditorDraft =
-        PreprocessEditorDraft(current, cells.copyForEditing(), changes.copyForEditing(), page)
+        PreprocessEditorDraft(current, cells.copyForEditing(), changes.copyForEditing(), page, lmEnabled)
 
     fun hasUnsavedChanges(current: PreprocessSettings): Boolean = changes.hasUnsavedChanges(current)
 

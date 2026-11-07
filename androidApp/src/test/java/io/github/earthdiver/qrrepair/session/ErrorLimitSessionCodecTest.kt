@@ -45,7 +45,7 @@ class ErrorLimitSessionCodecTest {
 
     @Test fun checksummedInvalidModeOrdinalsAreRejectedForEitherLimit() {
         val encoded = RecoverySessionCodec.encode(payload(PreprocessSettings()))
-        for (offsetFromEnd in listOf(40, 36)) {
+        for (offsetFromEnd in listOf(41, 37)) {
             for (invalid in listOf(-1, ErrorLimitMode.entries.size, Int.MAX_VALUE)) {
                 val altered = rewrite(encoded) { raw ->
                     ByteBuffer.wrap(raw).putInt(raw.size - offsetFromEnd, invalid)
@@ -61,7 +61,7 @@ class ErrorLimitSessionCodecTest {
     @Test fun currentSchemaRejectsMissingModeFieldsEvenWithAValidChecksum() {
         val encoded = RecoverySessionCodec.encode(payload(PreprocessSettings()))
         val missing = rewrite(encoded) { raw ->
-            raw.copyOfRange(0, raw.size - 40) + raw.copyOfRange(raw.size - 32, raw.size)
+            raw.copyOfRange(0, raw.size - 41) + raw.copyOfRange(raw.size - 33, raw.size)
         }
         assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) {
             RecoverySessionCodec.decode(missing)

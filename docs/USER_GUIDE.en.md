@@ -48,6 +48,8 @@ Image and text imports may assign roles automatically. Check the green Finder ma
 
 When Finder patterns establish whether black and white are reversed, that interpretation takes precedence over **Auto**, **Normal**, and **Inverted**. Otherwise, those controls determine how image values are interpreted. Manually entered cell values stay unchanged.
 
+**Correct grid using LM** appears below Finder role assignment and starts off. After checking the corners, version, and orientation, enable it to inspect the corrected grid and cell readings. If correction cannot be applied, the original grid remains selected. Turning the option off restores the original grid without clearing cell edits. Editing the geometry disables the correction; changing Version clears cell edits after confirmation. With fine-tuning on, neighborhood and curved correction searches start from the selected LM grid. Saved work restores the selected correction and the original corners.
+
 ## 4. Edit cells
 
 In Classic, long-press **Edit cells (long press)**. In Modern, choose **Edit cells** or **02 Cells**. Tap a cell, then choose its value; use the arrow buttons to move to a neighboring cell.
@@ -156,7 +158,7 @@ Tap an entry in **Saved work** or **Recent work** to reopen it. Long-press to de
 
 ### Saved-work compatibility
 
-QRR is the app’s saved-work format. The app writes format version **33** and reads versions **23–33**; other versions are rejected. Older files restore settings they did not store as follows: Known-bit error search is off for all versions 23–27. Distortion correction is off for versions 23–29. Versions 23–30 do not store the selected preview grid. The UTF-8 assumption defaults to off for versions 23–31. Versions 23–32 have no image sampling margins for temporary image erasures.
+QRR is the app’s saved-work format. The app writes format version **34** and reads versions **23–34**; other versions are rejected. Older files restore settings they did not store as follows: Known-bit error search is off for all versions 23–27. Distortion correction is off for versions 23–29. Versions 23–30 do not store the selected preview grid. The UTF-8 assumption defaults to off for versions 23–31. Versions 23–32 have no image sampling margins for temporary image erasures. Versions 23–33 have no selected LM correction and restore it as off.
 
 | File version | Restored defaults |
 | --- | --- |

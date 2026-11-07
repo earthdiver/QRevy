@@ -27,6 +27,72 @@ class PreprocessEditorModelTest {
         eraseColor(Color.WHITE)
     })
 
+    @Test fun lmSelectionRestoresTheOriginalGridAndPreservesEdits() {
+        val source = image()
+        try {
+            val editor = PreprocessEditorModel(PreprocessSettings(version = 1), source, source,
+                null, null, { false }, { true })
+            val original = requireNotNull(editor.sample(controls, grid)).geometry
+            val corrected = original.copy(imageQuad = grid.quad.copy(topLeft = PointD(1.5, 1.5))).reanchored()
+            editor.cells.applyValues(listOf(Coord(10, 10)), ModuleValue.ONE) { ModuleValue.ZERO }
+            editor.selectLm(true)
+            val request = requireNotNull(editor.requestLm(controls, grid))
+            assertFalse(editor.correctionReady(controls, grid))
+            assertTrue(editor.acceptLm(request, Result.success(DistortionPreviewState.Calculation(listOf(corrected)))))
+            assertEquals(corrected, editor.sample(controls, grid)!!.geometry)
+            val saved = editor.captureSettings(controls, grid)
+            assertEquals(grid.quad, saved.manualQuad)
+            assertEquals(corrected, saved.lmGeometry)
+            val changedGrid = grid.copy(quad = grid.quad.copy(topLeft = PointD(3.0, 3.0)))
+            assertNull(editor.captureSettings(controls, changedGrid).lmGeometry)
+            assertFalse(editor.correctionReady(controls, changedGrid))
+            val restored = PreprocessEditorModel(saved, source, source, null, null, { false }, { true })
+            assertNull(restored.requestLm(controls, grid))
+            assertEquals(corrected, restored.sample(controls, grid)!!.geometry)
+            restored.selectLm(false)
+            assertEquals(original, restored.sample(controls, grid)!!.geometry)
+            assertEquals(ModuleValue.ONE, restored.cells.edits[Coord(10, 10)])
+            restored.selectLm(true)
+            assertNull(restored.requestLm(controls, grid))
+            assertEquals(corrected, restored.sample(controls, grid)!!.geometry)
+        } finally { source.bitmap.recycle() }
+    }
+
+    @Test fun curvedCorrectionStartsFromTheSelectedLmMapping() {
+        val source = image()
+        try {
+            val editor = PreprocessEditorModel(PreprocessSettings(version = 1, distortionCorrection = true),
+                source, source, null, null, { false }, { true })
+            editor.selectLm(true)
+            val request = requireNotNull(editor.requestLm(controls, grid))
+            val selected = request.input.base.copy(imageQuad = grid.quad.copy(topLeft = PointD(1.5, 1.5))).reanchored()
+            editor.acceptLm(request, Result.success(DistortionPreviewState.Calculation(listOf(selected))))
+            assertEquals(selected, editor.requestCorrection(controls, grid)!!.input.base)
+            editor.selectLm(false)
+            assertEquals(grid.quad, editor.requestCorrection(controls, grid)!!.input.base.moduleCenterQuad())
+        } finally { source.bitmap.recycle() }
+    }
+
+    @Test fun lmFailureAndGeometryChangesCannotPublishStaleCorrections() {
+        val source = image()
+        try {
+            val editor = PreprocessEditorModel(PreprocessSettings(version = 1), source, source,
+                null, null, { false }, { true })
+            editor.selectLm(true)
+            val stale = requireNotNull(editor.requestLm(controls, grid))
+            editor.disableLm()
+            assertFalse(editor.acceptLm(stale, Result.success(DistortionPreviewState.Calculation(listOf(stale.input.base)))))
+            assertNull(editor.captureSettings(controls, grid).lmGeometry)
+            editor.selectLm(true)
+            val request = requireNotNull(editor.requestLm(controls, grid))
+            editor.acceptLm(request, Result.success(DistortionPreviewState.Calculation(emptyList())))
+            assertFalse(editor.lmEnabled)
+            assertTrue(editor.lm.failed)
+            editor.selectLm(true)
+            assertNotNull(editor.requestLm(controls, grid))
+        } finally { source.bitmap.recycle() }
+    }
+
     @Test fun savingAndRestoringKeepIndependentEditsAndReplaceTheValidationCallback() {
         val source = image()
         try {

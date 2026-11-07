@@ -41,7 +41,7 @@ Raising an error limit alone does not permit correction of fixed values. To incl
 
 ## 2. Establishing the grid and reading cells
 
-When an image is imported, the app estimates the version, which determines the grid size, and the positions of the QR code's four corners in the image. During repair, sampling positions are refined around that grid. The selected version and the assignment of the QR code's top-left, top-right, and bottom-left corners, called its logical orientation, stay unchanged.
+When an image is imported, the app estimates the version, which determines the grid size, and the positions of the QR code's four corners in the image. Before repair, the user selects the grid to read. When automatic fine-tuning is enabled, repair explores sampling positions around the selected reference grid. The selected version and the assignment of the QR code's top-left, top-right, and bottom-left corners, called its logical orientation, stay unchanged.
 
 Recovery requires at least one finder pattern (**Finder**) to be assigned a top-left, top-right, or bottom-left role. Recovery can be attempted even when only one Finder is visible.
 
@@ -56,6 +56,18 @@ Initial estimation uses the QR detection library ZXing-C++ to detect the QR code
 If that grid cannot be accepted, the app estimates a grid from the repeating cell spacing, then considers an estimate using two Finders if necessary. It may decline an estimate when, for example, boundaries of different QR codes are detected or normal and inverted readings give conflicting estimates. Text decoded by the detection library is not used as the recovery result.
 
 Ordinary grid candidates use a projective transformation to map the four corners to cell positions in the image. This models a flat surface viewed at an angle. The optional distortion candidates described below add non-rigid displacement for curved surfaces.
+
+### Selecting a corrected grid before repair
+
+Optional grid correction using the Levenberg–Marquardt (LM) method starts disabled. It uses the confirmed four-corner grid, version, and logical orientation as a single starting grid. The image must provide enough independent pattern evidence for the fit.
+
+The app projects the black and white patterns of the Finders, their white separators, and the alignment patterns onto the image. The LM method adjusts all eight parameters of the projective transform together to match these patterns to observed brightness. For QR Code version 1, the fit uses only Finders and their separators. Timing patterns are excluded from the LM objective. A fit is accepted only when the objective improves and the image measurements constrain all eight parameters.
+
+The original corners remain available separately from the selected correction. Switching correction off restores that reference, without changing manual cell values or FIXED constraints. Geometry edits invalidate the LM selection and pending calculations. The selected mapping supplies the displayed grid and cell readings and is saved for recovery and session restoration.
+
+### Automatic fine-tuning around the selected grid
+
+With automatic fine-tuning off, repair uses only the grid selected on the settings screen. With it on, repair generates and tries the neighborhood, alignment-correction, and LM-correction candidates described below, using that grid as the reference. The search reference is the selected LM-corrected grid when present, otherwise the specified four-corner grid.
 
 The basic refinement candidates are:
 
@@ -73,9 +85,9 @@ For version 2 and above, an alignment pattern, a small pattern used to align the
 
 These steps yield at most 38 candidates per polarity. With exactly one assigned Finder role, rotations about the corresponding corner bring the maximum to 42.
 
-The app chooses starting grids from these candidates and projects the black and white patterns of the Finders, their white separators, and the alignment patterns onto the image. The Levenberg–Marquardt (LM) method adjusts all eight parameters of the projective transform together to match the projected patterns to the observed brightness. Version 1 uses only Finders and their separators. Timing patterns help select starting grids but are excluded from the LM objective.
+Automatic fine-tuning also applies LM fitting using up to four starting grids selected from these candidates. Timing-pattern agreement helps select the starts. This search can still generate an LM candidate when the optional correction before repair is off.
 
-If the fit improves and yields a grid distinct from the other candidates, the app adds that grid as one more candidate. The total per polarity is therefore **at most 39**, or **at most 43** with exactly one assigned Finder role. With fine-tuning disabled, repair uses the displayed grid alone. Distortion correction has a separate candidate budget.
+If the fit improves and yields a grid distinct from the other candidates, the app adds that grid as one more candidate. The generated candidates per polarity therefore number **at most 39**, or **at most 43** with exactly one assigned Finder role. A separately selected preview grid may add one more attempt. Distortion correction has a separate candidate budget.
 
 When fine-tuning is enabled, repair tries the selected preview grid first, if present, followed by the LM-fitted grid, the specified grid and its neighborhood/alignment corrections, and finally additional distortion-correction grids. Duplicate grids are tried only once.
 
@@ -91,7 +103,7 @@ Experimental distortion correction uses landmarks from all three Finders and oth
 
 Retain candidates from each stage for comparison, and reject maps that fold over or have excessive displacement or local stretching. Local Finder-template matching also supplies candidates. If contour extraction reaches its memory limit, the app reports that part of correction search is unfinished and continues local pattern matching and ordinary repair.
 
-The settings screen computes up to twelve correction candidates from the specified four-corner grid and orders them by agreement with the timing pattern and other image checks. Grid lines, cell values, cell selection, and repair share the selected candidate. The corner handles edit the underlying grid before distortion correction; landmarks are measured again when the adjustment finishes. The selected candidate is also saved in the session.
+The settings screen computes up to twelve correction candidates from the selected reference grid and prioritizes them based on agreement with the timing pattern and other image checks. The reference is the selected LM-corrected grid, or the specified four-corner grid when LM correction is off. Grid lines, cell values, cell selection, and repair share the selected candidate. The corner handles edit the underlying grid before distortion correction; landmarks are measured again when the adjustment finishes. The selected candidate is also saved in the session.
 
 With “Automatically fine-tune sampling position” enabled, repair attempts recovery in this order: the selected preview grid, the LM-fitted grid, and the specified grid with its neighborhood/alignment corrections. Grids that have not been selected or generated are skipped.
 

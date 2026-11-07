@@ -16,6 +16,13 @@ internal class PreprocessPreviewCoordinator(
 
     fun requestCorrection(controls: PreprocessControlSnapshot, grid: PreprocessGeometrySnapshot) {
         if (geometryDragging) return
+        editor.requestLm(controls, grid)?.let { request ->
+            executor.execute {
+                val result = runCatching { editor.lm.calculate(request) }
+                dispatchToUi { if (editor.acceptLm(request, result)) onChanged() }
+            }
+        }
+        if (editor.lmEnabled && !editor.lm.complete) return
         val request = editor.requestCorrection(controls, grid) ?: return
         executor.execute {
             val result = runCatching { editor.correction.calculate(request) }
@@ -51,6 +58,7 @@ internal class PreprocessPreviewCoordinator(
 
     fun geometryEdited() {
         geometryDragging = true
+        editor.disableLm()
         editor.correction.invalidate()
         editor.invalidateSampling()
     }

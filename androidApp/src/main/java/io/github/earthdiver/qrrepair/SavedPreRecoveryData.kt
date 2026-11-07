@@ -11,8 +11,8 @@ internal fun sampleSavedPreRecoveryData(image: LumaImage, settings: PreprocessSe
     val dimension = 17 + 4 * version
     val pitch = ((quad.topLeft.distanceTo(quad.topRight) + quad.topLeft.distanceTo(quad.bottomLeft)) /
         (2.0 * (dimension - 1))).coerceAtLeast(.25)
-    val geometry = settings.previewGeometry?.takeIf {
-        settings.distortionCorrection && settings.logicalQuad != null && it.version == version
+    val geometry = (settings.previewGeometry ?: settings.lmGeometry)?.takeIf {
+        (settings.distortionCorrection || settings.lmGeometry != null) && settings.logicalQuad != null && it.version == version
     } ?: runCatching {
         GridGeometry(version, FinderRole.TOP_LEFT, quad.topLeft.x, quad.topLeft.y,
             pitch, 0.0, quad, GeometryModel.MANUAL_PROJECTIVE).reanchored()

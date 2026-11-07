@@ -131,11 +131,11 @@ class AutoRecoveryEngine(
         require(maxGeometryAttempts >= 0) { "maxGeometryAttempts must be non-negative" }
         val settings = profile?.settings ?: return AutoRecoveryResult(emptyList(), emptyList(), profile,
             discoveredCandidates = discoveryCounter.snapshot)
-        val preview = settings.previewGeometry?.takeIf {
-            settings.distortionCorrection && settings.logicalQuad != null && it.version == settings.version
+        val preview = (settings.previewGeometry ?: settings.lmGeometry)?.takeIf {
+            (settings.distortionCorrection || settings.lmGeometry != null) && settings.logicalQuad != null && it.version == settings.version
         }?.let { GeometryHypothesis(emptyList(), it, quickGeometryScore(image, it, profile)) }
         val seeds = if (preview != null && !settings.searchQuadNeighborhood) emptyList()
-            else manualGeometrySeeds(settings)
+            else manualGeometrySeeds(settings.copy(manualQuad = settings.lmGeometry?.moduleCenterQuad() ?: settings.manualQuad))
         val selectedSeeds = seeds.take(maxGeometryAttempts)
         val baseHypotheses = selectedSeeds.mapNotNull { (version, quad) ->
             cancellation.check()

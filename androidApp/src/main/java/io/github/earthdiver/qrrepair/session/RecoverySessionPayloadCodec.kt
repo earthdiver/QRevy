@@ -276,6 +276,8 @@ internal object RecoverySessionPayloadCodec {
         }
         writeGeometry(out, settings.previewGeometry)
         out.writeBoolean(settings.assumeUtf8ByteSegments)
+        settings.lmGeometry?.let { require(settings.logicalQuad != null && it.version == settings.version && it.warp == null) }
+        writeGeometry(out, settings.lmGeometry)
     }
 
     private fun readPreprocessSettings(input: DataInputStream, formatVersion: Int): PreprocessSettings {
@@ -417,6 +419,7 @@ internal object RecoverySessionPayloadCodec {
                     requireCorrupt(flag in 0..1, "invalid UTF-8 assumption flag")
                     flag == 1
                 } else false,
+                lmGeometry = if (formatVersion >= 34) readGeometry(input, formatVersion) else null,
                 rotationDegrees = rotation,
                 polarity = polarity,
                 automaticThresholds = automaticThresholds,
@@ -449,6 +452,10 @@ internal object RecoverySessionPayloadCodec {
                 preRecoverySoftEdits = softEdits,
                 preRecoveryPrioritySearch = priority,
             ).also { settings ->
+                settings.lmGeometry?.let {
+                    requireCorrupt(settings.logicalQuad != null && it.version == settings.version && it.warp == null,
+                        "LM geometry does not match settings")
+                }
                 settings.previewGeometry?.let {
                     requireCorrupt(settings.distortionCorrection && settings.logicalQuad != null &&
                         it.version == settings.version, "preview geometry does not match settings")
