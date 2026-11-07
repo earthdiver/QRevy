@@ -21,16 +21,18 @@ class Utf8RecoveryTest {
         assertTrue(RecoveryPayloadChecks().acceptPrefix(prefix(0x41), 1))
     }
 
-    @Test fun rejectsMalformedSequencesAndNeverJoinsIncompleteCharactersAcrossSegments() {
+    @Test fun rejectsMalformedSequencesButAllowsCharactersAcrossByteSegments() {
         for (bytes in listOf(intArrayOf(0x80), intArrayOf(0xc0, 0x80), intArrayOf(0xe0, 0x9f, 0xbf),
             intArrayOf(0xed, 0xa0, 0x80), intArrayOf(0xf4, 0x90, 0x80, 0x80), intArrayOf(0xe3, 0x81))) {
             val data = PayloadBits().apply { byteSegment(*bytes) }.finish()
             assertEquals(RecoveryCandidateRejection.UTF8_BYTE_SEGMENT, checks.rejection(data, 1))
         }
         val split = PayloadBits().apply { byteSegment(0xc2); byteSegment(0xa2) }.finish()
-        assertEquals(RecoveryCandidateRejection.UTF8_BYTE_SEGMENT, checks.rejection(split, 1))
+        assertNull(checks.rejection(split, 1))
         assertTrue(recoverPayload(split).isNotEmpty())
-        assertTrue(recoverPayload(split, assumeUtf8 = true).isEmpty())
+        val candidate = recoverPayload(split, assumeUtf8 = true).single()
+        assertEquals("\u00a2", candidate.text)
+        assertTrue(candidate.utf8AssumptionApplied)
     }
 
     @Test fun defaultByteEncodingAndExplicitEciCanDifferWithinOneCandidate() {
@@ -96,6 +98,7 @@ class Utf8RecoveryTest {
             put(7, 4); put(26, 8); byteSegment(0xc2); byteSegment(0xa2)
         }.finish()
         assertTrue(StrictQrPayloadValidator.isValid(split, 1))
+        assertEquals("\u00a2", recoverPayload(split).single().text)
         val interrupted = PayloadBits().apply {
             put(7, 4); put(26, 8); byteSegment(0xc2)
             put(7, 4); put(3, 8); byteSegment(0xa2)
@@ -112,6 +115,7 @@ class Utf8RecoveryTest {
             byteSegment(0x8b)
         }.finish()
         assertTrue(StrictQrPayloadValidator.isValid(mixed, 1))
+        assertEquals("\u770b", recoverPayload(mixed).single().text)
     }
 
 
@@ -126,6 +130,27 @@ class Utf8RecoveryTest {
         assertFalse(StrictQrPayloadValidator.isValid(fragment(0x11, 0xff), 1))
         assertFalse(StrictQrPayloadValidator.isValid(fragment(0x01, 0xa2), 1))
         assertFalse(StrictQrPayloadValidator.isValid(fragment(0x11, 0xc2), 1))
+    }
+
+    @Test fun assumedUtf8SpansEmptyAndRepeatedByteSegmentsButStopsAtAnotherEncoding() {
+        val split = PayloadBits().apply {
+            byteSegment(0xe3); byteSegment(); byteSegment(0x81); byteSegment(0x82)
+        }.finish()
+        assertEquals("\u3042", recoverPayload(split, assumeUtf8 = true).single().text)
+        for (length in 0..split.size) assertTrue(checks.acceptPrefix(split.copyOf(length), 1))
+        val changed = PayloadBits().apply {
+            byteSegment(0xc2); put(7, 4); put(3, 8); byteSegment(0xa2)
+        }.finish()
+        assertTrue(recoverPayload(changed, assumeUtf8 = true).isEmpty())
+        val numeric = PayloadBits().apply {
+            byteSegment(0xc2); put(1, 4); put(1, 10); put(1, 4); byteSegment(0xa2)
+        }.finish()
+        assertTrue(recoverPayload(numeric, assumeUtf8 = true).isEmpty())
+        val kanji = PayloadBits().apply {
+            put(8, 4); put(1, 8); put(0, 13)
+            byteSegment(0xc2); byteSegment(0xa2)
+        }.finish()
+        assertEquals("\u3000\u00a2", recoverPayload(kanji, assumeUtf8 = true).single().text)
     }
 
 }

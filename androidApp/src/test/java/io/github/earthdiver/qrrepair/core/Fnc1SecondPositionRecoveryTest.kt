@@ -49,4 +49,43 @@ class Fnc1SecondPositionRecoveryTest {
             ZxingPayloadBridge.decodeData(byteArrayOf(0x90.toByte()), 1, ErrorCorrectionLevel.L, null)
         }
     }
+    @Test fun applicationIndicatorAcceptsOnlyNumericAndLatinLetterAssignments() {
+        for (indicator in 0..255) {
+            val data = PayloadBits().apply {
+                put(9, 4); put(indicator, 8); put(4, 4); put(1, 8); put(65, 8)
+            }.finish()
+            val valid = indicator in 0..99 || indicator in 165..190 || indicator in 197..222
+            assertEquals("indicator=$indicator", valid, StrictQrPayloadValidator.isValid(data, 1))
+            assertEquals("indicator=$indicator", valid, recoverPayload(data).isNotEmpty())
+        }
+    }
+
+    @Test fun acceptsEciBeforeOrAfterFnc1AndKeepsStructuredAppendFirst() {
+        for (append in listOf(false, true)) for (mode in listOf(5, 9)) for (eciFirst in listOf(false, true)) {
+            val data = PayloadBits().apply {
+                if (append) { put(3, 4); put(0x0123, 16) }
+                if (eciFirst) { put(7, 4); put(26, 8) }
+                put(mode, 4); if (mode == 9) put(165, 8)
+                if (!eciFirst) { put(7, 4); put(26, 8) }
+                put(4, 4); put(1, 8); put(65, 8)
+            }.finish()
+            val context = "append=$append mode=$mode eciFirst=$eciFirst"
+            assertTrue(context, StrictQrPayloadValidator.isValid(data, 1))
+            for (length in 0..data.size) assertTrue("$context prefix=$length",
+                StrictQrPayloadValidator.canBePrefix(data.copyOf(length), 1))
+            assertEquals(context, "A", ZxingPayloadBridge.decodeData(data, 1, ErrorCorrectionLevel.L, null).text)
+            val results = recoverPayload(data)
+            assertEquals(context, 1, results.size)
+            assertEquals("A", recoverPayload(data, assumeUtf8 = true).single().text)
+            val result = results.single()
+            assertEquals("A", result.text)
+            assertEquals(if (mode == 9) 165 else null, result.fnc1ApplicationIndicator)
+            assertArrayEquals(data, result.dataBytes)
+        }
+        val misplaced = PayloadBits().apply {
+            put(7, 4); put(26, 8); put(3, 4); put(0x0123, 16)
+        }.finish()
+        assertFalse(StrictQrPayloadValidator.isValid(misplaced, 1))
+    }
+
 }

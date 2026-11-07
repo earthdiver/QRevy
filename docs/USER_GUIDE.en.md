@@ -118,7 +118,7 @@ List decoding explores alternatives beyond conventional RS correction. It also l
 
 ### Assume UTF-8 text in Byte mode
 
-Enable this option when Byte segments without an explicit encoding contain UTF-8 text. Repair uses UTF-8 byte ranges to prune incompatible branches during search and to decode the surviving text. Each Byte segment must end on a character boundary. An explicit ECI encoding takes precedence. This option defaults to off and works independently of single-segment forcing.
+Enable this option when Byte segments without an explicit encoding contain UTF-8 text. Repair uses UTF-8 byte ranges to prune incompatible branches during search and to decode the surviving text. An explicit ECI encoding takes precedence. This option defaults to off and works independently of single-segment forcing.
 
 ### Force single-segment terminator and padding
 

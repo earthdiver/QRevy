@@ -153,6 +153,7 @@ class RsPayloadTraversal(
 
         fun groupStates(group: ValueGroup, state: Utf8State): Sequence<Utf8State> = sequence {
             if (group.utf8Remaining < 0) {
+                if (state != Utf8State.BOUNDARY) { onUtf8Rejection(); return@sequence }
                 for (ignored in range(group.position, group.width, group.maximum)) yield(Utf8State.BOUNDARY)
                 return@sequence
             }
@@ -185,7 +186,7 @@ class RsPayloadTraversal(
             visit(0, 0)
         }
 
-        fun values(): Sequence<Unit> = sequence {
+        fun values(requireUtf8Boundary: Boolean): Sequence<Unit> = sequence {
             // Iterative group traversal keeps long numeric payloads off the call stack.
             val iterators = mutableListOf<Iterator<Utf8State>>()
             val states = Array(pendingValues.size + 1) { Utf8State.BOUNDARY }
@@ -193,7 +194,8 @@ class RsPayloadTraversal(
             while (true) {
                 cancellation.check()
                 if (index == pendingValues.size) {
-                    yield(Unit)
+                    if (!requireUtf8Boundary || states[index] == Utf8State.BOUNDARY) yield(Unit)
+                    else onUtf8Rejection()
                     if (index == 0) break
                     index--
                 }
@@ -212,7 +214,7 @@ class RsPayloadTraversal(
             }
         }
 
-        suspend fun SequenceScope<List<PartialCodewordSolver.Result>>.emit() {
+        suspend fun SequenceScope<List<PartialCodewordSolver.Result>>.emit(requireUtf8Boundary: Boolean = false) {
             // Apply the dimension bound to the whole header branch. Interval subdivision
             // must not admit only a tiny boundary slice of an otherwise oversized space.
             for (index in sources.indices) {
@@ -225,21 +227,21 @@ class RsPayloadTraversal(
             }
             val mark = marks()
             try {
-                for (ignored in values()) {
+                for (ignored in values(requireUtf8Boundary)) {
                     emitBlocks()
                     if (limited) return
                 }
             } finally { restore(mark) }
         }
 
-        suspend fun SequenceScope<List<PartialCodewordSolver.Result>>.parse(position: Int, depth: Int, afterStructuredAppend: Boolean = false) {
+        suspend fun SequenceScope<List<PartialCodewordSolver.Result>>.parse(position: Int, depth: Int) {
             cancellation.check()
             // Deep/control-prefixed streams retain the unstructured route. This bound limits
             // optimization stack depth, not the QR formats accepted by final validation.
             if (depth >= 16) { emit(); return }
             if (totalBits - position < 4) {
                 val mark = marks()
-                try { if ((position until totalBits).all { constrain(it, 0) }) emit() }
+                try { if ((position until totalBits).all { constrain(it, 0) }) emit(requireUtf8Boundary = true) }
                 finally { restore(mark) }
                 return
             }
@@ -259,7 +261,7 @@ class RsPayloadTraversal(
                                 }
                                 if (!constrain(p, expected)) { valid = false; break }
                             }
-                            if (valid) emit()
+                            if (valid) emit(requireUtf8Boundary = true)
                         } finally { restore(mark) }
                     }
                     1, 2, 4, 8, 13 -> {
@@ -282,7 +284,11 @@ class RsPayloadTraversal(
                                 val length = requireNotNull(QrPayloadLayout.payloadBits(mode, count))
                                 val valueStart = pendingValues.size
                                 if (mode == 4 && assumeUtf8ByteSegments) {
-                                    repeat(count) { i -> pendingValues += ValueGroup(body + i * 8, 8, 255, count - i - 1) }
+                                    repeat(count) { i -> pendingValues += ValueGroup(body + i * 8, 8, 255, 3) }
+                                }
+                                // Default Kanji/Hanzi interpretation ends an assumed UTF-8 Byte run.
+                                if (assumeUtf8ByteSegments && count > 0 && (mode == 8 || mode == 13)) {
+                                    pendingValues += ValueGroup(body, 0, 0)
                                 }
                                 if (mode == 1 || mode == 2) {
                                     val size = if (mode == 1) 3 else 2
@@ -301,9 +307,11 @@ class RsPayloadTraversal(
                         } finally { restore(mark) }
                     }
                     3 -> if (depth == 0 && totalBits - position >= 20) {
-                        if (assumeUtf8ByteSegments) parse(position + 20, depth + 1, afterStructuredAppend = true) else emit()
+                        // A character may cross symbol boundaries; the ordinary validator keeps
+                        // the possible incoming/outgoing UTF-8 states for Structured Append.
+                        emit()
                     }
-                    5, 9 -> if (depth == 0 || afterStructuredAppend) {
+                    5, 9 -> if (depth == 0) {
                         val body = position + if (mode == 5) 4 else 12
                         if (body <= totalBits) {
                             if (assumeUtf8ByteSegments) parse(body, depth + 1) else emit()

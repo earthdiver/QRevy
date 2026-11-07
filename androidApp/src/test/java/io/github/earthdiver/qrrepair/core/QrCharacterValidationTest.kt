@@ -15,8 +15,8 @@ class QrCharacterValidationTest {
     }.finish()
 
     @Test fun rejectsInvalidKanjiAndHanziEvenWithExactRsParity() {
-        // Kanji: 817F, 81FD, 81FF, unassigned 81AD. Hanzi: A1FF, A2A1 (unassigned), FBC0.
-        for ((mode, values) in listOf(8 to listOf(63, 189, 191, 109), 13 to listOf(94, 96, 8191))) {
+        // Kanji: 817F, 81FD, 81FF. Hanzi: A1FF, A2A1 (unassigned), FBC0.
+        for ((mode, values) in listOf(8 to listOf(63, 189, 191), 13 to listOf(94, 96, 8191))) {
             for (value in values) {
                 val data = stream(mode, value)
                 assertFalse("mode=$mode value=$value", StrictQrPayloadValidator.isValid(data, 1))
@@ -61,4 +61,17 @@ class QrCharacterValidationTest {
         assertTrue(StrictQrPayloadValidator.isValid(data, 1))
         assertTrue(recoverPayload(data).single().payloadParsed)
     }
+    @Test fun kanjiCompactionDoesNotRequireAnAssignedShiftJisCharacter() {
+        val data = stream(8, 109) // 81 AD is within the compaction ranges but unassigned in Shift JIS.
+        assertTrue(StrictQrPayloadValidator.isValid(data, 1))
+        assertTrue(recoverPayload(data).isNotEmpty())
+        val binary = PayloadBits().apply {
+            put(7, 4); put(0x8383, 16) // ECI 899: binary.
+            put(8, 4); put(1, 8); put(109, 13)
+        }.finish()
+        val result = recoverPayload(binary).single()
+        assertArrayEquals(binary, result.dataBytes)
+        assertNull(result.text)
+    }
+
 }

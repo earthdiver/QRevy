@@ -1,6 +1,7 @@
 package io.github.earthdiver.qrrepair.core
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -204,6 +205,21 @@ class PartialPayloadAnalyzerTest {
         val report = PartialPayloadAnalyzer.analyze(partials(header + byteBits("人間".toByteArray())), 1)
         assertEquals("人間", report.knownTextPrefix)
         assertEquals(37, report.fnc1ApplicationIndicator)
+    }
+
+    @Test fun eciBeforeFnc1KeepsThePartialTextAndApplicationIndicator() {
+        val report = PartialPayloadAnalyzer.analyze(partials(
+            "0111" + binary(26, 8) + "1001" + binary(165, 8) + byteBits("人間".toByteArray())), 1)
+        assertEquals("人間", report.knownTextPrefix)
+        assertEquals(165, report.fnc1ApplicationIndicator)
+        assertFalse(report.controlIncomplete)
+    }
+
+    @Test fun invalidFnc1ApplicationIndicatorStopsPartialInterpretation() {
+        val report = PartialPayloadAnalyzer.analyze(partials("1001" + binary(100, 8) + byteBits(byteArrayOf(65))), 1)
+        assertTrue(report.controlIncomplete)
+        assertTrue(report.stoppedAtInvalidValue)
+        assertEquals("", report.knownTextPrefix)
     }
 
     private fun byteBits(bytes: ByteArray) = "0100" + binary(bytes.size, 8) +

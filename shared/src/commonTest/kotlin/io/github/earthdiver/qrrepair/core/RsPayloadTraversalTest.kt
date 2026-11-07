@@ -69,6 +69,25 @@ class RsPayloadTraversalTest {
         assertFalse(traversal.limited)
     }
 
+    @Test fun utf8ContinuationCrossesByteSegmentHeadersBeforeMaterialization() {
+        val data = bytes("01000000000111000010" + "01000000000110100010" + "0000")
+        val unknown = IntArray(data.size).also { it[4] = 0xc0 }
+        val traversal = RsPayloadTraversal(listOf(source(data, unknown)), 1, 1000, assumeUtf8ByteSegments = true)
+        val found = traversal.combinations { true }.toList()
+        assertEquals(1, found.size)
+        assertContentEquals(rs.encode(data, 4), found.single().single().corrected)
+        assertEquals(1, traversal.materialized)
+        assertFalse(traversal.limited)
+    }
+
+    @Test fun utf8RequiresACompleteCharacterAtTheTerminator() {
+        val data = bytes("01000000000111000010" + "0000")
+        val traversal = RsPayloadTraversal(listOf(source(data, IntArray(data.size))), 1, 1000,
+            assumeUtf8ByteSegments = true)
+        assertTrue(traversal.combinations { true }.toList().isEmpty())
+        assertEquals(0, traversal.materialized)
+    }
+
     @Test fun separateByteSegmentsAreNotForcedIntoASingleSegment() {
         val data = bytes("0100" + "00000001" + "11111111" + "0100" + "00000001" + "10000000" + "0000")
         val source = source(data, IntArray(data.size))

@@ -130,7 +130,6 @@ object PartialPayloadAnalyzer {
         var fnc1: Int? = null
         var application: Int? = null
         var structured = false
-        var sawEci = false
         fun readControl(width: Int): Int? {
             if (offset + width > bits.size || bits.subList(offset, offset + width).any { it == null }) return null
             var result = 0
@@ -152,9 +151,12 @@ object PartialPayloadAnalyzer {
                     structured = true
                 }
                 5, 9 -> {
-                    if (fnc1 != null || sawEci) return stopped(mode, false)
+                    if (fnc1 != null) return stopped(mode, false)
                     fnc1 = mode
-                    if (mode == 9) application = readControl(8) ?: return stopped(mode, true)
+                    if (mode == 9) {
+                        application = readControl(8) ?: return stopped(mode, true)
+                        if (!StrictQrPayloadValidator.isValidFnc1ApplicationIndicator(application)) return stopped(mode, false)
+                    }
                 }
                 7 -> {
                     val first = readControl(8) ?: return stopped(mode, true)
@@ -165,7 +167,6 @@ object PartialPayloadAnalyzer {
                         else -> return stopped(mode, false)
                     }
                     if (eci > 999999) return stopped(mode, false)
-                    sawEci = true
                 }
                 else -> { offset = start; break }
             }
