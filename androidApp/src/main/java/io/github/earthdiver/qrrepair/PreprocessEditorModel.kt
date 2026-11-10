@@ -22,6 +22,7 @@ internal data class PreprocessSave(
     val cellEdits: PreRecoveryCellEditState,
     val image: BitmapUtils.Prepared,
     val events: List<PreprocessDraftEvent>,
+    val correctionPreview: SavedCorrectionPreview? = null,
 )
 
 /** View-free editor state retained across configuration changes without saving it to disk. */
@@ -65,6 +66,7 @@ internal class PreprocessEditorModel(
         if (settings.distortionCorrection == enabled) return
         settings.distortionCorrection = enabled
         restoreCorrection = null
+        savedCorrection = null
         correction.invalidate()
         invalidateSampling()
     }
@@ -74,6 +76,7 @@ internal class PreprocessEditorModel(
         lmUnavailable = false
         restoreLm = null
         restoreCorrection = null
+        savedCorrection = null
         if (lm.failed || (!enabled && !lm.complete)) lm.invalidate()
         correction.invalidate()
         invalidateSampling()
@@ -82,6 +85,7 @@ internal class PreprocessEditorModel(
         lmUnavailable = false
         restoreCorrection = null
         lmEnabled = false
+        savedCorrection = null
         restoreLm = null
         lm.invalidate()
         correction.invalidate()
@@ -114,6 +118,13 @@ internal class PreprocessEditorModel(
         return true
     }
     private var restoreCorrection = initial.previewGeometry
+    private var savedCorrection: SavedCorrectionPreview? = null
+    fun restoreCorrectionPreview(saved: SavedCorrectionPreview?) {
+        savedCorrection = saved?.takeIf {
+            initial.distortionCorrection && it.referenceQuad == initial.manualQuad && it.imageKey == SavedCorrectionPreview.ImageKey.from(initial, working.luma.width, working.luma.height) &&
+                it.correction.candidates.getOrNull(it.correction.selectedIndex) == initial.previewGeometry
+        }
+    }
     private var provisionalImage = initialWorking
     var working = initialWorking
         private set
@@ -125,6 +136,7 @@ internal class PreprocessEditorModel(
         invalidateSampling()
         correction.invalidate()
         restoreCorrection = null
+        savedCorrection = null
         val previous = working
         working = replacement
         releaseIfTemporary(previous, replacement)
@@ -186,6 +198,15 @@ internal class PreprocessEditorModel(
         }
         val input = previewInput(controls, grid) ?: return null
         val request = correction.request(input) ?: return null
+        val cached = savedCorrection
+        savedCorrection = null
+        if (cached != null && cached.referenceQuad == grid.quad && cached.imageKey == SavedCorrectionPreview.ImageKey.from(
+                settings.previewSettings(controls).copy(rotationDegrees = settings.rotationDegrees,
+                    perspectiveCorrectionQuad = settings.perspectiveCorrectionQuad), working.luma.width, working.luma.height) &&
+            correction.restoreCompleted(request, cached.correction)) {
+            restoreCorrection = null
+            return null
+        }
         val restored = restoreCorrection
         restoreCorrection = null
         if (restored != null && initial.manualQuad == grid.quad && initial.version == controls.version &&
@@ -271,6 +292,9 @@ internal class PreprocessEditorModel(
     fun commit(current: PreprocessSettings): PreprocessSave {
         val events = mutableListOf<PreprocessDraftEvent>()
         changes.commit(current, events::add)
-        return PreprocessSave(current, cells.copyForEditing(), working, events)
+        val preview = correction.snapshot()?.takeIf {
+            current.distortionCorrection && it.candidates[it.selectedIndex] == current.previewGeometry
+        }?.let { SavedCorrectionPreview(SavedCorrectionPreview.ImageKey.from(current, working.luma.width, working.luma.height), current.manualQuad, it) }
+        return PreprocessSave(current, cells.copyForEditing(), working, events, preview)
     }
 }

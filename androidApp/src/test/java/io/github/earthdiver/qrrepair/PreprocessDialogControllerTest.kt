@@ -61,6 +61,7 @@ class PreprocessDialogControllerTest {
     private fun withDialog(settings: PreprocessSettings? = null, style: AppStyle = AppStyle.CLASSIC, sourceBitmap: Bitmap? = null,
                            savedCellEdits: PreRecoveryCellEditState? = null,
                            worker: Executor = Executor { it.run() },
+                           savedCorrection: SavedCorrectionPreview? = null,
                            block: (AlertDialog, Host, BitmapUtils.Prepared, BitmapUtils.Prepared) -> Unit) = withTestAppLanguage(AppLanguage.JAPANESE) {
         val activity = Robolectric.buildActivity(Activity::class.java).setup()
         activity.get().setTheme(style.theme)
@@ -72,7 +73,7 @@ class PreprocessDialogControllerTest {
         PreprocessDialogController(activity.get(), settings ?: PreprocessSettings(version = 1, rotationDegrees = 15f,
             manualQuad = ImageQuad(PointD(20.0, 20.0), PointD(220.0, 20.0),
                 PointD(220.0, 220.0), PointD(20.0, 220.0))),
-            source, working, savedCellEdits, worker, AtomicInteger(), RecoveryEngine(), host).show()
+            source, working, savedCellEdits, worker, AtomicInteger(), RecoveryEngine(), host, savedCorrection = savedCorrection).show()
         shadowOf(Looper.getMainLooper()).idle()
         val dialog = ShadowDialog.getLatestDialog() as AlertDialog
         try { block(dialog, host, source, working) } finally {
@@ -911,6 +912,31 @@ class PreprocessDialogControllerTest {
         shadowOf(Looper.getMainLooper()).idle()
         assertFalse(working.bitmap.isRecycled)
         assertEquals(listOf("save", "saved status"), host.effects)
+    }
+
+    @Test fun returningFromRepairRestoresCompletedCorrectionWithoutQueuingAnotherFit() {
+        for (style in AppStyle.entries) {
+            var saved: PreprocessSave? = null
+            val initial = PreprocessSettings(lmCorrectionEnabled = false, distortionCorrection = true,
+                manualQuad = ImageQuad(PointD(20.0, 20.0), PointD(220.0, 20.0), PointD(220.0, 220.0), PointD(20.0, 220.0)))
+            withDialog(initial, style) { dialog, host, _, _ ->
+                click(dialog, if (style == AppStyle.CLASSIC) "設定を保存して修復" else "修復")
+                saved = host.saves.single()
+                assertNotNull(host.saves.single().correctionPreview)
+            }
+            val jobs = mutableListOf<Runnable>()
+            val completed = requireNotNull(saved)
+            withDialog(completed.settings, style, worker = Executor { jobs += it }, savedCorrection = completed.correctionPreview) { dialog, host, _, _ ->
+                assertTrue("A completed straight fallback also avoids repeating the curve fit", jobs.isEmpty())
+                click(dialog, "保存")
+                assertEquals(completed.settings.previewGeometry, host.saves.single().settings.previewGeometry)
+                val toggle = views(dialog.window!!.decorView).filterIsInstance<CheckBox>()
+                    .single { it.text == dialog.context.getString(R.string.image_distortion_correction) }
+                toggle.performClick()
+                toggle.performClick()
+                assertEquals(1, jobs.size)
+            }
+        }
     }
 
     @Test fun repairStartsAfterSavingAndRetainsTheImage() = withDialog { dialog, host, _, working ->

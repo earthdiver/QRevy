@@ -6,6 +6,26 @@ import io.github.earthdiver.qrrepair.core.*
 internal class DistortionPreviewState(private val lmOnly: Boolean = false) {
     data class Input(val image: LumaImage, val base: GridGeometry, val profile: SamplingProfile, val jointRefinement: Boolean = false)
     class Request(val input: Input)
+    /** Geometry only: no source image, sampling observations, or worker state. */
+    data class Snapshot(val base: GridGeometry, val inverted: Boolean, val jointRefinement: Boolean,
+        val candidates: List<GridGeometry>, val selectedIndex: Int, val memoryLimited: Boolean)
+    fun snapshot(): Snapshot? {
+        val input = current?.input ?: return null
+        if (!complete || failed || selected == null) return null
+        return Snapshot(input.base, input.profile.inverted, input.jointRefinement,
+            candidates.toList(), selectedIndex, memoryLimited)
+    }
+    fun restoreCompleted(request: Request, snapshot: Snapshot): Boolean {
+        val input = request.input
+        if (!isCurrent(request) || input.base != snapshot.base || input.profile.inverted != snapshot.inverted ||
+            input.jointRefinement != snapshot.jointRefinement || snapshot.selectedIndex !in snapshot.candidates.indices) return false
+        candidates = snapshot.candidates.toList()
+        selectedIndex = snapshot.selectedIndex
+        memoryLimited = snapshot.memoryLimited
+        complete = true
+        failed = false
+        return true
+    }
     data class Calculation(val candidates: List<GridGeometry>, val memoryLimited: Boolean = false)
     @Volatile private var current: Request? = null
     var candidates: List<GridGeometry> = emptyList()

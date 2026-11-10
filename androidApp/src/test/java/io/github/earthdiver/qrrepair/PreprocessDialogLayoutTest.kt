@@ -92,6 +92,36 @@ class PreprocessDialogLayoutTest {
     }
 
     @Test
+    fun aDifferentSourceImageDiscardsTheRetainedCorrection() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        val first = BitmapUtils.prepare(Bitmap.createBitmap(40, 40, Bitmap.Config.ARGB_8888))
+        val second = BitmapUtils.prepare(Bitmap.createBitmap(40, 40, Bitmap.Config.ARGB_8888))
+        try {
+            val setSource = MainActivity::class.java.getDeclaredMethod("setPrepared", BitmapUtils.Prepared::class.java)
+                .apply { isAccessible = true }
+            setSource.invoke(activity, first)
+            val geometry = GridGeometry(1, FinderRole.TOP_LEFT, 8.0, 8.0, 1.0, 0.0).asProjective()
+            val state = DistortionPreviewState()
+            val request = state.request(DistortionPreviewState.Input(first.luma, geometry,
+                SamplingProfile(PreprocessSettings(), false)))!!
+            state.accept(request, listOf(geometry))
+            val cache = SavedCorrectionPreview(SavedCorrectionPreview.ImageKey.from(PreprocessSettings(), 40, 40),
+                geometry.imageQuad, state.snapshot()!!)
+            val stored = MainActivity::class.java.getDeclaredField("savedCorrectionPreview").apply { isAccessible = true }
+            stored.set(activity, cache)
+            setSource.invoke(activity, first)
+            assertEquals(cache, stored.get(activity))
+            setSource.invoke(activity, second)
+            assertNull(stored.get(activity))
+        } finally {
+            controller.pause().stop().destroy()
+            first.bitmap.recycle()
+            second.bitmap.recycle()
+        }
+    }
+
+    @Test
     fun partialBitLimitCanBeSelectedSavedAndReopened() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()

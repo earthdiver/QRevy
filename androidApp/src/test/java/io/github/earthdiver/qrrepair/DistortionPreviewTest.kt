@@ -39,6 +39,75 @@ class DistortionPreviewTest {
         return requireNotNull(editor.sample(controls, grid))
     }
 
+    @Test fun completedCandidatesAndSelectionSurviveAClosedEditorWithoutImageCaches() {
+        val source = image()
+        try {
+            for (lmEnabled in listOf(false, true)) {
+                val lm = geometry().copy(model = GeometryModel.PROJECTIVE, warp = null).reanchored()
+                val first = editor(source, settings().copy(lmCorrectionEnabled = lmEnabled,
+                    lmGeometry = lm.takeIf { lmEnabled }))
+                assertNull(first.requestLm(controls, grid))
+                val request = first.requestCorrection(controls, grid)!!
+                assertEquals(lmEnabled, request.input.jointRefinement)
+                first.correction.accept(request, listOf(geometry(2.0), geometry()), memoryLimited = true)
+                first.correction.select(1)
+                first.cells.applyValues(listOf(Coord(18, 18)), ModuleValue.ZERO) { ModuleValue.ONE }
+                val saved = first.commit(first.captureSettings(controls, grid))
+                assertNotNull(saved.correctionPreview)
+                first.release()
+                val next = editor(source, saved.settings)
+                next.restoreCorrectionPreview(saved.correctionPreview)
+                assertNull(next.requestLm(controls, grid))
+                assertNull(next.requestCorrection(controls, grid))
+                assertTrue(next.correctionReady(controls, grid))
+                assertEquals(listOf(geometry(2.0), geometry()), next.correction.candidates)
+                assertEquals(1, next.correction.selectedIndex)
+                assertTrue(next.correction.memoryLimited)
+                assertEquals(ModuleValue.ZERO, next.cells.edits[Coord(18, 18)])
+                // Cell sampling is separate; only the compact geometry result survives.
+                assertNotNull(next.requestObservations(controls, grid))
+                next.correction.select(0)
+                assertNull(next.requestCorrection(controls, grid))
+                assertEquals(geometry(2.0), next.captureSettings(controls, grid).previewGeometry)
+            }
+        } finally { source.bitmap.recycle() }
+    }
+
+    @Test fun changedImageGeometryPolarityOrCorrectionModeRecomputesCandidates() {
+        val source = image()
+        try {
+            val first = editor(source)
+            first.correction.accept(first.requestCorrection(controls, grid)!!, listOf(geometry()))
+            val saved = first.commit(first.captureSettings(controls, grid))
+            for (changed in listOf(
+                saved.settings.copy(rotationDegrees = 1f),
+                saved.settings.copy(manualQuad = quad.copy(topLeft = PointD(21.0, 20.0))),
+                saved.settings.copy(imageAdjustment = ImageAdjustment(brightness = 1)),
+                saved.settings.copy(perspectiveCorrectionQuad = quad),
+                saved.settings.copy(previewGeometry = geometry(2.0)),
+            )) {
+                val next = editor(source, changed)
+                next.restoreCorrectionPreview(saved.correctionPreview)
+                assertNotNull(next.requestCorrection(controls, grid))
+            }
+            val moved = editor(source, saved.settings)
+            moved.restoreCorrectionPreview(saved.correctionPreview)
+            assertNotNull(moved.requestCorrection(controls, grid.copy(quad = quad.copy(topLeft = PointD(21.0, 20.0)))))
+            val inverted = editor(source, saved.settings)
+            inverted.restoreCorrectionPreview(saved.correctionPreview)
+            assertNotNull(inverted.requestCorrection(controls, grid.copy(confirmedFinderPolarity = FinderPolarity.INVERTED)))
+            val toggled = editor(source, saved.settings)
+            toggled.restoreCorrectionPreview(saved.correctionPreview)
+            toggled.selectDistortion(false)
+            toggled.selectDistortion(true)
+            assertNotNull(toggled.requestCorrection(controls, grid))
+            val lm = editor(source, saved.settings)
+            lm.restoreCorrectionPreview(saved.correctionPreview)
+            lm.selectLm(true)
+            assertNotNull(lm.requestCorrection(controls, grid))
+        } finally { source.bitmap.recycle() }
+    }
+
     @Test fun displayedCellsAndSavedRepairInputUseTheSelectedCorrectionWithoutLosingFixedEdits() {
         val source = image()
         try {

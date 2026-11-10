@@ -70,6 +70,7 @@ internal class PreprocessDialogController(
     private val recoveryEngine: RecoveryEngine,
     private val host: PreprocessDialogHost,
     private val restoredDraft: PreprocessEditorDraft? = null,
+    private val savedCorrection: SavedCorrectionPreview? = null,
 ) {
     fun show(initialPage: PreprocessPage = PreprocessPage.BASIC) = with(activity) {
         val preprocessSettings = restoredDraft?.settings ?: this@PreprocessDialogController.preprocessSettings
@@ -77,6 +78,7 @@ internal class PreprocessDialogController(
         var validateCellEdits: (Map<Coord, ModuleValue>) -> Boolean = { true }
         val editor = PreprocessEditorModel(preprocessSettings, source, initialWorking,
             savedCellEditState, restoredDraft, host::retains) { validateCellEdits(it) }
+        editor.restoreCorrectionPreview(savedCorrection)
         var refreshClassificationMatrix: () -> Unit = {}
         var refreshPreRecoveryDataPage: () -> Unit = {}
         val previewCoordinator = PreprocessPreviewCoordinator(editor, executor, { runOnUiThread(it) }) {

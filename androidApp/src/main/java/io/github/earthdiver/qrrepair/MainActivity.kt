@@ -231,9 +231,13 @@ class MainActivity : Activity() {
     /** Generation of the one history snapshot currently being recalculated, if any. */
     private var historyRestoreToken: Int? = null
 
+    private var savedCorrectionPreview: SavedCorrectionPreview? = null
     private var prepared: BitmapUtils.Prepared? = null
         set(value) {
-            if (field !== value) closePreprocessEditor()
+            if (field !== value) {
+                savedCorrectionPreview = null
+                closePreprocessEditor()
+            }
             field = value
         }
 
@@ -2404,6 +2408,7 @@ class MainActivity : Activity() {
             initialWorking = preparedFor(restoredDraft?.settings ?: preprocessSettings) ?: source,
             savedCellEditState = savedCellEditState,
             restoredDraft = restoredDraft,
+            savedCorrection = savedCorrectionPreview,
             executor = executor,
             finderSearchGeneration = finderSearchGeneration,
             recoveryEngine = recoveryEngine,
@@ -2417,6 +2422,7 @@ class MainActivity : Activity() {
                     recoveryState.clear()
                     refreshMainResultSelector()
                     preprocessSettings = draft.settings
+                    savedCorrectionPreview = draft.correctionPreview
                     savedCellEditState = draft.cellEdits
                     draft.events.forEach { event ->
                         recordPreprocessHistory(event.settings, event.label, event.detail)
