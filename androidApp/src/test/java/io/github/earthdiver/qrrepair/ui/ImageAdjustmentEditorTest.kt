@@ -41,21 +41,13 @@ class ImageAdjustmentEditorTest {
         editor.layout(0, 0, width, 800)
     }
 
-    @Test fun distortionIsOptInSurvivesRecreationAndDoesNotWarpTheCrop() {
-        val source = bitmap()
-        val editor = ImageAdjustmentEditor(activity, source, onCancel = {}, onApply = {})
-        val before = editor.createCrop()
-        assertFalse(editor.distortionCorrection)
-        click(editor, R.string.image_distortion_correction)
-        assertTrue(editor.distortionCorrection)
-        assertTrue(before.sameAs(editor.createCrop()))
-        val restored = ImageAdjustmentEditor(activity, source, onCancel = {}, onApply = {})
-        restored.restoreState(editor.saveState())
-        assertTrue(restored.distortionCorrection)
-        click(restored, R.string.image_distortion_correction)
-        assertFalse(restored.distortionCorrection)
-        val tonesOnly = ImageAdjustmentEditor(activity, source, allowCrop = false, onCancel = {}, onApply = {})
-        assertFalse(views(tonesOnly).filterIsInstance<TextView>().any { it.text == activity.getString(R.string.image_distortion_correction) })
+    @Test fun cropAndToneEditorsLeaveGridCorrectionToBasicSettings() {
+        for (allowCrop in listOf(false, true)) {
+            val editor = ImageAdjustmentEditor(activity, bitmap(), allowCrop = allowCrop, onCancel = {}, onApply = {})
+            assertFalse(views(editor).filterIsInstance<TextView>().any {
+                it.text == activity.getString(R.string.image_distortion_correction)
+            })
+        }
     }
 
     @Test fun systemBarsKeepControlsInsideTheSafeArea() {

@@ -140,7 +140,7 @@ class PreprocessPreviewCoordinatorTest {
         })
         val source = image()
         val working = if (temporaryWorking) image() else source
-        val settings = PreprocessSettings(version = 1, manualQuad = quad, polarity = PolarityMode.NORMAL,
+        val settings = PreprocessSettings(lmCorrectionEnabled = false, version = 1, manualQuad = quad, polarity = PolarityMode.NORMAL,
             distortionCorrection = true, previewGeometry = curved())
         val editor = PreprocessEditorModel(settings, source, working, null, null, { false }, { true })
         try { test(editor, source, working) } finally {

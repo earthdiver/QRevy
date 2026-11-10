@@ -40,6 +40,8 @@ class CellEditHistoryDialogTest {
             val generation = field("workGeneration").get(activity) as java.util.concurrent.atomic.AtomicInteger
             val oldToken = generation.get()
             val dialog = open(activity)
+            // Keep the worker blocked while saving edits without waiting for the default LM fit.
+            click(dialog, "LM法で格子を補正")
             edit(dialog, a)
             click(dialog, "保存")
             assertTrue(generation.get() > oldToken)

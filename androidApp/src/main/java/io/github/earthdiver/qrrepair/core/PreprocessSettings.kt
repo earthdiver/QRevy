@@ -34,6 +34,7 @@ data class PreprocessSettings(
     /** The displayed sampling map, retained for reproducible repair and session restore. */
     val previewGeometry: GridGeometry? = null,
     val lmGeometry: GridGeometry? = null,
+    val lmCorrectionEnabled: Boolean = true,
     /** Rotation applied reproducibly to the persisted source image before sampling. */
     val rotationDegrees: Float = 0f,
     /** Logical axes are transposed in manualQuad and edits; source pixels are unchanged. */
@@ -111,6 +112,7 @@ data class PreprocessSettings(
     fun withInitialGrid(estimate: InitialGridEstimate?) = copy(
         previewGeometry = null,
         lmGeometry = null,
+        lmCorrectionEnabled = true,
         version = estimate?.version ?: 1,
         manualQuad = estimate?.moduleCenterQuad,
         visibleFinderRole = null,

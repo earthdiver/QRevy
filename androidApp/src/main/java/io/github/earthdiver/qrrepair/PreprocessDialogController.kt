@@ -154,6 +154,13 @@ internal class PreprocessDialogController(
             text = ui("LM法で格子を補正", "Correct grid using LM")
             isChecked = editor.lmEnabled
         }
+        val distortionCorrection = CheckBox(this).apply {
+            setText(R.string.image_distortion_correction)
+            isChecked = editor.settings.distortionCorrection
+        }
+        val jointCorrectionHint = TextView(this).apply {
+            text = ui("両方ONの場合、射影変換と曲面を同時に最適化します。", "When both are on, the projective transform and curvature are jointly optimized.")
+        }
         fun disableLmForEdit() {
             if (editor.lmEnabled) Toast.makeText(activity,
                 ui("LM補正を解除しました", "LM correction disabled"), Toast.LENGTH_SHORT).show()
@@ -164,6 +171,8 @@ internal class PreprocessDialogController(
             orientation = LinearLayout.VERTICAL
             addView(lmCorrection)
             addView(lmStatus)
+            addView(distortionCorrection)
+            addView(jointCorrectionHint)
         }
         val searchQuadNeighborhood = CheckBox(this).apply {
             text = ui("サンプリング位置を自動微調整する", "Automatically fine-tune sampling position")
@@ -607,8 +616,10 @@ internal class PreprocessDialogController(
                 }
                 .setNegativeButton(R.string.close, null)
                 .show()
-        }.apply { visibility = if (preprocessSettings.distortionCorrection) View.VISIBLE else View.GONE }
+        }.apply { visibility = if (editor.settings.distortionCorrection) View.VISIBLE else View.GONE }
+        lmControls.addView(correctionControl, lmControls.indexOfChild(distortionCorrection) + 1)
         fun updateCorrectionControl() {
+            correctionControl.visibility = if (editor.settings.distortionCorrection) View.VISIBLE else View.GONE
             val state = editor.correction
             correctionControl.isEnabled = state.complete && (state.candidates.size > 1 || editor.samplingFailed)
             correctionControl.text = when {
@@ -623,6 +634,12 @@ internal class PreprocessDialogController(
                 else -> ui("曲面補正: 候補 ${state.selectedIndex + 1}/${state.candidates.size}",
                     "Distortion: candidate ${state.selectedIndex + 1}/${state.candidates.size}")
             } + if (state.memoryLimited) ui("\nメモリ上限により補正探索の一部を省略しました", "\nSome correction searches were omitted due to the memory limit") else ""
+        }
+        distortionCorrection.setOnCheckedChangeListener { _, checked ->
+            editor.selectDistortion(checked)
+            refreshClassificationMatrix()
+            refreshPreRecoveryDataPage()
+            noteDraftChange("distortion-grid", ui("曲面格子補正", "Curved grid correction"), if (checked) "ON" else "OFF")
         }
         lmCorrection.setOnCheckedChangeListener { _, checked ->
             if (checked != editor.lmEnabled) {
@@ -1066,7 +1083,7 @@ internal class PreprocessDialogController(
                 })
             workflowNavigation.view.contentDescription = getString(R.string.workflow_help)
         }
-        val scaffold = PreprocessDialogScaffold(this, overlay, pageHost.view, workflowNavigation?.view, correctionControl)
+        val scaffold = PreprocessDialogScaffold(this, overlay, pageHost.view, workflowNavigation?.view)
         updatePageLayout = { page -> scaffold.showPage(page) }
         classificationLegend = scaffold.classificationLegend
         val root = scaffold.view
@@ -1117,6 +1134,8 @@ internal class PreprocessDialogController(
             }
             host.editorOpened(session)
             fun leaveEditor() {
+                // Dismiss listeners can be queued. A quick reopen must create a fresh editor.
+                host.editorClosed(session)
                 dialog.dismiss()
                 if (modernStyle) host.showHome()
             }

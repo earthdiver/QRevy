@@ -177,15 +177,31 @@ class AutoRecoveryEngine(
         // The joint fit adds one seed without displacing the four ordinary curvature seeds.
         val curvedSeeds = (listOfNotNull(patternFit) + ordinary.sortedBy { it.quickScore }.take(4))
             .distinctBy { it.geometry }
+        val jointReplacements = mutableMapOf<GridGeometry, GridGeometry>()
         val curved = if (curvedDetector != null) curvedSeeds.flatMap { base ->
             cancellation.check()
-            curvedDetector.candidates(base.geometry).map { geometry ->
+            val candidates = curvedDetector.candidates(base.geometry)
+            if (base.patternRefined || settings.lmGeometry != null) {
+                val initial = candidates.minByOrNull { quickGeometryScore(image, it, profile) } ?: base.geometry
+                if (initial != preview?.geometry) {
+                    jointlyRefinedGeometry(image, initial, profile) { cancellation.check(); stopRequested() }
+                        ?.let { jointReplacements[initial] = it }
+                }
+            }
+            candidates.map { geometry ->
                 base.copy(geometry = geometry, quickScore = quickGeometryScore(image, geometry, profile))
             }
         } else emptyList()
         if (curvedDetector?.contourMemoryLimited == true) resultAccumulator.markIncomplete(SearchIncompleteReason.WORKING_MEMORY_LIMIT)
         // Honor the displayed grid first, then try the joint pattern fit before neighborhood candidates.
-        val hypotheses = (listOfNotNull(preview).take(maxGeometryAttempts) + listOfNotNull(patternFit) + ordinary + curved).distinctBy { it.geometry }
+        val hypotheses = (listOfNotNull(preview).take(maxGeometryAttempts) + listOfNotNull(patternFit) + ordinary + curved)
+            .distinctBy { it.geometry }.map { hypothesis ->
+                // The displayed/saved grid is authoritative. Additional search replaces a slot
+                // in place, including the LM slot when no curved landmarks were available.
+                val replacement = jointReplacements[hypothesis.geometry]?.takeIf { hypothesis.geometry != preview?.geometry }
+                if (replacement == null) hypothesis else hypothesis.copy(geometry = replacement,
+                    quickScore = quickGeometryScore(image, replacement, profile))
+            }.distinctBy { it.geometry }
         val finders = settings.manualFinders.entries.take(maxFinders).map { (_, point) -> confirmedFinderCandidate(settings, point) }
         var completed = 0
         var interrupted = false

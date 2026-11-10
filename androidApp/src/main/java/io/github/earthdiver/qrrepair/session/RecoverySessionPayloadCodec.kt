@@ -276,8 +276,9 @@ internal object RecoverySessionPayloadCodec {
         }
         writeGeometry(out, settings.previewGeometry)
         out.writeBoolean(settings.assumeUtf8ByteSegments)
-        settings.lmGeometry?.let { require(settings.logicalQuad != null && it.version == settings.version && it.warp == null) }
+        settings.lmGeometry?.let { require(settings.lmCorrectionEnabled && settings.logicalQuad != null && it.version == settings.version && it.warp == null) }
         writeGeometry(out, settings.lmGeometry)
+        out.writeBoolean(settings.lmCorrectionEnabled)
     }
 
     private fun readPreprocessSettings(input: DataInputStream, formatVersion: Int): PreprocessSettings {
@@ -420,6 +421,11 @@ internal object RecoverySessionPayloadCodec {
                     flag == 1
                 } else false,
                 lmGeometry = if (formatVersion >= 34) readGeometry(input, formatVersion) else null,
+                lmCorrectionEnabled = if (formatVersion >= 35) {
+                    val flag = input.readUnsignedByte()
+                    requireCorrupt(flag in 0..1, "invalid LM correction flag")
+                    flag == 1
+                } else false,
                 rotationDegrees = rotation,
                 polarity = polarity,
                 automaticThresholds = automaticThresholds,
@@ -451,9 +457,11 @@ internal object RecoverySessionPayloadCodec {
                 preRecoveryEdits = edits,
                 preRecoverySoftEdits = softEdits,
                 preRecoveryPrioritySearch = priority,
-            ).also { settings ->
+            ).let { settings ->
+                if (formatVersion < 35) settings.copy(lmCorrectionEnabled = settings.lmGeometry != null) else settings
+            }.also { settings ->
                 settings.lmGeometry?.let {
-                    requireCorrupt(settings.logicalQuad != null && it.version == settings.version && it.warp == null,
+                    requireCorrupt(settings.lmCorrectionEnabled && settings.logicalQuad != null && it.version == settings.version && it.warp == null,
                         "LM geometry does not match settings")
                 }
                 settings.previewGeometry?.let {

@@ -10,18 +10,35 @@ import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
 
 class ImageAdjustmentSessionCodecTest {
+    @Test fun lmChoiceRoundTripsIndependentlyAndLegacySessionsKeepTheirChoice() {
+        assertTrue(PreprocessSettings().lmCorrectionEnabled)
+        for (enabled in listOf(false, true)) {
+            val original = payload(PreprocessSettings(lmCorrectionEnabled = enabled))
+            val bytes = RecoverySessionCodec.encode(original)
+            assertEquals(original, RecoverySessionCodec.decode(bytes))
+            val invalid = rewrite(bytes) { it[it.size - 4] = 2; it }
+            assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(invalid) }
+            assertFalse(RecoverySessionCodec.decode(rewrite(bytes, 34) { it })
+                .historyEntries.single().snapshot.preprocessSettings!!.lmCorrectionEnabled)
+        }
+        val lm = GridGeometry(1, FinderRole.TOP_LEFT, 34.0, 34.0, 6.0, 0.0).asProjective()
+        val bytes = RecoverySessionCodec.encode(payload(PreprocessSettings(manualQuad = lm.imageQuad, lmGeometry = lm)))
+        assertTrue(RecoverySessionCodec.decode(rewrite(bytes, 34) { it })
+            .historyEntries.single().snapshot.preprocessSettings!!.lmCorrectionEnabled)
+    }
+
     @Test fun utf8AssumptionRoundTripsAndOlderSessionsDefaultOff() {
         val enabled = payload(PreprocessSettings(assumeUtf8ByteSegments = true))
         val bytes = RecoverySessionCodec.encode(enabled)
         assertEquals(enabled, RecoverySessionCodec.decode(bytes))
         assertFalse(RecoverySessionCodec.decode(rewrite(bytes, 31) { it })
             .historyEntries.single().snapshot.preprocessSettings!!.assumeUtf8ByteSegments)
-        val invalid = rewrite(bytes) { it[it.size - 5] = 2; it }
+        val invalid = rewrite(bytes) { it[it.size - 6] = 2; it }
         assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(invalid) }
     }
 
     @Test fun schema26DefaultsRuntimeForcingOff() {
-        val original = payload(PreprocessSettings())
+        val original = payload(PreprocessSettings(lmCorrectionEnabled = false))
         val legacy = rewrite(RecoverySessionCodec.encode(original), version = 26) { it }
         assertEquals(original, RecoverySessionCodec.decode(legacy))
         assertFalse(RecoverySessionCodec.decode(legacy).historyEntries.single().snapshot.oneTimeSingleSegment)
@@ -48,7 +65,7 @@ class ImageAdjustmentSessionCodecTest {
     }
 
     @Test fun schema25UsesOneExtraSymbolAndPreservesMirrorAndPartialBitLimit() {
-        val original = payload(PreprocessSettings(mirroredInput = true, partialBitSearchLimit = 14))
+        val original = payload(PreprocessSettings(lmCorrectionEnabled = false, mirroredInput = true, partialBitSearchLimit = 14))
         val legacy = rewrite(RecoverySessionCodec.encode(original), version = 25) { raw ->
             raw.copyOfRange(0, raw.size - 6) + raw.copyOfRange(raw.size - 2, raw.size)
         }
@@ -59,10 +76,10 @@ class ImageAdjustmentSessionCodecTest {
         val encoded = RecoverySessionCodec.encode(payload(PreprocessSettings()))
         for (limit in listOf(-1, 4, Int.MAX_VALUE)) {
             assertThrows(IllegalArgumentException::class.java) { PreprocessSettings(listDecodingAdditionalErrors = limit) }
-            val invalid = rewrite(encoded) { raw -> ByteBuffer.wrap(raw).putInt(raw.size - 15, limit); raw }
+            val invalid = rewrite(encoded) { raw -> ByteBuffer.wrap(raw).putInt(raw.size - 16, limit); raw }
             assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(invalid) }
         }
-        val missing = rewrite(encoded) { raw -> raw.copyOfRange(0, raw.size - 15) + raw.copyOfRange(raw.size - 11, raw.size) }
+        val missing = rewrite(encoded) { raw -> raw.copyOfRange(0, raw.size - 16) + raw.copyOfRange(raw.size - 12, raw.size) }
         assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(missing) }
     }
 
@@ -93,7 +110,7 @@ class ImageAdjustmentSessionCodecTest {
     @Test fun invalidPriorityLimitsAreRejected() {
         val encoded = RecoverySessionCodec.encode(payload(PreprocessSettings(prioritySearchLimit = 14)))
         for (limit in listOf(-1, 3, 15, Int.MAX_VALUE)) {
-            val changed = rewrite(encoded) { raw -> ByteBuffer.wrap(raw).putInt(raw.size - 24, limit); raw }
+            val changed = rewrite(encoded) { raw -> ByteBuffer.wrap(raw).putInt(raw.size - 25, limit); raw }
             assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(changed) }
         }
     }
@@ -112,13 +129,13 @@ class ImageAdjustmentSessionCodecTest {
         val encoded = RecoverySessionCodec.encode(payload(PreprocessSettings()))
         for (limit in listOf(-1, 0, 11, 15, 31, Int.MAX_VALUE)) {
             assertThrows(IllegalArgumentException::class.java) { PreprocessSettings(partialBitSearchLimit = limit) }
-            val changed = rewrite(encoded) { raw -> ByteBuffer.wrap(raw).putInt(raw.size - 20, limit); raw }
+            val changed = rewrite(encoded) { raw -> ByteBuffer.wrap(raw).putInt(raw.size - 21, limit); raw }
             assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(changed) }
         }
     }
 
     @Test fun schema23DefaultsPartialBitLimitAndPreservesExistingSettings() {
-        val original = payload(PreprocessSettings(prioritySearchLimit = 13,
+        val original = payload(PreprocessSettings(lmCorrectionEnabled = false, prioritySearchLimit = 13,
             imageAdjustment = ImageAdjustment(25, -10, true), lockManualBits = true,
             preRecoveryEdits = mapOf(Coord(12, 12) to ModuleValue.ONE)))
         val current = RecoverySessionCodec.encode(original)
@@ -142,7 +159,7 @@ class ImageAdjustmentSessionCodecTest {
     }
 
     @Test fun schema24DefaultsMirrorOffAndPreservesPartialBitLimit() {
-        val original = payload(PreprocessSettings(partialBitSearchLimit = 14))
+        val original = payload(PreprocessSettings(lmCorrectionEnabled = false, partialBitSearchLimit = 14))
         val legacy = rewrite(RecoverySessionCodec.encode(original), version = 24) { raw ->
             raw.copyOfRange(0, raw.size - 7) + raw.copyOfRange(raw.size - 2, raw.size)
         }
@@ -156,7 +173,7 @@ class ImageAdjustmentSessionCodecTest {
             preRecoveryEdits = mapOf(Coord(9, 12) to ModuleValue.ONE), lockManualBits = true)
         val original = payload(settings)
         assertEquals(original, RecoverySessionCodec.decode(RecoverySessionCodec.encode(original)))
-        val invalid = rewrite(RecoverySessionCodec.encode(original)) { it[it.size - 16] = 2; it }
+        val invalid = rewrite(RecoverySessionCodec.encode(original)) { it[it.size - 17] = 2; it }
         assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(invalid) }
     }
 
@@ -179,13 +196,13 @@ class ImageAdjustmentSessionCodecTest {
 
     @Test fun checksummedInvalidTonesAndBooleanAreRejected() {
         val encoded = RecoverySessionCodec.encode(payload(PreprocessSettings()))
-        for (offset in listOf(33, 29)) for (invalid in listOf(-101, 101, Int.MAX_VALUE)) {
+        for (offset in listOf(34, 30)) for (invalid in listOf(-101, 101, Int.MAX_VALUE)) {
             val changed = rewrite(encoded) { raw -> ByteBuffer.wrap(raw).putInt(raw.size - offset, invalid); raw }
             assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(changed) }
         }
-        val invalidBoolean = rewrite(encoded) { it[it.size - 25] = 2; it }
+        val invalidBoolean = rewrite(encoded) { it[it.size - 26] = 2; it }
         assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(invalidBoolean) }
-        val missing = rewrite(encoded) { it.copyOfRange(0, it.size - 33) + it.copyOfRange(it.size - 20, it.size) }
+        val missing = rewrite(encoded) { it.copyOfRange(0, it.size - 34) + it.copyOfRange(it.size - 21, it.size) }
         assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(missing) }
     }
 
@@ -193,8 +210,10 @@ class ImageAdjustmentSessionCodecTest {
         val decoded = GZIPInputStream(ByteArrayInputStream(encoded, 48, encoded.size - 48)).use { it.readBytes() }
         val sourceVersion = ByteBuffer.wrap(encoded).getInt(4)
         // One settings-bearing history entry: remove fields absent from the target schema.
-        val withoutLm = if (sourceVersion >= 34 && version < 34)
+        val withoutLmChoice = if (sourceVersion >= 35 && version < 35)
             decoded.copyOfRange(0, decoded.size - 4) + decoded.copyOfRange(decoded.size - 3, decoded.size) else decoded
+        val withoutLm = if (sourceVersion >= 34 && version < 34)
+            withoutLmChoice.copyOfRange(0, withoutLmChoice.size - 4) + withoutLmChoice.copyOfRange(withoutLmChoice.size - 3, withoutLmChoice.size) else withoutLmChoice
         val settings = if (sourceVersion >= 32 && version < 32)
             withoutLm.copyOfRange(0, withoutLm.size - 4) + withoutLm.copyOfRange(withoutLm.size - 3, withoutLm.size) else withoutLm
         val withoutPreview = if (sourceVersion >= 31 && version < 31)

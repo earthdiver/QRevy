@@ -2128,7 +2128,7 @@ class MainActivity : Activity() {
         editor = ImageAdjustmentEditor(this, initialBitmap, onCancel = { dialog.dismiss() }, onApply = { adjustment ->
             runCatching { editor.createCrop() }.onSuccess { cropped ->
                 dialog.dismiss()
-                acceptDecodedImage(cropped, imageAdjustment = adjustment, distortionCorrection = editor.distortionCorrection)
+                acceptDecodedImage(cropped, imageAdjustment = adjustment)
             }.onFailure(editor::showError)
         })
         importEditor = editor

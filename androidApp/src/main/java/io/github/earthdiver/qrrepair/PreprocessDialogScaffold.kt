@@ -12,7 +12,6 @@ internal class PreprocessDialogScaffold(
     overlay: View,
     private val pageHost: View,
     private val stepNavigation: View? = null,
-    private val correctionControl: View? = null,
 ) {
     private val modern = AppStylePreferences.isModern(context)
     val classificationLegend = TextView(context).apply {
@@ -43,7 +42,6 @@ internal class PreprocessDialogScaffold(
             if (modern) setBackgroundColor(PrecisionStyle.BACKGROUND)
             stepNavigation?.let { addView(it) }
             addView(helpText)
-            correctionControl?.let { addView(it) }
             addView(imageHost)
             addView(classificationLegend)
             addView(pageHost)
@@ -62,7 +60,7 @@ internal class PreprocessDialogScaffold(
                     MeasureSpec.makeMeasureSpec(contentHeight, MeasureSpec.AT_MOST))
                 return child.measuredHeight
             }
-            contentTop = paddingTop + measureHeader(stepNavigation) + measureHeader(helpText) + measureHeader(correctionControl)
+            contentTop = paddingTop + measureHeader(stepNavigation) + measureHeader(helpText)
             val bodyHeight = (height - paddingBottom - contentTop).coerceAtLeast(0)
             sideBySide = contentWidth >= dp(480) && contentWidth > contentHeight
             previewColumnWidth = if (sideBySide) (contentWidth - gap) / 2 else contentWidth
@@ -85,7 +83,7 @@ internal class PreprocessDialogScaffold(
 
         override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
             var y = paddingTop
-            for (child in listOfNotNull(stepNavigation, helpText, correctionControl)) {
+            for (child in listOfNotNull(stepNavigation, helpText)) {
                 if (child.visibility == GONE) continue
                 child.layout(paddingLeft, y, width - paddingRight, y + child.measuredHeight)
                 y += child.measuredHeight

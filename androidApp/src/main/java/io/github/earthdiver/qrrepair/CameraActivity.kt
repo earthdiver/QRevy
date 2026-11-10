@@ -309,8 +309,7 @@ class CameraActivity : ComponentActivity() {
                     setResult(RESULT_OK, Intent().putExtra(EXTRA_CAPTURE_PATH, handoff.absolutePath)
                         .putExtra(EXTRA_CONTRAST, adjustment.contrast)
                         .putExtra(EXTRA_BRIGHTNESS, adjustment.brightness)
-                        .putExtra(EXTRA_INVERTED, adjustment.inverted)
-                        .putExtra(EXTRA_DISTORTION_CORRECTION, editor.distortionCorrection))
+                        .putExtra(EXTRA_INVERTED, adjustment.inverted))
                     finish()
                 }
             } catch (error: Throwable) {

@@ -24,10 +24,8 @@ In Classic, choose **Repair** to open the settings. In Modern, use **01 Repair s
 
 1. Rotate and crop the image as needed. Drag a crop corner or edge to resize it, or drag inside it to move it.
 2. Use **Image adjustment** for **Contrast** and **Brightness**, or **Invert** to reverse black and white. The item menu provides numeric entry and resets. **Before** compares the adjusted and original tones without changing the crop or rotation; analysis still uses the adjustments. **Done** closes the slider.
-3. Check **QR Version** and align the orange corner handles with the centers of the outermost cells. Version 1 has 21 cells per side; each subsequent version adds four.
+3. Check **QR Version** and align the orange corner handles with the centers of the outermost cells. Version 1 has 21 cells per side; each subsequent version adds four. Changing Version clears cell edits after confirmation.
 4. Review the cell values in the preview. Adjust the white/unknown/black thresholds if damaged areas are being read as definite `0` or `1` values.
-
-**Distortion correction (experimental)** can be enabled in the crop screen for curved paper or labels; it is off by default. The settings preview displays the corrected, curved grid and recalculates it when you finish adjusting the corners. When several candidates are available, select one with “Distortion: candidate”; repair uses the displayed grid. If no correction landmarks are found, the screen reports this and uses a straight grid. See [how distortion correction works and its limits](RECOVERY_STRATEGY.en.md#distortion-correction).
 
 Automatic estimates may need correction. If only an outline appears, select **QR Version**, even if the displayed value is already correct, to show a grid. Until a Finder role is assigned, provisional alignment guides appear at all four corners and along all four sides, with dashed outlines. Adjust the corners and assign a Finder role as described below. **Rectify selection to a square** clears Finder roles and orientation; assign a role again afterward.
 
@@ -48,7 +46,9 @@ Image and text imports may assign roles automatically. Check the green Finder ma
 
 When Finder patterns establish whether black and white are reversed, that interpretation takes precedence over **Auto**, **Normal**, and **Inverted**. Otherwise, those controls determine how image values are interpreted. Manually entered cell values stay unchanged.
 
-**Correct grid using LM** appears below Finder role assignment and starts off. After checking the corners, version, and orientation, enable it to inspect the corrected grid and cell readings. If correction cannot be applied, the original grid remains selected. Turning the option off restores the original grid without clearing cell edits. Editing the geometry disables the correction; changing Version clears cell edits after confirmation. With fine-tuning on, neighborhood and curved correction searches start from the selected LM grid. Saved work restores the selected correction and the original corners.
+**Correct grid using LM** is enabled by default for new work. Once the corners, version, and orientation are assigned, inspect the corrected grid and cell readings. If correction cannot be applied, the original grid remains selected. Turning the option off restores the original grid without clearing cell edits. Changing corner positions, Finder roles, or orientation disables LM correction. Editing cell values or FIXED constraints keeps the correction active. With fine-tuning on, neighborhood and curved correction searches start from the selected LM grid. Saved work restores the selected correction and the original corners.
+
+**Correct grid for curved surfaces** can be enabled in Basic settings for curved paper or labels; it is off by default. The settings preview displays the corrected, curved grid and recalculates it when you finish adjusting the corners. When several candidates are available, select one with “Distortion: candidate” directly below the checkbox; repair uses the displayed grid. If no correction landmarks are found, the screen reports this and uses a straight grid. With LM correction also enabled, joint optimization refines the projective transform and curvature of the first curved candidate. It replaces the grid only after convergence and a decrease in image residual sum of squares; otherwise the original grid remains. See [how distortion correction works and its limits](RECOVERY_STRATEGY.en.md#distortion-correction).
 
 ## 4. Edit cells
 
@@ -158,7 +158,7 @@ Tap an entry in **Saved work** or **Recent work** to reopen it. Long-press to de
 
 ### Saved-work compatibility
 
-QRR is the app’s saved-work format. The app writes format version **34** and reads versions **23–34**; other versions are rejected. Older files restore settings they did not store as follows: Known-bit error search is off for all versions 23–27. Distortion correction is off for versions 23–29. Versions 23–30 do not store the selected preview grid. The UTF-8 assumption defaults to off for versions 23–31. Versions 23–32 have no image sampling margins for temporary image erasures. Versions 23–33 have no selected LM correction and restore it as off.
+QRR is the app’s saved-work format. The app writes format version **35** and reads versions **23–35**; other versions are rejected. Older files restore settings they did not store as follows: Known-bit error search is off for all versions 23–27. Distortion correction is off for versions 23–29. Versions 23–30 do not store the selected preview grid. The UTF-8 assumption defaults to off for versions 23–31. Versions 23–32 have no image sampling margins for temporary image erasures. Versions 23–33 restore LM correction as off. Version 34 restores it as on only when a selected LM grid was saved. Version 35 stores the LM on/off choice independently of the selected grid.
 
 | File version | Restored defaults |
 | --- | --- |

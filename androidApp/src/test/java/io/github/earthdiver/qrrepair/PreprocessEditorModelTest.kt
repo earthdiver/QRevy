@@ -27,6 +27,25 @@ class PreprocessEditorModelTest {
         eraseColor(Color.WHITE)
     })
 
+    @Test fun lmDefaultsOnAndExplicitOffSurvivesSavingAndDraftRestoration() {
+        val source = image()
+        try {
+            val editor = PreprocessEditorModel(PreprocessSettings(version = 1), source, source,
+                null, null, { false }, { true })
+            assertTrue(editor.lmEnabled)
+            assertTrue(editor.correctionReady(controls, grid.copy(logicalGridAssigned = false)))
+            assertNotNull(editor.requestLm(controls, grid))
+            editor.selectLm(false)
+            val saved = editor.captureSettings(controls, grid)
+            assertFalse(saved.lmCorrectionEnabled)
+            val restored = PreprocessEditorModel(saved, source, source, null, null, { false }, { true })
+            assertFalse(restored.lmEnabled)
+            assertNull(restored.requestLm(controls, grid))
+            val draft = editor.captureDraft(saved, PreprocessPage.BASIC)
+            assertFalse(PreprocessEditorModel(PreprocessSettings(), source, source, null, draft, { false }, { true }).lmEnabled)
+        } finally { source.bitmap.recycle() }
+    }
+
     @Test fun lmSelectionRestoresTheOriginalGridAndPreservesEdits() {
         val source = image()
         try {
@@ -58,6 +77,42 @@ class PreprocessEditorModelTest {
         } finally { source.bitmap.recycle() }
     }
 
+    @Test fun distortionCanBeToggledIndependentlyAndSavedWithoutLosingEdits() {
+        val source = image()
+        try {
+            val editor = PreprocessEditorModel(PreprocessSettings(version = 1), source, source,
+                null, null, { false }, { true })
+            editor.cells.applyValues(listOf(Coord(10, 10)), ModuleValue.ONE) { ModuleValue.ZERO }
+            assertFalse(editor.captureSettings(controls, grid).distortionCorrection)
+            assertNull(editor.requestCorrection(controls, grid))
+            editor.selectDistortion(true)
+            val pending = requireNotNull(editor.requestCorrection(controls, grid))
+            assertFalse(pending.input.jointRefinement)
+            assertFalse(editor.correctionReady(controls, grid))
+            val enabled = editor.captureSettings(controls, grid)
+            assertTrue(enabled.distortionCorrection)
+            val restored = PreprocessEditorModel(enabled, source, source, null, null, { false }, { true })
+            assertNotNull(restored.requestCorrection(controls, grid))
+            editor.selectLm(true)
+            val lm = requireNotNull(editor.requestLm(controls, grid))
+            val corrected = lm.input.base.copy(imageQuad = grid.quad.copy(topLeft = PointD(1.5, 1.5))).reanchored()
+            editor.acceptLm(lm, Result.success(DistortionPreviewState.Calculation(listOf(corrected))))
+            val joint = requireNotNull(editor.requestCorrection(controls, grid))
+            assertTrue(joint.input.jointRefinement)
+            editor.selectDistortion(false)
+            assertFalse(editor.correction.accept(joint, listOf(corrected)))
+            assertFalse(editor.correction.accept(pending, listOf(corrected)))
+            assertEquals(corrected, editor.sample(controls, grid)!!.geometry)
+            val disabled = editor.captureSettings(controls, grid)
+            assertFalse(disabled.distortionCorrection)
+            assertNull(disabled.previewGeometry)
+            assertEquals(corrected, disabled.lmGeometry)
+            assertEquals(ModuleValue.ONE, disabled.preRecoveryEdits[Coord(10, 10)])
+            editor.selectDistortion(true)
+            assertNotNull(editor.requestCorrection(controls, grid))
+        } finally { source.bitmap.recycle() }
+    }
+
     @Test fun curvedCorrectionStartsFromTheSelectedLmMapping() {
         val source = image()
         try {
@@ -67,9 +122,13 @@ class PreprocessEditorModelTest {
             val request = requireNotNull(editor.requestLm(controls, grid))
             val selected = request.input.base.copy(imageQuad = grid.quad.copy(topLeft = PointD(1.5, 1.5))).reanchored()
             editor.acceptLm(request, Result.success(DistortionPreviewState.Calculation(listOf(selected))))
-            assertEquals(selected, editor.requestCorrection(controls, grid)!!.input.base)
+            val jointInput = editor.requestCorrection(controls, grid)!!.input
+            assertEquals(selected, jointInput.base)
+            assertTrue(jointInput.jointRefinement)
             editor.selectLm(false)
-            assertEquals(grid.quad, editor.requestCorrection(controls, grid)!!.input.base.moduleCenterQuad())
+            val plainInput = editor.requestCorrection(controls, grid)!!.input
+            assertEquals(grid.quad, plainInput.base.moduleCenterQuad())
+            assertFalse(plainInput.jointRefinement)
         } finally { source.bitmap.recycle() }
     }
 

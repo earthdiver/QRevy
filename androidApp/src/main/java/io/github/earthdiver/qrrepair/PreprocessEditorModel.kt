@@ -30,7 +30,7 @@ internal data class PreprocessEditorDraft(
     val cellEdits: PreRecoveryCellEditState,
     val changes: PreprocessDraftState,
     val page: PreprocessPage,
-    val lmRequested: Boolean = false,
+    val lmRequested: Boolean = settings.lmCorrectionEnabled,
 )
 
 /** Composes the editable draft, observation cache, and temporary image ownership without Views. */
@@ -57,10 +57,18 @@ internal class PreprocessEditorModel(
         private set
     val correction = DistortionPreviewState()
     val lm = DistortionPreviewState(lmOnly = true)
-    var lmEnabled = restoredDraft?.lmRequested ?: (initial.lmGeometry != null)
+    var lmEnabled = restoredDraft?.lmRequested ?: initial.lmCorrectionEnabled
     var lmUnavailable = false
         private set
     private var restoreLm = initial.lmGeometry
+    fun selectDistortion(enabled: Boolean) {
+        if (settings.distortionCorrection == enabled) return
+        settings.distortionCorrection = enabled
+        restoreCorrection = null
+        correction.invalidate()
+        invalidateSampling()
+    }
+
     fun selectLm(enabled: Boolean) {
         lmEnabled = enabled
         lmUnavailable = false
@@ -165,11 +173,13 @@ internal class PreprocessEditorModel(
             blackMax = profile.provisionalThresholds.blackMax, whiteMin = profile.provisionalThresholds.whiteMin,
         )) else profile
         val input = DistortionPreviewState.Input(working.luma, geometry, normalized)
-        return if (useLm && lmEnabled && lm.complete && lm.matches(input)) input.copy(base = lm.selected ?: geometry) else input
+        return if (useLm && lmEnabled && lm.complete && lm.matches(input)) input.copy(
+            base = lm.selected ?: geometry, jointRefinement = lm.selected != null,
+        ) else input
     }
 
     fun requestCorrection(controls: PreprocessControlSnapshot, grid: PreprocessGeometrySnapshot): DistortionPreviewState.Request? {
-        if (!initial.distortionCorrection || !grid.logicalGridAssigned) {
+        if (!settings.distortionCorrection || !grid.logicalGridAssigned) {
             correction.invalidate()
             restoreCorrection = null
             return null
@@ -186,7 +196,7 @@ internal class PreprocessEditorModel(
     }
 
     fun correctionReady(controls: PreprocessControlSnapshot, grid: PreprocessGeometrySnapshot): Boolean =
-        (!lmEnabled || (lm.complete && previewInput(controls, grid, useLm = false)?.let(lm::matches) == true)) && (!initial.distortionCorrection || !grid.logicalGridAssigned ||
+        (!lmEnabled || !grid.logicalGridAssigned || (lm.complete && previewInput(controls, grid, useLm = false)?.let(lm::matches) == true)) && (!settings.distortionCorrection || !grid.logicalGridAssigned ||
             (previewInput(controls, grid)?.let(correction::matches) == true && correction.complete))
 
     private fun observationInput(controls: PreprocessControlSnapshot, grid: PreprocessGeometrySnapshot): PreRecoveryPreviewSampler.ObservationInput? {
@@ -239,12 +249,13 @@ internal class PreprocessEditorModel(
 
     fun captureSettings(controls: PreprocessControlSnapshot, grid: PreprocessGeometrySnapshot): PreprocessSettings =
         settings.captureSettings(controls, grid, cells.edits.toMap(), cells.prioritySearch.toSet(), cells.softEdits.toSet()).copy(
+            lmCorrectionEnabled = lmEnabled,
             lmGeometry = lm.selected?.takeIf {
                 lmEnabled && lm.complete && grid.logicalGridAssigned &&
                     previewInput(controls, grid, useLm = false)?.let(lm::matches) == true
             },
             previewGeometry = correction.selected?.takeIf {
-                grid.logicalGridAssigned && previewInput(controls, grid)?.let(correction::matches) == true
+                settings.distortionCorrection && grid.logicalGridAssigned && previewInput(controls, grid)?.let(correction::matches) == true
             },
         )
 

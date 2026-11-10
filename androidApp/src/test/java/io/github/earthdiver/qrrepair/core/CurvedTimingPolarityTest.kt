@@ -111,4 +111,42 @@ class CurvedTimingPolarityTest {
         }
     }
 
+    @Test fun convergedJointFitImprovesTheSameImageResidualsInEitherPolarity() {
+        for (inverted in listOf(false, true)) {
+            val normal = render(shapes[1], "blur-noise")
+            val image = if (inverted) LumaImage(size, size, IntArray(size * size) { 255 - normal.pixels[it] }) else normal
+            val base = seed(0.0)
+            val profile = SamplingProfile(PreprocessSettings(version = 4, manualQuad = base.imageQuad,
+                distortionCorrection = true, blackMax = 80, whiteMin = 175), inverted)
+            val lm = projectivePatternHypothesis(image, profile,
+                listOf(GeometryHypothesis(emptyList(), base, quickGeometryScore(image, base, profile)))) { false }?.geometry ?: base
+            val initial = CurvedGridDetector(image, profile).candidates(lm).minByOrNull {
+                quickGeometryScore(image, it, profile)
+            } ?: lm
+            val result = JointPatternRefiner.refine(image, initial, intArrayOf(6, 26), inverted)
+            assertNotNull("A supported curved image must converge: inverted=$inverted", result)
+            result!!
+            val state = io.github.earthdiver.qrrepair.DistortionPreviewState()
+            val input = io.github.earthdiver.qrrepair.DistortionPreviewState.Input(image, lm, profile)
+            val original = state.calculate(state.request(input)!!).candidates
+            val replacement = state.calculate(state.request(input.copy(jointRefinement = true))!!).candidates
+            assertEquals(original.size, replacement.size)
+            assertEquals(result.geometry, replacement.first())
+            assertEquals(original.drop(1), replacement.drop(1))
+            assertTrue(result.residualSumSquares < result.initialResidualSumSquares)
+            assertTrue(result.geometry.hasUsableWarp())
+            assertEquals(initial.version, result.geometry.version)
+            assertEquals(initial.role, result.geometry.role)
+            val recovered = RecoveryEngine().recover(MatrixSampler(image, profile).sample(result.geometry).first,
+                listDecodingBudget = ListDecodingBudget(0)).filter { it.payloadParsed }
+            assertEquals(text, recovered.minWithOrNull(recoveryCandidateComparator)?.text)
+            assertNull(JointPatternRefiner.refine(image, initial, intArrayOf(6, 26), inverted,
+                maxIterationsPerScale = 1))
+            var checks = 0
+            assertNull(JointPatternRefiner.refine(image, initial, intArrayOf(6, 26), inverted,
+                stopped = { ++checks > 20 }))
+            assertTrue(checks > 20)
+        }
+    }
+
 }

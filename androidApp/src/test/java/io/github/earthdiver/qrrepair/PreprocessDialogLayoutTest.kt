@@ -63,6 +63,35 @@ import org.robolectric.shadows.ShadowDialog
 @Config(sdk = [35], qualifiers = "ja-rJP-w360dp-h640dp-port-mdpi")
 class PreprocessDialogLayoutTest {
     @Test
+    fun basicSettingsPlaceIndependentCurvedAndLmControlsTogether() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        try {
+            val bitmap = Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.WHITE) }
+            MainActivity::class.java.getDeclaredField("prepared").apply {
+                isAccessible = true
+                set(activity, BitmapUtils.prepare(bitmap))
+            }
+            MainActivity::class.java.getDeclaredMethod("showPreprocessDialog").apply { isAccessible = true }.invoke(activity)
+            shadowOf(Looper.getMainLooper()).idle()
+            val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+            val decor = dialog.window!!.decorView
+            val lm = findExactText(decor, "LM法で格子を補正") as CheckBox
+            val curved = findExactText(decor, activity.getString(R.string.image_distortion_correction)) as CheckBox
+            assertEquals(lm.parent, curved.parent)
+            assertTrue(curved.isShown)
+            assertFalse(curved.isChecked)
+            curved.performClick()
+            assertTrue(curved.isChecked)
+            assertFalse(lm.isChecked)
+            curved.performClick()
+            assertFalse(curved.isChecked)
+            assertFalse(lm.isChecked)
+            dialog.dismiss()
+        } finally { controller.pause().stop().destroy() }
+    }
+
+    @Test
     fun partialBitLimitCanBeSelectedSavedAndReopened() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()

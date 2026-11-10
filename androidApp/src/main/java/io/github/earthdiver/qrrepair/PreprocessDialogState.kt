@@ -47,6 +47,7 @@ internal class PreprocessDialogState(private val initial: PreprocessSettings) {
         provisionalWhiteMin = estimate?.whiteMin ?: 160
     }
 
+    var distortionCorrection = initial.distortionCorrection
     var mirroredInput = initial.mirroredInput
     var imageAdjustment = initial.imageAdjustment
 
@@ -74,7 +75,8 @@ internal class PreprocessDialogState(private val initial: PreprocessSettings) {
         return PreprocessSettings(
             photographicSource = initial.photographicSource,
             imageAdjustment = imageAdjustment,
-            distortionCorrection = initial.distortionCorrection,
+            distortionCorrection = distortionCorrection,
+            lmCorrectionEnabled = initial.lmCorrectionEnabled,
             mirroredInput = mirroredInput,
             polarity = controls.polarity,
             automaticThresholds = controls.automaticThresholds,

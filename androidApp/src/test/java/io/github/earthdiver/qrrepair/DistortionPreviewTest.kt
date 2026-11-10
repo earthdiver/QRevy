@@ -16,7 +16,7 @@ class DistortionPreviewTest {
     private val quad = ImageQuad(PointD(20.0, 20.0), PointD(276.0, 20.0), PointD(276.0, 276.0), PointD(20.0, 276.0))
     private val grid = PreprocessGeometrySnapshot(true, quad, emptyMap(), FinderPolarity.UNKNOWN)
     private val controls = PreprocessControlSnapshot(PolarityMode.NORMAL, false, 96, 159, false, 4)
-    private fun settings() = PreprocessSettings(version = 4, manualQuad = quad, polarity = PolarityMode.NORMAL, distortionCorrection = true)
+    private fun settings() = PreprocessSettings(lmCorrectionEnabled = false, version = 4, manualQuad = quad, polarity = PolarityMode.NORMAL, distortionCorrection = true)
     private fun geometry(shift: Double = 7.0) = GridGeometry(4, FinderRole.TOP_LEFT, 44.0, 44.0, 8.0, 0.0,
         quad, GeometryModel.THIN_PLATE_SPLINE, ThinPlateWarp(listOf(
             WarpLandmark(PointD(0.0, 0.0), PointD(0.0, 0.0)),

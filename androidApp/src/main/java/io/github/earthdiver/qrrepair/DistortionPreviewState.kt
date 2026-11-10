@@ -4,7 +4,7 @@ import io.github.earthdiver.qrrepair.core.*
 
 /** UI-thread state; workers only read the current immutable request for cancellation. */
 internal class DistortionPreviewState(private val lmOnly: Boolean = false) {
-    data class Input(val image: LumaImage, val base: GridGeometry, val profile: SamplingProfile)
+    data class Input(val image: LumaImage, val base: GridGeometry, val profile: SamplingProfile, val jointRefinement: Boolean = false)
     class Request(val input: Input)
     data class Calculation(val candidates: List<GridGeometry>, val memoryLimited: Boolean = false)
     @Volatile private var current: Request? = null
@@ -29,7 +29,8 @@ internal class DistortionPreviewState(private val lmOnly: Boolean = false) {
     // The profile on the request ranks newly generated candidates once. Subsequent cell
     // classifications use their own current profile on the same selected geometry.
     fun matches(input: Input): Boolean = current?.input?.let {
-        it.image === input.image && it.base == input.base && it.profile.inverted == input.profile.inverted
+        it.image === input.image && it.base == input.base && it.profile.inverted == input.profile.inverted &&
+            it.jointRefinement == input.jointRefinement
     } == true
     fun invalidate() {
         current = null
@@ -66,6 +67,12 @@ internal class DistortionPreviewState(private val lmOnly: Boolean = false) {
         }
         val detector = CurvedGridDetector(image, profile, stopRequested = { !isCurrent(request) })
         val candidates = detector.candidates(base).distinct().sortedBy { quickGeometryScore(image, it, profile) }
-        return Calculation(candidates, detector.contourMemoryLimited)
+        if (!request.input.jointRefinement || !isCurrent(request)) return Calculation(candidates, detector.contourMemoryLimited)
+        val initial = candidates.firstOrNull() ?: base
+        val refined = jointlyRefinedGeometry(image, initial, profile) { !isCurrent(request) }
+        // Preserve the existing candidate slots and ordering; the selected first candidate is
+        // replaced only after convergence and a decrease in the image residual sum of squares.
+        val selected = if (refined == null) candidates else listOf(refined) + candidates.drop(1)
+        return Calculation(selected.distinct(), detector.contourMemoryLimited)
     }
 }

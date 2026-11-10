@@ -100,12 +100,11 @@ class PreprocessDialogControllerTest {
         for (style in AppStyle.entries) {
             val jobs = mutableListOf<Runnable>()
             val initialQuad = ImageQuad(PointD(20.0, 20.0), PointD(220.0, 20.0), PointD(220.0, 220.0), PointD(20.0, 220.0))
-            withDialog(PreprocessSettings(distortionCorrection = true, manualQuad = initialQuad), style,
+            withDialog(PreprocessSettings(lmCorrectionEnabled = false, distortionCorrection = true, manualQuad = initialQuad), style,
                 worker = Executor { jobs += it }) { dialog, host, _, _ ->
                 assertEquals(1, jobs.size)
-                val cropLabel = dialog.context.getString(R.string.image_distortion_correction).substringBefore('（')
                 assertTrue(views(dialog.window!!.decorView).filterIsInstance<Button>()
-                    .any { it.text.toString() == "$cropLabel: 計算中…" })
+                    .any { it.text.toString() == "曲面補正: 計算中…" })
                 views(dialog.window!!.decorView).filterIsInstance<Button>().single { it.text.toString() == "保存" }.performClick()
                 assertTrue(host.saves.isEmpty())
                 val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
@@ -138,15 +137,22 @@ class PreprocessDialogControllerTest {
         }
     }
 
-    @Test fun repairSettingsRetainTheCropCorrectionChoiceWithoutOfferingAToggle() {
+    @Test fun basicSettingsRestoreAndSaveTheChangedCorrectionChoice() {
         for (style in AppStyle.entries) for (enabled in listOf(false, true)) {
             withDialog(PreprocessSettings(distortionCorrection = enabled), style) { dialog, host, _, _ ->
                 val label = dialog.context.getString(R.string.image_distortion_correction)
-                assertFalse(views(dialog.window!!.decorView).filterIsInstance<CheckBox>()
-                    .any { it.text.toString() == label })
+                val toggle = views(dialog.window!!.decorView).filterIsInstance<CheckBox>()
+                    .single { it.text.toString() == label }
+                assertEquals(enabled, toggle.isChecked)
+                val group = toggle.parent as ViewGroup
+                val candidate = group.getChildAt(group.indexOfChild(toggle) + 1)
+                assertTrue(candidate is Button)
+                assertEquals(if (enabled) View.VISIBLE else View.GONE, candidate.visibility)
+                toggle.performClick()
+                assertEquals(if (enabled) View.GONE else View.VISIBLE, candidate.visibility)
                 automaticThresholdControl(dialog).isChecked = true
                 click(dialog, "保存")
-                assertEquals(enabled, host.saves.single().settings.distortionCorrection)
+                assertEquals(!enabled, host.saves.single().settings.distortionCorrection)
             }
         }
     }
@@ -162,7 +168,7 @@ class PreprocessDialogControllerTest {
                 WarpLandmark(PointD(1.0, 1.0), PointD(0.0, 0.0)),
                 WarpLandmark(PointD(.5, .5), PointD(4.0, -3.0)),
             ))).reanchored()
-        val settings = PreprocessSettings(distortionCorrection = true, manualQuad = quad, previewGeometry = geometry,
+        val settings = PreprocessSettings(lmCorrectionEnabled = false, distortionCorrection = true, manualQuad = quad, previewGeometry = geometry,
             formatConstraint = QrFormatConstraint(com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.L, 0))
         withDialog(settings, AppStyle.MODERN, worker = Executor { jobs += it }) { dialog, host, _, _ ->
             // Construction queues sampling without observing all warped cells on the UI thread.

@@ -162,6 +162,8 @@ class TextMatrixWorkspaceTest {
             assertFalse(settings.logicalGridAssigned)
             var dialog = ShadowDialog.getLatestDialog() as AlertDialog
             for (action in listOf(R.string.workspace_navigation, 0)) {
+                val before = (field("preprocessEditor").get(activity) as PreprocessEditorSession).captureDraft()
+                assertTrue("Reopening must retain the default LM choice", before.lmRequested)
                 label(dialog.window!!.decorView, activity.getString(R.string.home_navigation)).performClick()
                 assertFalse(dialog.isShowing)
                 if (action == 0) {
@@ -418,6 +420,7 @@ class TextMatrixWorkspaceTest {
             val notice = ShadowDialog.getLatestDialog() as AlertDialog
             assertTrue(notice.findViewById<TextView>(android.R.id.message).text.contains("(24,0)"))
             notice.dismiss()
+            awaitExport(activity)
             label(root, "保存").performClick()
             val saved = field("preprocessSettings").get(activity) as PreprocessSettings
             assertTrue(saved.logicalGridAssigned)
