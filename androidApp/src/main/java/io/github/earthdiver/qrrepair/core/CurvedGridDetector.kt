@@ -103,7 +103,7 @@ internal class CurvedGridDetector(
                         }
                     }
                     val match = match(seed, x, y, samples, if (axis == 0) .75 else .875,
-                        if (axis == 0) .875 else .75, .125, previous) ?: continue
+                        if (axis == 0) .875 else .75, .125, previous, rejectAmbiguousPolarity = true) ?: continue
                     previous = PointD(match.dx, match.dy)
                     val point = landmark(x, y, match.point, 1e-3)
                     if (seed.warp!!.landmarks.none { it.position == point.position }) timing += point
@@ -134,12 +134,14 @@ internal class CurvedGridDetector(
         geometry: GridGeometry, x: Double, y: Double, samples: List<Sample>,
         rangeX: Double, rangeY: Double, step: Double = .25, previous: PointD? = null,
         minimumScore: Double = .8,
+        rejectAmbiguousPolarity: Boolean = false,
     ): Match? {
         val targetMean = samples.count { !it.black }.toDouble() / samples.size
         val targetVariance = targetMean * (1 - targetMean)
         if (targetVariance <= 0) return null
         var best: Match? = null
         var bestObjective = Double.NEGATIVE_INFINITY
+        var oppositeCorrelation = Double.NEGATIVE_INFINITY
         val nx = (rangeX / step).toInt(); val ny = (rangeY / step).toInt()
         for (iy in -ny..ny) {
             if (stopped()) return null
@@ -158,6 +160,12 @@ internal class CurvedGridDetector(
                 val variance = squared / count - (sum / count) * (sum / count)
                 if (variance < 400.0) continue
                 val correlation = covariance / count / sqrt(variance * targetVariance)
+                // An alternating stripe can match a locally reversed pattern after a one-cell
+                // phase shift. Compare image evidence before continuity/displacement priors:
+                // those priors must not turn an ambiguous correspondence into an observation.
+                if (rejectAmbiguousPolarity && abs(dx) < rangeX && abs(dy) < rangeY) {
+                    oppositeCorrelation = max(oppositeCorrelation, -correlation)
+                }
                 val continuity = previous?.let { .15 * ((dx - it.x) * (dx - it.x) + (dy - it.y) * (dy - it.y)) } ?: 0.0
                 val objective = correlation - .015 * (dx * dx + dy * dy) - continuity
                 if (objective > bestObjective) {
@@ -166,6 +174,9 @@ internal class CurvedGridDetector(
                 }
             }
         }
+        // Keep the finder/alignment-only seeds when timing polarity cannot be distinguished.
+        if (rejectAmbiguousPolarity && oppositeCorrelation >= minimumScore &&
+            (best?.score ?: Double.NEGATIVE_INFINITY) - oppositeCorrelation < .05) return null
         return best?.takeIf { it.score >= minimumScore && abs(it.dx) < rangeX && abs(it.dy) < rangeY }
     }
 }
