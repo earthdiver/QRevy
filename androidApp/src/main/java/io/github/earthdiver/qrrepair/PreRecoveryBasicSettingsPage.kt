@@ -76,22 +76,6 @@ internal class PreRecoveryBasicSettingsPage(
                 nudgeButton("↓", 0, 1), nudgeButton("→", 1, 0),
             )), 4)
             addSettingsItem(versionButton, 6)
-            addSettingsItem(useUnknownColors, 4)
-            automaticThresholds?.let { addSettingsItem(it, 4) }
-            addSettingsItem(blackLabel, 6)
-            addView(blackSeekBar)
-            addSettingsItem(whiteLabel, 4)
-            addView(whiteSeekBar)
-            if (!AppStylePreferences.isModern(context)) {
-                addView(View(context), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(12)))
-                addView(buttonFactory(context.getString(R.string.cell_edit)) {}.apply {
-                    PrecisionStyle.button(this, primary = true)
-                    setOnLongClickListener {
-                        actions.openCellEditor()
-                        true
-                    }
-                })
-            }
             cornerControls?.let { addSettingsItem(it, 6) }
             addSettingsItem(TextView(context).apply { setText(R.string.finder_manual) }, 6)
             addView(compactRow(arrayOf(
@@ -108,6 +92,22 @@ internal class PreRecoveryBasicSettingsPage(
                 textSize = 12f
             })
             lmControls?.let { addSettingsItem(it, 4) }
+            addSettingsItem(useUnknownColors, 4)
+            automaticThresholds?.let { addSettingsItem(it, 4) }
+            addSettingsItem(blackLabel, 6)
+            addView(blackSeekBar)
+            addSettingsItem(whiteLabel, 4)
+            addView(whiteSeekBar)
+            if (!AppStylePreferences.isModern(context)) {
+                addView(View(context), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(12)))
+                addView(buttonFactory(context.getString(R.string.cell_edit)) {}.apply {
+                    PrecisionStyle.button(this, primary = true)
+                    setOnLongClickListener {
+                        actions.openCellEditor()
+                        true
+                    }
+                })
+            }
             scrollContentFooter?.let { addView(it) }
         })
     }

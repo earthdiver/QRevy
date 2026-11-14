@@ -1241,7 +1241,9 @@ class PreprocessDialogLayoutTest {
 
         val basicCellEdit = findText(decor, "セル編集（長押し）")!!
         val finderManual = findText(decor, "Finderの位置と役割")!!
-        assertTrue("セル編集がFinder指定の上にありません", screenTop(basicCellEdit) < screenTop(finderManual))
+        assertTrue("Finder controls must precede cell editing", screenTop(finderManual) < screenTop(basicCellEdit))
+        assertTrue("Cell editing must follow tone sliders",
+            findViews(decor, SeekBar::class.java).all { screenTop(it) < screenTop(basicCellEdit) })
         basicCellEdit.performClick()
         shadowOf(Looper.getMainLooper()).idle()
         assertTrue("通常タップでセル編集が開きます", basicCellEdit.isShown)
