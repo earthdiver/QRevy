@@ -415,18 +415,21 @@ internal fun refineFinder(image: LumaImage, settings: PreprocessSettings, hint: 
         runCatching { GridGeometry(settings.version, FinderRole.TOP_LEFT, quad.topLeft.x, quad.topLeft.y,
             pitch.coerceAtLeast(.25), 0.0, quad, GeometryModel.MANUAL_PROJECTIVE).reanchored() }.getOrNull()
     } else null
-    return settings.variants().mapNotNull { profile ->
-        // Match the preview's fitted pair where a logical grid is available, independently
-        // for each polarity. An unsupported grid falls back to source-image thresholds.
-        val thresholds = if (settings.automaticThresholds)
-            geometry?.let { MatrixSampler(image, profile).sample(it).second.thresholds } ?: profile.provisionalThresholds
-        else ThresholdPair(settings.blackMax, settings.whiteMin)
+    return settings.variants().flatMap { profile ->
+        // A misaligned grid can hide the real finder while still producing a false candidate.
+        // Compare both automatic threshold sources, even when grid-based detection succeeds.
+        val thresholds = if (settings.automaticThresholds) listOfNotNull(
+            geometry?.let { MatrixSampler(image, profile).sample(it).second.thresholds },
+            profile.provisionalThresholds,
+        ).distinct() else listOf(ThresholdPair(settings.blackMax, settings.whiteMin))
         val input = prepareFinderDetection(image, profile)
-        FinderDetector(input.image, thresholds.blackMax, thresholds.whiteMin)
-            .detectNear(input.toDetection(hint))?.let(input::toSource)?.copy(
-                polarity = if (profile.inverted) FinderPolarity.INVERTED else FinderPolarity.NORMAL,
-                detectionSource = FinderDetectionSource.RAW,
-            )
+        thresholds.mapNotNull { pair ->
+            FinderDetector(input.image, pair.blackMax, pair.whiteMin)
+                .detectNear(input.toDetection(hint))?.let(input::toSource)?.copy(
+                    polarity = if (profile.inverted) FinderPolarity.INVERTED else FinderPolarity.NORMAL,
+                    detectionSource = FinderDetectionSource.RAW,
+                )
+        }
     }.maxByOrNull { it.score }
 }
 
