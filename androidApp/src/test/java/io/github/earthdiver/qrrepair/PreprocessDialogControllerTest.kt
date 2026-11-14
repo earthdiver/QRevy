@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.Canvas
 import android.os.Looper
 import android.view.View
+import android.view.MotionEvent
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.CheckBox
@@ -83,6 +84,29 @@ class PreprocessDialogControllerTest {
             if (!working.bitmap.isRecycled) working.bitmap.recycle()
             if (!source.bitmap.isRecycled) source.bitmap.recycle()
             host.saves.map { it.image.bitmap }.distinct().forEach { if (!it.isRecycled) it.recycle() }
+        }
+    }
+
+    @Test fun finderPlacementKeepsLmEnabledAndSavesItEvenWhenFittingFails() {
+        withDialog(PreprocessSettings(version = 1, lmCorrectionEnabled = true)) { dialog, host, _, _ ->
+            val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
+            val lm = views(dialog.window!!.decorView).filterIsInstance<CheckBox>()
+                .single { it.text.toString() == "LM法で格子を補正" }
+            assertTrue(lm.isChecked)
+            click(dialog, "左上")
+            assertTrue(lm.isChecked)
+            overlay.layout(0, 0, 240, 240)
+            val point = overlay.expectedFinderCenter(FinderRole.TOP_LEFT)
+            val event = MotionEvent.obtain(0L, 0L, MotionEvent.ACTION_DOWN, point.x.toFloat(), point.y.toFloat(), 0)
+            try { assertTrue(overlay.onTouchEvent(event)) } finally { event.recycle() }
+            assertTrue(overlay.finderPoints().containsKey(FinderRole.TOP_LEFT))
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(lm.isChecked)
+            assertTrue(views(dialog.window!!.decorView).filterIsInstance<TextView>()
+                .any { it.text.toString() == "補正を適用できませんでした" })
+            click(dialog, "保存")
+            assertTrue(host.saves.last().settings.lmCorrectionEnabled)
+            assertNull(host.saves.last().settings.lmGeometry)
         }
     }
 

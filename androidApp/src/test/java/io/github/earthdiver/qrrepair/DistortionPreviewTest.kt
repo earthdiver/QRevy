@@ -39,6 +39,109 @@ class DistortionPreviewTest {
         return requireNotNull(editor.sample(controls, grid))
     }
 
+    @Test fun rankingCountsOnlyImageUnknownsInCodewordsTimingAndFormat() {
+        val matrix = QrMatrix(45)
+        for (y in 0 until 45) for (x in 0 until 45) matrix.set(x, y, ModuleValue.ZERO, 1f, ModuleSource.IMAGE)
+        val data = QrCellRegions(7).codewordCoordinates.toList()
+        for (p in listOf(data[0], Coord(8, 6), Coord(6, 8), Coord(8, 0),
+            Coord(0, 0), Coord(7, 0), Coord(22, 6), Coord(34, 0))) {
+            matrix.set(p.x, p.y, ModuleValue.ERASED, 0f, ModuleSource.IMAGE)
+        }
+        matrix.set(data[1].x, data[1].y, ModuleValue.ERASED, 0f, ModuleSource.USER)
+        assertEquals(4, DistortionPreviewState().rankingUnknownCount(matrix, 7))
+    }
+
+    @Test fun enablingLmKeepsTheSelectedCurveAndRejectsOldSelectionResults() {
+        val source = image()
+        try {
+            val first = editor(source)
+            first.correction.accept(first.requestCorrection(controls, grid)!!, listOf(geometry(2.0), geometry()))
+            first.correction.select(1)
+            first.cells.applyValues(listOf(Coord(18, 18)), ModuleValue.ONE) { ModuleValue.ZERO }
+            first.selectLm(true)
+            assertTrue(first.usesCurveSeed)
+            assertNull(first.requestLm(controls, grid))
+            assertNull(first.requestCorrection(controls, grid))
+            assertFalse(first.correctionReady(controls, grid))
+            val pending = first.correction.requestSelectedRefinement()!!
+            assertEquals(geometry(), pending.geometry)
+            first.correction.select(0)
+            val next = first.correction.requestSelectedRefinement()!!
+            assertEquals(geometry(2.0), next.geometry)
+            assertFalse(first.correction.acceptRefinement(pending, Result.success(DistortionPreviewState.RefinementCalculation(geometry(9.0), listOf(0, 1)))))
+            assertTrue(first.correction.acceptRefinement(next, Result.failure(IllegalStateException("fit failed"))))
+            assertEquals(geometry(2.0), first.correction.selected)
+            assertTrue(first.correctionReady(controls, grid))
+            assertNull(first.correction.requestSelectedRefinement())
+            val saved = first.commit(first.captureSettings(controls, grid))
+            assertNull(saved.settings.lmGeometry)
+            val restored = editor(source, saved.settings)
+            restored.restoreCorrectionPreview(saved.correctionPreview)
+            assertNull(restored.requestLm(controls, grid))
+            assertNull(restored.requestCorrection(controls, grid))
+            assertTrue(restored.correctionReady(controls, grid))
+            assertNull(restored.correction.requestSelectedRefinement())
+            assertEquals(ModuleValue.ONE, restored.cells.edits[Coord(18, 18)])
+            restored.correction.select(1)
+            val stale = restored.correction.requestSelectedRefinement()!!
+            restored.selectLm(false)
+            assertFalse(restored.correction.acceptRefinement(stale, Result.success(DistortionPreviewState.RefinementCalculation(geometry(9.0), listOf(0, 1)))))
+        } finally { source.bitmap.recycle() }
+    }
+
+    @Test fun improvedCandidateMovesAheadWithoutLosingSelectionOrCompletedAttempts() {
+        val source = image()
+        try {
+            val state = DistortionPreviewState()
+            val input = DistortionPreviewState.Input(source.luma, geometry(), SamplingProfile(settings(), false), true)
+            state.accept(state.request(input)!!, listOf(geometry(2.0), geometry(3.0), geometry()))
+            state.select(2)
+            val request = state.requestSelectedRefinement()!!
+            val improved = geometry(4.0)
+            assertTrue(state.acceptRefinement(request, Result.success(
+                DistortionPreviewState.RefinementCalculation(improved, listOf(2, 0, 1)))))
+            assertEquals(listOf(improved, geometry(2.0), geometry(3.0)), state.candidates)
+            assertEquals(0, state.selectedIndex)
+            assertEquals(improved, state.selected)
+            assertNull(state.requestSelectedRefinement())
+            state.select(1)
+            assertNull(state.requestSelectedRefinement())
+            assertEquals(setOf(0, 1), state.snapshot()!!.refinedIndices)
+            val restored = DistortionPreviewState()
+            assertTrue(restored.restoreCompleted(restored.request(input)!!, state.snapshot()!!))
+            assertEquals(state.candidates, restored.candidates)
+            assertEquals(state.selected, restored.selected)
+            assertNull(restored.requestSelectedRefinement())
+            restored.select(2)
+            assertEquals(geometry(3.0), restored.requestSelectedRefinement()!!.geometry)
+        } finally { source.bitmap.recycle() }
+    }
+
+    @Test fun refinementWorkerSortsByImageUnknownCountAndKeepsTiesStable() {
+        val source = image()
+        try {
+            val state = DistortionPreviewState()
+            val profile = SamplingProfile(settings(), false)
+            val input = DistortionPreviewState.Input(source.luma, geometry(), profile, true)
+            val candidates = listOf(geometry(15.0), geometry(0.0), geometry(-15.0), geometry(0.0).copy(angleRad = .01))
+            state.accept(state.request(input)!!, candidates)
+            state.select(2)
+            val request = state.requestSelectedRefinement()!!
+            val result = state.calculateRefinement(request)
+            val replaced = candidates.toMutableList().also { it[2] = result.geometry }
+            val counts = replaced.map { geometryRankingUnknownCount(source.luma, it, profile) { false } }
+            assertTrue("Fixture must have different unknown counts", counts.distinct().size > 1)
+            assertEquals(counts[1], counts[3])
+            assertTrue(state.acceptRefinement(request, Result.success(result)))
+            assertEquals(counts.sorted(), state.candidates.map {
+                geometryRankingUnknownCount(source.luma, it, profile) { false }
+            })
+            assertTrue(state.candidates.indexOf(candidates[1]) < state.candidates.indexOf(candidates[3]))
+            assertEquals(result.geometry, state.selected)
+            assertNull(state.requestSelectedRefinement())
+        } finally { source.bitmap.recycle() }
+    }
+
     @Test fun completedCandidatesAndSelectionSurviveAClosedEditorWithoutImageCaches() {
         val source = image()
         try {
@@ -51,6 +154,9 @@ class DistortionPreviewTest {
                 assertEquals(lmEnabled, request.input.jointRefinement)
                 first.correction.accept(request, listOf(geometry(2.0), geometry()), memoryLimited = true)
                 first.correction.select(1)
+                first.correction.requestSelectedRefinement()?.let {
+                    first.correction.acceptRefinement(it, Result.success(DistortionPreviewState.RefinementCalculation(it.geometry, it.candidates.indices.toList())))
+                }
                 first.cells.applyValues(listOf(Coord(18, 18)), ModuleValue.ZERO) { ModuleValue.ONE }
                 val saved = first.commit(first.captureSettings(controls, grid))
                 assertNotNull(saved.correctionPreview)

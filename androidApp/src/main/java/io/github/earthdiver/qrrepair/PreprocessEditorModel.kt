@@ -59,12 +59,15 @@ internal class PreprocessEditorModel(
     val correction = DistortionPreviewState()
     val lm = DistortionPreviewState(lmOnly = true)
     var lmEnabled = restoredDraft?.lmRequested ?: initial.lmCorrectionEnabled
+    var usesCurveSeed = initial.lmCorrectionEnabled && initial.distortionCorrection && initial.previewGeometry != null && initial.lmGeometry == null
+        private set
     var lmUnavailable = false
         private set
     private var restoreLm = initial.lmGeometry
     fun selectDistortion(enabled: Boolean) {
         if (settings.distortionCorrection == enabled) return
         settings.distortionCorrection = enabled
+        usesCurveSeed = false
         restoreCorrection = null
         savedCorrection = null
         correction.invalidate()
@@ -72,6 +75,17 @@ internal class PreprocessEditorModel(
     }
 
     fun selectLm(enabled: Boolean) {
+        if (enabled && !lmEnabled && settings.distortionCorrection && correction.enableJointRefinement()) {
+            usesCurveSeed = true
+            lmEnabled = true
+            lmUnavailable = false
+            restoreLm = null
+            restoreCorrection = null
+            savedCorrection = null
+            invalidateSampling()
+            return
+        }
+        usesCurveSeed = false
         lmEnabled = enabled
         lmUnavailable = false
         restoreLm = null
@@ -82,9 +96,14 @@ internal class PreprocessEditorModel(
         invalidateSampling()
     }
     fun disableLm() {
+        lmEnabled = false
+        invalidateCorrections()
+    }
+
+    fun invalidateCorrections() {
+        usesCurveSeed = false
         lmUnavailable = false
         restoreCorrection = null
-        lmEnabled = false
         savedCorrection = null
         restoreLm = null
         lm.invalidate()
@@ -94,9 +113,16 @@ internal class PreprocessEditorModel(
     fun requestLm(controls: PreprocessControlSnapshot, grid: PreprocessGeometrySnapshot): DistortionPreviewState.Request? {
         if (!lmEnabled || !grid.logicalGridAssigned) return null
         val input = previewInput(controls, grid, useLm = false) ?: run {
-            lmEnabled = false
             lmUnavailable = true
             return null
+        }
+        lmUnavailable = false
+        if (usesCurveSeed) {
+            val matches = correction.matches(input.copy(jointRefinement = true)) ||
+                (correction.candidates.isEmpty() && initial.manualQuad == grid.quad && initial.version == controls.version &&
+                    initial.polarity == controls.polarity && initial.confirmedFinderPolarity == grid.confirmedFinderPolarity)
+            if (matches) return null
+            usesCurveSeed = false
         }
         val request = lm.request(input) ?: return null
         restoreLm?.let {
@@ -112,7 +138,6 @@ internal class PreprocessEditorModel(
         if (!lmEnabled || !lm.isCurrent(request)) return false
         val candidates = result.getOrNull()?.candidates.orEmpty()
         lm.accept(request, candidates, result.isFailure || candidates.isEmpty())
-        if (candidates.isEmpty()) lmEnabled = false
         correction.invalidate()
         invalidateSampling()
         return true
@@ -185,7 +210,8 @@ internal class PreprocessEditorModel(
             blackMax = profile.provisionalThresholds.blackMax, whiteMin = profile.provisionalThresholds.whiteMin,
         )) else profile
         val input = DistortionPreviewState.Input(working.luma, geometry, normalized)
-        return if (useLm && lmEnabled && lm.complete && lm.matches(input)) input.copy(
+        if (useLm && lmEnabled && usesCurveSeed) return input.copy(jointRefinement = true)
+        return if (useLm && lmEnabled && lm.complete && !lm.failed && lm.matches(input)) input.copy(
             base = lm.selected ?: geometry, jointRefinement = lm.selected != null,
         ) else input
     }
@@ -217,8 +243,8 @@ internal class PreprocessEditorModel(
     }
 
     fun correctionReady(controls: PreprocessControlSnapshot, grid: PreprocessGeometrySnapshot): Boolean =
-        (!lmEnabled || !grid.logicalGridAssigned || (lm.complete && previewInput(controls, grid, useLm = false)?.let(lm::matches) == true)) && (!settings.distortionCorrection || !grid.logicalGridAssigned ||
-            (previewInput(controls, grid)?.let(correction::matches) == true && correction.complete))
+        (!lmEnabled || lmUnavailable || usesCurveSeed || !grid.logicalGridAssigned || (lm.complete && previewInput(controls, grid, useLm = false)?.let(lm::matches) == true)) && (!settings.distortionCorrection || !grid.logicalGridAssigned ||
+            (previewInput(controls, grid)?.let(correction::matches) == true && correction.complete && correction.refinementReady))
 
     private fun observationInput(controls: PreprocessControlSnapshot, grid: PreprocessGeometrySnapshot): PreRecoveryPreviewSampler.ObservationInput? {
         val input = previewInput(controls, grid) ?: return null
@@ -272,7 +298,7 @@ internal class PreprocessEditorModel(
         settings.captureSettings(controls, grid, cells.edits.toMap(), cells.prioritySearch.toSet(), cells.softEdits.toSet()).copy(
             lmCorrectionEnabled = lmEnabled,
             lmGeometry = lm.selected?.takeIf {
-                lmEnabled && lm.complete && grid.logicalGridAssigned &&
+                lmEnabled && !usesCurveSeed && lm.complete && !lm.failed && grid.logicalGridAssigned &&
                     previewInput(controls, grid, useLm = false)?.let(lm::matches) == true
             },
             previewGeometry = correction.selected?.takeIf {

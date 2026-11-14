@@ -59,7 +59,7 @@ Ordinary grid candidates use a projective transformation to map the four corners
 
 ### Selecting a corrected grid before repair
 
-Grid correction using the Levenberg–Marquardt (LM) method is enabled by default for new work. It uses the confirmed four-corner grid, version, and logical orientation as a single starting grid. The image must provide enough independent pattern evidence for the fit.
+Grid correction using the Levenberg–Marquardt (LM) method is enabled by default for new work. When no curved grid is already selected, it uses the confirmed four-corner grid, version, and logical orientation as a single starting grid. Enabling LM with a selected curved grid uses that grid for joint optimization, as described below. The image must provide enough independent pattern evidence for the fit.
 
 The app projects the black and white patterns of the Finders, their white separators, and the alignment patterns onto the image. The LM method adjusts all eight parameters of the projective transform together to match these patterns to observed brightness. For QR Code version 1, the fit uses only Finders and their separators. Timing patterns are excluded from the LM objective. A fit is accepted only when the objective improves and the image measurements constrain all eight parameters.
 
@@ -103,13 +103,22 @@ Experimental distortion correction uses landmarks from all three Finders and oth
 
 Retain candidates from each stage for comparison, and reject maps that fold over or have excessive displacement or local stretching. Local Finder-template matching also supplies candidates. If contour extraction reaches its memory limit, the app reports that part of correction search is unfinished and continues local pattern matching and ordinary repair.
 
-The settings screen computes up to twelve correction candidates from the selected reference grid and prioritizes them based on agreement with the timing pattern and other image checks. The reference is the selected LM-corrected grid, or the specified four-corner grid when LM correction is off. Grid lines, cell values, cell selection, and repair share the selected candidate. The corner handles edit the underlying grid before distortion correction; landmarks are measured again when the adjustment finishes. The selected candidate is also saved in the session.
+The settings screen computes up to twelve correction candidates from the selected reference grid and prioritizes them by the number of image-derived unknown cells in data/error-correction codewords, timing patterns, and format information. Finder patterns, separators, alignment patterns, version information, and remainder bits are excluded. Manual edits do not affect this count. Timing-pattern agreement and other image checks break ties. The reference is the selected LM-corrected grid, or the specified four-corner grid when LM correction is off. Grid lines, cell values, cell selection, and repair share the selected candidate. The corner handles edit the underlying grid before distortion correction; landmarks are measured again when the adjustment finishes. The selected candidate is also saved in the session.
 
 With “Automatically fine-tune sampling position” enabled, repair attempts recovery in this order: the selected preview grid, the LM-fitted grid, and the specified grid with its neighborhood/alignment corrections. Grids that have not been selected or generated are skipped.
 
 With distortion correction enabled, it selects up to four ordinary grids based on agreement with the timing pattern and other image checks. It applies correction first to the LM-fitted grid, if available, and then to each selected ordinary grid. Each grid serves as the reference for generating up to twelve correction candidates, for a total of at most 60 additional candidates per polarity (48 when no LM-fitted grid is available).
 
-When both LM correction and distortion correction are enabled, the first distortion candidate is refined by jointly adjusting the projective transform and smooth curvature. If no distortion candidate is available, refinement starts from the LM grid. A converged result replaces that candidate only if the sum of squared brightness residuals decreases on the same fine-scale observation points, excluding regularization. Invalid or excessively deformed grids are rejected; otherwise the original candidate remains. The fit uses Finders, separators, and alignment patterns, without timing-pattern targets, payload bits, or manual edits. Automatic fine-tuning applies the same replacement to curvature searches starting from an LM fit or a selected LM reference.
+When both LM correction and distortion correction are enabled, the selected distortion candidate is refined by jointly adjusting the projective transform and smooth curvature. If no distortion candidate is available, refinement starts from the LM grid. A converged result replaces that candidate only if the sum of squared brightness residuals decreases on the same fine-scale observation points, excluding regularization, and the image-derived unknown count does not increase in the cells used for candidate ranking. With automatic thresholds, thresholds are estimated separately for the original and refined grids. Invalid or excessively deformed grids are rejected; otherwise the original candidate remains. The fit uses Finders, separators, and alignment patterns, without timing-pattern targets, payload bits, or manual edits. Automatic fine-tuning applies the same replacement to curvature searches starting from an LM fit or a selected LM reference.
+
+| Operation | Starting grid for joint optimization |
+| --- | --- |
+| Curved correction ON, LM OFF → both ON | The currently selected curved grid; preserve its shape and candidate selection. |
+| Curved correction OFF, LM ON → both ON | Generate curved candidates from the LM grid, rank by the unknown-cell count described above, and use the top candidate. |
+| Select another curved candidate with both ON | The selected curved grid if it has not been evaluated; otherwise reuse its completed result. |
+
+Refinement runs in the background. Only the top candidate is refined when candidates are generated; other candidates are refined when selected. Switching candidates or changing geometry invalidates pending results. Each candidate's completed refinement attempt is reused during the same preview, including when no acceptable improvement was found. After refinement, candidates are stably sorted by the same image-derived unknown count. The selected grid and completed refinement attempts follow their candidates when the order changes. Manual cell edits and FIXED constraints remain unchanged.
+
 
 ### Measuring brightness and marking unknown cells
 

@@ -133,6 +133,32 @@ class PreprocessPreviewCoordinatorTest {
         assertFalse(preview.samplingPending)
     }
 
+    @Test fun selectedCurveRefinementIsQueuedWithoutRepeatingLmAndIsCancelledOnRelease() = withEditor { editor, _, _ ->
+        editor.correction.accept(editor.requestCorrection(controls, grid)!!, listOf(curved(), curved(5.0)))
+        editor.correction.select(1)
+        editor.selectLm(true)
+        val workers = ArrayDeque<Runnable>()
+        val ui = ArrayDeque<() -> Unit>()
+        var changes = 0
+        val preview = PreprocessPreviewCoordinator(editor, Executor { workers.addLast(it) }, { ui.addLast(it) }) { changes++ }
+        preview.requestCorrection(controls, grid)
+        assertEquals(1, workers.size)
+        assertFalse(editor.lm.complete)
+        assertEquals(curved(5.0), editor.correction.selected)
+        workers.removeFirst().run()
+        ui.removeFirst().invoke()
+        assertEquals(1, changes)
+        assertTrue(editor.correctionReady(controls, grid))
+        preview.requestCorrection(controls, grid)
+        assertTrue(workers.isEmpty())
+        preview.selectCorrection(0)
+        assertEquals(1, workers.size)
+        workers.removeFirst().run()
+        preview.release()
+        ui.removeFirst().invoke()
+        assertEquals(1, changes)
+    }
+
     private fun withEditor(temporaryWorking: Boolean = false,
         test: (PreprocessEditorModel, BitmapUtils.Prepared, BitmapUtils.Prepared) -> Unit) {
         fun image() = BitmapUtils.prepare(Bitmap.createBitmap(250, 250, Bitmap.Config.ARGB_8888).apply {

@@ -59,6 +59,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
     var onFinderPlacementRejected: ((FinderRole) -> Unit)? = null
     var onLogicalGridAssigned: ((quarterTurns: Int) -> Unit)? = null
     var onFinderRemoved: ((FinderRole) -> Unit)? = null
+    var onFinderGeometryEdited: (() -> Unit)? = null
     var onGeometryEdited: (() -> Unit)? = null
     var onGeometryEditFinished: (() -> Unit)? = null
     var onEditCellSelected: ((Int, Int) -> Unit)? = null
@@ -839,7 +840,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
                     confirmedFinderRoles += role
                     autoDetectedFinders.remove(role)
                     finderPlacementRole = null; invalidate()
-                    onGeometryEdited?.invoke()
+                    onFinderGeometryEdited?.invoke()
                     onGeometryEditFinished?.invoke()
                     onFinderHintPlaced?.invoke(role, p)
                     return true

@@ -145,10 +145,42 @@ class PreprocessEditorModelTest {
             editor.selectLm(true)
             val request = requireNotNull(editor.requestLm(controls, grid))
             editor.acceptLm(request, Result.success(DistortionPreviewState.Calculation(emptyList())))
-            assertFalse(editor.lmEnabled)
+            assertTrue(editor.lmEnabled)
+            assertTrue(editor.captureSettings(controls, grid).lmCorrectionEnabled)
+            assertNull(editor.requestLm(controls, grid))
+            assertTrue(editor.correctionReady(controls, grid))
             assertTrue(editor.lm.failed)
             editor.selectLm(true)
             assertNotNull(editor.requestLm(controls, grid))
+        } finally { source.bitmap.recycle() }
+    }
+
+    @Test fun finderChangesPreserveLmPreferenceAndEditsButRejectPreviousWork() {
+        val source = image()
+        try {
+            for (enabled in listOf(true, false)) {
+                val editor = PreprocessEditorModel(PreprocessSettings(version = 1, lmCorrectionEnabled = enabled),
+                    source, source, null, null, { false }, { true })
+                editor.cells.applyValues(listOf(Coord(10, 10)), ModuleValue.ONE) { ModuleValue.ZERO }
+                val old = editor.requestLm(controls, grid)
+                editor.invalidateCorrections()
+                assertEquals(enabled, editor.lmEnabled)
+                if (old != null) assertFalse(editor.acceptLm(old,
+                    Result.success(DistortionPreviewState.Calculation(listOf(old.input.base)))))
+                val changed = grid.copy(quad = grid.quad.copy(topLeft = PointD(3.0, 2.0)))
+                val next = editor.requestLm(controls, changed)
+                assertEquals(enabled, next != null)
+                assertEquals(enabled, editor.captureSettings(controls, changed).lmCorrectionEnabled)
+                assertEquals(ModuleValue.ONE, editor.cells.edits[Coord(10, 10)])
+                if (next != null) {
+                    assertEquals(changed.quad, next.input.base.moduleCenterQuad())
+                    assertTrue(editor.acceptLm(next, Result.failure(IllegalStateException("Fit unavailable"))))
+                    assertTrue(editor.lmEnabled)
+                    assertNull(editor.requestLm(controls, changed))
+                    editor.invalidateCorrections()
+                    assertNotNull(editor.requestLm(controls, changed))
+                }
+            }
         } finally { source.bitmap.recycle() }
     }
 

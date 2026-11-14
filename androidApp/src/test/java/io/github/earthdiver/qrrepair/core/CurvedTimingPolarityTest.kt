@@ -111,6 +111,34 @@ class CurvedTimingPolarityTest {
         }
     }
 
+    @Test fun jointReplacementRejectsMoreUnknownsDespiteImprovedPatternResiduals() {
+        var rejected = 0
+        var accepted = 0
+        for (inverted in listOf(false, true)) {
+            val normal = render(shapes[1], "blur-noise")
+            val image = if (inverted) LumaImage(size, size, IntArray(size * size) { 255 - normal.pixels[it] }) else normal
+            val base = seed(0.0)
+            val profile = SamplingProfile(PreprocessSettings(version = 4, manualQuad = base.imageQuad,
+                distortionCorrection = true, automaticThresholds = true), inverted)
+            for (candidate in CurvedGridDetector(image, profile).candidates(base)) {
+                val fit = JointPatternRefiner.refine(image, candidate, intArrayOf(6, 26), inverted) ?: continue
+                assertTrue(fit.residualSumSquares < fit.initialResidualSumSquares)
+                val before = geometryRankingUnknownCount(image, candidate, profile) { false }
+                val after = geometryRankingUnknownCount(image, fit.geometry, profile) { false }
+                val selected = jointlyRefinedGeometry(image, candidate, profile) { false }
+                if (after > before) {
+                    rejected++
+                    assertNull("Unknowns increased from $before to $after", selected)
+                } else {
+                    accepted++
+                    assertEquals(fit.geometry, selected)
+                }
+            }
+        }
+        assertTrue("The synthetic fixture must exercise rejection", rejected > 0)
+        assertTrue("The synthetic fixture must retain useful refinements", accepted > 0)
+    }
+
     @Test fun convergedJointFitImprovesTheSameImageResidualsInEitherPolarity() {
         for (inverted in listOf(false, true)) {
             val normal = render(shapes[1], "blur-noise")
@@ -131,7 +159,8 @@ class CurvedTimingPolarityTest {
             val original = state.calculate(state.request(input)!!).candidates
             val replacement = state.calculate(state.request(input.copy(jointRefinement = true))!!).candidates
             assertEquals(original.size, replacement.size)
-            assertEquals(result.geometry, replacement.first())
+            val selectedFit = jointlyRefinedGeometry(image, original.first(), profile) { false }
+            assertEquals(selectedFit ?: original.first(), replacement.first())
             assertEquals(original.drop(1), replacement.drop(1))
             assertTrue(result.residualSumSquares < result.initialResidualSumSquares)
             assertTrue(result.geometry.hasUsableWarp())

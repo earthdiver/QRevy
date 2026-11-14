@@ -334,6 +334,9 @@ class TextMatrixWorkspaceTest {
                 val overlay = views(root).filterIsInstance<PreprocessOverlayView>().single()
                 overlay.onCellBrushApplied!!.invoke(setOf(Coord(15, 10)), ModuleValue.ONE)
                 views(root).filterIsInstance<RadioButton>().single { it.tag == PolarityMode.INVERTED }.isChecked = true
+                // Polarity changes can request another LM fit while the option remains enabled.
+                (field("executor").get(activity) as ExecutorService).submit {}.get(30, TimeUnit.SECONDS)
+                shadowOf(Looper.getMainLooper()).idle()
                 label(root, "保存").performClick()
                 val saved = field("preprocessSettings").get(activity) as PreprocessSettings
                 assertEquals(PolarityMode.INVERTED, saved.polarity)

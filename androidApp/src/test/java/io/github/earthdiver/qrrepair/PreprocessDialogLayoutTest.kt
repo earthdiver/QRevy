@@ -83,10 +83,10 @@ class PreprocessDialogLayoutTest {
             assertFalse(curved.isChecked)
             curved.performClick()
             assertTrue(curved.isChecked)
-            assertFalse(lm.isChecked)
+            assertTrue(lm.isChecked)
             curved.performClick()
             assertFalse(curved.isChecked)
-            assertFalse(lm.isChecked)
+            assertTrue(lm.isChecked)
             dialog.dismiss()
         } finally { controller.pause().stop().destroy() }
     }

@@ -452,6 +452,7 @@ internal class PreprocessDialogController(
                         Toast.makeText(this, ui("周辺でFinderを確定できませんでした。指定点をヒントとして解析します。", "The Finder could not be confirmed nearby. The selected point will be used as a hint."), Toast.LENGTH_LONG).show()
                     } else {
                         overlay.setVerifiedFinder(role, refined)
+                        editor.invalidateCorrections()
                         refreshCornerControls()
                         refreshClassificationMatrix()
                         Toast.makeText(this, ui("Finder位置を自動補正しました（モジュール幅 ${"%.1f".format(refined.moduleSize)}px）", "Finder position refined (module width ${"%.1f".format(refined.moduleSize)} px)"), Toast.LENGTH_SHORT).show()
@@ -460,6 +461,7 @@ internal class PreprocessDialogController(
             }
         }
         overlay.onFinderRemoved = { role ->
+            editor.invalidateCorrections()
             refreshCornerControls()
             // A refinement launched when this Finder was placed may still be running. Do not
             // allow its delayed result to confirm the Finder again after the user removed it.
@@ -628,6 +630,8 @@ internal class PreprocessDialogController(
                 !overlay.isLogicalGridAssigned() -> ui("曲面補正: QRの向きを指定してください", "Distortion: assign the QR orientation")
                 previewCoordinator.geometryDragging -> ui("曲面補正: 指を離すと再計算", "Distortion: release to recalculate")
                 !state.complete -> ui("曲面補正: 計算中…", "Distortion: calculating…")
+                !state.refinementReady -> ui("曲面補正: 候補 ${state.selectedIndex + 1}/${state.candidates.size} を補正中…",
+                    "Distortion: refining candidate ${state.selectedIndex + 1}/${state.candidates.size}…")
                 editor.samplingFailed -> ui("格子の読み取りに失敗: タップして再試行", "Grid sampling failed: tap to retry")
                 previewCoordinator.samplingPending -> ui("曲面補正: セルを読み取り中…", "Distortion: reading cells…")
                 state.failed && state.selected?.warp != null -> ui("再計算に失敗: 保存した補正を使用", "Recalculation failed: using the saved correction")
@@ -657,9 +661,12 @@ internal class PreprocessDialogController(
             lmCorrection.isEnabled = overlay.isLogicalGridAssigned()
             lmStatus.text = when {
                 !overlay.isLogicalGridAssigned() -> ui("四隅とFinderの役割を指定してください", "Assign the corners and Finder roles")
+                editor.lmEnabled && editor.usesCurveSeed -> if (editor.correction.complete && editor.correction.refinementReady)
+                    ui("曲面格子の補正計算が完了", "Curved grid refinement completed")
+                    else ui("曲面格子を補正中…", "Refining curved grid…")
+                (editor.lm.failed || editor.lmUnavailable) -> ui("補正を適用できませんでした", "Correction could not be applied")
                 editor.lmEnabled && !editor.lm.complete -> ui("補正中…", "Correcting…")
                 editor.lmEnabled -> ui("補正済み", "Correction applied")
-                (editor.lm.failed || editor.lmUnavailable) -> ui("補正を適用できませんでした", "Correction could not be applied")
                 editor.lm.complete -> ui("補正はOFFです", "Correction is off")
                 else -> ""
             }
@@ -684,6 +691,11 @@ internal class PreprocessDialogController(
             }
         }
         val refreshDraggedGrid = Runnable { if (overlay.isAttachedToWindow) refreshClassificationMatrix() }
+        overlay.onFinderGeometryEdited = {
+            editor.invalidateCorrections()
+            updateCorrectionControl()
+            userGeometryEdited = true
+        }
         overlay.onGeometryEdited = {
             disableLmForEdit()
             previewCoordinator.geometryEdited()
@@ -1010,8 +1022,6 @@ internal class PreprocessDialogController(
                     Toast.makeText(this, R.string.perspective_applied, Toast.LENGTH_LONG).show()
                 },
                 beginFinderPlacement = { role ->
-                    disableLmForEdit()
-                    refreshClassificationMatrix()
                     overlay.clearCornerSelection()
                     overlay.finderPlacementRole = role
                 },

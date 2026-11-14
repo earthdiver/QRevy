@@ -22,8 +22,8 @@ internal class PreprocessPreviewCoordinator(
                 dispatchToUi { if (editor.acceptLm(request, result)) onChanged() }
             }
         }
-        if (editor.lmEnabled && !editor.lm.complete) return
-        val request = editor.requestCorrection(controls, grid) ?: return
+        if (editor.lmEnabled && !editor.lmUnavailable && !editor.usesCurveSeed && !editor.lm.complete) return
+        val request = editor.requestCorrection(controls, grid) ?: run { requestSelectedRefinement(); return }
         executor.execute {
             val result = runCatching { editor.correction.calculate(request) }
             dispatchToUi {
@@ -54,6 +54,20 @@ internal class PreprocessPreviewCoordinator(
     fun selectCorrection(index: Int) {
         editor.correction.select(index)
         editor.invalidateSampling()
+        requestSelectedRefinement()
+    }
+
+    private fun requestSelectedRefinement() {
+        val request = editor.correction.requestSelectedRefinement() ?: return
+        executor.execute {
+            val result = runCatching { editor.correction.calculateRefinement(request) }
+            dispatchToUi {
+                if (editor.correction.acceptRefinement(request, result)) {
+                    editor.invalidateSampling()
+                    onChanged()
+                }
+            }
+        }
     }
 
     fun geometryEdited() {
