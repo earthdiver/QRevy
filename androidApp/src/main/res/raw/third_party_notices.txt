@@ -57,6 +57,32 @@ A copy of Apache License 2.0 is included at `licenses/Apache-2.0.txt`.
 
 A copy of Apache License 2.0 is included at `licenses/Apache-2.0.txt`.
 
+### Kotlinx Coroutines 1.9.0
+
+- Artifacts: `org.jetbrains.kotlinx:kotlinx-coroutines-core`, `org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm`, `org.jetbrains.kotlinx:kotlinx-coroutines-android`
+- License: Apache License 2.0
+- Upstream: https://github.com/Kotlin/kotlinx.coroutines/tree/1.9.0
+- Scope: transitive runtime dependencies of AndroidX components.
+- License copy: `licenses/Apache-2.0.txt`
+
+Upstream [NOTICE](https://github.com/Kotlin/kotlinx.coroutines/blob/1.9.0/license/NOTICE.txt):
+
+> kotlinx.coroutines library.
+> Copyright 2016-2024 JetBrains s.r.o and contributors
+
+### Kotlinx AtomicFU 0.28.0
+
+- Artifacts: `org.jetbrains.kotlinx:atomicfu`, `org.jetbrains.kotlinx:atomicfu-jvm`
+- License: Apache License 2.0
+- Upstream: https://github.com/Kotlin/kotlinx-atomicfu/tree/0.28.0
+- Scope: transitive runtime dependencies of AndroidX components.
+- License copy: `licenses/Apache-2.0.txt`
+
+Upstream [NOTICE](https://github.com/Kotlin/kotlinx-atomicfu/blob/0.28.0/license/NOTICE.txt):
+
+> kotlinx.atoimcfu library.
+> Copyright 2017 JetBrains s.r.o and respective authors and developers
+
 ### Kotlinx Serialization 1.7.3
 
 - Artifacts: `org.jetbrains.kotlinx:kotlinx-serialization-core`, `org.jetbrains.kotlinx:kotlinx-serialization-core-jvm`
@@ -64,6 +90,11 @@ A copy of Apache License 2.0 is included at `licenses/Apache-2.0.txt`.
 - Upstream: https://github.com/Kotlin/kotlinx.serialization/tree/v1.7.3
 - Scope: transitive runtime dependency of AndroidX SavedState.
 - License copy: `licenses/Apache-2.0.txt`
+
+Upstream [NOTICE](https://github.com/Kotlin/kotlinx.serialization/blob/v1.7.3/license/NOTICE.txt):
+
+> kotlinx.serialization library.
+> Copyright 2017-2019 JetBrains s.r.o and respective authors and developers
 
 ## Build/test-only dependencies
 
