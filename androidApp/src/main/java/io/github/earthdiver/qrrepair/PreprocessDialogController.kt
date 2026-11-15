@@ -3,13 +3,9 @@ package io.github.earthdiver.qrrepair
 import android.app.Activity
 import android.app.AlertDialog
 import android.graphics.Bitmap
-import android.text.InputType
-import android.view.Gravity
 import android.view.View
-import android.view.WindowManager
 import android.widget.Button
 import android.widget.CheckBox
-import android.widget.EditText
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.RadioButton
@@ -33,7 +29,6 @@ import io.github.earthdiver.qrrepair.ui.BitmapUtils
 import io.github.earthdiver.qrrepair.core.ImageAdjustment
 import io.github.earthdiver.qrrepair.ui.EditorTool
 import io.github.earthdiver.qrrepair.ui.PreprocessOverlayView
-import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import java.util.concurrent.atomic.AtomicInteger
 
 /** Keeps the same draft alive while the result page is visible. */
@@ -142,11 +137,7 @@ internal class PreprocessDialogController(
         }
         fun selectedPolarity(): PolarityMode =
             polarity.findViewById<RadioButton>(polarity.checkedRadioButtonId)?.tag as? PolarityMode ?: PolarityMode.AUTO
-        var updatingThresholdControls = false
-        val automaticThresholds = CheckBox(this).apply {
-            text = ui("閾値を自動設定", "Set thresholds automatically")
-            isChecked = preprocessSettings.automaticThresholds
-        }
+        val thresholds = PreprocessThresholdControls(this, preprocessSettings)
         val useUnknownColors = CheckBox(this).apply {
             text = ui("自動検出された色クラスタを不明領域（?）として扱う", "Treat detected color clusters as unknown (?)")
             isChecked = preprocessSettings.useUnknownColorClusters && preprocessSettings.unknownColorClusters.isNotEmpty()
@@ -192,10 +183,6 @@ internal class PreprocessDialogController(
             setText(R.string.allow_fixed_corrections)
             isChecked = !preprocessSettings.lockManualBits
         }
-        val blackLabel = TextView(this)
-        val black = SeekBar(this).apply { max = 254; progress = preprocessSettings.blackMax }
-        val whiteLabel = TextView(this)
-        val white = SeekBar(this).apply { max = 254; progress = preprocessSettings.whiteMin - 1 }
         val version = SeekBar(this).apply { max = 39; progress = preprocessSettings.version - 1 }
         var cachedCellRegions = QrCellRegions(version.progress + 1)
         fun cellRegions(): QrCellRegions {
@@ -218,10 +205,9 @@ internal class PreprocessDialogController(
                 else -> R.string.cell_region_structure
             })
         }
-        var versionButton: Button? = null
+        var versionControl: PreprocessVersionControl? = null
         var activePreviewProfile: SamplingProfile? = null
         var committedVersion = preprocessSettings.version
-        var versionConfirmationShowing = false
         var checkVersionErrorLimit: () -> Unit = {}
         fun invalidateSamplingPreview() {
             finderSearchGeneration.incrementAndGet()
@@ -238,9 +224,9 @@ internal class PreprocessDialogController(
         }
         fun controlSnapshot() = PreprocessControlSnapshot(
             polarity = selectedPolarity(),
-            automaticThresholds = automaticThresholds.isChecked,
-            blackProgress = black.progress,
-            whiteProgress = white.progress,
+            automaticThresholds = thresholds.automatic,
+            blackProgress = thresholds.blackMax,
+            whiteProgress = thresholds.whiteMin - 1,
             useUnknownColors = useUnknownColors.isChecked,
             version = version.progress + 1,
             lockCorners = true,
@@ -256,18 +242,11 @@ internal class PreprocessDialogController(
             io.github.earthdiver.qrrepair.core.FinderPolarity.NORMAL -> false
             else -> selectedPolarity() == PolarityMode.INVERTED
         }
-        fun updateThresholdLabels() {
-            val (blackText, whiteText) = polarityThresholdLabels(previewInverted(), black.progress, white.progress + 1, isJapaneseUi())
-            blackLabel.text = blackText
-            whiteLabel.text = whiteText
-        }
         var refreshCornerControls: () -> Unit = {}
         fun refreshLabels() {
             refreshCornerControls()
-            updateThresholdLabels()
-            val selectedVersion = version.progress + 1
-            val selectedDimension = 17 + 4 * selectedVersion
-            versionButton?.text = ui("QRバージョン: $selectedVersion / $selectedDimension×${selectedDimension}セル", "QR Version: $selectedVersion / $selectedDimension modules")
+            thresholds.refreshLabels(previewInverted())
+            versionControl?.refresh()
             val profile = SamplingProfile(
                 dialogState.previewSettings(controlSnapshot()),
                 inverted = previewInverted(),
@@ -275,55 +254,13 @@ internal class PreprocessDialogController(
             activePreviewProfile = profile
             refreshClassificationMatrix()
         }
-        fun updateThreshold(slider: SeekBar, progress: Int, manual: Boolean) {
-            if (updatingThresholdControls) return
-            updatingThresholdControls = true
-            if (manual) automaticThresholds.isChecked = false
-            slider.progress = progress
-            if (black.progress > white.progress) {
-                if (slider === black) white.progress = black.progress
-                else black.progress = white.progress
-            }
-            updatingThresholdControls = false
-            if (manual) invalidateSamplingPreview()
-            refreshLabels()
-        }
-        fun recordThresholdChange(slider: SeekBar) {
-            if (slider === black) {
-                noteDraftChange("black", ui("QRの黒の閾値を変更", "Changed QR black threshold"), black.progress.toString())
-            } else {
-                noteDraftChange("white", ui("QRの白の閾値を変更", "Changed QR white threshold"), (white.progress + 1).toString())
-            }
-        }
-        val listener = object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
-                updateThreshold(seekBar, progress, fromUser)
-            }
-            override fun onStartTrackingTouch(seekBar: SeekBar) {
-                overlay.clearCornerSelection()
-            }
-            override fun onStopTrackingTouch(seekBar: SeekBar) {
-                recordThresholdChange(seekBar)
-            }
-        }
-        black.setOnSeekBarChangeListener(listener)
-        white.setOnSeekBarChangeListener(listener)
-        fun bindThresholdInput(label: TextView, slider: SeekBar, offset: Int) {
-            label.setOnLongClickListener {
-                val inverted = previewInverted()
-                fun imageValue(logical: Int) = if (inverted) 255 - logical else logical
-                val first = imageValue(offset)
-                val last = imageValue(slider.max + offset)
-                showThresholdInput(label.text, imageValue(slider.progress + offset), minOf(first, last)..maxOf(first, last)) { value ->
-                    val logical = if (inverted) 255 - value else value
-                    updateThreshold(slider, logical - offset, manual = true)
-                    recordThresholdChange(slider)
-                }
-                true
-            }
-        }
-        bindThresholdInput(blackLabel, black, offset = 0)
-        bindThresholdInput(whiteLabel, white, offset = 1)
+        thresholds.bind(
+            previewInverted = ::previewInverted,
+            onInvalidate = ::invalidateSamplingPreview,
+            onChanged = ::refreshLabels,
+            onInteraction = overlay::clearCornerSelection,
+            noteDraftChange = { key, label, detail -> noteDraftChange(key, label, detail) },
+        )
         fun commitVersion(requested: Int) {
             disableLmForEdit()
             val nextVersion = requested.coerceIn(1, 40)
@@ -358,50 +295,21 @@ internal class PreprocessDialogController(
             noteDraftChange("version", ui("QRバージョンを変更", "Changed QR Version"), committedVersion.toString())
             checkVersionErrorLimit()
         }
-        fun requestVersion(requested: Int) {
-            overlay.clearCornerSelection()
-            if (versionConfirmationShowing) return
-            if (requested == committedVersion) {
+        versionControl = PreprocessVersionControl(activity,
+            currentVersion = { committedVersion },
+            hasEdits = { cellEditState.edits.isNotEmpty() },
+            onInteraction = overlay::clearCornerSelection,
+            onSameVersion = {
                 if (!overlay.isLogicalGridAssigned()) overlay.setPhysicalImageQuad(overlay.imageQuad())
                 refreshLabels()
-                return
-            }
-            if (cellEditState.edits.isNotEmpty()) {
-                versionConfirmationShowing = true
-                AlertDialog.Builder(activity)
-                    .setTitle(ui("バージョンを変更しますか？", "Change Version?"))
-                    .setMessage(ui("セル編集済みです。バージョンを変更するとセル座標が変わるため、現在のセル編集はすべて解除されます。", "Cells have been edited. Changing Version changes their coordinates and clears all current cell edits."))
-                    .setNegativeButton(ui("変更しない", "Keep current")) { _, _ -> versionConfirmationShowing = false }
-                    .setPositiveButton(ui("編集を解除して変更", "Clear edits and change")) { _, _ ->
-                        versionConfirmationShowing = false
-                        commitVersion(requested)
-                    }
-                    .setOnCancelListener { versionConfirmationShowing = false }
-                    .show()
-            } else commitVersion(requested)
-        }
-        versionButton = button(ui("QRバージョン: $committedVersion / ${17 + 4 * committedVersion}×${17 + 4 * committedVersion}セル", "QR Version: $committedVersion / ${17 + 4 * committedVersion} modules")) {
-            overlay.clearCornerSelection()
-            val labels = (1..40).map { value -> ui("V$value / ${17 + 4 * value}×${17 + 4 * value}セル", "Version $value / ${17 + 4 * value} modules") }.toTypedArray()
-            AlertDialog.Builder(activity)
-                .setTitle(ui("QRバージョンを選択", "Select QR Version"))
-                .setSingleChoiceItems(labels, committedVersion - 1) { selectionDialog, which ->
-                    selectionDialog.dismiss()
-                    requestVersion(which + 1)
-                }
-                .setNegativeButton(R.string.close, null)
-                .show()
-        }
+            },
+            onCommit = ::commitVersion,
+        )
         polarity.setOnCheckedChangeListener { group, checkedId ->
             invalidateSamplingPreview()
             val label = group.findViewById<RadioButton>(checkedId)?.text?.toString().orEmpty()
             noteDraftChange("polarity", ui("白黒極性を変更", "Changed polarity"), label)
             refreshLabels()
-        }
-        automaticThresholds.setOnCheckedChangeListener { _, checked ->
-            if (updatingThresholdControls) return@setOnCheckedChangeListener
-            invalidateSamplingPreview(); refreshLabels()
-            noteDraftChange("threshold-auto", ui("閾値を自動設定", "Set thresholds automatically"), if (checked) "ON" else "OFF")
         }
         useUnknownColors.setOnCheckedChangeListener { _, checked ->
             invalidateSamplingPreview(); refreshLabels()
@@ -543,13 +451,10 @@ internal class PreprocessDialogController(
             val preview = previewCoordinator.sample(::controlSnapshot, ::geometrySnapshot)
             if (preview == null) return null
             preview.stats.thresholds?.let { pair ->
-                updatingThresholdControls = true
-                black.progress = pair.blackMax; white.progress = pair.whiteMin - 1
-                updatingThresholdControls = false
-                updateThresholdLabels()
+                thresholds.showSampledPair(pair.blackMax, pair.whiteMin, previewInverted())
             }
             activePreviewProfile = preview.profile.copy(settings = preview.profile.settings.copy(
-                blackMax = black.progress, whiteMin = white.progress + 1,
+                blackMax = thresholds.blackMax, whiteMin = thresholds.whiteMin,
             ))
             return preview.geometry to preview.matrix
         }
@@ -873,81 +778,14 @@ internal class PreprocessDialogController(
             openDataPage?.refresh()
         }
         val hexPage = preRecoveryDataPage.view
-        var eccConstraintButton: Button? = null
-        var maskConstraintButton: Button? = null
-        val formatSearchCount = TextView(this).apply {
-            textSize = 12f
-            gravity = Gravity.CENTER_HORIZONTAL
-        }
-        fun refreshFormatConstraintControls() {
-            eccConstraintButton?.text = searchSettings.formatConstraint?.ecLevel?.let { "ECC: $it" }
-                ?: ui("ECC: 自動", "ECC: Auto")
-            maskConstraintButton?.text = searchSettings.formatConstraint?.dataMask?.let { "mask: $it" }
-                ?: ui("mask: 自動", "Mask: Auto")
-            val count = searchSettings.formatConstraint?.candidateCount ?: 32
-            formatSearchCount.text = ui("探索対象: ${count}形式", "Formats to search: $count")
-            searchControls.refreshFormatMismatchLimitControl()
-        }
-        fun updateFormatConstraint(ecLevel: ErrorCorrectionLevel?, dataMask: Int?) {
-            searchSettings.updateFormatConstraint(version.progress + 1, ecLevel, dataMask, cellEditState.fixedEdits)?.let {
-                showFormatEditError(it)
-                return
-            }
-            refreshFormatConstraintControls()
-            refreshClassificationMatrix()
-            refreshPreRecoveryDataPage()
-            noteDraftChange(
-                "format",
-                ui("形式情報の探索条件を変更", "Changed format search constraint"),
-                "ECC=${ecLevel ?: ui("自動", "Auto")}, mask=${dataMask ?: ui("自動", "Auto")}",
-            )
-        }
-        eccConstraintButton = button(ui("ECC: 自動", "ECC: Auto")) {
-            val choices = listOf<ErrorCorrectionLevel?>(
-                null,
-                ErrorCorrectionLevel.L,
-                ErrorCorrectionLevel.M,
-                ErrorCorrectionLevel.Q,
-                ErrorCorrectionLevel.H,
-            )
-            val labels = choices.map { it?.let { level -> "ECC: $level" } ?: ui("ECC: 自動", "ECC: Auto") }.toTypedArray()
-            val selected = choices.indexOf(searchSettings.formatConstraint?.ecLevel).coerceAtLeast(0)
-            AlertDialog.Builder(this)
-                .setTitle(ui("誤り訂正レベルを指定", "Select ECC level"))
-                .setSingleChoiceItems(labels, selected) { dialog, which ->
-                    updateFormatConstraint(choices[which], searchSettings.formatConstraint?.dataMask)
-                    dialog.dismiss()
-                }
-                .setNegativeButton(R.string.close, null)
-                .show()
-        }
-        maskConstraintButton = button(ui("mask: 自動", "Mask: Auto")) {
-            val choices = listOf<Int?>(null) + (0..7)
-            val labels = choices.map { it?.let { mask -> "mask: $mask" } ?: ui("mask: 自動", "Mask: Auto") }.toTypedArray()
-            val selected = choices.indexOf(searchSettings.formatConstraint?.dataMask).coerceAtLeast(0)
-            AlertDialog.Builder(this)
-                .setTitle(ui("マスクを指定", "Select mask"))
-                .setSingleChoiceItems(labels, selected) { dialog, which ->
-                    updateFormatConstraint(searchSettings.formatConstraint?.ecLevel, choices[which])
-                    dialog.dismiss()
-                }
-                .setNegativeButton(R.string.close, null)
-                .show()
-        }
-        val formatConstraintFooter = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, dp(3), 0, dp(3))
-            addView(TextView(activity).apply {
-                text = ui("形式情報（修復探索）", "Format information (recovery search)")
-            })
-            addView(LinearLayout(activity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                addView(eccConstraintButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-                addView(maskConstraintButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-            })
-            addView(formatSearchCount)
-        }
-        refreshFormatConstraintControls()
+        val formatControls = PreprocessFormatControls(activity, searchSettings,
+            version = { version.progress + 1 },
+            fixedEdits = { cellEditState.fixedEdits },
+            onConflict = ::showFormatEditError,
+            onRefreshLimits = searchControls::refreshFormatMismatchLimitControl,
+            onChanged = { refreshClassificationMatrix(); refreshPreRecoveryDataPage() },
+            noteDraftChange = { key, label, detail -> noteDraftChange(key, label, detail) },
+        )
         val cornerControls = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(mirroredInput)
@@ -969,16 +807,16 @@ internal class PreprocessDialogController(
             this,
             buttonFactory = ::button,
             compactRow = { views -> compactRow(*views) },
-            versionButton = requireNotNull(versionButton),
+            versionButton = requireNotNull(versionControl).button,
             cornerControls = cornerControls,
             lmControls = lmControls,
-            automaticThresholds = automaticThresholds,
-            blackLabel = blackLabel,
-            blackSeekBar = black,
-            whiteLabel = whiteLabel,
-            whiteSeekBar = white,
+            automaticThresholds = thresholds.automaticThresholds,
+            blackLabel = thresholds.blackLabel,
+            blackSeekBar = thresholds.black,
+            whiteLabel = thresholds.whiteLabel,
+            whiteSeekBar = thresholds.white,
             useUnknownColors = useUnknownColors,
-            scrollContentFooter = formatConstraintFooter,
+            scrollContentFooter = formatControls.view,
             actions = BasicSettingsPageActions(
                 openDetails = { navigatePreprocessPage(PreprocessPage.DETAILS) },
                 openCellEditor = { navigatePreprocessPage(PreprocessPage.CELL_EDITOR) },
@@ -1218,41 +1056,7 @@ internal class PreprocessDialogController(
 
     private fun scrollRow(vararg children: View): HorizontalScrollView = dialogViews.scrollRow(*children)
 
-    private fun showThresholdInput(title: CharSequence, current: Int, range: IntRange, applyValue: (Int) -> Unit) {
-        val input = EditText(activity).apply {
-            inputType = InputType.TYPE_CLASS_NUMBER
-            setSingleLine()
-            setText(current.toString())
-            selectAll()
-        }
-        val rangeHint = activity.getString(R.string.threshold_input_range, range.first, range.last)
-        val dialog = AlertDialog.Builder(activity)
-            .setTitle(title)
-            .setMessage(rangeHint)
-            .setView(input)
-            .setNegativeButton(R.string.cancel, null)
-            .setPositiveButton(R.string.image_apply, null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val value = input.text.toString().toIntOrNull()
-                if (value == null || value !in range) {
-                    input.error = rangeHint
-                } else {
-                    applyValue(value)
-                    dialog.dismiss()
-                }
-            }
-        }
-        input.requestFocus()
-        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
-        dialog.show()
-    }
-
     private fun dp(value: Int): Int = (value * activity.resources.displayMetrics.density).toInt()
-
-    private fun isJapaneseUi(): Boolean =
-        AppLanguageManager.isJapanese
 
     private fun ui(japanese: String, english: String): String =
         localizedText(japanese, english)

@@ -236,26 +236,17 @@ class AutoRecoveryEngine(
                 }
                 val outcome = recoveryEngine.recoverWithDiagnostics(
                     matrix,
-                    trustKnownPayloadCount = settings.trustKnownPayloadCount,
-                    assumeUtf8ByteSegments = settings.assumeUtf8ByteSegments,
-                    partialBitSearchLimit = settings.partialBitSearchLimit,
-                    listDecodingAdditionalErrors = settings.listDecodingAdditionalErrors,
-                    knownBitErrorLimit = settings.knownBitErrorLimit,
-                    formatConstraint = settings.formatConstraint,
-                    maxFormatMismatches = settings.effectiveFormatMismatchLimit,
-                    maxKnownDataEccMismatches = ErrorLimitPolicy.data(
-                        hypothesis.geometry.version, settings.dataEccMismatchLimitMode, settings.dataEccMismatchLimit,
+                    request = RecoveryRequest.fromSettings(settings, hypothesis.geometry.version),
+                    execution = RecoveryExecutionControls(
+                        retentionBudget = retentionBudget.fresh(),
+                        cancellation = cancellation,
+                        stopRequested = stopRequested,
+                        listDecodingBudget = listDecodingBudget,
+                        knownBitErrorBudget = knownBitErrorBudget,
+                        discoveryCounter = discoveryCounter,
+                        onPriorityProgress = { done, total -> onPriorityProgress?.invoke(done, total) },
                     ),
-                    manualEdits = settings.fixedPreRecoveryEdits,
-                    displayLockManualBits = settings.lockManualBits,
-                    retentionBudget = retentionBudget.fresh(),
-                    cancellation = cancellation,
-                    stopRequested = stopRequested,
-                    listDecodingBudget = listDecodingBudget, knownBitErrorBudget = knownBitErrorBudget,
-                    discoveryCounter = discoveryCounter,
-                ) { done, total ->
-                    onPriorityProgress?.invoke(done, total)
-                }
+                )
                 GeometryAttempt(hypothesis, matrix, stats, outcome.candidates, outcome.failure, outcome.searchDiagnostic)
             }.onFailure {
                 if (it is RecoveryCancelledException || it is Error) throw it

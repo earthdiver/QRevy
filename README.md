@@ -14,13 +14,13 @@ Recovery does not guarantee that the result matches the original content. Indepe
 | --- | --- | --- |
 | ![Synthetic QR with irregular holes and black damage](docs/examples/bullet-holes/before.png) | ![Recovered QR](docs/examples/bullet-holes/after.png) | ![Filled cells in blue and corrected cells in orange](docs/examples/bullet-holes/details.png) |
 
-The example has 503 of 841 cells erased (59.8%). Enable the single-segment assumption and use one priority bit; all other recovery settings stay at their defaults. See the [image input and steps](docs/examples/bullet-holes/README.md) to try it.
+This synthetic example has 503 of 841 cells erased (59.8%). See the [image input and steps](docs/examples/bullet-holes/README.md) to try it.
 
 ## Get started
 
 1. Import an image or text matrix, or take a photo.
-2. Check the QR outline, version, and orientation. Adjust the image or individual cells where needed.
-3. Run **Repair** and review the candidates. You can copy decoded text, export a recovered QR image, or save your work to resume later.
+2. Review the reading or automatic-repair result. Quick automatic repair is enabled by default and runs if ordinary reading fails.
+3. If needed, open detailed analysis, adjust the grid or individual cells, and run **Repair**. Review the candidates before copying decoded text or exporting a recovered QR image. You can save your work to resume later.
 
 See the [User Guide](docs/USER_GUIDE.en.md) for the steps and settings.
 
@@ -39,7 +39,7 @@ Install the generated Android package (APK), `build/androidApp/outputs/apk/debug
 ## Reference
 
 - [Understanding repair results](docs/RECOVERY_RESULT_FIELDS.en.md)
-- [How QRevy recovers a code](docs/RECOVERY_STRATEGY.en.md)
+- [QRevy recovery strategy](docs/RECOVERY_STRATEGY.en.md)
 - [Text matrix templates](templates/text-matrices/README.md)
 - [Privacy](PRIVACY.md)
 - [Security](SECURITY.md)

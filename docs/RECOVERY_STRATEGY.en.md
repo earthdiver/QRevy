@@ -10,6 +10,17 @@ The processing flow is:
 
 For operations, see the [User Guide](USER_GUIDE.en.md). For diagnostic fields and cell explanations, see [Understanding repair results](RECOVERY_RESULT_FIELDS.en.md).
 
+## Scope of the two repair modes
+
+Both modes use a common recovery core and candidate-validation rules. Each mode selects its own grids, assumptions, and search methods.
+
+| Mode | Grid and decoding conditions | Search and results |
+| --- | --- | --- |
+| Detailed analysis | Uses the selected grid, version, orientation, manual edits, and settings. Optional fine-tuning explores nearby grids without changing the selected version or orientation. | Follows the search order in section 4. Retains validated candidates even when the search is unfinished. |
+| Quick automatic repair | After ordinary reading fails, automatically tries image orientations, corrected grids, and applicable assumptions. Its execution conditions are recorded separately from detailed-analysis settings. | Uses the methods, time allowances, and success conditions in section 10. Reports success only after a trial leaves one candidate and completes the required checks. |
+
+Sections 1–3 describe input evidence, geometry, and format handling; grid selection and fine-tuning on the settings screen belong to detailed analysis. Section 4 gives the detailed-analysis search order. Sections 5–8 explain the available calculation and validation methods, section 9 explains outcomes and limits, and section 10 specifies which methods quick automatic repair uses and how it runs them.
+
 ## 1. Readings and assumptions used in calculation
 
 A cell (module) is one square in a QR code. Cell values are stored as `0 / 1 / ?`, where `?` means unknown. Values read from the image may still contain errors.
@@ -41,7 +52,9 @@ Raising an error limit alone does not permit correction of fixed values. To incl
 
 ## 2. Establishing the grid and reading cells
 
-When an image is imported, the app estimates the version, which determines the grid size, and the positions of the QR code's four corners in the image. Before repair, the user selects the grid to read. When automatic fine-tuning is enabled, repair explores sampling positions around the selected reference grid. The selected version and the assignment of the QR code's top-left, top-right, and bottom-left corners, called its logical orientation, stay unchanged.
+When an image is imported, the app estimates the version, which determines the grid size, and the positions of the QR code's four corners in the image.
+
+In detailed analysis, the user selects the grid to read before repair. When automatic fine-tuning is enabled, repair explores sampling positions around the selected reference grid. The selected version and the assignment of the QR code's top-left, top-right, and bottom-left corners, called its logical orientation, stay unchanged. Quick automatic repair selects grids and orientations as described in [Image correction and trial order](#image-correction-and-trial-order).
 
 Recovery requires at least one finder pattern (**Finder**) to be assigned a top-left, top-right, or bottom-left role. Recovery can be attempted even when only one Finder is visible.
 
@@ -55,6 +68,8 @@ Initial estimation uses the QR detection library ZXing-C++ to detect the QR code
 
 If that grid cannot be accepted, the app estimates a grid from the repeating cell spacing, then considers an estimate using two Finders if necessary. It may decline an estimate when, for example, boundaries of different QR codes are detected or normal and inverted readings give conflicting estimates. Text decoded by the detection library is not used as the recovery result.
 
+A **separator** is the white border around a Finder. A **timing pattern** alternates black and white to indicate cell spacing. The **quiet zone** is the white margin surrounding the entire QR code.
+
 When normal and inverted periodicity estimates conflict, the app checks each proposed grid against three Finders, their separators, and the timing patterns. It can retain the one structurally verified grid when an inverted quiet zone has produced a false larger grid. If both grids pass or neither passes, the conflict remains unresolved. This check preserves the selected periodicity corners and does not automatically assign Finder roles. An uncontested periodicity estimate can still be used when Finders are damaged or missing.
 
 For nearly frontal symbols of version 2 or higher, missing dark cells along an outer edge need not prevent initial estimation. If the repeated spacing and boundary phase are clear but the grid cannot fit within the observed dark extent, a surviving Finder can anchor an extension. Its shape and separator must agree with the grid, at least one timing axis must provide sufficient known evidence, and known timing cells must not contradict it. Gray unknown cells provide no positive evidence. The grid must contain the observed dark extent and keep every outer module center inside the image; distinct supported grids remain ambiguous. This geometry fallback is shared by quick automatic repair and detailed analysis. It does not alter sampling thresholds or automatically assign Finder roles.
@@ -63,15 +78,15 @@ Ordinary grid candidates use a projective transformation to map the four corners
 
 ### Selecting a corrected grid before repair
 
-Grid correction using the Levenberg–Marquardt (LM) method is enabled by default for new work. When no curved grid is already selected, it uses the confirmed four-corner grid, version, and logical orientation as a single starting grid. Enabling LM with a selected curved grid uses that grid for joint optimization, as described below. The image must provide enough independent pattern evidence for the fit.
+In detailed analysis, grid correction using the Levenberg–Marquardt (LM) method is enabled by default for new work. When no curved grid is already selected, it uses the confirmed four-corner grid, version, and logical orientation as a single starting grid. Enabling LM with a selected curved grid uses that grid for joint optimization, as described below. The image must provide enough independent pattern evidence for the fit.
 
-The app projects the black and white patterns of the Finders, their white separators, and the alignment patterns onto the image. The LM method adjusts all eight parameters of the projective transform together to match these patterns to observed brightness. For QR Code version 1, the fit uses only Finders and their separators. Timing patterns are excluded from the LM objective. A fit is accepted only when the objective improves and the image measurements constrain all eight parameters.
+The app projects the black and white patterns of the Finders, their white separators, and the alignment patterns onto the image. An **alignment pattern** is a small pattern used to align the grid. The LM method adjusts all eight parameters of the projective transform together to match these patterns to observed brightness. For QR Code version 1, the fit uses only Finders and their separators. Timing patterns are excluded from the LM objective. A fit is accepted only when the objective improves and the image measurements constrain all eight parameters.
 
-The original corners remain available separately from the selected correction. Switching correction off restores that reference, without changing manual cell values or FIXED constraints. Geometry edits invalidate the LM selection and pending calculations. The selected mapping supplies the displayed grid and cell readings and is saved for recovery and session restoration.
+The original corners remain available separately from the selected correction. Switching correction off restores that reference, without changing manual cell values or fixed-cell constraints. Geometry edits invalidate the LM selection and pending calculations. The selected mapping supplies the displayed grid and cell readings and is saved for recovery and session restoration.
 
 ### Automatic fine-tuning around the selected grid
 
-With automatic fine-tuning off, repair uses the grid selected on the settings screen, with the exception of [original-grid verification](#image-correction-and-trial-order). With it on, repair generates and tries the neighborhood, alignment-correction, and LM-correction candidates described below, using that grid as the reference. The search reference is the selected LM-corrected grid when present, otherwise the specified four-corner grid.
+In detailed analysis, with automatic fine-tuning off, repair uses the grid selected on the settings screen, with the exception of [original-grid verification](#image-correction-and-trial-order). With it on, repair generates and tries the neighborhood, alignment-correction, and LM-correction candidates described below, using that grid as the reference. The search reference is the selected LM-corrected grid when present, otherwise the specified four-corner grid.
 
 The basic refinement candidates are:
 
@@ -85,7 +100,7 @@ The basic refinement candidates are:
 
 The reference displacement is 0.6 cell widths. When exactly one Finder role is assigned, the app also tries small clockwise and counterclockwise rotations around the corresponding corner. These two additions give at most 21 grid candidates. Each translation, scaling, or rotation is applied separately to the specified grid.
 
-For version 2 and above, an alignment pattern, a small pattern used to align the grid, can add at most one corrected grid for each grid candidate. If its observed position differs from its predicted position by 0.1–1.25 cell widths, the nearest grid corner is moved. Corrections that substantially worsen agreement with the timing pattern, the alternating black and white pattern indicating cell spacing, are rejected. The app tries both the original grid and any accepted correction.
+For version 2 and above, an alignment pattern can add at most one corrected grid for each grid candidate. If its observed position differs from its predicted position by 0.1–1.25 cell widths, the nearest grid corner is moved. Corrections that substantially worsen agreement with the timing pattern are rejected. The app tries both the original grid and any accepted correction.
 
 These steps yield at most 38 candidates per polarity. With exactly one assigned Finder role, rotations about the corresponding corner bring the maximum to 42.
 
@@ -107,13 +122,27 @@ Experimental distortion correction uses landmarks from all three Finders and oth
 
 Retain candidates from each stage for comparison, and reject maps that fold over or have excessive displacement or local stretching. Local Finder-template matching also supplies candidates. If contour extraction reaches its memory limit, the app reports that part of correction search is unfinished and continues local pattern matching and ordinary repair.
 
-The settings screen computes up to twelve correction candidates from the selected reference grid and prioritizes them by the number of image-derived unknown cells in data/error-correction codewords, timing patterns, and format information. Finder patterns, separators, alignment patterns, version information, and remainder bits are excluded. Manual edits do not affect this count. Timing-pattern agreement and other image checks break ties. The reference is the selected LM-corrected grid, or the specified four-corner grid when LM correction is off. Grid lines, cell values, cell selection, and repair share the selected candidate. The corner handles edit the underlying grid before distortion correction; landmarks are measured again when the adjustment finishes. The selected candidate is also saved in the session.
+#### Preview selection and detailed-analysis search
+
+The settings screen computes up to twelve correction candidates from the selected reference grid and prioritizes them by the number of image-derived unknown cells in data/error-correction codewords, timing patterns, and format information. Finder patterns, separators, alignment patterns, version information, and remainder bits are excluded. Manual edits do not affect this count. Timing-pattern agreement and other image checks break ties.
+
+The reference is the selected LM-corrected grid, or the specified four-corner grid when LM correction is off. Grid lines, cell values, cell selection, and repair share the selected candidate. The corner handles edit the underlying grid before distortion correction; landmarks are measured again when the adjustment finishes. The selected candidate is also saved in the session.
 
 With “Automatically fine-tune sampling position” enabled, repair attempts recovery in this order: the selected preview grid, the LM-fitted grid, and the specified grid with its neighborhood/alignment corrections. Grids that have not been selected or generated are skipped.
 
 With distortion correction enabled, it selects up to four ordinary grids based on agreement with the timing pattern and other image checks. It applies correction first to the LM-fitted grid, if available, and then to each selected ordinary grid. Each grid serves as the reference for generating up to twelve correction candidates, for a total of at most 60 additional candidates per polarity (48 when no LM-fitted grid is available).
 
-When both LM correction and distortion correction are enabled, the selected distortion candidate is refined by jointly adjusting the projective transform and smooth curvature. If no distortion candidate is available, refinement starts from the LM grid. A converged result replaces that candidate only if the sum of squared brightness residuals decreases on the same fine-scale observation points, excluding regularization, and the image-derived unknown count does not increase in the cells used for candidate ranking. With automatic thresholds, thresholds are estimated separately for the original and refined grids. Invalid or excessively deformed grids are rejected; otherwise the original candidate remains. The fit uses Finders, separators, and alignment patterns, without timing-pattern targets, payload bits, or manual edits. Automatic fine-tuning applies the same replacement to curvature searches starting from an LM fit or a selected LM reference.
+#### Joint LM and curvature optimization
+
+When both LM correction and distortion correction are enabled, the selected distortion candidate is refined by jointly adjusting the projective transform and smooth curvature. If no distortion candidate is available, refinement starts from the LM grid. A result replaces the candidate only when all three conditions hold:
+
+- The optimization converges.
+- The sum of squared brightness residuals decreases on the same fine-scale observation points, excluding regularization.
+- The image-derived unknown count does not increase in the cells used for candidate ranking.
+
+With automatic thresholds, thresholds are estimated separately for the original and refined grids. Invalid or excessively deformed grids are rejected. If the acceptance conditions are not met, the original candidate remains.
+
+The fit uses Finders, separators, and alignment patterns, without timing-pattern targets, payload bits, or manual edits. Automatic fine-tuning applies the same replacement to curvature searches starting from an LM fit or a selected LM reference.
 
 | Operation | Starting grid for joint optimization |
 | --- | --- |
@@ -121,8 +150,9 @@ When both LM correction and distortion correction are enabled, the selected dist
 | Curved correction OFF, LM ON → both ON | Generate curved candidates from the LM grid, rank by the unknown-cell count described above, and use the top candidate. |
 | Select another curved candidate with both ON | The selected curved grid if it has not been evaluated; otherwise reuse its completed result. |
 
-Refinement runs in the background. Only the top candidate is refined when candidates are generated; other candidates are refined when selected. Switching candidates or changing geometry invalidates pending results. Each candidate's completed refinement attempt is reused during the same preview, including when no acceptable improvement was found. After refinement, candidates are stably sorted by the same image-derived unknown count. The selected grid and completed refinement attempts follow their candidates when the order changes. Manual cell edits and FIXED constraints remain unchanged.
+Refinement runs in the background. Only the top candidate is refined when candidates are generated; other candidates are refined when selected. Switching candidates or changing geometry invalidates pending results. Each candidate's completed refinement attempt is reused during the same preview, including when no acceptable improvement was found.
 
+After refinement, candidates are stably sorted by the same image-derived unknown count. The selected grid and completed refinement attempts follow their candidates when the order changes. Manual cell edits and fixed-cell constraints remain unchanged.
 
 ### Measuring brightness and marking unknown cells
 
@@ -177,6 +207,8 @@ Codeword extraction also preserves the positions of unknown bits. **Deinterleavi
 
 ## 4. Search order for each reading attempt
 
+The following order applies to detailed analysis. Quick automatic repair selects and limits these methods separately, as described in [section 10](#10-quick-automatic-repair). The list-decoding methods are Guruswami–Sudan (GS), Koetter–Vardy (KV), and Wu; their calculations are described in [section 7](#7-list-decoding).
+
 | Stage | Processing | Purpose and strengths | Related settings |
 | --- | --- | --- | --- |
 | 1 | Conventional RS on the input before filling or temporary assignments | Useful when erroneous and erased codewords fall within the conventional RS correction range in every block. A codeword containing even one unknown cell is treated as a whole-codeword erasure. | Common settings only |
@@ -195,11 +227,13 @@ The following settings apply across stages:
 - Force single-segment terminator and padding
 - Allow recovery candidates that conflict with fixed 0/1 values (as for tentative cells)
 
+**UTF-8** is a Unicode character encoding. Its use as a recovery assumption is described in [section 6](#6-using-qr-data-structure).
+
 **Priority search cell limit** applies when `*` cells are marked. Stage 6 targets the data/ECC region and does not flip protected fixed cells.
 
 If stage 1 passes QR-structure and input-condition checks and decodes the content, stage 2 still runs when eligible and retains the original candidate; stages 3 through 7 are skipped. Otherwise, processing proceeds to later stages. Candidates found in stage 2 or later are retained while the search continues. Stage 6 runs when **Known-bit error search** is enabled, even if stages 2 through 5 have found candidates with decoded content. If list decoding is enabled, stage 7 is still attempted if stage 6 finds candidates.
 
-Selecting OFF for **Extra errors beyond conventional RS** skips stages 3 and 7, including GS, Wu, and KV. The execution conditions for other stages are unchanged. The default remains +1 codeword.
+Selecting OFF for **Extra errors beyond conventional RS** skips stages 3 and 7, including GS, Wu, and KV. The execution conditions for other stages are unchanged. The default is +1 codeword.
 
 When **Known data/ECC bit error limit** is 0 bits, stages 2, 3, 5, 6, and 7 are skipped. The search looks for solutions in which every compared known-cell value matches the input.
 
@@ -303,7 +337,7 @@ QR structure serves three purposes:
 
 For example, three decimal digits use ten bits and must represent a value from 0 to 999. Even if the bits satisfy RS conditions, a value of 1,000 or more is invalid for three decimal digits.
 
-With **Assume UTF-8 text in Byte mode** enabled, the search restricts unlabelled Byte segments by the ranges for UTF-8 leading and continuation bytes. It can discard a branch before materializing an RS assignment or extending a block combination. A character may span blocks as long as it fits within the declared Byte segment. An explicit ECI encoding takes precedence.
+With **Assume UTF-8 text in Byte mode** enabled, the search restricts unlabelled Byte segments by the ranges for UTF-8 leading and continuation bytes. It can discard a branch before materializing an RS assignment or extending a block combination. A character may span blocks as long as it fits within the declared Byte segment. An explicit encoding specified by **ECI**, information in the QR data that controls its interpretation, takes precedence.
 
 After the terminator marking the end of the data, zero bits align the stream to the next eight-bit boundary. The remaining space is filled with alternating hexadecimal `EC` and `11` padding codewords. At the end of the available capacity, the app also checks cases where the terminator is shortened or omitted according to the remaining bit count.
 
@@ -328,7 +362,7 @@ The offer is not shown after you interrupt a search or repeated for the same inp
 
 ## 7. List decoding
 
-List decoding searches for multiple candidates beyond the conventional RS correction range. QRevy uses Guruswami–Sudan (**GS**), Koetter–Vardy (**KV**), and Wu decoding.
+List decoding searches for multiple candidates beyond the conventional RS correction range. QRevy uses the GS, KV, and Wu methods.
 
 The **correction radius** is the maximum number of codewords allowed to differ from the values supplied to that trial, excluding erasures. For the same correction radius, the app estimates work and memory for GS and Wu and selects one of them. KV uses weights to make use of partially known codewords.
 
@@ -408,9 +442,13 @@ For `*` cells, every combination of 0/1 values must either yield a validated can
 
 Search limits apply to the number of unknown bits assigned at once, combinations examined across blocks, calculation time, working memory, and the number of candidates and calculation records retained.
 
-List decoding has a total allowance of ten minutes across all list-decoding calculations in one repair. Time spent on other methods is excluded. The allowed number of mismatches with known data/ECC bits for list decoding is the smaller of the selected error limit and 5% of the total data/ECC bit count, rounded up.
+In detailed analysis, list decoding has a total allowance of ten minutes across all list-decoding calculations in one repair. Time spent on other methods is excluded. Quick automatic repair uses separate [time and resource limits](#time-and-resource-limits).
 
-Known-bit error search has cumulative limits of 30 seconds and one million trials across all formats and reading attempts in one repair. Time spent on other methods is excluded. The partial-bit search / degrees-of-freedom limit, block-combination limits, working-memory limits, and candidate-retention limits also apply. Reaching the time or trial limit is reported with the stop reason and an indication that combinations remain unchecked.
+In both modes, the allowed number of mismatches with known data/ECC bits for list decoding is the smaller of the selected error limit and 5% of the total data/ECC bit count, rounded up.
+
+In detailed analysis, known-bit error search has cumulative limits of 30 seconds and one million trials across all formats and reading attempts in one repair. Time spent on other methods is excluded. The partial-bit search / degrees-of-freedom limit, block-combination limits, working-memory limits, and candidate-retention limits also apply. Reaching the time or trial limit is reported with the stop reason and an indication that combinations remain unchecked. Quick automatic repair does not run known-bit error search.
+
+Detailed analysis retains up to 256 selectable candidates, and quick automatic repair retains up to 32. Memory limits can reduce these counts.
 
 If the search is interrupted, reaches the time limit, or runs out of memory, validated candidates already obtained remain in the results. The app distinguishes stopping an unfinished search from omitting found candidates or calculation records because of retention limits.
 
@@ -460,6 +498,8 @@ When a grid has multiple valid candidates, try additional assumptions before ima
 | Retry without time limits | Remove time limits; retain search-count, memory, and validation constraints. |
 
 The first eligible input is the first image analysis with automatic repair ON, or TXT automatic repair. Image, camera, and TXT inputs share this allowance; screen rotation does not reset it. Individual decoding, LM, and list-decoding time allowances are doubled on the first run and tripled for the ten-second retry. Queueing time is excluded. Work already in progress can exceed the allowance before it checks for cancellation.
+
+The cumulative list-decoding allowance is 700 milliseconds normally, 1,400 milliseconds on the first run, and 2,100 milliseconds for the ten-second retry. These calculations must also fit within the overall repair allowance. Retrying without time limits removes the list-decoding time allowance as well.
 
 Stop generating curved candidates when about 900 milliseconds remain, reserving time to decode grids already obtained. If the short zero-error trial finds one candidate, continue checking formats on the same grid within the remaining overall repair allowance. Retries without time limits do not use these time-based cutoffs.
 

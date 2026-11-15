@@ -10,7 +10,7 @@ QRevy checks saved work before loading it, including file size, content integrit
 
 Source images are checked separately for integrity, dimensions, and file size. Missing images and images that fail these checks are not used. Valid work history and QR matrices can still be opened without the source image.
 
-These checks do not encrypt the files or prevent tampering if an attacker gains control of the device or app. See [Privacy](PRIVACY.md) for storage, deletion, backup exclusions, and exports, and the [User Guide](docs/USER_GUIDE.en.md#7-save-resume-and-export) for saved-work compatibility.
+These checks do not encrypt the files or prevent tampering if an attacker gains control of the device or app. See [Privacy](PRIVACY.md) for storage, deletion, backup exclusions, and exports, and the [User Guide](docs/USER_GUIDE.en.md#8-saved-work-compatibility) for saved-work compatibility.
 
 ## Reporting a vulnerability
 

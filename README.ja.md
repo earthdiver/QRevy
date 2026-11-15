@@ -14,13 +14,13 @@ Android 8.0以降と、QR Code Model 2のバージョン1～40に対応してい
 | --- | --- | --- |
 | ![不規則な穴と黒い損傷がある合成QR](docs/examples/bullet-holes/before.png) | ![修復後のQR](docs/examples/bullet-holes/after.png) | ![補完を青色、訂正をオレンジ色で表示](docs/examples/bullet-holes/details.png) |
 
-841セル中503セル（59.8%）が消失した例です。単一セグメント仮定をONにして1bitを優先探索に指定し、ほかの修復設定は既定値を使います。[画像入力と試す手順](docs/examples/bullet-holes/README.ja.md)を参照してください。
+841セル中503セル（59.8%）が消失した合成例です。[画像入力と試す手順](docs/examples/bullet-holes/README.ja.md)を参照してください。
 
 ## 使い始める
 
 1. 画像やテキスト行列を読み込むか、カメラで撮影します。
-2. QRコードの外枠、バージョン、向きを確認し、必要に応じて画像や個々のセルを調整します。
-3. 「修復」を実行し、候補を確認します。復号したテキストのコピー、修復したQR画像の保存、作業の保存・再開ができます。
+2. 読み取りや自動修復の結果を確認します。初期状態では簡易自動修復が有効で、通常の読み取りに失敗すると実行されます。
+3. 必要なら詳細解析で格子や個々のセルを調整し、「修復」を実行します。候補を確認してから、復号したテキストのコピーや修復したQR画像の保存を行います。作業を保存して後で再開することもできます。
 
 操作や設定の詳細は[ユーザーガイド](docs/USER_GUIDE.ja.md)を参照してください。
 
@@ -39,7 +39,7 @@ bash scripts/verify-wrapper.sh
 ## 関連文書
 
 - [修復結果の見方](docs/RECOVERY_RESULT_FIELDS.ja.md)
-- [QRevyの修復の仕組み](docs/RECOVERY_STRATEGY.ja.md)
+- [QRevyの修復戦略](docs/RECOVERY_STRATEGY.ja.md)
 - [テキスト行列テンプレート](templates/text-matrices/README.ja.md)
 - [プライバシー](PRIVACY.ja.md)
 - [セキュリティ](SECURITY.ja.md)

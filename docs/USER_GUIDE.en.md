@@ -4,6 +4,8 @@ English | [Japanese](USER_GUIDE.ja.md)
 
 This guide explains how to import, adjust, repair, and save a QR code in the Android app. Each square in the code is called a **cell** in the app; the QR specification calls it a module.
 
+After importing, review the automatic repair result and adjust the image or cells if needed. See [Advanced settings](#6-choose-advanced-settings) when changing recovery options.
+
 Recovery does not guarantee that the result matches the original content. Independently verify important information before using it.
 
 ## 1. Choose an input
@@ -16,7 +18,7 @@ Recovery does not guarantee that the result matches the original content. Indepe
 
 Prefer an image containing the complete QR code and its surrounding white margin, with clearly visible cell centers. Transparent areas are displayed and analyzed against white.
 
-Importing automatically saves the work and source image. See [Save, resume, and export](#7-save-resume-and-export) for storage limits.
+Importing automatically saves the work and source image. See [Save, resume, and export](#5-save-resume-and-export) for storage limits.
 
 ### Quick automatic repair
 
@@ -26,7 +28,7 @@ If ordinary reading fails for an image, camera capture, or TXT matrix, the app t
 
 If ordinary reading succeeds, choose **Repair** on the result screen to open detailed analysis. When Quick automatic repair is OFF, failed ordinary reading opens detailed analysis directly.
 
-For TXT matrices, automatic repair tries `0` and `1` for cells marked `*`. With Quick automatic repair ON, the number of `*` cells is not limited during import or automatic repair. See [Edit cells](#4-edit-cells) for the symbols and their manual use.
+For TXT matrices, automatic repair tries `0` and `1` for cells marked `*`. With Quick automatic repair ON, the number of `*` cells is not limited during import or automatic repair. See [Edit cells](#3-edit-cells) for the symbols and their manual use.
 
 ### Automatic results and retries
 
@@ -43,10 +45,6 @@ Retries start again from the same input and reuse an available grid. A retry wit
 
 The result screen shows the conditions used for automatic repair. Changing detailed-analysis settings does not change the conditions attached to that result. See [Understanding repair results](RECOVERY_RESULT_FIELDS.en.md) and [How quick automatic repair works](RECOVERY_STRATEGY.en.md#10-quick-automatic-repair).
 
-### Copy diagnostic information
-
-Debug builds, intended for development and testing, provide **Menu → Developer menu → Quick automatic repair diagnostics**. Choose **Copy diagnostics** to copy the processing record for a bug report. Copy it before rotating the screen, reopening work, or closing the app.
-
 ## 2. Adjust the image and grid
 
 In Classic, choose **Repair** to open the settings. In Modern, use **01 Repair settings**.
@@ -62,7 +60,7 @@ Automatic estimates may need correction. If only an outline appears, select **QR
 
 Unstable readings can also become `?`. Manual edits override image readings. Enable **Treat detected color clusters as unknown (?)** only when detected colored damage should be treated as unknown. It starts disabled and is available only when color clusters were detected.
 
-## 3. Check Finder roles
+### Check Finder roles
 
 The three large square patterns near a QR code’s corners are **Finder patterns**, labeled **Finder** in the app. Their roles describe the code’s upright orientation, which may differ from the photo’s orientation.
 
@@ -75,13 +73,17 @@ Image and text imports may assign roles automatically. Check the green Finder ma
 
 When Finder patterns establish whether black and white are reversed, that interpretation takes precedence over **Auto**, **Normal**, and **Inverted**. Otherwise, those controls determine how image values are interpreted. Manually entered cell values stay unchanged.
 
-**Correct grid using LM** is enabled by default for new work. Once the corners, version, and orientation are assigned, inspect the corrected grid and cell readings. If correction cannot be applied, the original grid remains selected. Turning the option off restores the original grid without clearing cell edits. Assigning or changing a Finder keeps the LM option enabled and recalculates the correction. An unsuccessful fit also leaves the option enabled. Changing corner positions or orientation disables LM correction. Editing cell values or FIXED constraints keeps the correction active. With fine-tuning on, neighborhood and curved correction searches start from the selected LM grid. Saved work restores the selected correction and the original corners.
+### Grid correction
 
-**Correct grid for curved surfaces** can be enabled in the repair settings for curved paper or labels; it is off by default. The settings preview displays the corrected, curved grid and recalculates it when you finish adjusting the corners. When several candidates are available, select one with “Distortion: candidate” directly below the checkbox; repair uses the displayed grid. If no correction landmarks are found, the screen reports this and uses a straight grid. With LM correction also enabled, joint optimization refines the projective transform and curvature of the selected curved candidate, including when selecting another candidate that has not yet been evaluated. Completed results are reused. Candidates are reordered by the same unknown-cell count after refinement, keeping the selected grid. Enabling LM while a curved grid is selected starts from that grid. Candidates are ranked by image-derived unknown cells in data/error-correction codewords, timing patterns, and format information. It replaces the grid only after convergence, a decrease in image residual sum of squares, and no increase in image-derived unknowns in the cells used for ranking; otherwise the original grid remains. See [how distortion correction works and its limits](RECOVERY_STRATEGY.en.md#distortion-correction). During the same work session, returning from repair results reuses the computed candidates when the image and grid settings are unchanged.
+**Correct grid using LM** uses the Levenberg–Marquardt (LM) method to fit the grid to patterns in the image. It is ON for new work. Once corners, version, and orientation are assigned, inspect the corrected grid and cell values. If correction cannot be applied, the original grid is used. Turning the option OFF restores the original grid without clearing cell edits.
 
-## 4. Edit cells
+While LM correction is ON, assigning or changing a Finder recalculates the correction. Changing corner positions or orientation turns LM correction OFF; turn it on again if needed. Editing cell values or their fixed designation keeps the correction active. Saved work restores the correction choice and the original corners.
 
-In Classic, long-press **Edit cells (long press)**. In Modern, choose **Edit cells** or **02 Cells**. Tap a cell, then choose its value; use the arrow buttons to move to a neighboring cell.
+**Correct grid for curved surfaces** is for curved paper or labels and defaults to OFF. Turn it on and inspect the preview. If several candidates are available, choose one under **Distortion: candidate**. Repair uses the displayed grid, and the correction recalculates when you finish adjusting corners. If correction is unavailable, the screen reports this and uses a straight grid. It can be combined with LM correction. See [distortion correction and its acceptance conditions](RECOVERY_STRATEGY.en.md#distortion-correction) for details.
+
+## 3. Edit cells
+
+In Classic, long-press **Edit cells (long press)**. In Modern, choose **Edit cells** or **02 Cells**. Tap a cell, then choose its value; use the arrow buttons to move to a neighboring cell. Choose **Open large editor** for a larger editing area.
 
 | Value | Meaning |
 | --- | --- |
@@ -116,72 +118,37 @@ Cyan solid squares mark fixed cells; dashed squares mark tentative cells; yellow
 
 Error-correction code (**ECC**) data helps repair damaged QR content. `*` is available only in data/ECC cells, after corners and orientation are assigned. Finder patterns, format information, and other structural cells cannot be marked. If a selection includes an ineligible cell, no cells in that selection are changed.
 
-**Priority search cell limit** in **Details** allows 4–14 cells and defaults to 4. Each additional marked cell doubles the value combinations to try, so repair can take much longer. Lowering the limit keeps existing marks; remove marks or raise the limit before repairing if the count is too high. Detailed analysis checks the **Priority search cell limit** when repair starts, including marks imported from TXT files. Quick automatic repair does not apply a cell count limit. When quick automatic repair is OFF, TXT import also checks that there are no more than 14 `*` marks.
+**Priority search cell limit** in **Details** allows 4–14 cells and defaults to 4. Each additional marked cell doubles the value combinations to try, so repair can take much longer. Lowering the limit keeps existing marks.
+
+| Operation | Priority-cell count limit |
+| --- | --- |
+| TXT import and automatic repair with Quick automatic repair ON | No cell count limit; time and memory limits still apply |
+| TXT import with Quick automatic repair OFF | 14 cells |
+| Starting repair in detailed analysis | The selected limit, including marks imported from TXT |
+
+If the count exceeds the detailed-analysis limit, remove marks or raise the limit before repairing.
 
 Changing orientation removes only marks that are no longer in data/ECC cells; their `?` values remain. Changing the version clears all cell edits after confirmation.
 
-## 5. Choose advanced settings
-
-Open **Details**. Start with the defaults and change settings when the preview or results show a reason to do so. QR error correction uses **Reed–Solomon (RS)** codes. A codeword contains eight bits; a block is a group of codewords corrected together.
-
-If you know the error-correction level or mask, choose it under **ECC: Auto** or **Mask: Auto** in the repair settings. Otherwise leave **Auto** selected.
-
-| Setting | When to use it and what to expect |
-| --- | --- |
-| **Automatically fine-tune sampling position** | Use when the corners are close but readings may miss cell centers. It adds work while preserving the selected version and orientation. |
-| **Partial-bit search / dimension limit** | Choose 12, 13, or 14 bits per RS block; the default is 12. Each extra bit doubles the maximum number of combinations. |
-| **Known-bit error search** | Off by default. Choose up to 1 or 2 incorrect known bits across the whole QR. Runs as a fallback with a shared 30-second / 1,000,000-trial allowance, plus existing memory and candidate limits. Fixed cells, trusted headers and the data/ECC mismatch limit remain enforced. |
-| **List-decoding extension (symbols)** | Open this control to choose **Extra errors beyond conventional RS**: OFF, or +1, +2, or +3 codewords per block; the default is +1. OFF skips GS, Wu, and KV in both list-decoding stages. A higher limit can take much longer and may not find more candidates. |
-
-Searches also have time and memory limits. Raising a setting does not guarantee that all combinations will be checked.
-
-### Error limits
-
-**Format-information error limit** restricts disagreements with known cells that identify the error-correction level and mask. **Known data/ECC bit error limit** restricts disagreements with known data/ECC cells. Unknown cells do not count. A smaller limit is stricter, but can exclude the correct result when the input contains misread cells.
-
-Both controls offer **Default**, **Exact match (0 bits)**, **Strict**, **Relaxed**, **Manual**, and **Unlimited**. The effective bit count is shown. Editing the number or using ± selects Manual; choose **Apply** to confirm.
-
-The default data/ECC limit is 5% of all data/ECC bits, rounded up, at every version (11, 18, 28, and 40 bits for Versions 1–4). Strict remains 0.875% and Relaxed remains 10%, rounded up. The format-information default remains 6 bits.
-
-Saved work in formats 23–40 keeps its previous effective data/ECC limit: Default is restored as a Manual bit count for each history entry. Other modes and the separately saved automatic-repair execution conditions remain unchanged. Selecting Default again applies 5%.
-
-Presets recalculate when the version changes. Manual keeps the entered number; if it becomes invalid, enter a valid number. Exact match requires agreement with all compared known cells. See [Understanding repair results](RECOVERY_RESULT_FIELDS.en.md#input-agreement-and-qr-settings) for cells excluded from comparison. Unlimited removes that control’s limit; fixed-cell protection and explicit QR settings still apply.
-
-List decoding explores alternatives beyond conventional RS correction. It also limits known data/ECC bit disagreements to 5% of all data/ECC bits, rounded up, or the selected data/ECC limit if smaller. A zero data/ECC limit disables list decoding.
-
-### Assume UTF-8 text in Byte mode
-
-Enable this option when Byte segments without an explicit encoding contain UTF-8 text. Repair uses UTF-8 byte ranges to prune incompatible branches during search and to decode the surviving text. An explicit ECI encoding takes precedence. This option defaults to off and works independently of single-segment forcing.
-
-### Force single-segment terminator and padding
-
-A segment is a continuous part of QR data using one encoding mode. **Force single-segment terminator and padding** uses a single Numeric, Alphanumeric, Byte, or Kanji segment to determine the suffix.
-
-Enable it only when that structure is known. It treats data as ending at the declared count and may replace conflicting observations after that point. The mode and count must be readable or assigned through `*` trials. Do not use it for multiple segments, messages split across QR codes (**Structured Append**), or data requiring additional control headers. Leave it off when uncertain.
-
-When this option is off, ordinary suffix correction can still use the selected data/ECC error allowance. All final errors are counted against the original input, including any suffix bits corrected first. Six matching known suffix bits are required for automatic propagation.
-
-If no candidate decodes and a separate feasibility check succeeds with forcing, the app offers **Retry this time only**. This does not change the advanced setting. The runtime condition is saved with the history for reproducibility. The offer is not repeated for the same input and settings, or shown after you interrupt a search.
-
-## 6. Repair and inspect results
+## 4. Repair and inspect results
 
 Choose **Save & repair** in Classic or **Repair** in Modern to save the current work and run recovery. **Save** stores the work without running recovery.
 
 A **validated candidate** passes QR structure and input checks; content decoding can still fail.
 
-The progress dialog shows elapsed time and the number of candidates found. **Interrupt repair** stops the repair and retains validated candidates already found. List decoding has a cumulative limit of **10 minutes per repair**, excluding ordinary search time, so the whole repair can take longer. Validated candidates remain available after a timeout or insufficient memory.
+The progress dialog shows elapsed time and the number of candidates found. **Interrupt repair** stops the repair and retains validated candidates already found. In detailed analysis, list decoding (searching beyond the usual error-correction range) has a cumulative limit of **10 minutes per repair**, excluding ordinary search time, so the whole repair can take longer. Validated candidates remain available after a timeout or insufficient memory.
 
 1. Review the recovered content. If several candidates remain, open **Candidate contents** to compare their full text and tap one to select it.
 2. Open **Show diagnostics** to check input disagreements, search completion, and omitted-candidate notices. One candidate or a completed search does not prove the result is correct.
-3. Open **Show detailed results** and tap cells to inspect their values and reasons. **Show same codeword** highlights the cells in the same codeword. **Data** shows bits and hexadecimal (**HEX**) values.
+3. Open **Show detailed results** and tap cells to inspect their values and reasons. **Show same codeword** highlights the cells in the same codeword (a group of eight bits). **Data** shows bits and hexadecimal (**HEX**) values.
 
-See [Understanding repair results](RECOVERY_RESULT_FIELDS.en.md) for result statuses, field meanings, cell colors, and comparison examples. [How QRevy recovers a code](RECOVERY_STRATEGY.en.md) explains the search order and when each method applies.
+See [Understanding repair results](RECOVERY_RESULT_FIELDS.en.md) for result statuses, field meanings, cell colors, and comparison examples. [QRevy recovery strategy](RECOVERY_STRATEGY.en.md) explains the search order and when each method applies.
 
 **Unmask** changes the display only; it does not change the saved QR image. For an unsuccessful attempt with no verified mask, the displayed image may stay unchanged. Turn it off to return to the normal view.
 
 When available below diagnostics, **Analyze additional segments after terminator** examines data after the QR end marker in an unsuccessful structural check. Select a proposed starting position to compare interpretations. **Show/hide raw tail bits and HEX** displays the underlying bits; its display can start after the terminator, at the next byte, or at a chosen bit offset. This inspection does not make the attempt or the additional content a validated recovery result.
 
-## 7. Save, resume, and export
+## 5. Save, resume, and export
 
 The app saves automatically on import and before repair. It keeps at most **20 saved work entries**. When this limit is exceeded, the least recently stored entries and their source images are deleted, including during startup cleanup.
 
@@ -189,30 +156,92 @@ Tap an entry in **Saved work** or **Recent work** to reopen it. Long-press to de
 
 **Operation history** keeps up to **40 states**; memory and file-size limits can reduce that number. The selected and latest states are kept when older states are trimmed. Reopening a state saved after repair recomputes its candidates. If the previous candidate is no longer found, the app leaves the result unselected and explains why.
 
-### Saved-work compatibility
-
-QRR is the app’s saved-work format. The app writes format version **41** and reads versions **23–41**; other versions are rejected. Older files restore settings they did not store as follows: Known-bit error search is off for all versions 23–27. Distortion correction is off for versions 23–29. Versions 23–30 do not store the selected preview grid. The UTF-8 assumption defaults to off for versions 23–31. Versions 23–32 have no image sampling margins for temporary image erasures. Versions 23–33 restore LM correction as off. Version 34 restores it as on only when a selected LM grid was saved. Versions 35–41 store the LM on/off choice independently of the selected grid. Versions 36–41 also store automatic-scan assumptions separately from editable settings; earlier versions have no such override. Versions 37 and later also support the automatic trial that assumes observed data/ECC bits are correct. Versions 38 and later record the combined UTF-8 and single-segment assumption. Version 39 also records the automatic list-decoding extension separately from detailed-analysis preferences; older automatic results use +1. Version 40 also preserves imported TXT unknown-cell marks, including more than 14 stars, and the oriented star positions used for automatic execution. Fixed 0/1 edits cannot use this exception.
-
-| File version | Restored defaults |
-| --- | --- |
-| 27 | Known-bit error search: off |
-| 26 | No one-time forcing override; the saved option still applies |
-| 25 | No one-time forcing override; list-decoding extension: +1 |
-| 24 | No one-time forcing override; list-decoding extension: +1; mirrored input: off |
-| 23 | No one-time forcing override; list-decoding extension: +1; mirrored input: off; partial-bit search / dimension limit: 12 |
-
 ### Export and privacy
 
-**Save pre-repair TXT matrix** at the bottom of **Detailed settings** saves the current grid as a `0/1/?/*` text file, including unsaved cell edits and priority marks, before structural completion or recovery. The file can be imported with **TXT matrix**. It contains cell values and priority marks only; it does not retain fixed/tentative distinctions, edit history, or recovery settings.
+**Save pre-repair TXT matrix** at the bottom of **Details** saves the current grid as a `0/1/?/*` text file, including unsaved cell edits and priority marks, before structural completion or recovery. The file can be imported with **TXT matrix**. It contains cell values and priority marks only; it does not retain fixed/tentative distinctions, edit history, or recovery settings.
 
 **Copy content** sends the complete recovered text to the device clipboard. **Save PNG** exports the selected validated QR candidate as a Portable Network Graphics (PNG) image; an unsuccessful attempt cannot be exported as a recovered QR.
 
 Saved work is private to the app and excluded from Android backup and device transfer. The app does not encrypt it. Exported images and text matrices are stored outside app-private storage; review the destination’s sharing and backup settings. See [Privacy](../PRIVACY.md) and [Security](../SECURITY.md).
 
-## 8. Appearance and navigation
+## 6. Choose advanced settings
+
+Open **Details**. Start with the defaults and change settings when the preview or results show a reason to do so. QR error correction uses **Reed–Solomon (RS)** codes. An RS block is a group of codewords corrected together.
+
+If you know the error-correction level or mask, choose it under **ECC: Auto** or **Mask: Auto** in the repair settings. Otherwise leave **Auto** selected.
+
+| Setting | Default | When to use it and what to expect |
+| --- | --- | --- |
+| **Automatically fine-tune sampling position** | OFF | Use when the corners are close but readings may miss cell centers. Checking nearby positions adds work while preserving the version and orientation. |
+| **Partial-bit search / dimension limit** | 12 bits | To try a wider range of unknown-cell values, choose 12, 13, or 14 bits per RS block. Each extra bit doubles the maximum number of combinations. |
+| **Known-bit error search** | OFF | Use when some readable cells may be wrong as well as others being unknown. After ordinary repair fails, it searches for up to 1 or 2 incorrect known bits across the whole QR. |
+| **List-decoding extension (symbols)** | +1 codeword | List decoding searches beyond the usual error-correction range. Open this control to choose **Extra errors beyond conventional RS**: OFF, or +1, +2, or +3 codewords per block. A higher limit can take much longer and may not find more candidates. |
+
+Searches also have time and memory limits. Raising a setting does not guarantee that all combinations will be checked. See [Search completion and omissions](RECOVERY_RESULT_FIELDS.en.md#search-completion-and-omissions) for limits and the [QRevy recovery strategy](RECOVERY_STRATEGY.en.md) for calculations and applicability.
+
+### Error limits
+
+**Format-information error limit** restricts disagreements with known cells that identify the error-correction level and mask. **Known data/ECC bit error limit** restricts disagreements with known data/ECC cells. Unknown cells do not count. For example, a 3-bit limit rejects candidates that differ at four or more compared known cells. A smaller limit is stricter, but can exclude the correct result when the input contains misread cells.
+
+Both controls offer **Default**, **Exact match (0 bits)**, **Strict**, **Relaxed**, **Manual**, and **Unlimited**. The effective bit count is shown. Editing the number or using ± selects Manual; choose **Apply** to confirm.
+
+The default data/ECC limit is 5% of all data/ECC bits, rounded up. Strict uses 0.875% and Relaxed uses 10%, rounded up. The format-information default is 6 bits. See [Saved-work compatibility](#8-saved-work-compatibility) for older work.
+
+Presets recalculate when the version changes. Manual keeps the entered number; if it becomes invalid, enter a valid number. Exact match requires agreement with all compared known cells. See [Understanding repair results](RECOVERY_RESULT_FIELDS.en.md#input-agreement-and-qr-settings) for cells excluded from comparison. Unlimited removes that control’s limit; fixed-cell protection and explicit QR settings still apply.
+
+List decoding explores alternatives beyond conventional RS correction. It also limits known data/ECC bit disagreements to 5% of all data/ECC bits, rounded up, or the selected data/ECC limit if smaller. A zero data/ECC limit disables list decoding.
+
+### Assume UTF-8 text in Byte mode
+
+UTF-8 is a Unicode text encoding. Enable this option when Byte segments without an explicit encoding are known to contain UTF-8 text. It excludes candidates that cannot form UTF-8 and reads the remaining candidates as UTF-8. An encoding specified in the QR code takes precedence. Leave this OFF if other encodings or binary data are possible. It defaults to OFF and works independently of the single-segment option.
+
+### Force single-segment terminator and padding
+
+A segment is a continuous part of QR data using one encoding mode. **Force single-segment terminator and padding** uses a single Numeric, Alphanumeric, Byte, or Kanji segment to determine the suffix.
+
+Enable it only when that structure is known. It treats data as ending at the declared count and may replace conflicting observations after that point. The mode and count must be readable or assigned through `*` trials. Do not use it for multiple segments, messages split across QR codes (**Structured Append**), or data requiring additional control headers. Leave it off when uncertain.
+
+When this option is off, suffix errors can still be corrected within the selected data/ECC limit. Final mismatches are counted against the input at repair start, including any suffix bits corrected first. See [Using QR data structure](RECOVERY_STRATEGY.en.md#6-using-qr-data-structure) for filling conditions.
+
+If no candidate decodes and a separate feasibility check succeeds with forcing, the app offers **Retry this time only**. This does not change the advanced setting. The runtime condition is saved with the history for reproducibility. The offer is not repeated for the same input and settings, or shown after you interrupt a search.
+
+## 7. Appearance and diagnostic information
 
 - Choose Japanese or English under **Menu → Language**. Before a choice is saved, the app uses Japanese for a Japanese system language and English otherwise.
 - Choose Classic or Modern under **Menu → Appearance (next launch)**, then save. Classic is the default. The choice takes effect on the next launch; rotating the screen or changing language does not apply it.
 - Modern uses **01 Repair settings**, **02 Cells**, and **03 Result**. The result tab is available after a result exists and keeps that result until the next repair.
 
 Switching tabs and rotating the screen preserve unsaved settings, cell edits, and Undo/Redo history. Choose **Save** or run repair to save them. Leaving the settings asks before discarding unsaved changes.
+
+### Copy diagnostic information
+
+Debug builds, intended for development and testing, provide **Menu → Developer menu → Quick automatic repair diagnostics**. Choose **Copy diagnostics** to copy the processing record for a bug report. Copy it before rotating the screen, reopening work, or closing the app.
+
+## 8. Saved-work compatibility
+
+QRR is the app's saved-work format. The app writes format version **41** and reads versions **23–41**; other versions are rejected. The table describes how older work is restored and which information each format can retain.
+
+| File versions | Item | Behavior when opened |
+| --- | --- | --- |
+| 23 | Partial-bit search / dimension limit | 12 bits |
+| 23–24 | Treat input image as mirrored | OFF |
+| 23–25 | List-decoding extension | +1 codeword |
+| 23–26 | One-time single-segment forcing | No runtime override; the saved advanced setting still applies |
+| 23–27 | Known-bit error search | OFF |
+| 23–29 | Distortion correction | OFF |
+| 23–30 | Selected preview grid | Not stored |
+| 23–31 | UTF-8 assumption for Byte segments | OFF |
+| 23–32 | Image sampling margins for temporary erasures | Not stored |
+| 23–33 | LM correction | OFF |
+| 34 | LM correction | ON only when a selected LM grid was saved |
+| 35–41 | LM correction | Restore the on/off choice saved separately from the grid |
+| 23–35 | Quick automatic repair assumptions | No runtime override separate from advanced settings |
+| 36–41 | Quick automatic repair assumptions | Restore separately from editable advanced settings |
+| 37–41 | Automatic trial assuming observed data/ECC bits are correct | Can restore this runtime assumption |
+| 38–41 | Automatic trial combining UTF-8 and single-segment assumptions | Can restore this runtime assumption |
+| 36–38 | Automatic list-decoding extension | +1 codeword |
+| 39–41 | Automatic list-decoding extension | Restore the value saved separately from advanced settings |
+| 40–41 | TXT unknown-cell and priority marks | Preserve imported marks, including more than 14 `*` cells, and the mark positions oriented for automatic repair |
+| 23–40 | Default data/ECC error limit | Restore each history entry's previous effective bit count as Manual |
+
+Selecting Default again applies the current 5% data/ECC limit. Other modes and separately saved automatic-repair execution conditions are unchanged. Handling imported TXT unknown-cell marks does not bypass fixed 0/1 edits.

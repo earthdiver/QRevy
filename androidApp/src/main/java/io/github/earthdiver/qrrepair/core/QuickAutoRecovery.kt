@@ -211,17 +211,25 @@ class QuickAutoRecovery(private val engine: RecoveryEngine = RecoveryEngine()) {
                     "tentativeBitLimit=0 exactSpaceBitLimit=${policy.exactSpaceBitLimit(0)} " +
                     "listExtension=${request.listDecodingAdditionalErrors}")
                 val outcome = engine.recoverWithDiagnostics(sample.matrix,
-                    trustKnownPayloadCount = request.trustKnownPayloadCount,
-                    assumeUtf8ByteSegments = request.assumeUtf8ByteSegments,
-                    formatConstraint = request.formatConstraint,
-                    maxFormatMismatches = 6,
-                    maxKnownDataEccMismatches = request.effectiveDataEccMismatchLimit,
-                    retentionBudget = retention.fresh(), stopRequested = stop,
-                    stopIsTimeLimit = budget::stopIsTimeLimit,
-                    listDecodingAdditionalErrors = request.listDecodingAdditionalErrors, knownBitErrorLimit = request.knownBitErrorLimit,
-                    listDecodingBudget = listBudget,
-                    discoveryCounter = discoveryCounter, executionPolicy = policy,
-                    allowAutomaticPrioritySearch = textMatrix)
+                    request = RecoveryRequest(
+                        trustKnownPayloadCount = request.trustKnownPayloadCount,
+                        assumeUtf8ByteSegments = request.assumeUtf8ByteSegments,
+                        formatConstraint = request.formatConstraint,
+                        maxFormatMismatches = 6,
+                        maxKnownDataEccMismatches = request.effectiveDataEccMismatchLimit,
+                        listDecodingAdditionalErrors = request.listDecodingAdditionalErrors,
+                        knownBitErrorLimit = request.knownBitErrorLimit,
+                        executionPolicy = policy,
+                        allowAutomaticPrioritySearch = textMatrix,
+                    ),
+                    execution = RecoveryExecutionControls(
+                        retentionBudget = retention.fresh(),
+                        stopRequested = stop,
+                        stopIsTimeLimit = budget::stopIsTimeLimit,
+                        listDecodingBudget = listBudget,
+                        discoveryCounter = discoveryCounter,
+                    ),
+                )
                 if (exactTrial) outcome.candidates.forEach(counters.getValue(assumption)::record)
                 outcome.candidates.forEach(allDiscovered::record)
                 countingIncomplete = countingIncomplete || outcome.searchDiagnostic.candidatesOmitted ||

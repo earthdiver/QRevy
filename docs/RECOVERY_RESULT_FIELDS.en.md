@@ -2,9 +2,9 @@
 
 English | [Japanese](RECOVERY_RESULT_FIELDS.ja.md)
 
-This reference explains results, diagnostics, and the reasons shown for repaired cells. For operations and settings, see the [User Guide](USER_GUIDE.en.md). For search order and when each method applies, see [How QRevy recovers a code](RECOVERY_STRATEGY.en.md).
+This reference explains results, diagnostics, and the reasons shown for repaired cells. For operations and settings, see the [User Guide](USER_GUIDE.en.md). For search order and when each method applies, see [QRevy recovery strategy](RECOVERY_STRATEGY.en.md).
 
-QR codes include error-correction (ECC) data. Passing Reed–Solomon (RS) checks alone does not prove that the recovered content is correct. Independently verify important recovered information.
+QR codes include error-correction code (ECC) data. Passing Reed–Solomon (RS) checks alone does not prove that the recovered content is correct. Independently verify important recovered information.
 
 ## Identify the outcome
 
@@ -20,9 +20,11 @@ When no repair candidate is found, **Data** shows the input, including its unkno
 
 ## Candidates and content
 
-When results combine several trials, diagnostics separate **Trial that produced the selected candidate (displayed settings)** from **Cumulative results across trial conditions and grids**. The trial count describes the candidates retained from that trial. The cumulative count also includes candidates obtained under other assumptions or grids. For example, automatic repair can select one candidate under the UTF-8 and single-segment assumptions while retaining three candidates across all trials. Select each candidate to inspect its own conditions.
+When results combine several trials, diagnostics separate **Trial that produced the selected candidate (displayed settings)** from **Cumulative results across trial conditions and grids**. The trial count describes the candidates retained from that trial. The cumulative count also includes candidates obtained under other assumptions or grids.
 
-The result list contains up to 256 selectable candidates from all reading attempts. Each attempt uses one combination of grid position and reading conditions. Retention or memory limits can leave other candidates out of the list.
+A **segment** is a continuous section of QR data encoded in one mode. For example, automatic repair can select one candidate from a trial assuming UTF-8 text encoding and a single segment while retaining three candidates across all trials. Select each candidate to inspect its own conditions.
+
+The result list combines candidates from all reading attempts, retaining up to 256 in detailed analysis or 32 in quick automatic repair. Each attempt uses one combination of grid position and reading conditions. Memory limits can reduce the retained count, and retention limits can leave other candidates out of the list.
 
 Each distinct recovered QR counts once. **Calculation methods yielding this QR** describes the methods and reading attempts that produced it.
 
@@ -44,7 +46,9 @@ Finding a candidate and completing the search are separate outcomes.
 | The attempted search passes finished, but unresolved processing remains. | The recorded passes ended, but some processing remains inconclusive. A resolved selected trial can coexist with unresolved trials under other conditions. |
 | Others omitted / Candidates omitted (retention limit) | Some candidates already found are absent from the list and cannot be selected. This is separate from unfinished searching. |
 
-List decoding has a cumulative time allowance of **600 seconds (10 minutes) per repair**, excluding ordinary searches. Known-bit error search has a separate cumulative allowance of 30 seconds and one million trials. When it runs, its trial count is shown; reaching its time or trial limit is reported as a reason combinations remain unchecked. Timeout, insufficient memory, or interruption preserves validated candidates already found. A completed search does not establish uniqueness, and completion without a candidate does not prove that no solution exists.
+In detailed analysis, list decoding has a cumulative time allowance of **600 seconds (10 minutes) per repair**, excluding ordinary searches. Known-bit error search has a separate cumulative allowance of 30 seconds and one million trials. When it runs, its trial count is shown; reaching its time or trial limit is reported as a reason combinations remain unchecked. Quick automatic repair uses separate [time allowances and retry limits](RECOVERY_STRATEGY.en.md#time-and-resource-limits).
+
+Search time limits are reported separately from user interruption. Timed-out trials remain in the record even if a later trial succeeds. Timeout, insufficient memory, or interruption preserves validated candidates already found. A completed search does not establish uniqueness, and completion without a candidate does not prove that no solution exists.
 
 ## Input agreement and QR settings
 
@@ -64,8 +68,6 @@ An error limit of **0 bits** requires agreement at every compared known bit. Inc
 
 ## Diagnostic details
 
-The settings show **Search by assuming black/white values for ?** as **OFF** for a zero limit, or **up to N bits per RS block** for a positive limit. The 0/1 search for cells marked `*` is outside this limit. Even when OFF, RS constraints are still used to solve unknown cells; the exact RS residual dimension limit is shown separately. Search time limits are reported separately from user interruption, including timed trials before a later successful trial. Alternative block calculations retain their temporary image-erasure descriptions. The four-corner geometry label describes a projective mapping from four corners; it does not imply that the corners were manually assigned.
-
 | Section | What it describes |
 | --- | --- |
 | Settings for this run | The settings used for this repair |
@@ -73,13 +75,23 @@ The settings show **Search by assuming black/white values for ?** as **OFF** for
 | Processing in this run | Candidate methods and calculation records, list-decoding execution status, and single-segment forcing application status |
 | Verification results | Structure checks, final decoding, input mismatches, search completion, and omissions |
 
+A **codeword** is a group of eight bits. In RS calculation records, **symbol** and **byte** also refer to this unit. An **RS block** is a group of codewords processed together for error correction. Counts of unknown or corrected codewords differ from counts of repaired cells: filling one unknown bit can resolve a whole codeword.
+
+### Settings shown
+
+| Field | How to read it |
+| --- | --- |
+| Search by assuming black/white values for ? | **OFF** for a zero limit, or **up to N bits per RS block** for a positive limit. The 0/1 search for cells marked `*` is outside this limit. Even when OFF, RS constraints are still used to solve unknown cells. |
+| Exact RS residual dimension limit | The limit for searching RS solutions that preserve known bits. It is shown separately from temporary assignments to `?`. See the [meaning of degrees of freedom](#calculation-terms). |
+| Projective mapping from four corners | Describes how the grid is mapped; it does not imply that the corners were manually assigned. |
+
 Results from **Retry this time only** show the runtime forcing condition. It applies to this run and its history restoration even while the saved advanced setting remains off.
+
+### Reference checks before repair
 
 The conventional RS reference check uses the input before structure-based filling or temporary assignments. Reference calculations describe their own input and conditions; one failed calculation does not establish why the whole search failed.
 
 When no candidate is found, **Processing in this run** reports the search outcome and completion status. Without search-wide records, completion remains unknown even if the reference input's search completed.
-
-A **codeword** is a group of eight bits. In RS calculation records, **symbol** and **byte** also refer to this unit. An **RS block** is a group of codewords processed together for error correction. Counts of unknown or corrected codewords differ from counts of repaired cells: filling one unknown bit can resolve a whole codeword.
 
 ### Methods shown in diagnostics
 
@@ -103,7 +115,9 @@ Method names do not rank confidence. Multiple methods producing the same candida
 
 **Calculation methods yielding this QR** labels multiple methods A, B, and so on. **Used for cell explanations** identifies the method supplying per-cell repair provenance. Details show calculations for each RS block. Whole-QR methods, alternative block calculations, and other reading attempts have separate counts; none is a count of additional repair candidates. Retention-limit omissions are indicated.
 
-**Known-bit error search: N changed bits** counts the known bits hypothesized to be flipped in that block. Changed positions use codeword numbers starting at one within the block and bit numbers starting at zero from the rightmost bit (LSB=0).
+Alternative block calculations also show their temporary image-erasure descriptions.
+
+**Known-bit error search: N changed bits** counts the known bits hypothesized to be flipped in that block. See [Coordinates and bit numbers](#coordinates-and-bit-numbers) for how the changed positions are numbered.
 
 A method marked **same QR without filling** has a recorded alternative that obtains the same QR without fills under matching input, format, settings, priority assignments, and other conditions. Filling can still resolve unknown values or change known values during calculation. Fill records show unmasked before/after values, including priority assignments in the before value. Comparisons between methods do not describe a sequence of processing steps.
 
@@ -146,11 +160,22 @@ Cells recovered through known-bit error search show that method name. Cells chan
 
 **Supporting evidence** supports the final value. For example, if a structure rule fills `0` and RS later changes it to `1`, the earlier `0` appears only as intermediate history.
 
-**Single-segment terminator and padding forcing** reports whether that setting was enabled and applied to this candidate. A segment is QR data encoded in one mode. A generic **Repair** reason means that no more specific category is available. Relabeling a cell's source without changing its value does not highlight it as changed.
+**Single-segment terminator and padding forcing** reports whether that setting was enabled and applied to this candidate. A generic **Repair** reason means that no more specific category is available. Relabeling a cell's source without changing its value does not highlight it as changed.
 
-Cell coordinates `(x,y)` start at zero. Codeword numbers, RS block numbers, positions within a block, and bit positions start at one; bit 1 is the leftmost bit. **After removing the QR mask** shows before/after codeword values, with `?` for unknown bits and brackets around the selected bit.
+**After removing the QR mask** shows before/after codeword values, with `?` for unknown bits and brackets around the selected bit.
 
 Format-information cells show their role, bit position, and comparisons between the two copies. The data-region **Unmask** display does not change these cells.
+
+### Coordinates and bit numbers
+
+| Display | Numbering |
+| --- | --- |
+| Cell coordinates `(x,y)` | Start at zero. |
+| Codeword numbers, RS block numbers, and positions within a block | Start at one. Changed positions in calculation records use codeword numbers within the block. |
+| Changed known-bit positions in calculation records | Start at zero at the rightmost, least significant bit (LSB), and count toward the left. |
+| Bit positions within a codeword in cell details | Start at one at the leftmost bit, and count toward the right. |
+
+For example, the rightmost bit of an eight-bit codeword is bit 0 in calculation records and bit 8 in cell details.
 
 ## Cell confidence and candidate agreement
 
@@ -158,6 +183,6 @@ Format-information cells show their role, bit position, and comparisons between 
 
 **Candidate agreement** counts candidates whose value at a cell matches the selected candidate. For example, `12 / 16` means that 12 of the 16 compared candidates agree at that cell.
 
-The comparison uses up to 16 of the highest-ranked **decoded candidates from the same reading attempt**, always including the selected decoded candidate. It appears when at least two candidates can be compared. This is a smaller set than the result list of up to 256 candidates.
+The comparison uses up to 16 of the highest-ranked **decoded candidates from the same reading attempt**, always including the selected decoded candidate. It appears when at least two candidates can be compared. It does not necessarily cover every candidate in the result list.
 
 The accompanying **validated candidates in total** count covers retained decoded candidates from that reading attempt, excluding other attempts. Candidate-based suggestions apply only to the candidates compared. Even `16 / 16` does not establish agreement with excluded or undiscovered candidates, or prove that the cell is correct.

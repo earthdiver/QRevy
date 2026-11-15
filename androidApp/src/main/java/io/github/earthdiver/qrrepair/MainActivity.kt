@@ -51,8 +51,6 @@ import io.github.earthdiver.qrrepair.core.CodewordHex
 import io.github.earthdiver.qrrepair.core.CodewordExtractor
 import io.github.earthdiver.qrrepair.core.Coord
 import io.github.earthdiver.qrrepair.core.FinderRole
-import io.github.earthdiver.qrrepair.core.FinderPolarity
-import io.github.earthdiver.qrrepair.core.PointD
 import io.github.earthdiver.qrrepair.core.ImageQuad
 import io.github.earthdiver.qrrepair.core.FormatSolver
 import io.github.earthdiver.qrrepair.core.GridGeometry
@@ -60,7 +58,6 @@ import io.github.earthdiver.qrrepair.core.GeometryModel
 import io.github.earthdiver.qrrepair.core.MatrixSampler
 import io.github.earthdiver.qrrepair.core.ModuleValue
 import com.google.zxing.qrcode.decoder.Version
-import io.github.earthdiver.qrrepair.core.PolarityMode
 import io.github.earthdiver.qrrepair.core.PartialPayloadAnalyzer
 import io.github.earthdiver.qrrepair.core.PreprocessSettings
 import io.github.earthdiver.qrrepair.core.searchSummary
@@ -68,13 +65,12 @@ import io.github.earthdiver.qrrepair.core.QrMatrix
 import io.github.earthdiver.qrrepair.core.QrFunctionMask
 import io.github.earthdiver.qrrepair.core.FormatEditPolicy
 import io.github.earthdiver.qrrepair.core.FormatEditConflict
-import io.github.earthdiver.qrrepair.core.QrTextMatrixParser
-import io.github.earthdiver.qrrepair.core.QrTextMatrixOrientationEstimator
-import io.github.earthdiver.qrrepair.core.QrCellRegions
 import io.github.earthdiver.qrrepair.core.RecoveryCandidate
 import io.github.earthdiver.qrrepair.core.RecoveryFailure
 import io.github.earthdiver.qrrepair.core.SearchCompleteness
 import io.github.earthdiver.qrrepair.core.RecoveryEngine
+import io.github.earthdiver.qrrepair.core.RecoveryRequest
+import io.github.earthdiver.qrrepair.core.RecoveryExecutionControls
 import io.github.earthdiver.qrrepair.core.RecoveryWorkflow
 import io.github.earthdiver.qrrepair.core.RecoveryHistoryEntry
 import io.github.earthdiver.qrrepair.core.RecoverySessionHistory
@@ -229,6 +225,17 @@ class MainActivity : Activity() {
             { isDestroyed }, ::finishInputImport, { error ->
                 statusText.text = ui("画像の読み込みに失敗: ${error.message ?: error.javaClass.simpleName}",
                     "Image load failed: ${error.message ?: error.javaClass.simpleName}")
+            })
+    }
+    private val textMatrixImports by lazy {
+        TextMatrixImportController(contentResolver, executor, { runOnUiThread(it) }, workGeneration::get,
+            { isDestroyed }, ::finishInputImport, { t ->
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle(ui("テキスト行列を読み込めません", "Could not import text matrix"))
+                    .setMessage(t.message ?: t.javaClass.simpleName)
+                    .setPositiveButton(R.string.close, null)
+                    .show()
+                statusText.text = ui("テキスト行列の読み込みに失敗しました。", "Text matrix import failed.")
             })
     }
     private val recoveryTasks = RecoveryTaskRunner(executor, { runOnUiThread(it) }, workGeneration::get)
@@ -1652,33 +1659,27 @@ class MainActivity : Activity() {
                     io.github.earthdiver.qrrepair.core.AutomaticScanBudget() else null
                 recoveryEngine.recoverWithDiagnostics(
                     matrix.copy(),
-                    trustKnownPayloadCount = requestSettings.trustKnownPayloadCount,
-                    assumeUtf8ByteSegments = requestSettings.assumeUtf8ByteSegments,
-                    partialBitSearchLimit = requestSettings.partialBitSearchLimit,
-                    listDecodingAdditionalErrors = requestSettings.listDecodingAdditionalErrors,
-                    knownBitErrorLimit = requestSettings.knownBitErrorLimit,
-                    formatConstraint = requestSettings.formatConstraint,
-                    maxFormatMismatches = requestSettings.effectiveFormatMismatchLimit,
-                    maxKnownDataEccMismatches = requestSettings.effectiveDataEccMismatchLimit,
-                    manualEdits = requestSettings.fixedPreRecoveryEdits,
-                    displayLockManualBits = requestSettings.lockManualBits,
-                    retentionBudget = RecoveryMemoryPolicy.current().let {
-                        RecoveryRetentionBudget(it.retainedBytes, workingLimitBytes = it.workingBytes)
-                    },
-                    cancellation = cancellation,
-                    stopRequested = { progressDialog.stopped.get() || automaticBudget?.stopped() == true },
-                    stopIsTimeLimit = { !progressDialog.stopped.get() && automaticBudget?.stopped() == true },
-                    listDecodingBudget = ListDecodingBudget(
-                        onProgress = progressDialog::listDecodingProgress,
-                        onIdle = progressDialog::listDecodingIdle,
+                    request = RecoveryRequest.fromSettings(requestSettings).copy(
+                        allowAutomaticPrioritySearch = snapshot.automaticScanAssumption != null && requestSettings.hasOnlyErasedTextEdits(),
+                        executionPolicy = if (snapshot.automaticScanAssumption == AutomaticScanAssumption.EXACT_KNOWN_BITS)
+                            RecoveryExecutionPolicy.AUTOMATIC_EXACT
+                            else if (snapshot.automaticScanAssumption != null) RecoveryExecutionPolicy.AUTOMATIC_EXTENDED
+                            else RecoveryExecutionPolicy.DETAILED,
                     ),
-                    discoveryCounter = RecoveryDiscoveryCounter(onChanged = progressDialog::candidatesFound),
-                    onPriorityProgress = progressDialog::priorityProgress,
-                    allowAutomaticPrioritySearch = snapshot.automaticScanAssumption != null && requestSettings.hasOnlyErasedTextEdits(),
-                    executionPolicy = if (snapshot.automaticScanAssumption == AutomaticScanAssumption.EXACT_KNOWN_BITS)
-                        RecoveryExecutionPolicy.AUTOMATIC_EXACT
-                        else if (snapshot.automaticScanAssumption != null) RecoveryExecutionPolicy.AUTOMATIC_EXTENDED
-                        else RecoveryExecutionPolicy.DETAILED,
+                    execution = RecoveryExecutionControls(
+                        retentionBudget = RecoveryMemoryPolicy.current().let {
+                            RecoveryRetentionBudget(it.retainedBytes, workingLimitBytes = it.workingBytes)
+                        },
+                        cancellation = cancellation,
+                        stopRequested = { progressDialog.stopped.get() || automaticBudget?.stopped() == true },
+                        stopIsTimeLimit = { !progressDialog.stopped.get() && automaticBudget?.stopped() == true },
+                        listDecodingBudget = ListDecodingBudget(
+                            onProgress = progressDialog::listDecodingProgress,
+                            onIdle = progressDialog::listDecodingIdle,
+                        ),
+                        discoveryCounter = RecoveryDiscoveryCounter(onChanged = progressDialog::candidatesFound),
+                        onPriorityProgress = progressDialog::priorityProgress,
+                    ),
                 )
             },
             onResult = { outcome ->
@@ -2066,150 +2067,65 @@ class MainActivity : Activity() {
         val token = beginInputImport(if (automaticRepair) ui("処理中", "Processing")
             else ui("テキスト行列を読み込み中…", "Loading text matrix…"),
             onStop = if (automaticRepair) ({ stop.set(true) }) else null)
-        executor.execute {
-            var bitmap: Bitmap? = null
-            try {
-                val bytes = contentResolver.openInputStream(uri)?.use { input ->
-                    val buffer = ByteArray(QrTextMatrixParser.MAX_TEXT_CHARS + 1)
-                    var total = 0
-                    while (total < buffer.size) {
-                        val count = input.read(buffer, total, buffer.size - total)
-                        if (count < 0) break
-                        total += count
-                    }
-                    require(total <= QrTextMatrixParser.MAX_TEXT_CHARS) { "Text matrix is too large" }
-                    buffer.copyOf(total)
-                } ?: throw IllegalArgumentException("Could not open the text matrix")
-                val text = bytes.toString(Charsets.UTF_8)
-                require(text.toByteArray(Charsets.UTF_8).contentEquals(bytes)) { "Text matrix must be UTF-8" }
-                val parsed = QrTextMatrixParser.parse(text, enforcePriorityLimit = !automaticRepair)
-                val rendered = BitmapUtils.renderTextMatrixSource(parsed.matrix)
-                bitmap = rendered
-                val p = BitmapUtils.prepare(rendered)
-                val moduleSize = 8
-                val quietModules = 4
-                val center = quietModules * moduleSize + (moduleSize - 1) / 2.0
-                val last = center + (parsed.matrix.dimension - 1) * moduleSize
-                val orientation = QrTextMatrixOrientationEstimator.estimate(parsed.matrix)
-                val physicalCorners = listOf(PointD(center, center), PointD(last, center),
-                    PointD(last, last), PointD(center, last))
-                val corners = List(4) { physicalCorners[(it + (orientation?.quarterTurns ?: 0)) % 4] }
-                val quad = ImageQuad(corners[0], corners[1], corners[2], corners[3])
-                val finders = orientation?.finderCenters?.mapValues { (_, cell) ->
-                    PointD(center + cell.x * moduleSize, center + cell.y * moduleSize)
-                }.orEmpty()
-                val priority = parsed.matrix.prioritySearchCoordinates()
-                    .mapTo(linkedSetOf()) { Coord(it.first, it.second) }
-                val edits = PreRecoveryCellEditState(priority.associateWith { ModuleValue.ERASED }, priority)
-                val removedPriority = if (orientation != null) {
-                    edits.rotateCoordinates(parsed.matrix.dimension, orientation.quarterTurns)
-                    val allowed = QrCellRegions(parsed.version).codewordCoordinates
-                    edits.revalidatePrioritySearch { it in allowed }
-                } else emptySet()
-                val settings = PreprocessSettings(
-                    polarity = PolarityMode.NORMAL,
-                    automaticThresholds = false,
-                    blackMax = 64,
-                    whiteMin = 192,
-                    quietZoneCorrection = false,
-                    version = parsed.version,
-                    lockCorners = true,
-                    lockVersion = true,
-                    manualQuad = quad,
-                    manualFinders = finders,
-                    logicalGridAssigned = finders.isNotEmpty(),
-                    confirmedFinderPolarity = if (finders.isNotEmpty()) FinderPolarity.NORMAL else FinderPolarity.UNKNOWN,
-                    preRecoveryEdits = edits.edits.toMap(),
-                    preRecoverySoftEdits = emptySet(),
-                    preRecoveryPrioritySearch = edits.prioritySearch.toSet(),
-                ).withInitialErrorLimits()
-                if (token != workGeneration.get()) {
-                    p.bitmap.recycle()
-                    return@execute
-                }
-                val standardResult = decodeStandardQr(p.bitmap)
-                val automatic = if (standardResult == null && automaticRepair && !stop.get() && token == workGeneration.get()) {
-                    QuickAutoRecovery().runTextMatrix(p.luma, settings,
-                        io.github.earthdiver.qrrepair.core.AutomaticScanBudget.forImport(
-                            firstRun = QuickAutoStartupState.process.claim(),
-                            stopRequested = { stop.get() || token != workGeneration.get() || Thread.currentThread().isInterrupted },
-                            trace = if (automaticDiagnosticsEnabled) io.github.earthdiver.qrrepair.core.AutomaticScanTrace() else null))
-                } else null
-                runOnUiThread {
-                    if (token != workGeneration.get()) {
-                        p.bitmap.recycle()
-                        return@runOnUiThread
-                    }
-                    finishInputImport(token)
-                    immediateResultShown = false
-                    prepared = p
-                    analysisPrepared = p
-                    preprocessSettings = settings
-                    savedCellEditState = null
-                    recoveryState.clear()
-                    automaticDiagnostic = automatic?.let {
-                        AutomaticRepairDiagnosticSession(p.luma, settings, it.diagnosticReport.orEmpty(), textMatrix = true)
-                    }
-                    workspaceSession.beginNew(p.bitmap) { error ->
-                        reportPersistenceFailure(ui("疑似画像の保存に失敗", "Synthetic image save failed"), error)
-                    }
-                    sessionHistory.record(
-                        RecoveryHistoryEntry(
-                            kind = HistoryEventKind.IMPORT,
-                            label = ui("テキスト行列を読み込み", "Imported text matrix"),
-                            detail = ui("V${parsed.version} / ${parsed.matrix.dimension}×${parsed.matrix.dimension}", "Version ${parsed.version} / ${parsed.matrix.dimension}×${parsed.matrix.dimension}") +
-                                (if (finders.isNotEmpty()) ui("; Finder位置・役割を自動設定", "; Finder positions and roles assigned automatically") else "") +
-                                (if (removedPriority.isNotEmpty()) "\n" + getString(R.string.priority_revalidated,
-                                    removedPriority.joinToString(" ") { "(${it.x},${it.y})" }) else ""),
-                            snapshot = RecoverySnapshot(null, null, null, -1, settings),
-                        ),
-                    )
-                    persistSessionAsync()
-                    guideText.text = if (finders.isNotEmpty()) ui(
-                        "案内: テキスト行列からFinderの位置・役割と向きを自動設定しました。緑のFinderを確認してください。",
-                        "Guide: Finder positions, roles, and orientation were assigned automatically from the text matrix. Review the green Finders.",
-                    ) else ui(
-                        "案内: テキスト行列から作成した疑似画像です。向きは未確定です。Finderの役割を指定すると向きが確定します。",
-                        "Guide: This synthetic image was created from the text matrix. Its orientation is unassigned. Assign a Finder role to set the orientation.",
-                    )
-                    contentPreviewText.text = getString(R.string.no_content_preview)
-                    statusText.text = ui(
-                        "テキスト行列を読み込みました（V${parsed.version}、${settings.preRecoveryPrioritySearch.size}個の*）。",
-                        "Text matrix imported (Version ${parsed.version}, ${settings.preRecoveryPrioritySearch.size} * cell(s)).",
-                    )
-                    if (standardResult != null) {
-                        if (stop.get()) {
-                            renderImmediateQrResult(immediateQrResult(standardResult), showNotice = false)
-                            showPreprocessDialog()
-                        } else showImmediateQrResult(standardResult)
-                    } else {
-                        if (automatic != null) retainAutomaticResult(automatic)
-                        if (automatic != null && !stop.get()) showAutomaticResult(automatic)
-                        else showPreprocessDialog()
-                    }
-                    if (removedPriority.isNotEmpty()) {
-                        AlertDialog.Builder(this@MainActivity)
-                            .setMessage(getString(R.string.priority_revalidated,
-                                removedPriority.joinToString(" ") { "(${it.x},${it.y})" }))
-                            .setPositiveButton(android.R.string.ok, null)
-                            .show()
-                    }
-                }
-                bitmap = null // ownership moved to Prepared/UI
-            } catch (t: Throwable) {
-                bitmap?.takeIf { !it.isRecycled }?.recycle()
-                runOnUiThread {
-                    finishInputImport(token)
-                    if (token != workGeneration.get() || isDestroyed) return@runOnUiThread
-                    AlertDialog.Builder(this@MainActivity)
-                        .setTitle(ui("テキスト行列を読み込めません", "Could not import text matrix"))
-                        .setMessage(t.message ?: t.javaClass.simpleName)
-                        .setPositiveButton(R.string.close, null)
-                        .show()
-                    statusText.text = ui("テキスト行列の読み込みに失敗しました。", "Text matrix import failed.")
-                }
-            } finally {
-                runOnUiThread { finishInputImport(token) }
+        textMatrixImports.load(token, uri, automaticRepair, automaticDiagnosticsEnabled, stop::get) { imported ->
+            val p = imported.source
+            val settings = imported.settings
+            val dimension = 17 + 4 * settings.version
+            val removedPriority = imported.removedPriority
+            val standardResult = imported.standardResult
+            val automatic = imported.automaticResult
+            immediateResultShown = false
+            prepared = p
+            analysisPrepared = p
+            preprocessSettings = settings
+            savedCellEditState = null
+            recoveryState.clear()
+            automaticDiagnostic = automatic?.let {
+                AutomaticRepairDiagnosticSession(p.luma, settings, it.diagnosticReport.orEmpty(), textMatrix = true)
+            }
+            workspaceSession.beginNew(p.bitmap) { error ->
+                reportPersistenceFailure(ui("疑似画像の保存に失敗", "Synthetic image save failed"), error)
+            }
+            sessionHistory.record(
+                RecoveryHistoryEntry(
+                    kind = HistoryEventKind.IMPORT,
+                    label = ui("テキスト行列を読み込み", "Imported text matrix"),
+                    detail = ui("V${settings.version} / ${dimension}×${dimension}", "Version ${settings.version} / ${dimension}×${dimension}") +
+                        (if (settings.manualFinders.isNotEmpty()) ui("; Finder位置・役割を自動設定", "; Finder positions and roles assigned automatically") else "") +
+                        (if (removedPriority.isNotEmpty()) "\n" + getString(R.string.priority_revalidated,
+                            removedPriority.joinToString(" ") { "(${it.x},${it.y})" }) else ""),
+                    snapshot = RecoverySnapshot(null, null, null, -1, settings),
+                ),
+            )
+            persistSessionAsync()
+            guideText.text = if (settings.manualFinders.isNotEmpty()) ui(
+                "案内: テキスト行列からFinderの位置・役割と向きを自動設定しました。緑のFinderを確認してください。",
+                "Guide: Finder positions, roles, and orientation were assigned automatically from the text matrix. Review the green Finders.",
+            ) else ui(
+                "案内: テキスト行列から作成した疑似画像です。向きは未確定です。Finderの役割を指定すると向きが確定します。",
+                "Guide: This synthetic image was created from the text matrix. Its orientation is unassigned. Assign a Finder role to set the orientation.",
+            )
+            contentPreviewText.text = getString(R.string.no_content_preview)
+            statusText.text = ui(
+                "テキスト行列を読み込みました（V${settings.version}、${settings.preRecoveryPrioritySearch.size}個の*）。",
+                "Text matrix imported (Version ${settings.version}, ${settings.preRecoveryPrioritySearch.size} * cell(s)).",
+            )
+            if (standardResult != null) {
+                if (stop.get()) {
+                    renderImmediateQrResult(immediateQrResult(standardResult), showNotice = false)
+                    showPreprocessDialog()
+                } else showImmediateQrResult(standardResult)
+            } else {
+                if (automatic != null) retainAutomaticResult(automatic)
+                if (automatic != null && !stop.get()) showAutomaticResult(automatic)
+                else showPreprocessDialog()
+            }
+            if (removedPriority.isNotEmpty()) {
+                AlertDialog.Builder(this@MainActivity)
+                    .setMessage(getString(R.string.priority_revalidated,
+                        removedPriority.joinToString(" ") { "(${it.x},${it.y})" }))
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show()
             }
         }
     }

@@ -232,7 +232,7 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         maxKnownDataEccMismatches, manualEdits, retentionBudget, cancellation, displayLockManualBits, partialBitSearchLimit = partialBitSearchLimit, listDecodingAdditionalErrors = listDecodingAdditionalErrors, knownBitErrorLimit = knownBitErrorLimit, listDecodingBudget = listDecodingBudget, knownBitErrorBudget = knownBitErrorBudget, assumeUtf8ByteSegments = assumeUtf8ByteSegments, onPriorityProgress = onPriorityProgress,
     ).candidates
 
-    /** Returns the candidates and diagnostic evidence from this invocation as one value. */
+    /** Compatibility entry point for callers passing individual search conditions. */
     fun recoverWithDiagnostics(
         matrix: QrMatrix,
         maxFormatCandidates: Int = 32,
@@ -257,57 +257,93 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
         // Classifies an already requested stop; never decides whether to stop.
         stopIsTimeLimit: () -> Boolean = { false },
         onPriorityProgress: ((done: Int, total: Int) -> Unit)? = null,
-    ): RecoveryOutcome {
-        require(partialBitSearchLimit in PartialBitSearchLimit.supported)
-        require(listDecodingAdditionalErrors in ListDecodingLimit.supported)
-        require(knownBitErrorLimit in 0..2)
-        require(maxFormatMismatches == null || maxFormatMismatches in 0..30)
-        require(maxKnownDataEccMismatches == null || maxKnownDataEccMismatches in 0..MAX_QR_DATA_ECC_BITS)
-        require(executionPolicy != RecoveryExecutionPolicy.AUTOMATIC_EXACT || maxKnownDataEccMismatches == 0)
-        require(executionPolicy != RecoveryExecutionPolicy.AUTOMATIC_EXACT || maxFormatCandidates == 32)
-        val priority = matrix.prioritySearchCoordinates()
-        require(priority.size <= 14 || (allowAutomaticPrioritySearch && executionPolicy != RecoveryExecutionPolicy.DETAILED)) {
-            "Priority search is limited to fourteen modules in detailed analysis"
-        }
-        require(executionPolicy == RecoveryExecutionPolicy.DETAILED || priority.isEmpty() || allowAutomaticPrioritySearch) {
-            "Automatic priority assignments require explicit TXT marks"
-        }
-        if (priority.isNotEmpty()) {
-            val codewordCoords = CodewordExtractor.extract(matrix, (matrix.dimension - 17) / 4, 0).codewords
-                .flatMapTo(hashSetOf()) { word -> word.coordinates.map { it.x to it.y } }
-            require(priority.all { it in codewordCoords }) { "Priority search is only valid for data/ECC modules" }
-        }
-        val options = RecoverySearchOptions(
+    ): RecoveryOutcome = recoverWithDiagnostics(
+        matrix,
+        request = RecoveryRequest(
             maxFormatCandidates = maxFormatCandidates,
             trustKnownPayloadCount = trustKnownPayloadCount,
-            assumeUtf8ByteSegments = assumeUtf8ByteSegments,
             formatConstraint = formatConstraint,
             maxFormatMismatches = maxFormatMismatches,
             maxKnownDataEccMismatches = maxKnownDataEccMismatches,
             manualEdits = manualEdits,
-        )
-        val effectivePartialLimit = if (executionPolicy == RecoveryExecutionPolicy.DETAILED) partialBitSearchLimit else 0
-        val run = RecoveryRunState(matrix, retentionBudget, RecoveryCancellation {
-            cancellation.check()
-            stopRequested()
-        }, effectivePartialLimit, listDecodingBudget, listDecodingAdditionalErrors, discoveryCounter, knownBitErrorLimit, knownBitErrorBudget,
-            exactFormatProof = executionPolicy == RecoveryExecutionPolicy.AUTOMATIC_EXACT,
-            exactSpaceBitLimit = executionPolicy.exactSpaceBitLimit(effectivePartialLimit))
-        val conditions = RecoveryDisplayConditions(trustKnownPayloadCount, displayLockManualBits,
-            formatConstraint, maxFormatMismatches, maxKnownDataEccMismatches, effectivePartialLimit, listDecodingAdditionalErrors, knownBitErrorLimit, assumeUtf8ByteSegments,
-            exactSpaceBitLimit = run.exactSpaceBitLimit)
-        val publisher = RecoveryOutcomePublisher(matrix, manualEdits, conditions, cancellation)
-        val found = RecoveryPhaseRunner(
-            run = run,
-            maxKnownDataEccMismatches = options.maxKnownDataEccMismatches,
+            displayLockManualBits = displayLockManualBits,
+            partialBitSearchLimit = partialBitSearchLimit,
+            listDecodingAdditionalErrors = listDecodingAdditionalErrors,
+            knownBitErrorLimit = knownBitErrorLimit,
+            assumeUtf8ByteSegments = assumeUtf8ByteSegments,
+            executionPolicy = executionPolicy,
+            allowAutomaticPrioritySearch = allowAutomaticPrioritySearch,
+        ),
+        execution = RecoveryExecutionControls(
+            retentionBudget = retentionBudget,
             cancellation = cancellation,
             stopRequested = stopRequested,
-            searchPhase = { recoverRun(run, matrix, options, onPriorityProgress) },
-            finish = { finish(run, it) },
-            executionPolicy = executionPolicy,
+            listDecodingBudget = listDecodingBudget,
+            knownBitErrorBudget = knownBitErrorBudget,
+            discoveryCounter = discoveryCounter,
             stopIsTimeLimit = stopIsTimeLimit,
-        ).execute()
-        return publisher.publish(found, run, discoveryCounter)
+            onPriorityProgress = onPriorityProgress,
+        ),
+    )
+
+    /** Returns candidates and diagnostics using explicit conditions and per-execution controls. */
+    fun recoverWithDiagnostics(
+        matrix: QrMatrix,
+        request: RecoveryRequest,
+        execution: RecoveryExecutionControls = RecoveryExecutionControls(),
+    ): RecoveryOutcome = with(request) {
+        with(execution) {
+            require(partialBitSearchLimit in PartialBitSearchLimit.supported)
+            require(listDecodingAdditionalErrors in ListDecodingLimit.supported)
+            require(knownBitErrorLimit in 0..2)
+            require(maxFormatMismatches == null || maxFormatMismatches in 0..30)
+            require(maxKnownDataEccMismatches == null || maxKnownDataEccMismatches in 0..MAX_QR_DATA_ECC_BITS)
+            require(executionPolicy != RecoveryExecutionPolicy.AUTOMATIC_EXACT || maxKnownDataEccMismatches == 0)
+            require(executionPolicy != RecoveryExecutionPolicy.AUTOMATIC_EXACT || maxFormatCandidates == 32)
+            val priority = matrix.prioritySearchCoordinates()
+            require(priority.size <= 14 || (allowAutomaticPrioritySearch && executionPolicy != RecoveryExecutionPolicy.DETAILED)) {
+                "Priority search is limited to fourteen modules in detailed analysis"
+            }
+            require(executionPolicy == RecoveryExecutionPolicy.DETAILED || priority.isEmpty() || allowAutomaticPrioritySearch) {
+                "Automatic priority assignments require explicit TXT marks"
+            }
+            if (priority.isNotEmpty()) {
+                val codewordCoords = CodewordExtractor.extract(matrix, (matrix.dimension - 17) / 4, 0).codewords
+                    .flatMapTo(hashSetOf()) { word -> word.coordinates.map { it.x to it.y } }
+                require(priority.all { it in codewordCoords }) { "Priority search is only valid for data/ECC modules" }
+            }
+            val options = RecoverySearchOptions(
+                maxFormatCandidates = maxFormatCandidates,
+                trustKnownPayloadCount = trustKnownPayloadCount,
+                assumeUtf8ByteSegments = assumeUtf8ByteSegments,
+                formatConstraint = formatConstraint,
+                maxFormatMismatches = maxFormatMismatches,
+                maxKnownDataEccMismatches = maxKnownDataEccMismatches,
+                manualEdits = manualEdits,
+            )
+            val effectivePartialLimit = if (executionPolicy == RecoveryExecutionPolicy.DETAILED) partialBitSearchLimit else 0
+            val run = RecoveryRunState(matrix, retentionBudget, RecoveryCancellation {
+                cancellation.check()
+                stopRequested()
+            }, effectivePartialLimit, listDecodingBudget, listDecodingAdditionalErrors, discoveryCounter, knownBitErrorLimit, knownBitErrorBudget,
+                exactFormatProof = executionPolicy == RecoveryExecutionPolicy.AUTOMATIC_EXACT,
+                exactSpaceBitLimit = executionPolicy.exactSpaceBitLimit(effectivePartialLimit))
+            val conditions = RecoveryDisplayConditions(trustKnownPayloadCount, displayLockManualBits,
+                formatConstraint, maxFormatMismatches, maxKnownDataEccMismatches, effectivePartialLimit, listDecodingAdditionalErrors, knownBitErrorLimit, assumeUtf8ByteSegments,
+                exactSpaceBitLimit = run.exactSpaceBitLimit)
+            val publisher = RecoveryOutcomePublisher(matrix, manualEdits, conditions, cancellation)
+            val found = RecoveryPhaseRunner(
+                run = run,
+                maxKnownDataEccMismatches = options.maxKnownDataEccMismatches,
+                cancellation = cancellation,
+                stopRequested = stopRequested,
+                searchPhase = { recoverRun(run, matrix, options, onPriorityProgress) },
+                finish = { finish(run, it) },
+                executionPolicy = executionPolicy,
+                stopIsTimeLimit = stopIsTimeLimit,
+            ).execute()
+            publisher.publish(found, run, discoveryCounter)
+        }
     }
 
     private fun recoverRun(
