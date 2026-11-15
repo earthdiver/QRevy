@@ -7,6 +7,32 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class KnownBitRecoveryTest {
+    @Test fun optionalCachePreservesQrSearchWhenTheWorkingAllowanceIsSmall() {
+        val de = QrBlockInterleaver.deinterleave(CodewordExtractor.extract(fixture(0), 1, 0), 1, ErrorCorrectionLevel.L)
+        val block = de.blocks.single()
+        val cacheBytes = RsBitConstraintSolver.estimatedCacheBytes(block.codewords.size,
+            block.unknownMasks.sumOf { it.countOneBits() }, de.ecSymbolsPerBlock)
+        val baseBytes = KnownBitErrorSearch.workingBytes(block.codewords.size, de.ecSymbolsPerBlock)
+        val small = 256L * 1024
+        val large = 16L * 1024 * 1024
+        assertTrue(cacheBytes > (small - baseBytes) / 32)
+        assertTrue(cacheBytes <= minOf(128L * 1024, (large - baseBytes) / 32))
+        val results = listOf(small, large).map { memory ->
+            val budget = KnownBitErrorBudget()
+            val candidates = mutableListOf<List<Pair<List<Int>, List<RsBitConstraintSolver.Bit>>>>()
+            val stops = KnownBitQrSearch.run(de, 1, 2, listOf(emptySet()), 14, memory, budget,
+                RecoveryCancellation.NONE) { combination ->
+                candidates += combination.map { it.corrected.toList() to it.knownBitErrors }
+            }
+            assertTrue(candidates.isNotEmpty())
+            assertTrue(stops.isEmpty())
+            candidates to budget.trials
+        }
+        assertEquals(results[0], results[1])
+        assertEquals(setOf(CombinationSearchStop.WORKING_MEMORY_LIMIT), KnownBitQrSearch.run(de, 1, 2,
+            listOf(emptySet()), 14, 0, KnownBitErrorBudget(), RecoveryCancellation.NONE) { fail("Unexpected candidate") })
+    }
+
     private fun fixture(mask: Int, header: Int? = null): QrMatrix {
         val qr = Encoder.encode("abcdefghijklm", ErrorCorrectionLevel.L,
             mapOf(EncodeHintType.QR_VERSION to 1, EncodeHintType.QR_MASK_PATTERN to mask))

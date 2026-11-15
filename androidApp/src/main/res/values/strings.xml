@@ -113,7 +113,7 @@
         <item quantity="one">%1$d bit</item>
         <item quantity="other">%1$d bits</item>
     </plurals>
-    <string name="data_ecc_mismatch_limit_note" formatted="false">Strict uses 0.875% of total data/ECC bits; Relaxed uses 10%, both rounded up. Default uses Strict for Versions 1–4 and Relaxed for Version 5 onward. Limits differences between known input data/ECC bits and RS-corrected candidates. Excludes ?, format, version, function, and remainder cells. Locked manual values cannot change at any limit.</string>
+    <string name="data_ecc_mismatch_limit_note" formatted="false">Default uses 5% of total data/ECC bits at every version; Strict uses 0.875% and Relaxed uses 10%, all rounded up. Limits differences between known input data/ECC bits and RS-corrected candidates. Excludes ?, format, version, function, and remainder cells. Locked manual values cannot change at any limit.</string>
     <string name="apply_limit">Apply</string>
     <string name="error_limit_automatic_value">Default (%1$s)</string>
     <string name="error_limit_strict_value">Strict (%1$s)</string>

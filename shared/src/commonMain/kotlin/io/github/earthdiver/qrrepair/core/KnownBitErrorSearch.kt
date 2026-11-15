@@ -82,10 +82,18 @@ class KnownBitErrorSearch(private val block: RsBlockWork, private val ec: Int,
     }
 
     fun hypotheses(maxErrors: Int, protected: Set<RsBitConstraintSolver.Bit>, budget: KnownBitErrorBudget,
+        reserveEliminationCache: (Long) -> Boolean = { false },
         reservePairIndex: (Long) -> Boolean = { true }): Sequence<Hypothesis> = sequence {
         require(maxErrors in 0..2)
         val eligible = known.filter { RsBitConstraintSolver.Bit(it / 8, it % 8) !in protected }
-        val solver = RsBitConstraintSolver()
+        // Every error hypothesis keeps the same erasure mask. Reuse its elimination only
+        // after the caller has accounted for the retained rows and transform.
+        val solver by lazy {
+            val bytes = RsBitConstraintSolver.estimatedCacheBytes(block.codewords.size,
+                block.unknownMasks.sumOf { it.countOneBits() }, ec)
+            val cache = if (maxErrors > 0 && eligible.isNotEmpty() && reserveEliminationCache(bytes)) bytes else 0L
+            RsBitConstraintSolver(maximumCacheBytes = cache)
+        }
         suspend fun SequenceScope<Hypothesis>.offer(a: Int = -1, b: Int = -1) {
             cancellation.check(); budget.trial()
             if (target.indices.any { target[it] xor (if (a < 0) 0L else columns[a][it]) xor

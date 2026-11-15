@@ -12,6 +12,8 @@ internal class CurvedFinderContours(
     private val image: LumaImage,
     private val inverted: Boolean,
     private val maxWorkingBytes: Long = DEFAULT_WORKING_BYTES,
+    private val scaleLimits: List<Int> = listOf(384, 640, 960),
+    private val fastConvolution: Boolean = false,
     private val stopped: () -> Boolean,
 ) {
     data class Observation(val module: PointD, val image: PointD)
@@ -30,13 +32,14 @@ internal class CurvedFinderContours(
     }
     private val contours by lazy {
         var retainedBytes = 0L
-        listOf(384, 640, 960).map { minOf(it, max(image.width, image.height)) }.distinct().mapNotNull { limit ->
+        scaleLimits.map { minOf(it, max(image.width, image.height)) }.distinct().mapNotNull { limit ->
             if (stopped()) null else {
                 val factor = minOf(1.0, limit.toDouble() / max(image.width, image.height))
                 val w = max(1, (image.width * factor).roundToInt())
                 val h = max(1, (image.height * factor).roundToInt())
                 // Source pixels, blur, labels, queue, row extrema and temporary hull collections.
-                val workingBytes = retainedBytes + 8192L + w.toLong() * h * 21 + h * 1024L
+                val convolutionBytes = if (fastConvolution) w.toLong() * (41 * 4 + 8) else 0
+                val workingBytes = retainedBytes + 8192L + w.toLong() * h * 21 + h * 1024L + convolutionBytes
                 if (workingBytes > maxWorkingBytes) {
                     memoryLimited = true
                     return@mapNotNull null
@@ -46,6 +49,18 @@ internal class CurvedFinderContours(
                 retainedBytes += found.size * QUAD_WORKING_BYTES
                 found.map { q -> q.map { PointD((it.x + .5) * scale.sx - .5, (it.y + .5) * scale.sy - .5) } }
             }
+        }
+    }
+
+    /** Keep larger fallback images unallocated until a consumer requests another seed. */
+    fun progressiveSeeds(base: GridGeometry): Sequence<Seed> = sequence {
+        for (limit in listOf(640, 384, 960).map { minOf(it, max(image.width, image.height)) }.distinct()) {
+            if (stopped()) return@sequence
+            val stage = CurvedFinderContours(image, inverted, maxWorkingBytes,
+                scaleLimits = listOf(limit), fastConvolution = true, stopped = stopped)
+            val seeds = stage.seeds(base)
+            memoryLimited = memoryLimited || stage.memoryLimited
+            yieldAll(seeds)
         }
     }
 
@@ -125,17 +140,39 @@ internal class CurvedFinderContours(
         val weights = DoubleArray(41) { exp(-((it - 20.0) * (it - 20.0)) / (2 * 6.5 * 6.5)) }
         val total = weights.sum(); weights.indices.forEach { weights[it] /= total }
         val horizontal = DoubleArray(w * h)
+        // Preserve the exact summation order. Only address calculation and repeated array
+        // writes are removed; the detailed path remains available as the reference.
+        val columns = if (fastConvolution) IntArray(w * 41) { i -> (i / 41 + i % 41 - 20).coerceIn(0, w - 1) } else null
         for (y in 0 until h) {
             if (stopped()) return emptyList()
-            for (x in 0 until w) for (k in -20..20) horizontal[y * w + x] +=
-                input.luma((x + k).coerceIn(0, w - 1), y) * weights[k + 20]
+            val row = y * w
+            for (x in 0 until w) {
+                if (columns == null) {
+                    for (k in -20..20) horizontal[row + x] += input.luma((x + k).coerceIn(0, w - 1), y) * weights[k + 20]
+                } else {
+                    var sum = 0.0
+                    val column = x * 41
+                    for (k in 0..40) sum += input.pixels[row + columns[column + k]] * weights[k]
+                    horizontal[row + x] = sum
+                }
+            }
         }
         val dark = BooleanArray(w * h)
+        val means = if (fastConvolution) DoubleArray(w) else null
         for (y in 0 until h) {
             if (stopped()) return emptyList()
+            if (means != null) {
+                means.fill(0.0)
+                // Traverse contiguous rows while preserving each pixel's accumulation order.
+                for (k in -20..20) {
+                    val row = (y + k).coerceIn(0, h - 1) * w
+                    val weight = weights[k + 20]
+                    for (x in 0 until w) means[x] += horizontal[row + x] * weight
+                }
+            }
             for (x in 0 until w) {
-                var mean = 0.0
-                for (k in -20..20) mean += horizontal[(y + k).coerceIn(0, h - 1) * w + x] * weights[k + 20]
+                var mean = means?.get(x) ?: 0.0
+                if (means == null) for (k in -20..20) mean += horizontal[(y + k).coerceIn(0, h - 1) * w + x] * weights[k + 20]
                 dark[y * w + x] = input.luma(x, y) <= mean.roundToInt() - 5
             }
         }

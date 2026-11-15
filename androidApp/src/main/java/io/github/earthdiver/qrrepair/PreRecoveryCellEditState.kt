@@ -68,7 +68,8 @@ internal class PreRecoveryCellEditState(
     init {
         require(mutableSoftEdits.all { it in mutableEdits })
         require(priorityLimit >= 0)
-        require(mutablePrioritySearch.size <= 14)
+        // Imported TXT marks may exceed the interactive search limit; retain them for editing.
+        require(mutablePrioritySearch.size <= 177 * 177)
         mutablePrioritySearch.forEach { coord ->
             require(mutableEdits[coord] == ModuleValue.ERASED) { "Priority search requires an erased edit" }
         }

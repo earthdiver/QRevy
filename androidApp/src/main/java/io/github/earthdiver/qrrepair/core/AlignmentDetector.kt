@@ -20,7 +20,9 @@ class AlignmentDetector(
     private val image: LumaImage,
     private val profile: SamplingProfile? = null,
 ) {
-    fun findBest(geometry: GridGeometry, maxSearchModules: Double = 4.0): AlignmentCandidate? {
+    fun findBest(geometry: GridGeometry, maxSearchModules: Double = 4.0,
+        stopped: () -> Boolean = { false }): AlignmentCandidate? {
+        if (stopped()) return null
         if (geometry.version <= 1) return null
         val centers = Version.getVersionForNumber(geometry.version).alignmentPatternCenters
         if (centers.isEmpty()) return null
@@ -42,6 +44,7 @@ class AlignmentDetector(
             val step = max(0.5, pitch * 0.25)
             var oy = -radius
             while (oy <= radius) {
+                if (stopped()) return null
                 var ox = -radius
                 while (ox <= radius) {
                     val candidate = scoreTemplate(mx, my, predicted.x + ox, predicted.y + oy, pitch)

@@ -101,4 +101,38 @@ class RecoveryWorkflowTest {
         assertEquals(events.last(), result.discoveredCandidates)
     }
 
+    @Test fun repeatedRepairReusesReadingsButAppliesCurrentAssumptionsAndFixedEdits() {
+        val qr = com.google.zxing.qrcode.encoder.Encoder.encode("CACHE", com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.L)
+        val d = qr.matrix.width
+        val width = (d + 8) * 8
+        val source = LumaImage(width, width, IntArray(width * width) { i ->
+            val x = i % width / 8 - 4; val y = i / width / 8 - 4
+            if (x in 0 until d && y in 0 until d && qr.matrix[x, y].toInt() == 1) 0 else 255
+        })
+        val first = 35.5; val last = first + (d - 1) * 8
+        val original = settings.copy(polarity = PolarityMode.NORMAL, listDecodingAdditionalErrors = 0,
+            formatConstraint = QrFormatConstraint(com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.L, qr.maskPattern),
+            manualQuad = ImageQuad(PointD(first, first), PointD(last, first), PointD(last, last), PointD(first, last)))
+        var reads = 0
+        val workflow = RecoveryWorkflow(RecoveryEngine(), RecoveryObservationCache { input, grid, inverted, stopped ->
+            reads++; GridThresholdEstimator.observe(input, grid, inverted, stopped)
+        })
+        fun run(input: PreprocessSettings) = workflow.run(source, input, RecoveryRetentionBudget())
+        assertEquals("CACHE", run(original).entries.single().candidate.text)
+        val constrained = original.copy(assumeUtf8ByteSegments = true, trustKnownPayloadCount = true)
+        val reused = run(constrained)
+        val fresh = RecoveryWorkflow(RecoveryEngine()).run(source, constrained, RecoveryRetentionBudget())
+        assertEquals(fresh.entries.map { it.candidate.identity() }, reused.entries.map { it.candidate.identity() })
+        assertEquals(fresh.searchDiagnostic!!.formatOutcomes, reused.searchDiagnostic!!.formatOutcomes)
+        assertEquals(fresh.searchDiagnostic!!.incompleteReasons, reused.searchDiagnostic!!.incompleteReasons)
+        assertEquals(fresh.testedHypotheses, reused.testedHypotheses)
+        val coord = QrCellRegions(1).codewordCoordinates.first()
+        val wrong = if (qr.matrix[coord.x, coord.y].toInt() == 1) ModuleValue.ZERO else ModuleValue.ONE
+        val blocked = run(constrained.copy(preRecoveryEdits = mapOf(coord to wrong), lockManualBits = true))
+        assertTrue(blocked.entries.isEmpty())
+        assertEquals(ModuleSource.USER, blocked.bestAttempt!!.matrix[coord.x, coord.y].source)
+        assertEquals("CACHE", run(original).entries.single().candidate.text)
+        assertEquals(1, reads)
+    }
+
 }

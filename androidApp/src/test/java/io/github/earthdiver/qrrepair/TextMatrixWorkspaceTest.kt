@@ -145,6 +145,7 @@ class TextMatrixWorkspaceTest {
     }
 
     @Test fun importedMatrixReturnsToRealSettingsFromBothHomeActions() {
+        AutomaticRepairPreferences.save(RuntimeEnvironment.getApplication(), false)
         AppStylePreferences.save(RuntimeEnvironment.getApplication(), AppStyle.MODERN)
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
@@ -434,6 +435,7 @@ class TextMatrixWorkspaceTest {
 
     private fun withImportedMatrix(input: Array<CharArray>, noticeCoordinates: String? = null,
         block: (MainActivity, AlertDialog, PreprocessSettings) -> Unit) {
+        AutomaticRepairPreferences.save(RuntimeEnvironment.getApplication(), false)
         AppStylePreferences.save(RuntimeEnvironment.getApplication(), AppStyle.CLASSIC)
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()

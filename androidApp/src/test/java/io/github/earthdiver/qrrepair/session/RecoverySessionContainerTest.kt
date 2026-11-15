@@ -42,7 +42,7 @@ class RecoverySessionContainerTest {
         assertEquals(0x5152523A, header.getInt(0))
         assertEquals(RecoverySessionCodec.CURRENT_VERSION, header.getInt(4))
         val raw = GZIPInputStream(ByteArrayInputStream(encoded, 48, encoded.size - 48)).use { it.readBytes() }
-        assertArrayEquals(rawFixture(), raw)
+        assertArrayEquals(rawFixture() + byteArrayOf(0), raw) // No automatic-scan override.
         assertEquals(raw.size, header.getInt(8))
         assertEquals(encoded.size - 48, header.getInt(12))
         assertArrayEquals(hash(raw), encoded.copyOfRange(16, 48))

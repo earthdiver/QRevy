@@ -55,6 +55,10 @@ Initial estimation uses the QR detection library ZXing-C++ to detect the QR code
 
 If that grid cannot be accepted, the app estimates a grid from the repeating cell spacing, then considers an estimate using two Finders if necessary. It may decline an estimate when, for example, boundaries of different QR codes are detected or normal and inverted readings give conflicting estimates. Text decoded by the detection library is not used as the recovery result.
 
+When normal and inverted periodicity estimates conflict, the app checks each proposed grid against three Finders, their separators, and the timing patterns. It can retain the one structurally verified grid when an inverted quiet zone has produced a false larger grid. If both grids pass or neither passes, the conflict remains unresolved. This check preserves the selected periodicity corners and does not automatically assign Finder roles. An uncontested periodicity estimate can still be used when Finders are damaged or missing.
+
+For nearly frontal symbols of version 2 or higher, missing dark cells along an outer edge need not prevent initial estimation. If the repeated spacing and boundary phase are clear but the grid cannot fit within the observed dark extent, a surviving Finder can anchor an extension. Its shape and separator must agree with the grid, at least one timing axis must provide sufficient known evidence, and known timing cells must not contradict it. Gray unknown cells provide no positive evidence. The grid must contain the observed dark extent and keep every outer module center inside the image; distinct supported grids remain ambiguous. This geometry fallback is shared by quick automatic repair and detailed analysis. It does not alter sampling thresholds or automatically assign Finder roles.
+
 Ordinary grid candidates use a projective transformation to map the four corners to cell positions in the image. This models a flat surface viewed at an angle. The optional distortion candidates described below add non-rigid displacement for curved surfaces.
 
 ### Selecting a corrected grid before repair
@@ -67,7 +71,7 @@ The original corners remain available separately from the selected correction. S
 
 ### Automatic fine-tuning around the selected grid
 
-With automatic fine-tuning off, repair uses only the grid selected on the settings screen. With it on, repair generates and tries the neighborhood, alignment-correction, and LM-correction candidates described below, using that grid as the reference. The search reference is the selected LM-corrected grid when present, otherwise the specified four-corner grid.
+With automatic fine-tuning off, repair uses the grid selected on the settings screen, with the exception of [original-grid verification](#image-correction-and-trial-order). With it on, repair generates and tries the neighborhood, alignment-correction, and LM-correction candidates described below, using that grid as the reference. The search reference is the selected LM-corrected grid when present, otherwise the specified four-corner grid.
 
 The basic refinement candidates are:
 
@@ -275,6 +279,8 @@ First, the search removes RS conditions that can be satisfied by choosing unknow
 
 For two flips in one block, a lookup table uses the first bit’s projected discrepancy to find possible partners. Each pair is checked against the full discrepancy. If the table exceeds the available working memory, the search checks pairs sequentially.
 
+Within a block, flip hypotheses share the same unknown-bit positions. When working memory permits, the search retains the elimination of their common coefficient matrix and updates the right-hand side for each hypothesis. This storage is charged to the working-memory budget. If it cannot be reserved, the search recomputes the equations without dropping hypotheses. Candidate order, trial counting, fixed-cell protection, and QR validation are unchanged.
+
 This search starts from the original input without inheriting structure fills or assignments to `*` cells from earlier stages. A `*` cell remains unknown. Protected fixed cells cannot be flipped. The data/ECC error limit, selected version and orientation, and explicit ECC/mask selections still apply. When single-segment terminator and padding forcing is on, its header and suffix conditions remain enforced. When it is off, the encoding mode and character or byte count can be reconsidered for each flip hypothesis.
 
 This is separate from conventional errors-and-erasures RS and list decoding. Later list decoding searches independently from the original input without inheriting these hypothesized known-bit flips. Candidates retain the hypothesized error positions and the calculation records used to solve unknown bits under those conditions. More than one candidate can satisfy the conditions.
@@ -386,6 +392,20 @@ The app separately records calculation methods that produced the same candidate,
 
 ## 9. Search limits and the meaning of results
 
+Detailed analysis and quick automatic repair record the search outcome separately for each combination of error-correction level and mask.
+
+| State | Meaning |
+|---|---|
+| Validated candidate | The required search is complete and at least one candidate has passed validation. |
+| Excluded under the selected conditions | No candidate can satisfy the selected conditions. |
+| Unresolved | Whether candidates exist has not been established. This includes finding candidates while some combinations remain unchecked. |
+
+If one decoding method cannot reach a conclusion, a later method can update the unresolved outcome for that combination. Success with a different error-correction level, mask, grid, or assumption does not resolve the unfinished search.
+
+For `*` cells, every combination of 0/1 values must either yield a validated candidate or be excluded under the selected conditions. For example, two `*` cells require checking four combinations: 00, 01, 10, and 11. Finding a candidate for some combinations leaves the outcome unresolved if the others remain undecided. These checks can also resolve an unknown header needed for the single-segment assumption.
+
+**Detailed analysis displays validated candidates even when the search remains unresolved. Quick automatic repair reports success when a trial yields exactly one candidate and completes the required search and validation.** Even with one candidate, that trial cannot be reported as successful if it retains unresolved searches, interruptions, time or memory limits, or candidates omitted because of the retention limit.
+
 Search limits apply to the number of unknown bits assigned at once, combinations examined across blocks, calculation time, working memory, and the number of candidates and calculation records retained.
 
 List decoding has a total allowance of ten minutes across all list-decoding calculations in one repair. Time spent on other methods is excluded. The allowed number of mismatches with known data/ECC bits for list decoding is the smaller of the selected error limit and 5% of the total data/ECC bit count, rounded up.
@@ -397,3 +417,50 @@ If the search is interrupted, reaches the time limit, or runs out of memory, val
 Search completion means the planned processing has finished under the settings and limits. Some combinations may remain unexamined because of those limits. Finding no candidates therefore does not establish that recovery is impossible, and finding one does not establish that no other solution exists.
 
 Passing RS, QR-structure, and input-condition checks and decoding the content does not guarantee that it matches the original QR code. Candidate ranking and cell confidence help compare and review results. Neither these measures nor KV weights are probabilities of correctness.
+
+## 10. Quick automatic repair
+
+Quick automatic repair is a short recovery workflow for inputs that ordinary reading could not decode. It uses the same core decoding and validation as detailed analysis. See the [User Guide](USER_GUIDE.en.md#quick-automatic-repair) for operations.
+
+### Decoding conditions and success
+
+| Item | Automatic behavior |
+| --- | --- |
+| Unconfirmed format | First try assuming that observed data/ECC bits are correct. Explicit format selections remain enforced. |
+| Error limits | Zero data/ECC errors in that trial; otherwise 5% of all data/ECC bits, rounded up. The format-information limit is 6 bits. |
+| Assumptions | Try UTF-8 and single-segment assumptions separately and together when applicable. Record the accepted assumption with the result. |
+| Decoding methods | Use conventional RS, bit constraints, and list decoding without tentative assignments. Do not assign ordinary `?` cells tentatively or run known-bit error search. |
+| TXT cells marked `*` | If ordinary recovery is insufficient, try 0/1 assignments, including RS and list decoding using those assignments. Do not apply a cell-count limit. |
+| RS solution enumeration | Preserve observed bits. Allow at most 8 free bits per block after QR structural constraints and 16,384 search nodes per decoding invocation. The zero-error trial does not enumerate remaining free bits. |
+| List-decoding extension | Prioritize +1 symbol per block; if unsuccessful and time remains, try +2 on promising grids. |
+| Saved settings | Keep automatic execution conditions with the result without overwriting detailed-analysis settings. |
+
+Reporting success requires one candidate in a trial with the necessary validation completed. A second valid candidate ends that search early. Unresolved formats or combinations, time or memory limits, and omitted candidates prevent automatic success even when one candidate remains. Candidate identity and per-format outcomes follow the common rules in the preceding sections.
+
+With a zero error limit, one provably inconsistent RS block excludes that input, even if other blocks have free bits. No enumeration is needed. This check also applies to detailed analysis and to inputs after conditions such as the single-segment assumption have been applied. A contradiction in one derived input cannot exclude another unchecked input. Diagnostics retain the assumptions and `*` assignments used.
+
+### Image correction and trial order
+
+For images, determine orientation and try rotations and mirrors as needed. Enable LM and curved-grid correction without changing saved LM choices or grids. TXT matrices already specify cell positions and values, so skip automatic thresholds, LM correction, and curved-grid correction.
+
+When at most two Finders can be verified and no alignment pattern is detected, quick automatic repair first tries applicable assumptions on the grid before LM correction. Under the same conditions, detailed analysis with LM enabled checks the grid before correction in addition to the displayed corrected grid. Both use the same manual edits, fixed cells, and explicit decoding conditions. Count Finders from image evidence, not manual assignments.
+
+Generate and evaluate curved candidates progressively. Try Finder/alignment correction, timing-pattern refinement, then Finder-only correction; search contours at other resolutions only when needed. Defer decoding grids with more than half their cells unknown. If the initial grid has this condition, try curved correction before LM. Reuse the sampled values of the two best grids for later trials.
+
+When a grid has multiple valid candidates, try additional assumptions before image correction. Do the same after an individual decoding timeout if the format is confirmed or explicitly selected and the required header is readable. Otherwise, try image correction first. The overall deadline and user cancellation take precedence.
+
+### Time and resource limits
+
+| Run | Time allowance |
+| --- | --- |
+| Ordinary image analysis | 3 seconds for preparation/grid estimation, then a separate 3 seconds for repair. |
+| Ordinary TXT automatic repair | 3 seconds for repair. |
+| First eligible input after startup | Up to 1.5 extra seconds. Images share this across preparation and repair: at most 4.5 seconds for preparation and 7.5 seconds combined. TXT repair gets at most 4.5 seconds. |
+| Ten-second retry | 10 seconds shared by any missing initial-grid estimation and repair. |
+| Retry without time limits | Remove time limits; retain search-count, memory, and validation constraints. |
+
+The first eligible input is the first image analysis with automatic repair ON, or TXT automatic repair. Image, camera, and TXT inputs share this allowance; screen rotation does not reset it. Individual decoding, LM, and list-decoding time allowances are doubled on the first run and tripled for the ten-second retry. Queueing time is excluded. Work already in progress can exceed the allowance before it checks for cancellation.
+
+Stop generating curved candidates when about 900 milliseconds remain, reserving time to decode grids already obtained. If the short zero-error trial finds one candidate, continue checking formats on the same grid within the remaining overall repair allowance. Retries without time limits do not use these time-based cutoffs.
+
+For limits and scheduling, see [QuickAutoRecovery.kt](../androidApp/src/main/java/io/github/earthdiver/qrrepair/core/QuickAutoRecovery.kt). For grid reuse during retries, see [AutomaticRepairDiagnosticSession.kt](../androidApp/src/main/java/io/github/earthdiver/qrrepair/AutomaticRepairDiagnosticSession.kt).

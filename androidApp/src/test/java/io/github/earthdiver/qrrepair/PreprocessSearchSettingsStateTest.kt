@@ -70,8 +70,8 @@ class PreprocessSearchSettingsStateTest {
             dataEccMismatchLimit = 400,
         ))
 
-        assertEquals(7, state.effectiveDataEccMismatchLimit(4))
-        assertEquals(108, state.effectiveDataEccMismatchLimit(5))
+        assertEquals(40, state.effectiveDataEccMismatchLimit(4))
+        assertEquals(54, state.effectiveDataEccMismatchLimit(5))
         assertTrue(state.dataEccLimitIsValid(4))
         assertTrue(state.dataEccLimitIsValid(5))
         assertEquals(400, state.dataEccMismatchLimit)

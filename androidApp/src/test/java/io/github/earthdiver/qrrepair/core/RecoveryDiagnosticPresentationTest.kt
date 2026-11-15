@@ -64,14 +64,45 @@ class RecoveryDiagnosticPresentationTest {
         for (limit in listOf(12, 14)) {
             val settings = RecoveryDisplayConditions(false, true, null, null, 0, partialBitSearchLimit = limit)
             val section = settings.runSettingsSection()
-            val expected = if (ja) "部分bit探索・自由度の上限: ${limit}bit／RSブロック"
-                else "Partial-bit search / dimension limit: $limit bits per RS block"
+            val expected = if (ja) "「?」の白黒を仮定する探索: 最大${limit}bit／RSブロック"
+                else "Search by assuming black/white values for ?: up to $limit bits per RS block"
 
             assertTrue(section.summary, section.summary.contains(expected))
             assertTrue(section.details, section.details.contains(expected))
         }
         val unrecorded = (null as RecoveryDisplayConditions?).runSettingsSection()
         assertFalse(unrecorded.summary.contains(if (ja) "自由度の上限" else "dimension limit"))
+    }
+
+    @Test fun automaticSettingsDistinguishTentativeAssignmentsFromExactResidualFreedom() = inBothLanguages { ja ->
+        val conditions = RecoveryDisplayConditions(true, null, null, 6, 28,
+            partialBitSearchLimit = 0, exactSpaceBitLimit = 8)
+        val section = conditions.runSettingsSection()
+        for (text in listOf(section.summary, section.details, conditions.bitSearchLimitText())) {
+            assertTrue(text, text.contains(if (ja) "「?」の白黒を仮定する探索: OFF" else "Search by assuming black/white values for ?: OFF"))
+            assertTrue(text, text.contains(if (ja) "「*」で指定したセルの0/1探索は、この上限の対象外" else "The 0/1 search for cells marked * is outside this limit"))
+            assertTrue(text, text.contains(if (ja) "残余自由度上限: 8bit" else "Exact RS residual dimension limit: 8 bits"))
+            assertFalse(text, text.contains(if (ja) "部分bit探索・自由度の上限: 0bit" else "Partial-bit search / dimension limit: 0 bits"))
+        }
+        val exact = conditions.copy(exactSpaceBitLimit = 0, dataEccLimit = 0).runSettingsSection()
+        assertTrue(exact.summary.contains(if (ja) "「?」の白黒を仮定する探索: OFF" else "Search by assuming black/white values for ?: OFF"))
+        assertTrue(exact.summary.contains(if (ja) "残余自由度上限: 0bit" else "Exact RS residual dimension limit: 0 bits"))
+        assertEquals(8, conditions.exactSpaceBitLimit)
+        assertEquals(0, conditions.partialBitSearchLimit)
+    }
+
+    @Test fun searchTimeoutDescriptionsDoNotAttributeTheStopToTheUser() = inBothLanguages { ja ->
+        val message = if (ja) "時間上限" else "time limit"
+        val user = if (ja) "利用者" else "user"
+        val texts = listOf(
+            RecoverySearchDiagnostic(incompleteReasons = setOf(SearchIncompleteReason.TIME_LIMIT)).completionReasonsText(),
+            CombinationSearchSummary(stops = setOf(CombinationSearchStop.TIME_LIMIT)).stopReasonsText(),
+            ListDecodingExecution(mapOf(ListDecodingStage.WITHOUT_ASSIGNMENTS to setOf(ListDecodingStatus.REPAIR_TIME_LIMIT)),
+                mapOf(ListDecodingStage.WITHOUT_ASSIGNMENTS to 1)).description())
+        for (text in texts) {
+            assertTrue(text, text.contains(message))
+            assertFalse(text, text.contains(user))
+        }
     }
 
     @Test fun finalResultsSeparateNotFoundFromUnsearchedAndMixedRejectionReasons() = inBothLanguages { ja ->

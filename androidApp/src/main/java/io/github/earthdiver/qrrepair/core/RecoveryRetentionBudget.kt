@@ -113,7 +113,7 @@ internal fun blockCandidateWorkingBytes(
     conventionalMargin: Int? = null,
     partialBitSearchLimit: Int = PartialBitSearchLimit.DEFAULT,
 ): Long {
-    require(partialBitSearchLimit in PartialBitSearchLimit.supported)
+    require(partialBitSearchLimit == 0 || partialBitSearchLimit in PartialBitSearchLimit.supported)
     val dimensionLimit = if (allowEnumeration && nonEnumerable.isEmpty()) partialBitSearchLimit else 0
     val exact = exactDimension?.takeIf { it in 0..dimensionLimit }?.let { 1L shl it } ?: 0L
     val erased = block.unknownMasks.count { it != 0 }

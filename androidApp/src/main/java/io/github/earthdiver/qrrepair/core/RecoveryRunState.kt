@@ -27,7 +27,12 @@ internal class RecoveryRunState(
     private val discoveryCounter: RecoveryDiscoveryCounter = RecoveryDiscoveryCounter(),
     val knownBitErrorLimit: Int = 0,
     val knownBitErrorBudget: KnownBitErrorBudget = KnownBitErrorBudget(),
+    val exactFormatProof: Boolean = false,
+    val exactSpaceBitLimit: Int = partialBitSearchLimit,
 ) {
+    /** Shared across formats/input variants in this invocation, in addition to the caller's deadline. */
+    var exactSpaceNodesRemaining = 16_384
+    val boundedExactSpaceSearch: Boolean get() = partialBitSearchLimit == 0 && exactSpaceBitLimit > 0
     val knownBitTrialsAtStart = knownBitErrorBudget.trials
     var knownBitSearchAttempted = false
     var phase = RecoveryPhase.ORIGINAL_RS
@@ -65,7 +70,9 @@ internal class RecoveryRunState(
         private set
     var acceptedCandidate = false
         private set
-    var unresolvedCalculations = false
+    val formatProgress = RecoveryFormatProgress()
+    var activeFormatTrial: RecoveryFormatTrial? = null
+    private var unresolvedOutsideFormat = false
     var solverCompleteness = SearchCompleteness.COMPLETE
     var finished = false
     var completedSteps = 0
@@ -76,6 +83,7 @@ internal class RecoveryRunState(
     /** Record validation before bounded retention; search routes decide when a parsed result ends a pass. */
     fun recordEvaluation(evaluation: RecoveryCandidateEvaluation): RecordedRecoveryCandidate = when (evaluation) {
         is RecoveryCandidateEvaluation.Accepted -> {
+            if (evaluation.candidate.isSelectableRecovery) activeFormatTrial?.candidate = true
             if (evaluation.decoderFailed) incompleteReasons += SearchIncompleteReason.INTERNAL_ERROR
             acceptedCandidate = true
             decodedCandidate = decodedCandidate || evaluation.candidate.payloadParsed
@@ -94,9 +102,14 @@ internal class RecoveryRunState(
             RecordedRecoveryCandidate.NO_PAYLOAD
         }
         RecoveryCandidateEvaluation.UnresolvedPriorityAssignment -> {
-            unresolvedCalculations = true
+            markUnresolved("PRIORITY_ASSIGNMENT_UNRESOLVED")
             RecordedRecoveryCandidate.NO_PAYLOAD
         }
+    }
+
+    fun markUnresolved(reason: String) {
+        val trial = activeFormatTrial
+        if (trial == null) unresolvedOutsideFormat = true else trial.unresolved = reason
     }
 
     fun considerFailure(candidate: RecoveryFailure) {
@@ -117,6 +130,7 @@ internal class RecoveryRunState(
     }
 
     fun searchDiagnostic(): RecoverySearchDiagnostic {
+        val formats = formatProgress.snapshot(expectedFormats)
         val allInputsChecked = expectedFormats.isNotEmpty() && expectedFormats.all(inputBlockers::containsKey)
         val blockers = expectedFormats.map { inputBlockers[it] }.toSet()
         return RecoverySearchDiagnostic(
@@ -132,7 +146,8 @@ internal class RecoveryRunState(
             acceptedCandidate = acceptedCandidate,
             decodedCandidate = decodedCandidate,
             singleSegmentRetryAvailable = singleSegmentRetryAvailable,
-            unresolvedCalculations = unresolvedCalculations,
+            unresolvedCalculations = unresolvedOutsideFormat || formats.any { it.state == RecoveryFormatState.UNRESOLVED },
+            formatOutcomes = formats,
             unsearched = incompleteReasons.isNotEmpty() || combinationSearch.unsearched,
             incompleteReasons = incompleteReasons + combinationSearch.incompleteReasons,
             completedSteps = completedSteps,

@@ -221,7 +221,7 @@ def main():
                       soft_edits=edits, settings=dict(single_segment=True, ecc='Automatic', mask='Automatic',
                       automatic_thresholds=True, black_max=sampled['blackMax'], white_min=sampled['whiteMin'],
                       provisional_black_max=sampled['provisionalBlackMax'],
-                      provisional_white_min=sampled['provisionalWhiteMin'], data_ecc_error_limit=5,
+                      provisional_white_min=sampled['provisionalWhiteMin'], data_ecc_error_limit=28,
                       format_error_limit=6, priority_limit=4, partial_bit_limit=12, list_additional_errors=1),
                       module_center_quad=quad, comparison=[dict(action=r['request']['action'],
                       candidate_count=len(r['candidates']), search_diagnostic=r['searchDiagnostic']) for r in runs],

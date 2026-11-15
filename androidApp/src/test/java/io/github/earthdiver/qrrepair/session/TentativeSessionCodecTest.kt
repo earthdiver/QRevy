@@ -37,7 +37,7 @@ class TentativeSessionCodecTest {
         val matrix = QrMatrix(21)
         matrix.set(a.x, a.y, ModuleValue.ONE, 1f, ModuleSource.IMAGE)
         // Remove the LM choice and absent optional LM mapping from this single settings record.
-        val raw = QrrContainerCodec.decode(RecoverySessionCodec.encode(payload(PreprocessSettings(), matrix))).bytes
+        val raw = QrrContainerCodec.decode(RecoverySessionCodec.encode(payload(PreprocessSettings(), matrix))).bytes.dropLast(1).toByteArray()
         val legacy = raw.copyOfRange(0, raw.size - 5) + raw.copyOfRange(raw.size - 3, raw.size)
         val encoded = QrrContainerCodec.encode { it.write(legacy) }
         java.nio.ByteBuffer.wrap(encoded).putInt(4, 32)
@@ -64,10 +64,10 @@ class TentativeSessionCodecTest {
         val settings = PreprocessSettings(preRecoveryEdits = mapOf(a to ModuleValue.ZERO, b to ModuleValue.ONE), preRecoverySoftEdits = setOf(a, b))
         val bytes = RecoverySessionCodec.encode(payload(settings))
         val mutations = listOf<(ByteArray) -> ByteArray>(
-            { raw -> raw.apply { putInt(this, size - 69, -1) } },
-            { raw -> raw.apply { putInt(this, size - 69, 3) } },
-            { raw -> raw.apply { putInt(this, size - 57, a.x); putInt(this, size - 53, a.y) } },
-            { raw -> raw.apply { putInt(this, size - 57, 999) } },
+            { raw -> raw.apply { putInt(this, size - 70, -1) } },
+            { raw -> raw.apply { putInt(this, size - 70, 3) } },
+            { raw -> raw.apply { putInt(this, size - 58, a.x); putInt(this, size - 54, a.y) } },
+            { raw -> raw.apply { putInt(this, size - 58, 999) } },
             { raw -> raw.copyOf(raw.size - 1) },
         )
         for (mutate in mutations) assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) {

@@ -4,8 +4,55 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
+import kotlin.math.PI
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.hypot
+import kotlin.math.sin
 
 class GridPeriodicityEstimatorTest {
+    @Test fun aggregatedProjectionsPreserveTheDirectWeightedPhaseStatistic() {
+        for (size in listOf(1200, 25001)) for (diagonal in listOf(false, true)) {
+            val points = List(size) { i ->
+                val coordinate = if (diagonal) (i % 37) * cos(.3) + (i % 71) * sin(.3) else (i % 71).toDouble()
+                coordinate to (20.0 + (i * 31 % 720))
+            }
+            val selected = GridPeriodicityEstimator.periods(points, 12.0, RecoveryCancellation.NONE)
+            assertTrue(selected.isNotEmpty())
+            val step = maxOf(1, size / 12000)
+            val samples = points.filterIndexed { i, _ -> i % step == 0 }.take(12000)
+            for (period in selected) {
+                var real = 0.0; var imaginary = 0.0; var total = 0.0
+                for ((coordinate, rawWeight) in samples) {
+                    val weight = rawWeight.coerceAtMost(510.0)
+                    val phase = coordinate / period.pitch * 2 * PI
+                    real += weight * cos(phase); imaginary += weight * sin(phase); total += weight
+                }
+                var phase = atan2(imaginary, real) / (2 * PI) * period.pitch
+                if (phase < 0) phase += period.pitch
+                assertEquals(hypot(real, imaginary) / total, period.agreement, 1e-10)
+                assertEquals(phase, period.boundaryPhase, 1e-8)
+            }
+        }
+    }
+
+    @Test fun diagnosticsIdentifyTheStageInterruptedByCancellation() {
+        val events = mutableListOf<Pair<String, String>>()
+        var stop = false
+        val trace = GridEstimationTrace { stage, detail ->
+            events += stage to detail
+            if (stage == "EDGES" && detail == "START") stop = true
+        }
+        assertFailsWith<RecoveryCancelledException> {
+            InitialGridEstimator.estimate(LumaImage(200, 200, IntArray(40000) { 220 }), emptyList(),
+                RecoveryCancellation { stop }, trace)
+        }
+        assertTrue(events.any { it.first == "EDGES" && it.second.startsWith("CANCELLED durationMs=") })
+        assertTrue(events.any { it.first == "NORMAL_PERIODICITY" && it.second.startsWith("CANCELLED durationMs=") })
+        assertTrue(events.none { it.first == "INVERTED_PERIODICITY" })
+    }
+
     @Test fun estimatesVersionAndCornersWithoutFinderPatterns() {
         val version = 4
         val dimension = 17 + 4 * version

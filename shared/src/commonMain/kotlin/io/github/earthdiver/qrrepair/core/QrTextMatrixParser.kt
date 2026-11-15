@@ -10,7 +10,7 @@ object QrTextMatrixParser {
     const val MAX_PRIORITY_CELLS = 14
     const val MAX_TEXT_CHARS = 64 * 1024
 
-    fun parse(text: String): ParsedQrTextMatrix {
+    fun parse(text: String, enforcePriorityLimit: Boolean = true): ParsedQrTextMatrix {
         require(text.length <= MAX_TEXT_CHARS) { "Text matrix is too large" }
         require(text.isNotEmpty()) { "Text matrix is empty" }
 
@@ -48,7 +48,7 @@ object QrTextMatrixParser {
                 )
                 if (symbol == '*') {
                     priorityCells++
-                    require(priorityCells <= MAX_PRIORITY_CELLS) {
+                    require(!enforcePriorityLimit || priorityCells <= MAX_PRIORITY_CELLS) {
                         "At most $MAX_PRIORITY_CELLS priority-search (*) cells are supported"
                     }
                     matrix.setPrioritySearch(x, y, true)

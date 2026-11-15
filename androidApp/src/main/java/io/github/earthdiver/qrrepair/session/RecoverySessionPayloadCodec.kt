@@ -122,6 +122,8 @@ internal object RecoverySessionPayloadCodec {
         out.writeBoolean(snapshot.samplingInverted != null)
         snapshot.samplingInverted?.let(out::writeBoolean)
         out.writeBoolean(snapshot.oneTimeSingleSegment)
+        out.writeByte(snapshot.automaticScanAssumption?.let { it.ordinal + 1 } ?: 0)
+        if (snapshot.automaticScanAssumption != null) out.writeByte(snapshot.automaticScanListExtension)
     }
 
     private fun readSnapshot(input: DataInputStream, formatVersion: Int): RecoverySnapshot {
@@ -140,7 +142,13 @@ internal object RecoverySessionPayloadCodec {
         val settingsTag = input.readUnsignedByte()
         requireCorrupt(settingsTag in 0..(if (formatVersion >= 33) 2 else 1), "invalid preprocessing settings tag")
         val settings = if (settingsTag == 0) null else
-            readPreprocessSettings(input, formatVersion).copy(photographicSource = settingsTag == 2)
+            readPreprocessSettings(input, formatVersion).let {
+                requireCorrupt(settingsTag != 2 || it.preRecoveryPrioritySearch.size <= 14, "invalid photo priority-search count")
+                it.copy(photographicSource = settingsTag == 2)
+            }
+        requireCorrupt(listOfNotNull(source, working).all {
+            it.prioritySearchCoordinates().size <= 14 || (formatVersion >= 40 && settings?.photographicSource == false)
+        }, "invalid priority-search count")
         val selectedQr = if (input.readBoolean()) {
             val version = input.readInt()
             val ecLevel = input.readInt()
@@ -163,7 +171,24 @@ internal object RecoverySessionPayloadCodec {
             requireCorrupt(flag in 0..1, "invalid runtime single-segment flag")
             flag == 1
         } else false
-        return RecoverySnapshot(geometry, source, working, recoveryIndex, settings, selectedQr, samplingInverted, oneTimeSingleSegment)
+        val automaticScan = if (formatVersion >= 36) {
+            val tag = input.readUnsignedByte()
+            val maximumTag = when { formatVersion >= 38 -> 5; formatVersion >= 37 -> 4; else -> 3 }
+            requireCorrupt(tag in 0..maximumTag,
+                "invalid automatic scan assumption")
+            if (tag == 0) null else AutomaticScanAssumption.entries[tag - 1]
+        } else null
+        val automaticListExtension = if (formatVersion >= 39 && automaticScan != null) input.readUnsignedByte() else 1
+        requireCorrupt(automaticListExtension in 1..2 &&
+            (automaticScan != AutomaticScanAssumption.EXACT_KNOWN_BITS || automaticListExtension == 1),
+            "invalid automatic list extension")
+        requireCorrupt(automaticScan == null || (settings != null && geometry != null && working != null &&
+            settings.version == geometry.version && (settings.preRecoveryEdits.isEmpty() ||
+                (formatVersion >= 40 && settings.hasOnlyErasedTextEdits())) &&
+            (working.prioritySearchCoordinates().isEmpty() ||
+                (formatVersion >= 40 && settings.hasOnlyErasedTextEdits()))), "invalid automatic scan input")
+        return RecoverySnapshot(geometry, source, working, recoveryIndex, settings, selectedQr, samplingInverted,
+            oneTimeSingleSegment, automaticScan, automaticListExtension)
     }
 
     private fun validateSnapshot(snapshot: RecoverySnapshot) {
@@ -174,6 +199,18 @@ internal object RecoverySessionPayloadCodec {
         snapshot.geometry?.let { g -> if (d != null) require(g.dimension == d) }
         require(snapshot.recoveryIndex in -1..100_000)
         snapshot.preprocessSettings?.let(::validatePreprocessSettings)
+        require(listOfNotNull(snapshot.sourceMatrix, snapshot.workingMatrix).all {
+            it.prioritySearchCoordinates().size <= 14 || snapshot.preprocessSettings?.photographicSource == false
+        })
+        require(snapshot.automaticScanListExtension in 1..2)
+        if (snapshot.automaticScanAssumption == null || snapshot.automaticScanAssumption == AutomaticScanAssumption.EXACT_KNOWN_BITS)
+            require(snapshot.automaticScanListExtension == 1)
+        if (snapshot.automaticScanAssumption != null) {
+            require(snapshot.preprocessSettings != null && snapshot.geometry != null && snapshot.workingMatrix != null)
+            require(snapshot.preprocessSettings.version == snapshot.geometry.version)
+            require(snapshot.preprocessSettings.preRecoveryEdits.isEmpty() || snapshot.preprocessSettings.hasOnlyErasedTextEdits())
+            require(snapshot.workingMatrix.prioritySearchCoordinates().isEmpty() || snapshot.preprocessSettings.hasOnlyErasedTextEdits())
+        }
         for (matrix in listOfNotNull(snapshot.sourceMatrix, snapshot.workingMatrix)) {
             for (y in 0 until matrix.dimension) for (x in 0 until matrix.dimension) {
                 if (matrix.imageMargin(x, y) >= 0) require(matrix[x, y].source == ModuleSource.IMAGE && matrix[x, y].value != ModuleValue.ERASED)
@@ -188,7 +225,6 @@ internal object RecoverySessionPayloadCodec {
 
     private fun validPrioritySearch(matrix: QrMatrix): Boolean {
         val priority = matrix.prioritySearchCoordinates()
-        if (priority.size > 14) return false
         if (priority.isEmpty()) return true
         val version = (matrix.dimension - 17) / 4
         val codewordCoords = runCatching {
@@ -368,7 +404,7 @@ internal object RecoverySessionPayloadCodec {
             edits[coord] = enumStrict(input.readInt(), "preprocessing module value")
         }
         val priorityCount = input.readInt()
-        requireCorrupt(priorityCount in 0..14, "invalid priority-search count")
+        requireCorrupt(priorityCount in 0..(if (formatVersion >= 40) dimension * dimension else 14), "invalid priority-search count")
         val priority = buildSet {
             repeat(priorityCount) {
                 val coord = Coord(input.readInt(), input.readInt())
@@ -459,6 +495,16 @@ internal object RecoverySessionPayloadCodec {
                 preRecoveryPrioritySearch = priority,
             ).let { settings ->
                 if (formatVersion < 35) settings.copy(lmCorrectionEnabled = settings.lmGeometry != null) else settings
+            }.let { settings ->
+                // Freeze the previous default independently for every saved history snapshot.
+                // The raw stored manual value has already been validated above.
+                if (formatVersion < 41 && settings.dataEccMismatchLimitMode == ErrorLimitMode.AUTOMATIC) {
+                    settings.copy(
+                        dataEccMismatchLimitMode = ErrorLimitMode.MANUAL,
+                        dataEccMismatchLimit = if (settings.version <= 4) ErrorLimitPolicy.strictData(settings.version)
+                            else ErrorLimitPolicy.relaxedData(settings.version),
+                    )
+                } else settings
             }.also { settings ->
                 settings.lmGeometry?.let {
                     requireCorrupt(settings.lmCorrectionEnabled && settings.logicalQuad != null && it.version == settings.version && it.warp == null,
@@ -488,7 +534,7 @@ internal object RecoverySessionPayloadCodec {
         require(settings.partialBitSearchLimit in PartialBitSearchLimit.supported)
         require(settings.listDecodingAdditionalErrors in ListDecodingLimit.supported)
         require(settings.knownBitErrorLimit in 0..2)
-        require(settings.preRecoveryPrioritySearch.size <= 14)
+        require(settings.preRecoveryPrioritySearch.size <= if (settings.photographicSource) 14 else dimension * dimension)
         require(settings.preRecoveryPrioritySearch.all { settings.preRecoveryEdits[it] == ModuleValue.ERASED })
         require(settings.formatMismatchLimit == null || settings.formatMismatchLimit in 0..30)
         require(settings.dataEccMismatchLimit == null || settings.dataEccMismatchLimit in 0..MAX_QR_DATA_ECC_BITS)

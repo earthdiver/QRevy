@@ -207,8 +207,10 @@ class ImageAdjustmentSessionCodecTest {
     }
 
     private fun rewrite(encoded: ByteArray, version: Int = RecoverySessionCodec.CURRENT_VERSION, transform: (ByteArray) -> ByteArray): ByteArray {
-        val decoded = GZIPInputStream(ByteArrayInputStream(encoded, 48, encoded.size - 48)).use { it.readBytes() }
+        val current = GZIPInputStream(ByteArrayInputStream(encoded, 48, encoded.size - 48)).use { it.readBytes() }
         val sourceVersion = ByteBuffer.wrap(encoded).getInt(4)
+        // Mutations below address the existing settings fields in a single schema-35 entry.
+        val decoded = if (sourceVersion >= 36) current.copyOf(current.size - 1) else current
         // One settings-bearing history entry: remove fields absent from the target schema.
         val withoutLmChoice = if (sourceVersion >= 35 && version < 35)
             decoded.copyOfRange(0, decoded.size - 4) + decoded.copyOfRange(decoded.size - 3, decoded.size) else decoded
@@ -223,7 +225,8 @@ class ImageAdjustmentSessionCodecTest {
         val withoutKnownBitLimit = if (sourceVersion >= 28 && version < 28)
             withoutDistortion.copyOfRange(0, withoutDistortion.size - 7) + withoutDistortion.copyOfRange(withoutDistortion.size - 3, withoutDistortion.size) else withoutDistortion
         val input = if (sourceVersion >= 27 && version < 27) withoutKnownBitLimit.copyOf(withoutKnownBitLimit.size - 1) else withoutKnownBitLimit
-        val raw = transform(input)
+        val transformed = transform(input)
+        val raw = if (version >= 36) transformed + current.last() else transformed
         val compressed = ByteArrayOutputStream().also { bytes -> GZIPOutputStream(bytes).use { it.write(raw) } }.toByteArray()
         return ByteArrayOutputStream().also { bytes -> DataOutputStream(bytes).use {
             it.writeInt(0x5152523A); it.writeInt(version); it.writeInt(raw.size); it.writeInt(compressed.size)

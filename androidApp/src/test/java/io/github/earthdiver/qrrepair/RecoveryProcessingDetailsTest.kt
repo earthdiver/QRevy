@@ -64,10 +64,13 @@ class RecoveryProcessingDetailsTest {
         val source = java.io.File(directory, "before.txt").readText()
         val expected = QrTextMatrixParser.parse(java.io.File(directory, "after.txt").readText()).matrix
         val words = CodewordExtractor.extract(expected, 1, 0).codewords.map { it.value }.toIntArray()
-        for (keepPriority in listOf(true, false)) {
+        for (keepPriority in listOf(true, false)) for (lists in listOf(true, false)) {
             val matrix = QrTextMatrixParser.parse(if (keepPriority) source else source.replace('*', '?')).matrix
             val outcome = RecoveryEngine().recoverWithDiagnostics(matrix, knownBitErrorLimit = 2,
-                maxFormatMismatches = 6, maxKnownDataEccMismatches = 2, listDecodingBudget = ListDecodingBudget(0))
+                maxFormatMismatches = 6, maxKnownDataEccMismatches = ErrorLimitPolicy.defaultData(1),
+                listDecodingAdditionalErrors = if (lists) 1 else 0)
+            assertEquals(setOf("QRevy repaired.", "QBefY repaired.y"),
+                outcome.candidates.filter { it.payloadParsed }.map { it.text }.toSet())
             val selected = outcome.candidates.single { it.correctedInterleaved.contentEquals(words) }
             assertEquals("QRevy repaired.", selected.text)
             assertEquals(0, selected.constraintFilledBits)
@@ -213,7 +216,15 @@ class RecoveryProcessingDetailsTest {
             val processing = report.sections[2]
             assertTrue(processing.summary.contains(if (ja) "調べた範囲では修復候補は見つかりませんでした"
                 else "No recovery candidate was found in the checked range"))
-            assertTrue(processing.summary.contains(diagnostic.completeness.description()))
+            if (diagnostic.completeness == SearchCompleteness.COMPLETE) {
+                assertTrue(processing.summary.contains(if (ja) "実行した探索処理は終了しましたが、未解決の処理が残っています。"
+                    else "The attempted search passes finished, but unresolved processing remains."))
+                assertFalse(processing.summary.contains(diagnostic.completeness.description()))
+            } else {
+                assertTrue(processing.summary.contains(diagnostic.completeness.description()))
+                assertTrue(processing.summary.contains(if (ja) "未解決の処理も残っています。"
+                    else "Unresolved processing also remains."))
+            }
             assertFalse(processing.summary.contains(if (ja) "参考" else "reference"))
             assertFalse(processing.summary.contains(if (ja) "消失" else "erasure"))
             val view = RecoveryDiagnosticView(RuntimeEnvironment.getApplication())

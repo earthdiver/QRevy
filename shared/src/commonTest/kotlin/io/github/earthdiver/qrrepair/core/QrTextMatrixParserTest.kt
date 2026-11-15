@@ -56,4 +56,13 @@ class QrTextMatrixParserTest {
             QrTextMatrixParser.parse((listOf(first) + List(20) { "0".repeat(21) }).joinToString("\n"))
         }
     }
+
+    @Test fun automaticImportCanPreserveEveryExplicitMarkWithoutACountLimit() {
+        val text = List(21) { "*".repeat(21) }.joinToString("\n")
+        val parsed = QrTextMatrixParser.parse(text, enforcePriorityLimit = false)
+        assertEquals(441, parsed.matrix.prioritySearchCoordinates().size)
+        assertFailsWith<IllegalArgumentException> {
+            QrTextMatrixParser.parse(text.replaceFirst('*', 'x'), enforcePriorityLimit = false)
+        }
+    }
 }

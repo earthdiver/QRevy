@@ -5,6 +5,16 @@ class RsBitConstraintSolver(
     private val rs: ReedSolomonErasures = ReedSolomonErasures(),
     private val maximumCacheBytes: Long = 0,
 ) {
+    companion object {
+        /** Conservative retained shape storage, including the elimination transform. */
+        fun estimatedCacheBytes(length: Int, unknownBits: Int, ecSymbols: Int): Long {
+            require(length in 2..255 && ecSymbols in 1 until length)
+            require(unknownBits in 0..length * 8)
+            val equations = ecSymbols * 8
+            return 2048L + length * 8L + unknownBits * 96L +
+                equations * (96L + ((unknownBits + 63) / 64) * 8L + ((equations + 63) / 64) * 8L)
+        }
+    }
     init { require(maximumCacheBytes >= 0) }
     private class Shape(val masks: IntArray, val ecSymbols: Int,
         val rows: Array<LongArray>, val transform: Array<LongArray>, val pivots: IntArray,
@@ -264,8 +274,7 @@ class RsBitConstraintSolver(
             return Space(unknown, cached.pivots.size, base, cached.pivots, cached.rows, transformed, cached.free)
         }
         val equationCount = ecSymbols * 8
-        val cacheBytes = 2048L + block.codewords.size * 8L + unknown.size * 96L +
-            equationCount * (96L + ((unknown.size + 63) / 64) * 8L + ((equationCount + 63) / 64) * 8L)
+        val cacheBytes = estimatedCacheBytes(block.codewords.size, unknown.size, ecSymbols)
         val cacheable = maximumCacheBytes > 0 && cacheBytes <= maximumCacheBytes
         // Make room before allocating the new transform, not only before retaining it.
         if (cacheable) while (shapes.isNotEmpty() &&

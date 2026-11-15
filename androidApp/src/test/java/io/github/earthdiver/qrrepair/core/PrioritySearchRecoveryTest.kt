@@ -8,6 +8,45 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PrioritySearchRecoveryTest {
+    @Test fun automaticExplicitSearchIgnoresTheCountLimitWithoutIntegerOverflowAndCanStop() {
+        for (count in listOf(15, 32)) {
+            val matrix = QrMatrix(21)
+            CodewordExtractor.extract(matrix, 1, 0).codewords.flatMap { it.coordinates }.take(count).forEach {
+                matrix.setPrioritySearch(it.x, it.y, true)
+            }
+            var stopped = false
+            val progress = mutableListOf<Pair<Int, Int>>()
+            val outcome = RecoveryEngine().recoverWithDiagnostics(matrix,
+                executionPolicy = RecoveryExecutionPolicy.AUTOMATIC_BASIC, allowAutomaticPrioritySearch = true,
+                formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.L, 0),
+                stopRequested = { stopped }, onPriorityProgress = { done, total ->
+                    progress += done to total
+                    if (done == 2) stopped = true
+                })
+            assertEquals(listOf(0, 1, 2), progress.map { it.first })
+            assertEquals(if (count == 15) 32768 else 0, progress.last().second)
+            assertTrue(outcome.searchDiagnostic.unsearched)
+            assertTrue(SearchIncompleteReason.INTERNAL_ERROR !in outcome.searchDiagnostic.incompleteReasons)
+            assertEquals(count, matrix.prioritySearchCoordinates().size)
+        }
+    }
+
+    @Test fun automaticAssignmentsUseOnlyExplicitMarksWithOrdinaryGuessingDisabled() {
+        val (matrix, mask) = damaged(5)
+        val outcome = RecoveryEngine().recoverWithDiagnostics(matrix,
+            executionPolicy = RecoveryExecutionPolicy.AUTOMATIC_EXTENDED, allowAutomaticPrioritySearch = true,
+            formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.L, mask), listDecodingAdditionalErrors = 0)
+        val candidate = outcome.candidates.first { it.text == "STAR-STOP" }
+        assertEquals(5, candidate.priorityGuessedBits)
+        assertEquals(0, candidate.partialGuessedBits)
+        assertEquals(0, candidate.displayConditions!!.partialBitSearchLimit)
+        val settingsText = candidate.displayConditions.runSettingsSection().summary
+        assertTrue(settingsText.contains("?: OFF") || settingsText.contains("「?」の白黒を仮定する探索: OFF"))
+        assertTrue(settingsText.contains("*"))
+        assertEquals(matrix.prioritySearchCoordinates().map { Coord(it.first, it.second) }.toSet(), candidate.priorityAssignments.keys)
+        assertTrue(!outcome.searchDiagnostic.knownBitSearchAttempted)
+    }
+
     private fun damaged(priorityCount: Int): Pair<QrMatrix, Int> {
         val encoded = Encoder.encode("STAR-STOP", ErrorCorrectionLevel.L, mapOf(EncodeHintType.QR_VERSION to 1))
         val matrix = QrMatrix(encoded.matrix.width)

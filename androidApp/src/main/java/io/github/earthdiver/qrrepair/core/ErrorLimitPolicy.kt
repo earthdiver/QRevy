@@ -13,9 +13,14 @@ object ErrorLimitPolicy {
     fun relaxedData(version: Int): Int =
         (Version.getVersionForNumber(version).totalCodewords * 8 + 9) / 10
 
-    /** Additional list-decoding candidates may change at most 5% of all data/ECC bits. */
-    fun listDecodingData(version: Int): Int =
+    /** Allows residual sampling errors, including those remaining after curved-grid correction. */
+    fun defaultData(version: Int): Int =
         (Version.getVersionForNumber(version).totalCodewords * 8 + 19) / 20
+
+    /** Additional list-decoding candidates may change at most 5% of all data/ECC bits. */
+    fun listDecodingData(version: Int): Int = defaultData(version)
+
+    fun automaticScanData(version: Int): Int = defaultData(version)
 
     fun format(mode: ErrorLimitMode, manual: Int?): Int? = when (mode) {
         ErrorLimitMode.AUTOMATIC, ErrorLimitMode.STRICT -> STRICT_FORMAT
@@ -26,7 +31,7 @@ object ErrorLimitPolicy {
     }
 
     fun data(version: Int, mode: ErrorLimitMode, manual: Int?): Int? = when (mode) {
-        ErrorLimitMode.AUTOMATIC -> if (version <= 4) strictData(version) else relaxedData(version)
+        ErrorLimitMode.AUTOMATIC -> defaultData(version)
         ErrorLimitMode.STRICT -> strictData(version)
         ErrorLimitMode.RELAXED -> relaxedData(version)
         ErrorLimitMode.MANUAL -> manual

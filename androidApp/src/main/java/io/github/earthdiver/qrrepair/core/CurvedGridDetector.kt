@@ -13,26 +13,45 @@ internal class CurvedGridDetector(
     private val stopRequested: () -> Boolean = { false },
     maxContourWorkingBytes: Long = minOf(CurvedFinderContours.DEFAULT_WORKING_BYTES,
         RecoveryMemoryPolicy.current().workingBytes),
+    private val cachePatternSamples: Boolean = true,
 ) {
     private data class Sample(val x: Double, val y: Double, val black: Boolean)
     private data class Match(val point: PointD, val dx: Double, val dy: Double, val score: Double)
 
-    private val contours = CurvedFinderContours(image, profile.inverted, maxContourWorkingBytes, ::stopped)
+    private val contours = CurvedFinderContours(image, profile.inverted, maxContourWorkingBytes, stopped = ::stopped)
     val contourMemoryLimited: Boolean get() = contours.memoryLimited
 
-    fun candidates(base: GridGeometry): List<GridGeometry> {
-        if (base.warp != null || stopped()) return emptyList()
-        val contourCandidates = contours.seeds(base).take(2).flatMap { seed ->
+    fun candidates(base: GridGeometry, maxCandidates: Int = 12): List<GridGeometry> {
+        return detailedCandidates(base, maxCandidates).toList()
+    }
+
+    /** Same order and cap as detailed candidate collection; consumption may be interleaved with decoding. */
+    fun detailedCandidates(base: GridGeometry, maxCandidates: Int = 12): Sequence<GridGeometry> {
+        require(maxCandidates >= 0)
+        return candidateSequence(base, patchesFirst = false).take(maxCandidates)
+    }
+
+    /** Yield useful mappings before whole-image contours or later timing fits are evaluated. */
+    fun progressiveCandidates(base: GridGeometry): Sequence<GridGeometry> =
+        candidateSequence(base, patchesFirst = true).take(12)
+
+    private fun candidateSequence(base: GridGeometry, patchesFirst: Boolean): Sequence<GridGeometry> = sequence {
+        if (base.warp != null || stopped()) return@sequence
+        if (patchesFirst) yieldAll(patchCandidates(base, preferredFirst = true))
+        if (stopped()) return@sequence
+        val contourSeeds = if (patchesFirst) contours.progressiveSeeds(base) else contours.seeds(base).asSequence()
+        for (seed in contourSeeds.take(2)) {
             val last = (base.dimension - 1).toDouble()
             val anchors = seed.points.map { p -> WarpLandmark(
                 PointD(p.module.x / last, p.module.y / last), p.image - seed.base.moduleToImage(p.module.x, p.module.y)) }
-            refine(seed.base, anchors, centerAlignment = true)
+            yieldAll(refine(seed.base, anchors, centerAlignment = true, preferredFirst = patchesFirst))
+            if (stopped()) return@sequence
         }
-        return (contourCandidates + patchCandidates(base)).take(12)
+        if (!patchesFirst) yieldAll(patchCandidates(base))
     }
 
-    private fun patchCandidates(base: GridGeometry): List<GridGeometry> {
-        if (base.warp != null || stopped()) return emptyList()
+    private fun patchCandidates(base: GridGeometry, preferredFirst: Boolean = false): Sequence<GridGeometry> = sequence {
+        if (base.warp != null || stopped()) return@sequence
         val last = (base.dimension - 1).toDouble()
         fun landmark(x: Double, y: Double, imagePoint: PointD, smoothing: Double = 1e-5): WarpLandmark =
             WarpLandmark(PointD(x / last, y / last), imagePoint - base.moduleToImage(x, y), smoothing)
@@ -42,7 +61,7 @@ internal class CurvedGridDetector(
             val center = base.finderModulePoint(role)
             val measured = ArrayList<WarpLandmark>()
             for ((ox, oy) in listOf(-2 to -2, 2 to -2, 2 to 2, -2 to 2)) {
-                if (stopped()) return emptyList()
+                if (stopped()) return@sequence
                 val x = center.x + ox; val y = center.y + oy
                 val samples = patch(x, y) { dx, dy ->
                     val ring = max(abs(ox + dx), abs(oy + dy))
@@ -52,25 +71,27 @@ internal class CurvedGridDetector(
                 measured += landmark(x, y, match.point)
             }
             // A single ambiguous stripe must not displace an entire corner.
-            if (measured.size < 3) return emptyList()
+            if (measured.size < 3) return@sequence
             anchors += measured
         }
-        return refine(base, anchors)
+        yieldAll(refine(base, anchors, preferredFirst = preferredFirst))
     }
 
-    private fun refine(base: GridGeometry, anchors: List<WarpLandmark>, centerAlignment: Boolean = false): List<GridGeometry> {
+    private fun refine(base: GridGeometry, anchors: List<WarpLandmark>, centerAlignment: Boolean = false,
+        preferredFirst: Boolean = false): Sequence<GridGeometry> = sequence {
         val last = (base.dimension - 1).toDouble()
         fun landmark(x: Double, y: Double, imagePoint: PointD, smoothing: Double = 1e-5) =
             WarpLandmark(PointD(x / last, y / last), imagePoint - base.moduleToImage(x, y), smoothing)
-        val first = fit(base, anchors) ?: return emptyList()
+        val first = fit(base, anchors) ?: return@sequence
         val seeds = mutableListOf(first)
+        if (!preferredFirst) yield(first)
         val aligned = anchors.toMutableList()
         val centers = Version.getVersionForNumber(base.version).alignmentPatternCenters
         val positions = centers.flatMap { x -> centers.map { y -> x to y } }.filter { (x, y) ->
             !((x <= 8 && y <= 8) || (x >= base.dimension - 9 && y <= 8) || (x <= 8 && y >= base.dimension - 9))
         }.sortedByDescending { (x, y) -> x + y }.take(8)
         for ((mx, my) in positions) {
-            if (stopped()) return seeds
+            if (stopped()) return@sequence
             val x = mx.toDouble(); val y = my.toDouble()
             val centerSamples = (-2..2).flatMap { dy -> (-2..2).map { dx ->
                 val ring = max(abs(dx), abs(dy))
@@ -83,16 +104,18 @@ internal class CurvedGridDetector(
                 }, 3.0, 3.0) ?: continue
             aligned += landmark(x, y, match.point)
         }
-        if (aligned.size > anchors.size) fit(base, aligned)?.let(seeds::add)
-        val result = seeds.toMutableList()
-        for (seed in seeds) {
+        if (aligned.size > anchors.size) fit(base, aligned)?.let { seeds.add(it); yield(it) }
+        if (stopped()) return@sequence
+        for (seed in if (preferredFirst) seeds.asReversed() else seeds) {
+            // Refine the aligned mapping before revisiting the finder-only fallback.
+            if (preferredFirst && seed === first) yield(first)
             val timing = ArrayList<WarpLandmark>()
             for (axis in 0..1) {
                 var previous = PointD(0.0, 0.0)
                 val modules = (10 until base.dimension - 10 step 2).toList()
                 val selected = if (modules.size <= 16) modules else (0..15).map { modules[it * (modules.size - 1) / 15] }
                 for (k in selected) {
-                    if (stopped()) return result
+                    if (stopped()) return@sequence
                     val x = if (axis == 0) k.toDouble() else 6.0
                     val y = if (axis == 0) 6.0 else k.toDouble()
                     val samples = buildList {
@@ -109,9 +132,8 @@ internal class CurvedGridDetector(
                     if (seed.warp!!.landmarks.none { it.position == point.position }) timing += point
                 }
             }
-            if (timing.size >= 2) fit(base, seed.warp!!.landmarks + timing)?.let(result::add)
+            if (timing.size >= 2) fit(base, seed.warp!!.landmarks + timing)?.let { yield(it) }
         }
-        return result
     }
 
     private fun patch(x: Double, y: Double, black: (Int, Int) -> Boolean): List<Sample> = buildList {
@@ -143,15 +165,22 @@ internal class CurvedGridDetector(
         var bestObjective = Double.NEGATIVE_INFINITY
         var oppositeCorrelation = Double.NEGATIVE_INFINITY
         val nx = (rangeX / step).toInt(); val ny = (rangeY / step).toInt()
+        val cache = if (cachePatternSamples) PatternSampleCache.create(
+            DoubleArray(samples.size) { samples[it].x }, DoubleArray(samples.size) { samples[it].y }, nx, ny, step) else null
+        val observe: (Double, Double) -> Double? = { mx, my ->
+            val p = geometry.moduleToImage(mx, my)
+            image.sampleMean(p.x, p.y, 0.0)?.let(profile::normalize)
+        }
         for (iy in -ny..ny) {
             if (stopped()) return null
             for (ix in -nx..nx) {
                 val dx = ix * step; val dy = iy * step
                 var sum = 0.0; var squared = 0.0; var covariance = 0.0; var count = 0
-                for (s in samples) {
-                    val p = geometry.moduleToImage(s.x + dx, s.y + dy)
-                    val raw = image.sampleMean(p.x, p.y, 0.0) ?: break
-                    val value = profile.normalize(raw)
+                for (i in samples.indices) {
+                    val s = samples[i]
+                    val value = if (cache != null) cache.value(i, ix + nx, iy + ny, observe)
+                        else observe(s.x + dx, s.y + dy) ?: Double.NaN
+                    if (value.isNaN()) break
                     sum += value; squared += value * value
                     covariance += value * ((if (s.black) 0.0 else 1.0) - targetMean)
                     count++

@@ -8,6 +8,8 @@ internal class RecoveryPhaseRunner(
     private val stopRequested: () -> Boolean,
     private val searchPhase: () -> Unit,
     private val finish: (List<RecoveryCandidate>) -> List<RecoveryCandidate>,
+    private val executionPolicy: RecoveryExecutionPolicy = RecoveryExecutionPolicy.DETAILED,
+    private val stopIsTimeLimit: () -> Boolean = { false },
 ) {
     private companion object {
         const val EARLY_LIST_ALLOWANCE_MILLIS = 1_000L
@@ -16,6 +18,7 @@ internal class RecoveryPhaseRunner(
     fun execute(): List<RecoveryCandidate> {
         cancellation.check()
         return try {
+            if (executionPolicy != RecoveryExecutionPolicy.DETAILED) return automatic()
             if (run.listDecodingAdditionalErrors == 0) skipLists(ListDecodingStatus.DISABLED)
             search(RecoveryPhase.ORIGINAL_RS)
             // This pass uses the original observations: no forced suffix or tentative bits.
@@ -60,15 +63,47 @@ internal class RecoveryPhaseRunner(
         } catch (error: RecoveryCancelledException) {
             cancellation.check()
             if (!stopRequested()) throw error
-            skipLists(ListDecodingStatus.INTERRUPTED)
-            run.incompleteReasons += SearchIncompleteReason.USER_INTERRUPTED
-            run.combinationSearch = run.combinationSearch.afterPass(setOf(CombinationSearchStop.USER_INTERRUPTED))
+            val timedOut = stopIsTimeLimit()
+            skipLists(if (timedOut) ListDecodingStatus.REPAIR_TIME_LIMIT else ListDecodingStatus.INTERRUPTED)
+            run.incompleteReasons += if (timedOut) SearchIncompleteReason.TIME_LIMIT else SearchIncompleteReason.USER_INTERRUPTED
+            run.combinationSearch = run.combinationSearch.afterPass(setOf(
+                if (timedOut) CombinationSearchStop.TIME_LIMIT else CombinationSearchStop.USER_INTERRUPTED))
             run.candidates.results()
         } catch (_: Exception) {
             skipLists(ListDecodingStatus.INTERNAL_ERROR)
             run.incompleteReasons += SearchIncompleteReason.INTERNAL_ERROR
             run.candidates.results()
         }
+    }
+
+    /** Only explicitly marked TXT cells authorize assignment passes during automatic scanning. */
+    private fun automatic(): List<RecoveryCandidate> {
+        if (executionPolicy == RecoveryExecutionPolicy.AUTOMATIC_EXACT) {
+            skipLists(ListDecodingStatus.ZERO_ERROR_LIMIT)
+            search(RecoveryPhase.BIT_CONSTRAINTS)
+            run.finished = true
+            run.completedSteps++
+            return finish(run.candidates.results())
+        }
+        run.listDecodingStatuses[ListDecodingStage.ADDITIONAL] = ListDecodingStatus.DISABLED
+        if (executionPolicy == RecoveryExecutionPolicy.AUTOMATIC_BASIC || run.listDecodingAdditionalErrors == 0) {
+            run.listDecodingStatuses[ListDecodingStage.WITHOUT_ASSIGNMENTS] = ListDecodingStatus.DISABLED
+        }
+        search(RecoveryPhase.ORIGINAL_RS)
+        fun hasCandidate() = run.candidates.results().any { it.isSelectableRecovery }
+        if (!hasCandidate() && run.earlyBlocker == null) search(RecoveryPhase.BIT_CONSTRAINTS)
+        if (executionPolicy == RecoveryExecutionPolicy.AUTOMATIC_EXTENDED && !hasCandidate() &&
+            run.earlyBlocker == null && maxKnownDataEccMismatches != 0) {
+            if (run.diagnosticInput.hasImageMargins) search(RecoveryPhase.IMAGE_ERASURES)
+            if (!hasCandidate() && run.diagnosticInput.prioritySearchCoordinates().isNotEmpty())
+                search(RecoveryPhase.PARTIAL_RS)
+            if (!hasCandidate()) searchLists(early = true)
+            if (!hasCandidate() && run.diagnosticInput.prioritySearchCoordinates().isNotEmpty())
+                searchLists(early = false)
+        }
+        run.finished = true
+        run.completedSteps++
+        return finish(run.candidates.results())
     }
 
     private fun search(phase: RecoveryPhase) {
@@ -105,7 +140,7 @@ internal class RecoveryPhaseRunner(
             run.listDecodingStatuses[stage] = ListDecodingStatus.TIME_LIMIT
             run.incompleteReasons += SearchIncompleteReason.LIST_DECODING_TIME_LIMIT
         } catch (error: RecoveryCancelledException) {
-            run.listDecodingStatuses[stage] = ListDecodingStatus.INTERRUPTED
+            run.listDecodingStatuses[stage] = if (stopIsTimeLimit()) ListDecodingStatus.REPAIR_TIME_LIMIT else ListDecodingStatus.INTERRUPTED
             throw error
         } catch (error: Exception) {
             run.listDecodingStatuses[stage] = ListDecodingStatus.INTERNAL_ERROR

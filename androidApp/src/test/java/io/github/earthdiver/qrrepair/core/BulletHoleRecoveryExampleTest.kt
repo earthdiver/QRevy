@@ -98,7 +98,7 @@ class BulletHoleRecoveryExampleTest {
     @Test fun defaultSettingsRecoverOneExactCandidateThroughPartialBitConstraints() {
         val defaults = settings(single = true)
         assertNull(defaults.formatConstraint)
-        assertEquals(5, defaults.effectiveDataEccMismatchLimit)
+        assertEquals(28, defaults.effectiveDataEccMismatchLimit)
         assertEquals(6, defaults.effectiveFormatMismatchLimit)
         assertEquals(4, defaults.prioritySearchLimit)
         assertEquals(12, defaults.partialBitSearchLimit)

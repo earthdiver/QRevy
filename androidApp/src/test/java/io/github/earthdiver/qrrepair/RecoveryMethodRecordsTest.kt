@@ -14,6 +14,30 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class RecoveryMethodRecordsTest {
+    @Test fun alternativeBlockCalculationsKeepTheirTemporaryImageErasures() {
+        val qr = Encoder.encode("DISPLAY AUDIT", ErrorCorrectionLevel.L,
+            mapOf(EncodeHintType.QR_VERSION to 1, EncodeHintType.QR_MASK_PATTERN to 0)).matrix
+        val matrix = QrMatrix(qr.width).apply {
+            for (y in 0 until dimension) for (x in 0 until dimension) {
+                set(x, y, if (qr[x, y].toInt() == 1) ModuleValue.ONE else ModuleValue.ZERO, 1f, ModuleSource.IMAGE)
+                setImageMargin(x, y, 90)
+            }
+        }
+        val outcome = RecoveryEngine().recoverWithDiagnostics(matrix,
+            formatConstraint = QrFormatConstraint(ErrorCorrectionLevel.L, 0),
+            listDecodingAdditionalErrors = 0, knownBitErrorLimit = 0)
+        val selected = outcome.candidates.single { it.text == "DISPLAY AUDIT" }
+        assertTrue(selected.actualBlockMethods.all { it.imageErasures.isEmpty() })
+        val temporaryRoutes = (listOf(selected) + selected.alternativeDerivations)
+            .flatMap { it.blockDerivations.values.flatten() }.filter { it.imageErasures.isNotEmpty() }
+        assertTrue(temporaryRoutes.isNotEmpty())
+        inBothLanguages { ja ->
+            val details = group(selected, ja).text
+            for (route in temporaryRoutes) assertTrue(details, details.contains(imageErasureDescription(route.imageErasures)))
+            assertTrue(details.contains(if (ja) "同じ値を得た別の計算" else "other calculations yielding the same values"))
+        }
+    }
+
     private fun candidate() = RecoveryCandidate(
         1, ErrorCorrectionLevel.L, 0, "SYNTHETIC", byteArrayOf(1), 30, 0, 2, 2, 2, 0, 192,
         intArrayOf(1, 2), CodewordExtraction(emptyList()),

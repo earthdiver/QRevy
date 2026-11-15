@@ -5,14 +5,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ErrorLimitPolicyTest {
-    @Test fun newImportsFollowTheVersionBoundaryAndKeepFormatDefaultStable() {
+    @Test fun newImportsUseFivePercentAndKeepFormatDefaultStable() {
         val initial = PreprocessSettings(version = 4).withInitialErrorLimits()
         assertEquals(6, initial.effectiveFormatMismatchLimit)
-        assertEquals(7, initial.effectiveDataEccMismatchLimit)
+        assertEquals(40, initial.effectiveDataEccMismatchLimit)
         val larger = initial.copy(version = 5)
         assertEquals(6, larger.effectiveFormatMismatchLimit)
-        assertEquals(108, larger.effectiveDataEccMismatchLimit)
-        assertEquals(7, larger.copy(version = 4).effectiveDataEccMismatchLimit)
+        assertEquals(54, larger.effectiveDataEccMismatchLimit)
+        assertEquals(40, larger.copy(version = 4).effectiveDataEccMismatchLimit)
     }
 
     @Test fun explicitPresetsPersistAcrossTheVersionBoundary() {
@@ -53,6 +53,11 @@ class ErrorLimitPolicyTest {
             val bits = Version.getVersionForNumber(version).totalCodewords * 8
             val strict = ErrorLimitPolicy.strictData(version)
             val relaxed = ErrorLimitPolicy.relaxedData(version)
+            val initial = PreprocessSettings(version = version).withInitialErrorLimits()
+            val default = requireNotNull(initial.effectiveDataEccMismatchLimit)
+            assertEquals(6, initial.effectiveFormatMismatchLimit)
+            assertTrue(default * 20 >= bits)
+            assertTrue((default - 1) * 20 < bits)
             assertTrue(strict in 1..bits)
             assertTrue(relaxed in strict..bits)
             assertTrue(strict * 800 >= bits * 7)

@@ -110,7 +110,7 @@
     <plurals name="data_ecc_mismatch_limit_bits">
         <item quantity="other">%1$dbit</item>
     </plurals>
-    <string name="data_ecc_mismatch_limit_note" formatted="false">厳しめはデータ・ECC総bit数の0.875%、緩めは10%（いずれも切り上げ）。初期設定はV1〜4が厳しめ、V5以降が緩めです。入力の既知データ・ECC bitとRS修復後の候補の不一致上限です。?・形式情報・型番情報・機能モジュール・残余bitは対象外です。手動固定ONの値は上限によらず変更できません。</string>
+    <string name="data_ecc_mismatch_limit_note" formatted="false">初期設定は全バージョンでデータ・ECC総bit数の5%、厳しめは0.875%、緩めは10%（いずれも切り上げ）です。入力の既知データ・ECC bitとRS修復後の候補の不一致上限です。?・形式情報・型番情報・機能モジュール・残余bitは対象外です。手動固定ONの値は上限によらず変更できません。</string>
     <string name="apply_limit">適用</string>
     <string name="error_limit_automatic_value">初期設定（%1$s）</string>
     <string name="error_limit_strict_value">厳しめ（%1$s）</string>

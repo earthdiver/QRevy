@@ -18,6 +18,35 @@ Prefer an image containing the complete QR code and its surrounding white margin
 
 Importing automatically saves the work and source image. See [Save, resume, and export](#7-save-resume-and-export) for storage limits.
 
+### Quick automatic repair
+
+Use **Menu → Quick automatic repair** to turn it ON or OFF. It defaults to ON, stays saved when the app closes, and applies to subsequent imports.
+
+If ordinary reading fails for an image, camera capture, or TXT matrix, the app tries a short automatic repair. During processing, choose **Detailed analysis** to stop automatic repair and open the settings to review or adjust the grid, cells, and decoding conditions. If the input is still loading, the screen changes once the necessary loading finishes.
+
+If ordinary reading succeeds, choose **Repair** on the result screen to open detailed analysis. When Quick automatic repair is OFF, failed ordinary reading opens detailed analysis directly.
+
+For TXT matrices, automatic repair tries `0` and `1` for cells marked `*`. With Quick automatic repair ON, the number of `*` cells is not limited during import or automatic repair. See [Edit cells](#4-edit-cells) for the symbols and their manual use.
+
+### Automatic results and retries
+
+When a completed trial leaves one validated candidate, the app shows its content and the assumptions used. If repair fails, it shows the reason.
+
+| Result | Next action |
+| --- | --- |
+| One candidate remains | Choose **Analyze in detail** to continue reviewing or adjusting, or **Done** to keep the result. |
+| Repair failed | Choose **Detailed analysis** to review or adjust using the grid and results already obtained. |
+| Time ran out | Choose **Retry with more time (10 seconds)**. |
+| The ten-second retry also timed out | Choose **Retry without time limits**. No further retry button is offered after this attempt. |
+
+Retries start again from the same input and reuse an available grid. A retry without time limits can still stop for reasons such as insufficient memory. Choose **Detailed analysis** to stop either retry.
+
+The result screen shows the conditions used for automatic repair. Changing detailed-analysis settings does not change the conditions attached to that result. See [Understanding repair results](RECOVERY_RESULT_FIELDS.en.md) and [How quick automatic repair works](RECOVERY_STRATEGY.en.md#10-quick-automatic-repair).
+
+### Copy diagnostic information
+
+Debug builds, intended for development and testing, provide **Menu → Developer menu → Quick automatic repair diagnostics**. Choose **Copy diagnostics** to copy the processing record for a bug report. Copy it before rotating the screen, reopening work, or closing the app.
+
 ## 2. Adjust the image and grid
 
 In Classic, choose **Repair** to open the settings. In Modern, use **01 Repair settings**.
@@ -87,7 +116,7 @@ Cyan solid squares mark fixed cells; dashed squares mark tentative cells; yellow
 
 Error-correction code (**ECC**) data helps repair damaged QR content. `*` is available only in data/ECC cells, after corners and orientation are assigned. Finder patterns, format information, and other structural cells cannot be marked. If a selection includes an ineligible cell, no cells in that selection are changed.
 
-**Priority search cell limit** in **Details** allows 4–14 cells and defaults to 4. Each additional marked cell doubles the value combinations to try, so repair can take much longer. Lowering the limit keeps existing marks; remove marks or raise the limit before repairing if the count is too high. This also applies to marks imported from text.
+**Priority search cell limit** in **Details** allows 4–14 cells and defaults to 4. Each additional marked cell doubles the value combinations to try, so repair can take much longer. Lowering the limit keeps existing marks; remove marks or raise the limit before repairing if the count is too high. Detailed analysis checks the **Priority search cell limit** when repair starts, including marks imported from TXT files. Quick automatic repair does not apply a cell count limit. When quick automatic repair is OFF, TXT import also checks that there are no more than 14 `*` marks.
 
 Changing orientation removes only marks that are no longer in data/ECC cells; their `?` values remain. Changing the version clears all cell edits after confirmation.
 
@@ -111,6 +140,10 @@ Searches also have time and memory limits. Raising a setting does not guarantee 
 **Format-information error limit** restricts disagreements with known cells that identify the error-correction level and mask. **Known data/ECC bit error limit** restricts disagreements with known data/ECC cells. Unknown cells do not count. A smaller limit is stricter, but can exclude the correct result when the input contains misread cells.
 
 Both controls offer **Default**, **Exact match (0 bits)**, **Strict**, **Relaxed**, **Manual**, and **Unlimited**. The effective bit count is shown. Editing the number or using ± selects Manual; choose **Apply** to confirm.
+
+The default data/ECC limit is 5% of all data/ECC bits, rounded up, at every version (11, 18, 28, and 40 bits for Versions 1–4). Strict remains 0.875% and Relaxed remains 10%, rounded up. The format-information default remains 6 bits.
+
+Saved work in formats 23–40 keeps its previous effective data/ECC limit: Default is restored as a Manual bit count for each history entry. Other modes and the separately saved automatic-repair execution conditions remain unchanged. Selecting Default again applies 5%.
 
 Presets recalculate when the version changes. Manual keeps the entered number; if it becomes invalid, enter a valid number. Exact match requires agreement with all compared known cells. See [Understanding repair results](RECOVERY_RESULT_FIELDS.en.md#input-agreement-and-qr-settings) for cells excluded from comparison. Unlimited removes that control’s limit; fixed-cell protection and explicit QR settings still apply.
 
@@ -158,7 +191,7 @@ Tap an entry in **Saved work** or **Recent work** to reopen it. Long-press to de
 
 ### Saved-work compatibility
 
-QRR is the app’s saved-work format. The app writes format version **35** and reads versions **23–35**; other versions are rejected. Older files restore settings they did not store as follows: Known-bit error search is off for all versions 23–27. Distortion correction is off for versions 23–29. Versions 23–30 do not store the selected preview grid. The UTF-8 assumption defaults to off for versions 23–31. Versions 23–32 have no image sampling margins for temporary image erasures. Versions 23–33 restore LM correction as off. Version 34 restores it as on only when a selected LM grid was saved. Version 35 stores the LM on/off choice independently of the selected grid.
+QRR is the app’s saved-work format. The app writes format version **41** and reads versions **23–41**; other versions are rejected. Older files restore settings they did not store as follows: Known-bit error search is off for all versions 23–27. Distortion correction is off for versions 23–29. Versions 23–30 do not store the selected preview grid. The UTF-8 assumption defaults to off for versions 23–31. Versions 23–32 have no image sampling margins for temporary image erasures. Versions 23–33 restore LM correction as off. Version 34 restores it as on only when a selected LM grid was saved. Versions 35–41 store the LM on/off choice independently of the selected grid. Versions 36–41 also store automatic-scan assumptions separately from editable settings; earlier versions have no such override. Versions 37 and later also support the automatic trial that assumes observed data/ECC bits are correct. Versions 38 and later record the combined UTF-8 and single-segment assumption. Version 39 also records the automatic list-decoding extension separately from detailed-analysis preferences; older automatic results use +1. Version 40 also preserves imported TXT unknown-cell marks, including more than 14 stars, and the oriented star positions used for automatic execution. Fixed 0/1 edits cannot use this exception.
 
 | File version | Restored defaults |
 | --- | --- |

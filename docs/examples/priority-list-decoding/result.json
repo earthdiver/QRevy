@@ -42,7 +42,7 @@
     "ecc": "Automatic",
     "mask": "Automatic",
     "format_error_limit": "Automatic (6 bits)",
-    "data_ecc_error_limit": "Automatic (2 bits)",
+    "data_ecc_error_limit": "Automatic (11 bits; 5%)",
     "priority_search_limit": 4,
     "partial_bit_search_limit": 12,
     "list_decoding_additional_errors": 1,
@@ -53,14 +53,382 @@
   "comparison": [
     {
       "action": "single-on",
-      "candidate_count": 1,
+      "candidate_count": 2,
+      "validated_candidate_count": 2,
+      "text_candidate_count": 2,
+      "candidates": [
+        {
+          "version": 1,
+          "ecc": "L",
+          "mask": 0,
+          "text": "QRevy repaired.",
+          "selectableRecovery": true,
+          "score": -199614,
+          "codewords": [
+            64,
+            245,
+            21,
+            38,
+            87,
+            103,
+            146,
+            7,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            86,
+            66,
+            224,
+            236,
+            17,
+            122,
+            120,
+            92,
+            214,
+            234,
+            66,
+            218
+          ],
+          "dataBytes": [
+            64,
+            245,
+            21,
+            38,
+            87,
+            103,
+            146,
+            7,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            86,
+            66,
+            224,
+            236,
+            17
+          ],
+          "knownMismatches": 2,
+          "knownCompared": 155,
+          "partialGuessedBits": 0,
+          "constraintFilledBits": 20,
+          "singleSegmentStatus": "APPLIED_WITH_PRIORITY_HEADER",
+          "constraintForcedByUserSetting": true,
+          "priorityAssignments": [
+            [
+              19,
+              20,
+              "1"
+            ]
+          ],
+          "conventionalRs": {
+            "blocks": [
+              {
+                "blockIndex": 0,
+                "totalSymbols": 26,
+                "dataSymbols": 19,
+                "eccSymbols": 7,
+                "erasures": 8,
+                "errors": null,
+                "margin": null,
+                "status": "ERASURE_CAPACITY_EXCEEDED"
+              }
+            ],
+            "correctedInterleaved": null,
+            "knownBitMismatches": null,
+            "knownBitMismatchLimit": 11,
+            "manualConflicts": [],
+            "qrStructureValid": null
+          },
+          "actualBlockMethods": [
+            {
+              "blockIndex": 0,
+              "bitConstraintSolved": false,
+              "rsMargin": null,
+              "guessedBits": 0,
+              "listDecoding": {
+                "radius": 2,
+                "multiplicity": 0,
+                "listDegree": 0,
+                "remainingErasures": 4,
+                "symbolErrors": 2,
+                "assignment": -1,
+                "method": "WU",
+                "score": null,
+                "scoreThreshold": null
+              },
+              "knownBitErrors": null,
+              "imageErasures": []
+            }
+          ],
+          "searchDiagnostic": {
+            "inputBlocker": null,
+            "candidateRejections": [],
+            "acceptedCandidate": true,
+            "decodedCandidate": true,
+            "singleSegmentRetryAvailable": false,
+            "unresolvedCalculations": false,
+            "unsearched": false,
+            "incompleteReasons": [],
+            "completedSteps": 14,
+            "coverageComplete": true,
+            "solverCompleteness": "COMPLETE",
+            "candidateCalculations": 2,
+            "candidatesOmitted": false,
+            "derivationsOmitted": false,
+            "singleSegmentStatuses": [
+              "INCOMPLETE_HEADER",
+              "UNSUPPORTED_MODE",
+              "APPLIED_WITH_PRIORITY_HEADER"
+            ],
+            "priorityHeaderHypotheses": [
+              "0000",
+              "010000001111"
+            ],
+            "listDecoding": {
+              "trials": 1,
+              "interpolations": 0,
+              "elapsedMillis": 45,
+              "mismatchLimits": [
+                11
+              ],
+              "skipReasons": [],
+              "methodTrials": {
+                "WU": 1
+              },
+              "reusedTrials": 0,
+              "extensionLimits": [
+                1
+              ],
+              "hardRadiusTrials": {
+                "2": 1
+              },
+              "completedHardRadiusTrials": {
+                "2": 1
+              }
+            },
+            "knownBitSearchAttempted": false,
+            "knownBitTrials": 0,
+            "listDecodingExecution": {
+              "stages": {
+                "WITHOUT_ASSIGNMENTS": [
+                  "INELIGIBLE"
+                ],
+                "ADDITIONAL": [
+                  "COMPLETED"
+                ]
+              },
+              "newTrials": {
+                "WITHOUT_ASSIGNMENTS": 0,
+                "ADDITIONAL": 1
+              }
+            },
+            "formatOutcomes": [
+              {
+                "ecLevel": "L",
+                "dataMask": 0,
+                "state": "CANDIDATE",
+                "hasCandidate": true,
+                "reason": "VALIDATED_CANDIDATE"
+              }
+            ]
+          }
+        },
+        {
+          "version": 1,
+          "ecc": "L",
+          "mask": 0,
+          "text": "QBefy repair`d.",
+          "selectableRecovery": true,
+          "score": -198414,
+          "codewords": [
+            64,
+            245,
+            20,
+            38,
+            86,
+            103,
+            146,
+            7,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            6,
+            66,
+            224,
+            236,
+            17,
+            116,
+            90,
+            156,
+            139,
+            234,
+            163,
+            218
+          ],
+          "dataBytes": [
+            64,
+            245,
+            20,
+            38,
+            86,
+            103,
+            146,
+            7,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            6,
+            66,
+            224,
+            236,
+            17
+          ],
+          "knownMismatches": 6,
+          "knownCompared": 155,
+          "partialGuessedBits": 0,
+          "constraintFilledBits": 20,
+          "singleSegmentStatus": "APPLIED_WITH_PRIORITY_HEADER",
+          "constraintForcedByUserSetting": true,
+          "priorityAssignments": [
+            [
+              19,
+              20,
+              "1"
+            ]
+          ],
+          "conventionalRs": {
+            "blocks": [
+              {
+                "blockIndex": 0,
+                "totalSymbols": 26,
+                "dataSymbols": 19,
+                "eccSymbols": 7,
+                "erasures": 8,
+                "errors": null,
+                "margin": null,
+                "status": "ERASURE_CAPACITY_EXCEEDED"
+              }
+            ],
+            "correctedInterleaved": null,
+            "knownBitMismatches": null,
+            "knownBitMismatchLimit": 11,
+            "manualConflicts": [],
+            "qrStructureValid": null
+          },
+          "actualBlockMethods": [
+            {
+              "blockIndex": 0,
+              "bitConstraintSolved": false,
+              "rsMargin": null,
+              "guessedBits": 0,
+              "listDecoding": {
+                "radius": 2,
+                "multiplicity": 0,
+                "listDegree": 0,
+                "remainingErasures": 4,
+                "symbolErrors": 2,
+                "assignment": -1,
+                "method": "WU",
+                "score": null,
+                "scoreThreshold": null
+              },
+              "knownBitErrors": null,
+              "imageErasures": []
+            }
+          ],
+          "searchDiagnostic": {
+            "inputBlocker": null,
+            "candidateRejections": [],
+            "acceptedCandidate": true,
+            "decodedCandidate": true,
+            "singleSegmentRetryAvailable": false,
+            "unresolvedCalculations": false,
+            "unsearched": false,
+            "incompleteReasons": [],
+            "completedSteps": 14,
+            "coverageComplete": true,
+            "solverCompleteness": "COMPLETE",
+            "candidateCalculations": 2,
+            "candidatesOmitted": false,
+            "derivationsOmitted": false,
+            "singleSegmentStatuses": [
+              "INCOMPLETE_HEADER",
+              "UNSUPPORTED_MODE",
+              "APPLIED_WITH_PRIORITY_HEADER"
+            ],
+            "priorityHeaderHypotheses": [
+              "0000",
+              "010000001111"
+            ],
+            "listDecoding": {
+              "trials": 1,
+              "interpolations": 0,
+              "elapsedMillis": 45,
+              "mismatchLimits": [
+                11
+              ],
+              "skipReasons": [],
+              "methodTrials": {
+                "WU": 1
+              },
+              "reusedTrials": 0,
+              "extensionLimits": [
+                1
+              ],
+              "hardRadiusTrials": {
+                "2": 1
+              },
+              "completedHardRadiusTrials": {
+                "2": 1
+              }
+            },
+            "knownBitSearchAttempted": false,
+            "knownBitTrials": 0,
+            "listDecodingExecution": {
+              "stages": {
+                "WITHOUT_ASSIGNMENTS": [
+                  "INELIGIBLE"
+                ],
+                "ADDITIONAL": [
+                  "COMPLETED"
+                ]
+              },
+              "newTrials": {
+                "WITHOUT_ASSIGNMENTS": 0,
+                "ADDITIONAL": 1
+              }
+            },
+            "formatOutcomes": [
+              {
+                "ecLevel": "L",
+                "dataMask": 0,
+                "state": "CANDIDATE",
+                "hasCandidate": true,
+                "reason": "VALIDATED_CANDIDATE"
+              }
+            ]
+          }
+        }
+      ],
       "search_diagnostic": {
         "inputBlocker": null,
-        "candidateRejections": [
-          "LIST_DECODING_MISMATCH_LIMIT"
-        ],
+        "candidateRejections": [],
         "acceptedCandidate": true,
-        "unresolvedCalculations": true,
+        "decodedCandidate": true,
+        "singleSegmentRetryAvailable": false,
+        "unresolvedCalculations": false,
         "unsearched": false,
         "incompleteReasons": [],
         "completedSteps": 14,
@@ -83,7 +451,7 @@
           "interpolations": 0,
           "elapsedMillis": 45,
           "mismatchLimits": [
-            2
+            11
           ],
           "skipReasons": [],
           "methodTrials": {
@@ -100,6 +468,8 @@
             "2": 1
           }
         },
+        "knownBitSearchAttempted": false,
+        "knownBitTrials": 0,
         "listDecodingExecution": {
           "stages": {
             "WITHOUT_ASSIGNMENTS": [
@@ -113,20 +483,939 @@
             "WITHOUT_ASSIGNMENTS": 0,
             "ADDITIONAL": 1
           }
-        }
+        },
+        "formatOutcomes": [
+          {
+            "ecLevel": "L",
+            "dataMask": 0,
+            "state": "CANDIDATE",
+            "hasCandidate": true,
+            "reason": "VALIDATED_CANDIDATE"
+          }
+        ]
       },
       "failure_reason": "NO_RS_CONSISTENT_ASSIGNMENT"
     },
     {
       "action": "single-off",
-      "candidate_count": 0,
+      "candidate_count": 5,
+      "validated_candidate_count": 5,
+      "text_candidate_count": 0,
+      "candidates": [
+        {
+          "version": 1,
+          "ecc": "L",
+          "mask": 0,
+          "text": null,
+          "selectableRecovery": true,
+          "score": 1065,
+          "codewords": [
+            64,
+            245,
+            20,
+            38,
+            86,
+            103,
+            146,
+            59,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            86,
+            66,
+            231,
+            185,
+            46,
+            7,
+            176,
+            46,
+            64,
+            234,
+            66,
+            218
+          ],
+          "dataBytes": [
+            64,
+            245,
+            20,
+            38,
+            86,
+            103,
+            146,
+            59,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            86,
+            66,
+            231,
+            185,
+            46
+          ],
+          "knownMismatches": 4,
+          "knownCompared": 155,
+          "partialGuessedBits": 4,
+          "constraintFilledBits": 0,
+          "singleSegmentStatus": null,
+          "constraintForcedByUserSetting": false,
+          "priorityAssignments": [
+            [
+              19,
+              20,
+              "1"
+            ]
+          ],
+          "conventionalRs": {
+            "blocks": [
+              {
+                "blockIndex": 0,
+                "totalSymbols": 26,
+                "dataSymbols": 19,
+                "eccSymbols": 7,
+                "erasures": 8,
+                "errors": null,
+                "margin": null,
+                "status": "ERASURE_CAPACITY_EXCEEDED"
+              }
+            ],
+            "correctedInterleaved": null,
+            "knownBitMismatches": null,
+            "knownBitMismatchLimit": 11,
+            "manualConflicts": [],
+            "qrStructureValid": null
+          },
+          "actualBlockMethods": [
+            {
+              "blockIndex": 0,
+              "bitConstraintSolved": false,
+              "rsMargin": null,
+              "guessedBits": 4,
+              "listDecoding": {
+                "radius": 1,
+                "multiplicity": 0,
+                "listDegree": 0,
+                "remainingErasures": 6,
+                "symbolErrors": 1,
+                "assignment": 7,
+                "method": "WU",
+                "score": null,
+                "scoreThreshold": null
+              },
+              "knownBitErrors": null,
+              "imageErasures": []
+            }
+          ],
+          "searchDiagnostic": {
+            "inputBlocker": null,
+            "candidateRejections": [
+              "QR_STRUCTURE"
+            ],
+            "acceptedCandidate": true,
+            "decodedCandidate": false,
+            "singleSegmentRetryAvailable": false,
+            "unresolvedCalculations": true,
+            "unsearched": false,
+            "incompleteReasons": [],
+            "completedSteps": 15,
+            "coverageComplete": true,
+            "solverCompleteness": "COMPLETE",
+            "candidateCalculations": 9,
+            "candidatesOmitted": false,
+            "derivationsOmitted": false,
+            "singleSegmentStatuses": [],
+            "priorityHeaderHypotheses": [],
+            "listDecoding": {
+              "trials": 32,
+              "interpolations": 0,
+              "elapsedMillis": 127,
+              "mismatchLimits": [
+                11
+              ],
+              "skipReasons": [
+                "TOO_MANY_ERASURES",
+                "KV_PARAMETERS_UNAVAILABLE",
+                "NO_ADDITIONAL_RADIUS"
+              ],
+              "methodTrials": {
+                "WU": 32
+              },
+              "reusedTrials": 0,
+              "extensionLimits": [
+                1
+              ],
+              "hardRadiusTrials": {
+                "1": 32
+              },
+              "completedHardRadiusTrials": {
+                "1": 32
+              }
+            },
+            "knownBitSearchAttempted": false,
+            "knownBitTrials": 0,
+            "listDecodingExecution": {
+              "stages": {
+                "WITHOUT_ASSIGNMENTS": [
+                  "INELIGIBLE"
+                ],
+                "ADDITIONAL": [
+                  "COMPLETED"
+                ]
+              },
+              "newTrials": {
+                "WITHOUT_ASSIGNMENTS": 0,
+                "ADDITIONAL": 32
+              }
+            },
+            "formatOutcomes": [
+              {
+                "ecLevel": "L",
+                "dataMask": 0,
+                "state": "UNRESOLVED",
+                "hasCandidate": true,
+                "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+              }
+            ]
+          }
+        },
+        {
+          "version": 1,
+          "ecc": "L",
+          "mask": 0,
+          "text": null,
+          "selectableRecovery": true,
+          "score": 1065,
+          "codewords": [
+            64,
+            245,
+            20,
+            38,
+            86,
+            103,
+            146,
+            7,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            86,
+            66,
+            231,
+            157,
+            11,
+            23,
+            122,
+            96,
+            220,
+            234,
+            119,
+            218
+          ],
+          "dataBytes": [
+            64,
+            245,
+            20,
+            38,
+            86,
+            103,
+            146,
+            7,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            86,
+            66,
+            231,
+            157,
+            11
+          ],
+          "knownMismatches": 4,
+          "knownCompared": 155,
+          "partialGuessedBits": 4,
+          "constraintFilledBits": 0,
+          "singleSegmentStatus": null,
+          "constraintForcedByUserSetting": false,
+          "priorityAssignments": [
+            [
+              19,
+              20,
+              "1"
+            ]
+          ],
+          "conventionalRs": {
+            "blocks": [
+              {
+                "blockIndex": 0,
+                "totalSymbols": 26,
+                "dataSymbols": 19,
+                "eccSymbols": 7,
+                "erasures": 8,
+                "errors": null,
+                "margin": null,
+                "status": "ERASURE_CAPACITY_EXCEEDED"
+              }
+            ],
+            "correctedInterleaved": null,
+            "knownBitMismatches": null,
+            "knownBitMismatchLimit": 11,
+            "manualConflicts": [],
+            "qrStructureValid": null
+          },
+          "actualBlockMethods": [
+            {
+              "blockIndex": 0,
+              "bitConstraintSolved": false,
+              "rsMargin": null,
+              "guessedBits": 4,
+              "listDecoding": {
+                "radius": 1,
+                "multiplicity": 0,
+                "listDegree": 0,
+                "remainingErasures": 6,
+                "symbolErrors": 1,
+                "assignment": 7,
+                "method": "WU",
+                "score": null,
+                "scoreThreshold": null
+              },
+              "knownBitErrors": null,
+              "imageErasures": []
+            }
+          ],
+          "searchDiagnostic": {
+            "inputBlocker": null,
+            "candidateRejections": [
+              "QR_STRUCTURE"
+            ],
+            "acceptedCandidate": true,
+            "decodedCandidate": false,
+            "singleSegmentRetryAvailable": false,
+            "unresolvedCalculations": true,
+            "unsearched": false,
+            "incompleteReasons": [],
+            "completedSteps": 15,
+            "coverageComplete": true,
+            "solverCompleteness": "COMPLETE",
+            "candidateCalculations": 9,
+            "candidatesOmitted": false,
+            "derivationsOmitted": false,
+            "singleSegmentStatuses": [],
+            "priorityHeaderHypotheses": [],
+            "listDecoding": {
+              "trials": 32,
+              "interpolations": 0,
+              "elapsedMillis": 127,
+              "mismatchLimits": [
+                11
+              ],
+              "skipReasons": [
+                "TOO_MANY_ERASURES",
+                "KV_PARAMETERS_UNAVAILABLE",
+                "NO_ADDITIONAL_RADIUS"
+              ],
+              "methodTrials": {
+                "WU": 32
+              },
+              "reusedTrials": 0,
+              "extensionLimits": [
+                1
+              ],
+              "hardRadiusTrials": {
+                "1": 32
+              },
+              "completedHardRadiusTrials": {
+                "1": 32
+              }
+            },
+            "knownBitSearchAttempted": false,
+            "knownBitTrials": 0,
+            "listDecodingExecution": {
+              "stages": {
+                "WITHOUT_ASSIGNMENTS": [
+                  "INELIGIBLE"
+                ],
+                "ADDITIONAL": [
+                  "COMPLETED"
+                ]
+              },
+              "newTrials": {
+                "WITHOUT_ASSIGNMENTS": 0,
+                "ADDITIONAL": 32
+              }
+            },
+            "formatOutcomes": [
+              {
+                "ecLevel": "L",
+                "dataMask": 0,
+                "state": "UNRESOLVED",
+                "hasCandidate": true,
+                "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+              }
+            ]
+          }
+        },
+        {
+          "version": 1,
+          "ecc": "L",
+          "mask": 0,
+          "text": null,
+          "selectableRecovery": true,
+          "score": 1065,
+          "codewords": [
+            64,
+            245,
+            71,
+            38,
+            86,
+            103,
+            146,
+            7,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            86,
+            66,
+            231,
+            174,
+            77,
+            227,
+            252,
+            24,
+            197,
+            234,
+            66,
+            218
+          ],
+          "dataBytes": [
+            64,
+            245,
+            71,
+            38,
+            86,
+            103,
+            146,
+            7,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            86,
+            66,
+            231,
+            174,
+            77
+          ],
+          "knownMismatches": 4,
+          "knownCompared": 155,
+          "partialGuessedBits": 4,
+          "constraintFilledBits": 0,
+          "singleSegmentStatus": null,
+          "constraintForcedByUserSetting": false,
+          "priorityAssignments": [
+            [
+              19,
+              20,
+              "1"
+            ]
+          ],
+          "conventionalRs": {
+            "blocks": [
+              {
+                "blockIndex": 0,
+                "totalSymbols": 26,
+                "dataSymbols": 19,
+                "eccSymbols": 7,
+                "erasures": 8,
+                "errors": null,
+                "margin": null,
+                "status": "ERASURE_CAPACITY_EXCEEDED"
+              }
+            ],
+            "correctedInterleaved": null,
+            "knownBitMismatches": null,
+            "knownBitMismatchLimit": 11,
+            "manualConflicts": [],
+            "qrStructureValid": null
+          },
+          "actualBlockMethods": [
+            {
+              "blockIndex": 0,
+              "bitConstraintSolved": false,
+              "rsMargin": null,
+              "guessedBits": 4,
+              "listDecoding": {
+                "radius": 1,
+                "multiplicity": 0,
+                "listDegree": 0,
+                "remainingErasures": 6,
+                "symbolErrors": 1,
+                "assignment": 7,
+                "method": "WU",
+                "score": null,
+                "scoreThreshold": null
+              },
+              "knownBitErrors": null,
+              "imageErasures": []
+            }
+          ],
+          "searchDiagnostic": {
+            "inputBlocker": null,
+            "candidateRejections": [
+              "QR_STRUCTURE"
+            ],
+            "acceptedCandidate": true,
+            "decodedCandidate": false,
+            "singleSegmentRetryAvailable": false,
+            "unresolvedCalculations": true,
+            "unsearched": false,
+            "incompleteReasons": [],
+            "completedSteps": 15,
+            "coverageComplete": true,
+            "solverCompleteness": "COMPLETE",
+            "candidateCalculations": 9,
+            "candidatesOmitted": false,
+            "derivationsOmitted": false,
+            "singleSegmentStatuses": [],
+            "priorityHeaderHypotheses": [],
+            "listDecoding": {
+              "trials": 32,
+              "interpolations": 0,
+              "elapsedMillis": 127,
+              "mismatchLimits": [
+                11
+              ],
+              "skipReasons": [
+                "TOO_MANY_ERASURES",
+                "KV_PARAMETERS_UNAVAILABLE",
+                "NO_ADDITIONAL_RADIUS"
+              ],
+              "methodTrials": {
+                "WU": 32
+              },
+              "reusedTrials": 0,
+              "extensionLimits": [
+                1
+              ],
+              "hardRadiusTrials": {
+                "1": 32
+              },
+              "completedHardRadiusTrials": {
+                "1": 32
+              }
+            },
+            "knownBitSearchAttempted": false,
+            "knownBitTrials": 0,
+            "listDecodingExecution": {
+              "stages": {
+                "WITHOUT_ASSIGNMENTS": [
+                  "INELIGIBLE"
+                ],
+                "ADDITIONAL": [
+                  "COMPLETED"
+                ]
+              },
+              "newTrials": {
+                "WITHOUT_ASSIGNMENTS": 0,
+                "ADDITIONAL": 32
+              }
+            },
+            "formatOutcomes": [
+              {
+                "ecLevel": "L",
+                "dataMask": 0,
+                "state": "UNRESOLVED",
+                "hasCandidate": true,
+                "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+              }
+            ]
+          }
+        },
+        {
+          "version": 1,
+          "ecc": "L",
+          "mask": 0,
+          "text": null,
+          "selectableRecovery": true,
+          "score": 1365,
+          "codewords": [
+            64,
+            245,
+            20,
+            38,
+            86,
+            103,
+            146,
+            7,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            86,
+            66,
+            231,
+            176,
+            17,
+            148,
+            188,
+            30,
+            222,
+            209,
+            66,
+            218
+          ],
+          "dataBytes": [
+            64,
+            245,
+            20,
+            38,
+            86,
+            103,
+            146,
+            7,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            86,
+            66,
+            231,
+            176,
+            17
+          ],
+          "knownMismatches": 5,
+          "knownCompared": 155,
+          "partialGuessedBits": 4,
+          "constraintFilledBits": 0,
+          "singleSegmentStatus": null,
+          "constraintForcedByUserSetting": false,
+          "priorityAssignments": [
+            [
+              19,
+              20,
+              "1"
+            ]
+          ],
+          "conventionalRs": {
+            "blocks": [
+              {
+                "blockIndex": 0,
+                "totalSymbols": 26,
+                "dataSymbols": 19,
+                "eccSymbols": 7,
+                "erasures": 8,
+                "errors": null,
+                "margin": null,
+                "status": "ERASURE_CAPACITY_EXCEEDED"
+              }
+            ],
+            "correctedInterleaved": null,
+            "knownBitMismatches": null,
+            "knownBitMismatchLimit": 11,
+            "manualConflicts": [],
+            "qrStructureValid": null
+          },
+          "actualBlockMethods": [
+            {
+              "blockIndex": 0,
+              "bitConstraintSolved": false,
+              "rsMargin": null,
+              "guessedBits": 4,
+              "listDecoding": {
+                "radius": 1,
+                "multiplicity": 0,
+                "listDegree": 0,
+                "remainingErasures": 6,
+                "symbolErrors": 1,
+                "assignment": 7,
+                "method": "WU",
+                "score": null,
+                "scoreThreshold": null
+              },
+              "knownBitErrors": null,
+              "imageErasures": []
+            }
+          ],
+          "searchDiagnostic": {
+            "inputBlocker": null,
+            "candidateRejections": [
+              "QR_STRUCTURE"
+            ],
+            "acceptedCandidate": true,
+            "decodedCandidate": false,
+            "singleSegmentRetryAvailable": false,
+            "unresolvedCalculations": true,
+            "unsearched": false,
+            "incompleteReasons": [],
+            "completedSteps": 15,
+            "coverageComplete": true,
+            "solverCompleteness": "COMPLETE",
+            "candidateCalculations": 9,
+            "candidatesOmitted": false,
+            "derivationsOmitted": false,
+            "singleSegmentStatuses": [],
+            "priorityHeaderHypotheses": [],
+            "listDecoding": {
+              "trials": 32,
+              "interpolations": 0,
+              "elapsedMillis": 127,
+              "mismatchLimits": [
+                11
+              ],
+              "skipReasons": [
+                "TOO_MANY_ERASURES",
+                "KV_PARAMETERS_UNAVAILABLE",
+                "NO_ADDITIONAL_RADIUS"
+              ],
+              "methodTrials": {
+                "WU": 32
+              },
+              "reusedTrials": 0,
+              "extensionLimits": [
+                1
+              ],
+              "hardRadiusTrials": {
+                "1": 32
+              },
+              "completedHardRadiusTrials": {
+                "1": 32
+              }
+            },
+            "knownBitSearchAttempted": false,
+            "knownBitTrials": 0,
+            "listDecodingExecution": {
+              "stages": {
+                "WITHOUT_ASSIGNMENTS": [
+                  "INELIGIBLE"
+                ],
+                "ADDITIONAL": [
+                  "COMPLETED"
+                ]
+              },
+              "newTrials": {
+                "WITHOUT_ASSIGNMENTS": 0,
+                "ADDITIONAL": 32
+              }
+            },
+            "formatOutcomes": [
+              {
+                "ecLevel": "L",
+                "dataMask": 0,
+                "state": "UNRESOLVED",
+                "hasCandidate": true,
+                "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+              }
+            ]
+          }
+        },
+        {
+          "version": 1,
+          "ecc": "L",
+          "mask": 0,
+          "text": null,
+          "selectableRecovery": true,
+          "score": 1365,
+          "codewords": [
+            64,
+            245,
+            20,
+            38,
+            86,
+            103,
+            146,
+            7,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            86,
+            143,
+            231,
+            134,
+            108,
+            172,
+            203,
+            243,
+            193,
+            234,
+            66,
+            218
+          ],
+          "dataBytes": [
+            64,
+            245,
+            20,
+            38,
+            86,
+            103,
+            146,
+            7,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            86,
+            143,
+            231,
+            134,
+            108
+          ],
+          "knownMismatches": 5,
+          "knownCompared": 155,
+          "partialGuessedBits": 4,
+          "constraintFilledBits": 0,
+          "singleSegmentStatus": null,
+          "constraintForcedByUserSetting": false,
+          "priorityAssignments": [
+            [
+              19,
+              20,
+              "1"
+            ]
+          ],
+          "conventionalRs": {
+            "blocks": [
+              {
+                "blockIndex": 0,
+                "totalSymbols": 26,
+                "dataSymbols": 19,
+                "eccSymbols": 7,
+                "erasures": 8,
+                "errors": null,
+                "margin": null,
+                "status": "ERASURE_CAPACITY_EXCEEDED"
+              }
+            ],
+            "correctedInterleaved": null,
+            "knownBitMismatches": null,
+            "knownBitMismatchLimit": 11,
+            "manualConflicts": [],
+            "qrStructureValid": null
+          },
+          "actualBlockMethods": [
+            {
+              "blockIndex": 0,
+              "bitConstraintSolved": false,
+              "rsMargin": null,
+              "guessedBits": 4,
+              "listDecoding": {
+                "radius": 1,
+                "multiplicity": 0,
+                "listDegree": 0,
+                "remainingErasures": 6,
+                "symbolErrors": 1,
+                "assignment": 7,
+                "method": "WU",
+                "score": null,
+                "scoreThreshold": null
+              },
+              "knownBitErrors": null,
+              "imageErasures": []
+            }
+          ],
+          "searchDiagnostic": {
+            "inputBlocker": null,
+            "candidateRejections": [
+              "QR_STRUCTURE"
+            ],
+            "acceptedCandidate": true,
+            "decodedCandidate": false,
+            "singleSegmentRetryAvailable": false,
+            "unresolvedCalculations": true,
+            "unsearched": false,
+            "incompleteReasons": [],
+            "completedSteps": 15,
+            "coverageComplete": true,
+            "solverCompleteness": "COMPLETE",
+            "candidateCalculations": 9,
+            "candidatesOmitted": false,
+            "derivationsOmitted": false,
+            "singleSegmentStatuses": [],
+            "priorityHeaderHypotheses": [],
+            "listDecoding": {
+              "trials": 32,
+              "interpolations": 0,
+              "elapsedMillis": 127,
+              "mismatchLimits": [
+                11
+              ],
+              "skipReasons": [
+                "TOO_MANY_ERASURES",
+                "KV_PARAMETERS_UNAVAILABLE",
+                "NO_ADDITIONAL_RADIUS"
+              ],
+              "methodTrials": {
+                "WU": 32
+              },
+              "reusedTrials": 0,
+              "extensionLimits": [
+                1
+              ],
+              "hardRadiusTrials": {
+                "1": 32
+              },
+              "completedHardRadiusTrials": {
+                "1": 32
+              }
+            },
+            "knownBitSearchAttempted": false,
+            "knownBitTrials": 0,
+            "listDecodingExecution": {
+              "stages": {
+                "WITHOUT_ASSIGNMENTS": [
+                  "INELIGIBLE"
+                ],
+                "ADDITIONAL": [
+                  "COMPLETED"
+                ]
+              },
+              "newTrials": {
+                "WITHOUT_ASSIGNMENTS": 0,
+                "ADDITIONAL": 32
+              }
+            },
+            "formatOutcomes": [
+              {
+                "ecLevel": "L",
+                "dataMask": 0,
+                "state": "UNRESOLVED",
+                "hasCandidate": true,
+                "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+              }
+            ]
+          }
+        }
+      ],
       "search_diagnostic": {
         "inputBlocker": null,
         "candidateRejections": [
-          "QR_STRUCTURE",
-          "LIST_DECODING_MISMATCH_LIMIT"
+          "QR_STRUCTURE"
         ],
-        "acceptedCandidate": false,
+        "acceptedCandidate": true,
+        "decodedCandidate": false,
+        "singleSegmentRetryAvailable": false,
         "unresolvedCalculations": true,
         "unsearched": false,
         "incompleteReasons": [],
@@ -141,9 +1430,9 @@
         "listDecoding": {
           "trials": 32,
           "interpolations": 0,
-          "elapsedMillis": 78,
+          "elapsedMillis": 127,
           "mismatchLimits": [
-            2
+            11
           ],
           "skipReasons": [
             "TOO_MANY_ERASURES",
@@ -164,6 +1453,8 @@
             "1": 32
           }
         },
+        "knownBitSearchAttempted": false,
+        "knownBitTrials": 0,
         "listDecodingExecution": {
           "stages": {
             "WITHOUT_ASSIGNMENTS": [
@@ -177,17 +1468,31 @@
             "WITHOUT_ASSIGNMENTS": 0,
             "ADDITIONAL": 32
           }
-        }
+        },
+        "formatOutcomes": [
+          {
+            "ecLevel": "L",
+            "dataMask": 0,
+            "state": "UNRESOLVED",
+            "hasCandidate": true,
+            "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+          }
+        ]
       },
       "failure_reason": null
     },
     {
       "action": "list-disabled",
       "candidate_count": 0,
+      "validated_candidate_count": 0,
+      "text_candidate_count": 0,
+      "candidates": [],
       "search_diagnostic": {
         "inputBlocker": null,
         "candidateRejections": [],
         "acceptedCandidate": false,
+        "decodedCandidate": false,
+        "singleSegmentRetryAvailable": false,
         "unresolvedCalculations": true,
         "unsearched": true,
         "incompleteReasons": [
@@ -213,7 +1518,7 @@
           "interpolations": 0,
           "elapsedMillis": 0,
           "mismatchLimits": [
-            2
+            11
           ],
           "skipReasons": [],
           "methodTrials": {},
@@ -224,6 +1529,8 @@
           "hardRadiusTrials": {},
           "completedHardRadiusTrials": {}
         },
+        "knownBitSearchAttempted": false,
+        "knownBitTrials": 0,
         "listDecodingExecution": {
           "stages": {
             "WITHOUT_ASSIGNMENTS": [
@@ -237,18 +1544,32 @@
             "WITHOUT_ASSIGNMENTS": 0,
             "ADDITIONAL": 0
           }
-        }
+        },
+        "formatOutcomes": [
+          {
+            "ecLevel": "L",
+            "dataMask": 0,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+          }
+        ]
       },
       "failure_reason": "NO_RS_CONSISTENT_ASSIGNMENT"
     },
     {
       "action": "ordinary-unknowns",
       "candidate_count": 0,
+      "validated_candidate_count": 0,
+      "text_candidate_count": 0,
+      "candidates": [],
       "search_diagnostic": {
         "inputBlocker": null,
         "candidateRejections": [],
         "acceptedCandidate": false,
-        "unresolvedCalculations": false,
+        "decodedCandidate": false,
+        "singleSegmentRetryAvailable": false,
+        "unresolvedCalculations": true,
         "unsearched": false,
         "incompleteReasons": [],
         "completedSteps": 6,
@@ -264,9 +1585,9 @@
         "listDecoding": {
           "trials": 0,
           "interpolations": 0,
-          "elapsedMillis": 2,
+          "elapsedMillis": 1,
           "mismatchLimits": [
-            2
+            11
           ],
           "skipReasons": [],
           "methodTrials": {},
@@ -277,6 +1598,8 @@
           "hardRadiusTrials": {},
           "completedHardRadiusTrials": {}
         },
+        "knownBitSearchAttempted": false,
+        "knownBitTrials": 0,
         "listDecodingExecution": {
           "stages": {
             "WITHOUT_ASSIGNMENTS": [
@@ -290,7 +1613,16 @@
             "WITHOUT_ASSIGNMENTS": 0,
             "ADDITIONAL": 0
           }
-        }
+        },
+        "formatOutcomes": [
+          {
+            "ecLevel": "L",
+            "dataMask": 0,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "SINGLE_SEGMENT_HEADER_UNRESOLVED"
+          }
+        ]
       },
       "failure_reason": "SINGLE_SEGMENT_CONDITION_UNAVAILABLE"
     }
@@ -301,6 +1633,7 @@
     "ecc": "L",
     "mask": 0,
     "text": "QRevy repaired.",
+    "selectableRecovery": true,
     "score": -199614,
     "codewords": [
       64,
@@ -379,7 +1712,7 @@
       ],
       "correctedInterleaved": null,
       "knownBitMismatches": null,
-      "knownBitMismatchLimit": 2,
+      "knownBitMismatchLimit": 11,
       "manualConflicts": [],
       "qrStructureValid": null
     },
@@ -399,16 +1732,18 @@
           "method": "WU",
           "score": null,
           "scoreThreshold": null
-        }
+        },
+        "knownBitErrors": null,
+        "imageErasures": []
       }
     ],
     "searchDiagnostic": {
       "inputBlocker": null,
-      "candidateRejections": [
-        "LIST_DECODING_MISMATCH_LIMIT"
-      ],
+      "candidateRejections": [],
       "acceptedCandidate": true,
-      "unresolvedCalculations": true,
+      "decodedCandidate": true,
+      "singleSegmentRetryAvailable": false,
+      "unresolvedCalculations": false,
       "unsearched": false,
       "incompleteReasons": [],
       "completedSteps": 14,
@@ -431,7 +1766,7 @@
         "interpolations": 0,
         "elapsedMillis": 45,
         "mismatchLimits": [
-          2
+          11
         ],
         "skipReasons": [],
         "methodTrials": {
@@ -448,6 +1783,8 @@
           "2": 1
         }
       },
+      "knownBitSearchAttempted": false,
+      "knownBitTrials": 0,
       "listDecodingExecution": {
         "stages": {
           "WITHOUT_ASSIGNMENTS": [
@@ -461,7 +1798,16 @@
           "WITHOUT_ASSIGNMENTS": 0,
           "ADDITIONAL": 1
         }
-      }
+      },
+      "formatOutcomes": [
+        {
+          "ecLevel": "L",
+          "dataMask": 0,
+          "state": "CANDIDATE",
+          "hasCandidate": true,
+          "reason": "VALIDATED_CANDIDATE"
+        }
+      ]
     }
   },
   "image_initialization": {
@@ -491,14 +1837,418 @@
   "image_comparison": [
     {
       "action": "single-on",
-      "candidate_count": 1,
+      "candidate_count": 2,
+      "validated_candidate_count": 2,
+      "text_candidate_count": 2,
+      "candidates": [
+        {
+          "version": 1,
+          "ecc": "L",
+          "mask": 0,
+          "text": "QRevy repaired.",
+          "selectableRecovery": true,
+          "score": -199614,
+          "codewords": [
+            64,
+            245,
+            21,
+            38,
+            87,
+            103,
+            146,
+            7,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            86,
+            66,
+            224,
+            236,
+            17,
+            122,
+            120,
+            92,
+            214,
+            234,
+            66,
+            218
+          ],
+          "dataBytes": [
+            64,
+            245,
+            21,
+            38,
+            87,
+            103,
+            146,
+            7,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            86,
+            66,
+            224,
+            236,
+            17
+          ],
+          "knownMismatches": 2,
+          "knownCompared": 155,
+          "partialGuessedBits": 0,
+          "constraintFilledBits": 20,
+          "singleSegmentStatus": "APPLIED_WITH_PRIORITY_HEADER",
+          "constraintForcedByUserSetting": true,
+          "priorityAssignments": [
+            [
+              19,
+              20,
+              "1"
+            ]
+          ],
+          "conventionalRs": {
+            "blocks": [
+              {
+                "blockIndex": 0,
+                "totalSymbols": 26,
+                "dataSymbols": 19,
+                "eccSymbols": 7,
+                "erasures": 8,
+                "errors": null,
+                "margin": null,
+                "status": "ERASURE_CAPACITY_EXCEEDED"
+              }
+            ],
+            "correctedInterleaved": null,
+            "knownBitMismatches": null,
+            "knownBitMismatchLimit": 11,
+            "manualConflicts": [],
+            "qrStructureValid": null
+          },
+          "actualBlockMethods": [
+            {
+              "blockIndex": 0,
+              "bitConstraintSolved": false,
+              "rsMargin": null,
+              "guessedBits": 0,
+              "listDecoding": {
+                "radius": 2,
+                "multiplicity": 0,
+                "listDegree": 0,
+                "remainingErasures": 4,
+                "symbolErrors": 2,
+                "assignment": -1,
+                "method": "WU",
+                "score": null,
+                "scoreThreshold": null
+              },
+              "knownBitErrors": null,
+              "imageErasures": []
+            }
+          ],
+          "searchDiagnostic": {
+            "inputBlocker": null,
+            "candidateRejections": [],
+            "acceptedCandidate": true,
+            "decodedCandidate": true,
+            "singleSegmentRetryAvailable": false,
+            "unresolvedCalculations": false,
+            "unsearched": false,
+            "incompleteReasons": [],
+            "completedSteps": 14,
+            "coverageComplete": true,
+            "solverCompleteness": "COMPLETE",
+            "candidateCalculations": 2,
+            "candidatesOmitted": false,
+            "derivationsOmitted": false,
+            "singleSegmentStatuses": [
+              "INCOMPLETE_HEADER",
+              "UNSUPPORTED_MODE",
+              "APPLIED_WITH_PRIORITY_HEADER"
+            ],
+            "priorityHeaderHypotheses": [
+              "0000",
+              "010000001111"
+            ],
+            "listDecoding": {
+              "trials": 1,
+              "interpolations": 0,
+              "elapsedMillis": 48,
+              "mismatchLimits": [
+                11
+              ],
+              "skipReasons": [],
+              "methodTrials": {
+                "WU": 1
+              },
+              "reusedTrials": 0,
+              "extensionLimits": [
+                1
+              ],
+              "hardRadiusTrials": {
+                "2": 1
+              },
+              "completedHardRadiusTrials": {
+                "2": 1
+              }
+            },
+            "knownBitSearchAttempted": false,
+            "knownBitTrials": 0,
+            "listDecodingExecution": {
+              "stages": {
+                "WITHOUT_ASSIGNMENTS": [
+                  "INELIGIBLE"
+                ],
+                "ADDITIONAL": [
+                  "COMPLETED"
+                ]
+              },
+              "newTrials": {
+                "WITHOUT_ASSIGNMENTS": 0,
+                "ADDITIONAL": 1
+              }
+            },
+            "formatOutcomes": [
+              {
+                "ecLevel": "L",
+                "dataMask": 0,
+                "state": "CANDIDATE",
+                "hasCandidate": true,
+                "reason": "VALIDATED_CANDIDATE"
+              }
+            ]
+          },
+          "inputQuad": [
+            [
+              54.0,
+              54.0
+            ],
+            [
+              294.0,
+              54.0
+            ],
+            [
+              294.0,
+              294.0
+            ],
+            [
+              54.0,
+              294.0
+            ]
+          ]
+        },
+        {
+          "version": 1,
+          "ecc": "L",
+          "mask": 0,
+          "text": "QBefy repair`d.",
+          "selectableRecovery": true,
+          "score": -198414,
+          "codewords": [
+            64,
+            245,
+            20,
+            38,
+            86,
+            103,
+            146,
+            7,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            6,
+            66,
+            224,
+            236,
+            17,
+            116,
+            90,
+            156,
+            139,
+            234,
+            163,
+            218
+          ],
+          "dataBytes": [
+            64,
+            245,
+            20,
+            38,
+            86,
+            103,
+            146,
+            7,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            6,
+            66,
+            224,
+            236,
+            17
+          ],
+          "knownMismatches": 6,
+          "knownCompared": 155,
+          "partialGuessedBits": 0,
+          "constraintFilledBits": 20,
+          "singleSegmentStatus": "APPLIED_WITH_PRIORITY_HEADER",
+          "constraintForcedByUserSetting": true,
+          "priorityAssignments": [
+            [
+              19,
+              20,
+              "1"
+            ]
+          ],
+          "conventionalRs": {
+            "blocks": [
+              {
+                "blockIndex": 0,
+                "totalSymbols": 26,
+                "dataSymbols": 19,
+                "eccSymbols": 7,
+                "erasures": 8,
+                "errors": null,
+                "margin": null,
+                "status": "ERASURE_CAPACITY_EXCEEDED"
+              }
+            ],
+            "correctedInterleaved": null,
+            "knownBitMismatches": null,
+            "knownBitMismatchLimit": 11,
+            "manualConflicts": [],
+            "qrStructureValid": null
+          },
+          "actualBlockMethods": [
+            {
+              "blockIndex": 0,
+              "bitConstraintSolved": false,
+              "rsMargin": null,
+              "guessedBits": 0,
+              "listDecoding": {
+                "radius": 2,
+                "multiplicity": 0,
+                "listDegree": 0,
+                "remainingErasures": 4,
+                "symbolErrors": 2,
+                "assignment": -1,
+                "method": "WU",
+                "score": null,
+                "scoreThreshold": null
+              },
+              "knownBitErrors": null,
+              "imageErasures": []
+            }
+          ],
+          "searchDiagnostic": {
+            "inputBlocker": null,
+            "candidateRejections": [],
+            "acceptedCandidate": true,
+            "decodedCandidate": true,
+            "singleSegmentRetryAvailable": false,
+            "unresolvedCalculations": false,
+            "unsearched": false,
+            "incompleteReasons": [],
+            "completedSteps": 14,
+            "coverageComplete": true,
+            "solverCompleteness": "COMPLETE",
+            "candidateCalculations": 2,
+            "candidatesOmitted": false,
+            "derivationsOmitted": false,
+            "singleSegmentStatuses": [
+              "INCOMPLETE_HEADER",
+              "UNSUPPORTED_MODE",
+              "APPLIED_WITH_PRIORITY_HEADER"
+            ],
+            "priorityHeaderHypotheses": [
+              "0000",
+              "010000001111"
+            ],
+            "listDecoding": {
+              "trials": 1,
+              "interpolations": 0,
+              "elapsedMillis": 48,
+              "mismatchLimits": [
+                11
+              ],
+              "skipReasons": [],
+              "methodTrials": {
+                "WU": 1
+              },
+              "reusedTrials": 0,
+              "extensionLimits": [
+                1
+              ],
+              "hardRadiusTrials": {
+                "2": 1
+              },
+              "completedHardRadiusTrials": {
+                "2": 1
+              }
+            },
+            "knownBitSearchAttempted": false,
+            "knownBitTrials": 0,
+            "listDecodingExecution": {
+              "stages": {
+                "WITHOUT_ASSIGNMENTS": [
+                  "INELIGIBLE"
+                ],
+                "ADDITIONAL": [
+                  "COMPLETED"
+                ]
+              },
+              "newTrials": {
+                "WITHOUT_ASSIGNMENTS": 0,
+                "ADDITIONAL": 1
+              }
+            },
+            "formatOutcomes": [
+              {
+                "ecLevel": "L",
+                "dataMask": 0,
+                "state": "CANDIDATE",
+                "hasCandidate": true,
+                "reason": "VALIDATED_CANDIDATE"
+              }
+            ]
+          },
+          "inputQuad": [
+            [
+              54.0,
+              54.0
+            ],
+            [
+              294.0,
+              54.0
+            ],
+            [
+              294.0,
+              294.0
+            ],
+            [
+              54.0,
+              294.0
+            ]
+          ]
+        }
+      ],
       "search_diagnostic": {
         "inputBlocker": null,
-        "candidateRejections": [
-          "LIST_DECODING_MISMATCH_LIMIT"
-        ],
+        "candidateRejections": [],
         "acceptedCandidate": true,
-        "unresolvedCalculations": true,
+        "decodedCandidate": true,
+        "singleSegmentRetryAvailable": false,
+        "unresolvedCalculations": false,
         "unsearched": false,
         "incompleteReasons": [],
         "completedSteps": 14,
@@ -519,9 +2269,9 @@
         "listDecoding": {
           "trials": 1,
           "interpolations": 0,
-          "elapsedMillis": 56,
+          "elapsedMillis": 48,
           "mismatchLimits": [
-            2
+            11
           ],
           "skipReasons": [],
           "methodTrials": {
@@ -538,6 +2288,8 @@
             "2": 1
           }
         },
+        "knownBitSearchAttempted": false,
+        "knownBitTrials": 0,
         "listDecodingExecution": {
           "stages": {
             "WITHOUT_ASSIGNMENTS": [
@@ -551,20 +2303,1029 @@
             "WITHOUT_ASSIGNMENTS": 0,
             "ADDITIONAL": 1
           }
-        }
+        },
+        "formatOutcomes": [
+          {
+            "ecLevel": "L",
+            "dataMask": 0,
+            "state": "CANDIDATE",
+            "hasCandidate": true,
+            "reason": "VALIDATED_CANDIDATE"
+          }
+        ]
       },
       "failure_reason": null
     },
     {
       "action": "single-off",
-      "candidate_count": 0,
+      "candidate_count": 5,
+      "validated_candidate_count": 5,
+      "text_candidate_count": 0,
+      "candidates": [
+        {
+          "version": 1,
+          "ecc": "L",
+          "mask": 0,
+          "text": null,
+          "selectableRecovery": true,
+          "score": 1065,
+          "codewords": [
+            64,
+            245,
+            20,
+            38,
+            86,
+            103,
+            146,
+            59,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            86,
+            66,
+            231,
+            185,
+            46,
+            7,
+            176,
+            46,
+            64,
+            234,
+            66,
+            218
+          ],
+          "dataBytes": [
+            64,
+            245,
+            20,
+            38,
+            86,
+            103,
+            146,
+            59,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            86,
+            66,
+            231,
+            185,
+            46
+          ],
+          "knownMismatches": 4,
+          "knownCompared": 155,
+          "partialGuessedBits": 4,
+          "constraintFilledBits": 0,
+          "singleSegmentStatus": null,
+          "constraintForcedByUserSetting": false,
+          "priorityAssignments": [
+            [
+              19,
+              20,
+              "1"
+            ]
+          ],
+          "conventionalRs": {
+            "blocks": [
+              {
+                "blockIndex": 0,
+                "totalSymbols": 26,
+                "dataSymbols": 19,
+                "eccSymbols": 7,
+                "erasures": 8,
+                "errors": null,
+                "margin": null,
+                "status": "ERASURE_CAPACITY_EXCEEDED"
+              }
+            ],
+            "correctedInterleaved": null,
+            "knownBitMismatches": null,
+            "knownBitMismatchLimit": 11,
+            "manualConflicts": [],
+            "qrStructureValid": null
+          },
+          "actualBlockMethods": [
+            {
+              "blockIndex": 0,
+              "bitConstraintSolved": false,
+              "rsMargin": null,
+              "guessedBits": 4,
+              "listDecoding": {
+                "radius": 1,
+                "multiplicity": 0,
+                "listDegree": 0,
+                "remainingErasures": 6,
+                "symbolErrors": 1,
+                "assignment": 7,
+                "method": "WU",
+                "score": null,
+                "scoreThreshold": null
+              },
+              "knownBitErrors": null,
+              "imageErasures": []
+            }
+          ],
+          "searchDiagnostic": {
+            "inputBlocker": null,
+            "candidateRejections": [
+              "QR_STRUCTURE"
+            ],
+            "acceptedCandidate": true,
+            "decodedCandidate": false,
+            "singleSegmentRetryAvailable": false,
+            "unresolvedCalculations": true,
+            "unsearched": false,
+            "incompleteReasons": [],
+            "completedSteps": 15,
+            "coverageComplete": true,
+            "solverCompleteness": "COMPLETE",
+            "candidateCalculations": 9,
+            "candidatesOmitted": false,
+            "derivationsOmitted": false,
+            "singleSegmentStatuses": [],
+            "priorityHeaderHypotheses": [],
+            "listDecoding": {
+              "trials": 32,
+              "interpolations": 0,
+              "elapsedMillis": 129,
+              "mismatchLimits": [
+                11
+              ],
+              "skipReasons": [
+                "TOO_MANY_ERASURES",
+                "KV_PARAMETERS_UNAVAILABLE",
+                "NO_ADDITIONAL_RADIUS"
+              ],
+              "methodTrials": {
+                "WU": 32
+              },
+              "reusedTrials": 0,
+              "extensionLimits": [
+                1
+              ],
+              "hardRadiusTrials": {
+                "1": 32
+              },
+              "completedHardRadiusTrials": {
+                "1": 32
+              }
+            },
+            "knownBitSearchAttempted": false,
+            "knownBitTrials": 0,
+            "listDecodingExecution": {
+              "stages": {
+                "WITHOUT_ASSIGNMENTS": [
+                  "INELIGIBLE"
+                ],
+                "ADDITIONAL": [
+                  "COMPLETED"
+                ]
+              },
+              "newTrials": {
+                "WITHOUT_ASSIGNMENTS": 0,
+                "ADDITIONAL": 32
+              }
+            },
+            "formatOutcomes": [
+              {
+                "ecLevel": "L",
+                "dataMask": 0,
+                "state": "UNRESOLVED",
+                "hasCandidate": true,
+                "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+              }
+            ]
+          },
+          "inputQuad": [
+            [
+              54.0,
+              54.0
+            ],
+            [
+              294.0,
+              54.0
+            ],
+            [
+              294.0,
+              294.0
+            ],
+            [
+              54.0,
+              294.0
+            ]
+          ]
+        },
+        {
+          "version": 1,
+          "ecc": "L",
+          "mask": 0,
+          "text": null,
+          "selectableRecovery": true,
+          "score": 1065,
+          "codewords": [
+            64,
+            245,
+            20,
+            38,
+            86,
+            103,
+            146,
+            7,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            86,
+            66,
+            231,
+            157,
+            11,
+            23,
+            122,
+            96,
+            220,
+            234,
+            119,
+            218
+          ],
+          "dataBytes": [
+            64,
+            245,
+            20,
+            38,
+            86,
+            103,
+            146,
+            7,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            86,
+            66,
+            231,
+            157,
+            11
+          ],
+          "knownMismatches": 4,
+          "knownCompared": 155,
+          "partialGuessedBits": 4,
+          "constraintFilledBits": 0,
+          "singleSegmentStatus": null,
+          "constraintForcedByUserSetting": false,
+          "priorityAssignments": [
+            [
+              19,
+              20,
+              "1"
+            ]
+          ],
+          "conventionalRs": {
+            "blocks": [
+              {
+                "blockIndex": 0,
+                "totalSymbols": 26,
+                "dataSymbols": 19,
+                "eccSymbols": 7,
+                "erasures": 8,
+                "errors": null,
+                "margin": null,
+                "status": "ERASURE_CAPACITY_EXCEEDED"
+              }
+            ],
+            "correctedInterleaved": null,
+            "knownBitMismatches": null,
+            "knownBitMismatchLimit": 11,
+            "manualConflicts": [],
+            "qrStructureValid": null
+          },
+          "actualBlockMethods": [
+            {
+              "blockIndex": 0,
+              "bitConstraintSolved": false,
+              "rsMargin": null,
+              "guessedBits": 4,
+              "listDecoding": {
+                "radius": 1,
+                "multiplicity": 0,
+                "listDegree": 0,
+                "remainingErasures": 6,
+                "symbolErrors": 1,
+                "assignment": 7,
+                "method": "WU",
+                "score": null,
+                "scoreThreshold": null
+              },
+              "knownBitErrors": null,
+              "imageErasures": []
+            }
+          ],
+          "searchDiagnostic": {
+            "inputBlocker": null,
+            "candidateRejections": [
+              "QR_STRUCTURE"
+            ],
+            "acceptedCandidate": true,
+            "decodedCandidate": false,
+            "singleSegmentRetryAvailable": false,
+            "unresolvedCalculations": true,
+            "unsearched": false,
+            "incompleteReasons": [],
+            "completedSteps": 15,
+            "coverageComplete": true,
+            "solverCompleteness": "COMPLETE",
+            "candidateCalculations": 9,
+            "candidatesOmitted": false,
+            "derivationsOmitted": false,
+            "singleSegmentStatuses": [],
+            "priorityHeaderHypotheses": [],
+            "listDecoding": {
+              "trials": 32,
+              "interpolations": 0,
+              "elapsedMillis": 129,
+              "mismatchLimits": [
+                11
+              ],
+              "skipReasons": [
+                "TOO_MANY_ERASURES",
+                "KV_PARAMETERS_UNAVAILABLE",
+                "NO_ADDITIONAL_RADIUS"
+              ],
+              "methodTrials": {
+                "WU": 32
+              },
+              "reusedTrials": 0,
+              "extensionLimits": [
+                1
+              ],
+              "hardRadiusTrials": {
+                "1": 32
+              },
+              "completedHardRadiusTrials": {
+                "1": 32
+              }
+            },
+            "knownBitSearchAttempted": false,
+            "knownBitTrials": 0,
+            "listDecodingExecution": {
+              "stages": {
+                "WITHOUT_ASSIGNMENTS": [
+                  "INELIGIBLE"
+                ],
+                "ADDITIONAL": [
+                  "COMPLETED"
+                ]
+              },
+              "newTrials": {
+                "WITHOUT_ASSIGNMENTS": 0,
+                "ADDITIONAL": 32
+              }
+            },
+            "formatOutcomes": [
+              {
+                "ecLevel": "L",
+                "dataMask": 0,
+                "state": "UNRESOLVED",
+                "hasCandidate": true,
+                "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+              }
+            ]
+          },
+          "inputQuad": [
+            [
+              54.0,
+              54.0
+            ],
+            [
+              294.0,
+              54.0
+            ],
+            [
+              294.0,
+              294.0
+            ],
+            [
+              54.0,
+              294.0
+            ]
+          ]
+        },
+        {
+          "version": 1,
+          "ecc": "L",
+          "mask": 0,
+          "text": null,
+          "selectableRecovery": true,
+          "score": 1065,
+          "codewords": [
+            64,
+            245,
+            71,
+            38,
+            86,
+            103,
+            146,
+            7,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            86,
+            66,
+            231,
+            174,
+            77,
+            227,
+            252,
+            24,
+            197,
+            234,
+            66,
+            218
+          ],
+          "dataBytes": [
+            64,
+            245,
+            71,
+            38,
+            86,
+            103,
+            146,
+            7,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            86,
+            66,
+            231,
+            174,
+            77
+          ],
+          "knownMismatches": 4,
+          "knownCompared": 155,
+          "partialGuessedBits": 4,
+          "constraintFilledBits": 0,
+          "singleSegmentStatus": null,
+          "constraintForcedByUserSetting": false,
+          "priorityAssignments": [
+            [
+              19,
+              20,
+              "1"
+            ]
+          ],
+          "conventionalRs": {
+            "blocks": [
+              {
+                "blockIndex": 0,
+                "totalSymbols": 26,
+                "dataSymbols": 19,
+                "eccSymbols": 7,
+                "erasures": 8,
+                "errors": null,
+                "margin": null,
+                "status": "ERASURE_CAPACITY_EXCEEDED"
+              }
+            ],
+            "correctedInterleaved": null,
+            "knownBitMismatches": null,
+            "knownBitMismatchLimit": 11,
+            "manualConflicts": [],
+            "qrStructureValid": null
+          },
+          "actualBlockMethods": [
+            {
+              "blockIndex": 0,
+              "bitConstraintSolved": false,
+              "rsMargin": null,
+              "guessedBits": 4,
+              "listDecoding": {
+                "radius": 1,
+                "multiplicity": 0,
+                "listDegree": 0,
+                "remainingErasures": 6,
+                "symbolErrors": 1,
+                "assignment": 7,
+                "method": "WU",
+                "score": null,
+                "scoreThreshold": null
+              },
+              "knownBitErrors": null,
+              "imageErasures": []
+            }
+          ],
+          "searchDiagnostic": {
+            "inputBlocker": null,
+            "candidateRejections": [
+              "QR_STRUCTURE"
+            ],
+            "acceptedCandidate": true,
+            "decodedCandidate": false,
+            "singleSegmentRetryAvailable": false,
+            "unresolvedCalculations": true,
+            "unsearched": false,
+            "incompleteReasons": [],
+            "completedSteps": 15,
+            "coverageComplete": true,
+            "solverCompleteness": "COMPLETE",
+            "candidateCalculations": 9,
+            "candidatesOmitted": false,
+            "derivationsOmitted": false,
+            "singleSegmentStatuses": [],
+            "priorityHeaderHypotheses": [],
+            "listDecoding": {
+              "trials": 32,
+              "interpolations": 0,
+              "elapsedMillis": 129,
+              "mismatchLimits": [
+                11
+              ],
+              "skipReasons": [
+                "TOO_MANY_ERASURES",
+                "KV_PARAMETERS_UNAVAILABLE",
+                "NO_ADDITIONAL_RADIUS"
+              ],
+              "methodTrials": {
+                "WU": 32
+              },
+              "reusedTrials": 0,
+              "extensionLimits": [
+                1
+              ],
+              "hardRadiusTrials": {
+                "1": 32
+              },
+              "completedHardRadiusTrials": {
+                "1": 32
+              }
+            },
+            "knownBitSearchAttempted": false,
+            "knownBitTrials": 0,
+            "listDecodingExecution": {
+              "stages": {
+                "WITHOUT_ASSIGNMENTS": [
+                  "INELIGIBLE"
+                ],
+                "ADDITIONAL": [
+                  "COMPLETED"
+                ]
+              },
+              "newTrials": {
+                "WITHOUT_ASSIGNMENTS": 0,
+                "ADDITIONAL": 32
+              }
+            },
+            "formatOutcomes": [
+              {
+                "ecLevel": "L",
+                "dataMask": 0,
+                "state": "UNRESOLVED",
+                "hasCandidate": true,
+                "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+              }
+            ]
+          },
+          "inputQuad": [
+            [
+              54.0,
+              54.0
+            ],
+            [
+              294.0,
+              54.0
+            ],
+            [
+              294.0,
+              294.0
+            ],
+            [
+              54.0,
+              294.0
+            ]
+          ]
+        },
+        {
+          "version": 1,
+          "ecc": "L",
+          "mask": 0,
+          "text": null,
+          "selectableRecovery": true,
+          "score": 1365,
+          "codewords": [
+            64,
+            245,
+            20,
+            38,
+            86,
+            103,
+            146,
+            7,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            86,
+            66,
+            231,
+            176,
+            17,
+            148,
+            188,
+            30,
+            222,
+            209,
+            66,
+            218
+          ],
+          "dataBytes": [
+            64,
+            245,
+            20,
+            38,
+            86,
+            103,
+            146,
+            7,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            86,
+            66,
+            231,
+            176,
+            17
+          ],
+          "knownMismatches": 5,
+          "knownCompared": 155,
+          "partialGuessedBits": 4,
+          "constraintFilledBits": 0,
+          "singleSegmentStatus": null,
+          "constraintForcedByUserSetting": false,
+          "priorityAssignments": [
+            [
+              19,
+              20,
+              "1"
+            ]
+          ],
+          "conventionalRs": {
+            "blocks": [
+              {
+                "blockIndex": 0,
+                "totalSymbols": 26,
+                "dataSymbols": 19,
+                "eccSymbols": 7,
+                "erasures": 8,
+                "errors": null,
+                "margin": null,
+                "status": "ERASURE_CAPACITY_EXCEEDED"
+              }
+            ],
+            "correctedInterleaved": null,
+            "knownBitMismatches": null,
+            "knownBitMismatchLimit": 11,
+            "manualConflicts": [],
+            "qrStructureValid": null
+          },
+          "actualBlockMethods": [
+            {
+              "blockIndex": 0,
+              "bitConstraintSolved": false,
+              "rsMargin": null,
+              "guessedBits": 4,
+              "listDecoding": {
+                "radius": 1,
+                "multiplicity": 0,
+                "listDegree": 0,
+                "remainingErasures": 6,
+                "symbolErrors": 1,
+                "assignment": 7,
+                "method": "WU",
+                "score": null,
+                "scoreThreshold": null
+              },
+              "knownBitErrors": null,
+              "imageErasures": []
+            }
+          ],
+          "searchDiagnostic": {
+            "inputBlocker": null,
+            "candidateRejections": [
+              "QR_STRUCTURE"
+            ],
+            "acceptedCandidate": true,
+            "decodedCandidate": false,
+            "singleSegmentRetryAvailable": false,
+            "unresolvedCalculations": true,
+            "unsearched": false,
+            "incompleteReasons": [],
+            "completedSteps": 15,
+            "coverageComplete": true,
+            "solverCompleteness": "COMPLETE",
+            "candidateCalculations": 9,
+            "candidatesOmitted": false,
+            "derivationsOmitted": false,
+            "singleSegmentStatuses": [],
+            "priorityHeaderHypotheses": [],
+            "listDecoding": {
+              "trials": 32,
+              "interpolations": 0,
+              "elapsedMillis": 129,
+              "mismatchLimits": [
+                11
+              ],
+              "skipReasons": [
+                "TOO_MANY_ERASURES",
+                "KV_PARAMETERS_UNAVAILABLE",
+                "NO_ADDITIONAL_RADIUS"
+              ],
+              "methodTrials": {
+                "WU": 32
+              },
+              "reusedTrials": 0,
+              "extensionLimits": [
+                1
+              ],
+              "hardRadiusTrials": {
+                "1": 32
+              },
+              "completedHardRadiusTrials": {
+                "1": 32
+              }
+            },
+            "knownBitSearchAttempted": false,
+            "knownBitTrials": 0,
+            "listDecodingExecution": {
+              "stages": {
+                "WITHOUT_ASSIGNMENTS": [
+                  "INELIGIBLE"
+                ],
+                "ADDITIONAL": [
+                  "COMPLETED"
+                ]
+              },
+              "newTrials": {
+                "WITHOUT_ASSIGNMENTS": 0,
+                "ADDITIONAL": 32
+              }
+            },
+            "formatOutcomes": [
+              {
+                "ecLevel": "L",
+                "dataMask": 0,
+                "state": "UNRESOLVED",
+                "hasCandidate": true,
+                "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+              }
+            ]
+          },
+          "inputQuad": [
+            [
+              54.0,
+              54.0
+            ],
+            [
+              294.0,
+              54.0
+            ],
+            [
+              294.0,
+              294.0
+            ],
+            [
+              54.0,
+              294.0
+            ]
+          ]
+        },
+        {
+          "version": 1,
+          "ecc": "L",
+          "mask": 0,
+          "text": null,
+          "selectableRecovery": true,
+          "score": 1365,
+          "codewords": [
+            64,
+            245,
+            20,
+            38,
+            86,
+            103,
+            146,
+            7,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            86,
+            143,
+            231,
+            134,
+            108,
+            172,
+            203,
+            243,
+            193,
+            234,
+            66,
+            218
+          ],
+          "dataBytes": [
+            64,
+            245,
+            20,
+            38,
+            86,
+            103,
+            146,
+            7,
+            38,
+            87,
+            6,
+            22,
+            151,
+            38,
+            86,
+            143,
+            231,
+            134,
+            108
+          ],
+          "knownMismatches": 5,
+          "knownCompared": 155,
+          "partialGuessedBits": 4,
+          "constraintFilledBits": 0,
+          "singleSegmentStatus": null,
+          "constraintForcedByUserSetting": false,
+          "priorityAssignments": [
+            [
+              19,
+              20,
+              "1"
+            ]
+          ],
+          "conventionalRs": {
+            "blocks": [
+              {
+                "blockIndex": 0,
+                "totalSymbols": 26,
+                "dataSymbols": 19,
+                "eccSymbols": 7,
+                "erasures": 8,
+                "errors": null,
+                "margin": null,
+                "status": "ERASURE_CAPACITY_EXCEEDED"
+              }
+            ],
+            "correctedInterleaved": null,
+            "knownBitMismatches": null,
+            "knownBitMismatchLimit": 11,
+            "manualConflicts": [],
+            "qrStructureValid": null
+          },
+          "actualBlockMethods": [
+            {
+              "blockIndex": 0,
+              "bitConstraintSolved": false,
+              "rsMargin": null,
+              "guessedBits": 4,
+              "listDecoding": {
+                "radius": 1,
+                "multiplicity": 0,
+                "listDegree": 0,
+                "remainingErasures": 6,
+                "symbolErrors": 1,
+                "assignment": 7,
+                "method": "WU",
+                "score": null,
+                "scoreThreshold": null
+              },
+              "knownBitErrors": null,
+              "imageErasures": []
+            }
+          ],
+          "searchDiagnostic": {
+            "inputBlocker": null,
+            "candidateRejections": [
+              "QR_STRUCTURE"
+            ],
+            "acceptedCandidate": true,
+            "decodedCandidate": false,
+            "singleSegmentRetryAvailable": false,
+            "unresolvedCalculations": true,
+            "unsearched": false,
+            "incompleteReasons": [],
+            "completedSteps": 15,
+            "coverageComplete": true,
+            "solverCompleteness": "COMPLETE",
+            "candidateCalculations": 9,
+            "candidatesOmitted": false,
+            "derivationsOmitted": false,
+            "singleSegmentStatuses": [],
+            "priorityHeaderHypotheses": [],
+            "listDecoding": {
+              "trials": 32,
+              "interpolations": 0,
+              "elapsedMillis": 129,
+              "mismatchLimits": [
+                11
+              ],
+              "skipReasons": [
+                "TOO_MANY_ERASURES",
+                "KV_PARAMETERS_UNAVAILABLE",
+                "NO_ADDITIONAL_RADIUS"
+              ],
+              "methodTrials": {
+                "WU": 32
+              },
+              "reusedTrials": 0,
+              "extensionLimits": [
+                1
+              ],
+              "hardRadiusTrials": {
+                "1": 32
+              },
+              "completedHardRadiusTrials": {
+                "1": 32
+              }
+            },
+            "knownBitSearchAttempted": false,
+            "knownBitTrials": 0,
+            "listDecodingExecution": {
+              "stages": {
+                "WITHOUT_ASSIGNMENTS": [
+                  "INELIGIBLE"
+                ],
+                "ADDITIONAL": [
+                  "COMPLETED"
+                ]
+              },
+              "newTrials": {
+                "WITHOUT_ASSIGNMENTS": 0,
+                "ADDITIONAL": 32
+              }
+            },
+            "formatOutcomes": [
+              {
+                "ecLevel": "L",
+                "dataMask": 0,
+                "state": "UNRESOLVED",
+                "hasCandidate": true,
+                "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+              }
+            ]
+          },
+          "inputQuad": [
+            [
+              54.0,
+              54.0
+            ],
+            [
+              294.0,
+              54.0
+            ],
+            [
+              294.0,
+              294.0
+            ],
+            [
+              54.0,
+              294.0
+            ]
+          ]
+        }
+      ],
       "search_diagnostic": {
         "inputBlocker": null,
         "candidateRejections": [
-          "QR_STRUCTURE",
-          "LIST_DECODING_MISMATCH_LIMIT"
+          "QR_STRUCTURE"
         ],
-        "acceptedCandidate": false,
+        "acceptedCandidate": true,
+        "decodedCandidate": false,
+        "singleSegmentRetryAvailable": false,
         "unresolvedCalculations": true,
         "unsearched": false,
         "incompleteReasons": [],
@@ -579,9 +3340,9 @@
         "listDecoding": {
           "trials": 32,
           "interpolations": 0,
-          "elapsedMillis": 95,
+          "elapsedMillis": 129,
           "mismatchLimits": [
-            2
+            11
           ],
           "skipReasons": [
             "TOO_MANY_ERASURES",
@@ -602,6 +3363,8 @@
             "1": 32
           }
         },
+        "knownBitSearchAttempted": false,
+        "knownBitTrials": 0,
         "listDecodingExecution": {
           "stages": {
             "WITHOUT_ASSIGNMENTS": [
@@ -615,17 +3378,31 @@
             "WITHOUT_ASSIGNMENTS": 0,
             "ADDITIONAL": 32
           }
-        }
+        },
+        "formatOutcomes": [
+          {
+            "ecLevel": "L",
+            "dataMask": 0,
+            "state": "UNRESOLVED",
+            "hasCandidate": true,
+            "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+          }
+        ]
       },
       "failure_reason": null
     },
     {
       "action": "list-disabled",
       "candidate_count": 0,
+      "validated_candidate_count": 0,
+      "text_candidate_count": 0,
+      "candidates": [],
       "search_diagnostic": {
         "inputBlocker": null,
         "candidateRejections": [],
         "acceptedCandidate": false,
+        "decodedCandidate": false,
+        "singleSegmentRetryAvailable": false,
         "unresolvedCalculations": true,
         "unsearched": true,
         "incompleteReasons": [
@@ -651,7 +3428,7 @@
           "interpolations": 0,
           "elapsedMillis": 0,
           "mismatchLimits": [
-            2
+            11
           ],
           "skipReasons": [],
           "methodTrials": {},
@@ -662,6 +3439,8 @@
           "hardRadiusTrials": {},
           "completedHardRadiusTrials": {}
         },
+        "knownBitSearchAttempted": false,
+        "knownBitTrials": 0,
         "listDecodingExecution": {
           "stages": {
             "WITHOUT_ASSIGNMENTS": [
@@ -675,18 +3454,32 @@
             "WITHOUT_ASSIGNMENTS": 0,
             "ADDITIONAL": 0
           }
-        }
+        },
+        "formatOutcomes": [
+          {
+            "ecLevel": "L",
+            "dataMask": 0,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+          }
+        ]
       },
       "failure_reason": "NO_RS_CONSISTENT_ASSIGNMENT"
     },
     {
       "action": "ordinary-unknowns",
       "candidate_count": 0,
+      "validated_candidate_count": 0,
+      "text_candidate_count": 0,
+      "candidates": [],
       "search_diagnostic": {
         "inputBlocker": null,
         "candidateRejections": [],
         "acceptedCandidate": false,
-        "unresolvedCalculations": false,
+        "decodedCandidate": false,
+        "singleSegmentRetryAvailable": false,
+        "unresolvedCalculations": true,
         "unsearched": false,
         "incompleteReasons": [],
         "completedSteps": 6,
@@ -702,9 +3495,9 @@
         "listDecoding": {
           "trials": 0,
           "interpolations": 0,
-          "elapsedMillis": 1,
+          "elapsedMillis": 0,
           "mismatchLimits": [
-            2
+            11
           ],
           "skipReasons": [],
           "methodTrials": {},
@@ -715,6 +3508,8 @@
           "hardRadiusTrials": {},
           "completedHardRadiusTrials": {}
         },
+        "knownBitSearchAttempted": false,
+        "knownBitTrials": 0,
         "listDecodingExecution": {
           "stages": {
             "WITHOUT_ASSIGNMENTS": [
@@ -728,7 +3523,16 @@
             "WITHOUT_ASSIGNMENTS": 0,
             "ADDITIONAL": 0
           }
-        }
+        },
+        "formatOutcomes": [
+          {
+            "ecLevel": "L",
+            "dataMask": 0,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "SINGLE_SEGMENT_HEADER_UNRESOLVED"
+          }
+        ]
       },
       "failure_reason": "SINGLE_SEGMENT_CONDITION_UNAVAILABLE"
     }
@@ -738,6 +3542,7 @@
     "ecc": "L",
     "mask": 0,
     "text": "QRevy repaired.",
+    "selectableRecovery": true,
     "score": -199614,
     "codewords": [
       64,
@@ -816,7 +3621,7 @@
       ],
       "correctedInterleaved": null,
       "knownBitMismatches": null,
-      "knownBitMismatchLimit": 2,
+      "knownBitMismatchLimit": 11,
       "manualConflicts": [],
       "qrStructureValid": null
     },
@@ -836,16 +3641,18 @@
           "method": "WU",
           "score": null,
           "scoreThreshold": null
-        }
+        },
+        "knownBitErrors": null,
+        "imageErasures": []
       }
     ],
     "searchDiagnostic": {
       "inputBlocker": null,
-      "candidateRejections": [
-        "LIST_DECODING_MISMATCH_LIMIT"
-      ],
+      "candidateRejections": [],
       "acceptedCandidate": true,
-      "unresolvedCalculations": true,
+      "decodedCandidate": true,
+      "singleSegmentRetryAvailable": false,
+      "unresolvedCalculations": false,
       "unsearched": false,
       "incompleteReasons": [],
       "completedSteps": 14,
@@ -866,9 +3673,9 @@
       "listDecoding": {
         "trials": 1,
         "interpolations": 0,
-        "elapsedMillis": 56,
+        "elapsedMillis": 48,
         "mismatchLimits": [
-          2
+          11
         ],
         "skipReasons": [],
         "methodTrials": {
@@ -885,6 +3692,8 @@
           "2": 1
         }
       },
+      "knownBitSearchAttempted": false,
+      "knownBitTrials": 0,
       "listDecodingExecution": {
         "stages": {
           "WITHOUT_ASSIGNMENTS": [
@@ -898,7 +3707,16 @@
           "WITHOUT_ASSIGNMENTS": 0,
           "ADDITIONAL": 1
         }
-      }
+      },
+      "formatOutcomes": [
+        {
+          "ecLevel": "L",
+          "dataMask": 0,
+          "state": "CANDIDATE",
+          "hasCandidate": true,
+          "reason": "VALIDATED_CANDIDATE"
+        }
+      ]
     },
     "inputQuad": [
       [
@@ -931,7 +3749,7 @@
       "zxing_java": true
     }
   },
-  "core_source_sha256": "1c3639f4c5c6ff2d755e6baefefba05898dabbb307b4cafdc0f6daed8cfbf75d",
+  "core_source_sha256": "fdafc71ea1c84495cb027b338f03717747ba2a40fdd60a989aff3ccc47d7c7a8",
   "generator_packages": {
     "qrcode": "8.2",
     "Pillow": "11.3.0",

@@ -14,24 +14,67 @@ enum class InitialGridSource { ZXING_CPP, PERIODICITY, TWO_FINDER }
 
 /** Combines externally detected boundaries with the finder-independent periodicity fallback. */
 object InitialGridEstimator {
-    fun estimate(image: LumaImage, detectedBoundaries: List<ImageQuad>): InitialGridEstimate? {
+    fun estimate(image: LumaImage, detectedBoundaries: List<ImageQuad>,
+        cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
+        trace: GridEstimationTrace? = null): InitialGridEstimate? {
+        cancellation.check()
         // Validate every boundary before coalescing: an unverified extra symbol must not
         // disappear merely because another candidate is strong enough to assign roles.
         val inverse by lazy { LumaImage(image.width, image.height, IntArray(image.pixels.size) { 255 - image.pixels[it] }) }
-        val estimates = detectedBoundaries.map { fromBoundary(image, inverse, it) }
+        val estimates = trace.measure("NATIVE_BOUNDARIES") {
+            detectedBoundaries.map { fromBoundary(image, inverse, it, cancellation) }
+        }
         val native = if (estimates.all { it != null }) mergeNativeEstimates(estimates.filterNotNull()) else null
         if (native != null) return native
-        fun periodicity(input: LumaImage) = GridPeriodicityEstimator.estimate(input)?.let {
+        fun periodicity(input: LumaImage) = GridPeriodicityEstimator.estimate(input, cancellation, trace)?.let {
             InitialGridEstimate(it.version, it.moduleCenterQuad, InitialGridSource.PERIODICITY)
         }
-        val normalPeriodicity = periodicity(image)
-        val invertedPeriodicity = periodicity(inverse)
-        // A conflict is not a detection failure: do not hide it with a later fallback.
+        val normalPeriodicity = trace.measure("NORMAL_PERIODICITY") { periodicity(image) }
+        val invertedPeriodicity = trace.measure("INVERTED_PERIODICITY") { periodicity(inverse) }
         if (normalPeriodicity != null || invertedPeriodicity != null) {
-            return mergePolarityEstimates(normalPeriodicity, invertedPeriodicity)
+            val merged = mergePolarityEstimates(normalPeriodicity, invertedPeriodicity)
+            if (merged != null || normalPeriodicity == null || invertedPeriodicity == null || detectedBoundaries.size > 1)
+                return merged
+            // An inverted quiet zone can look like a larger periodic grid. Resolve only with
+            // independently verified QR structure; unresolved conflicts still stop the fallback.
+            return trace.measure("POLARITY_CHECK") {
+                resolvePeriodicityConflict(image, inverse, normalPeriodicity, invertedPeriodicity, cancellation)
+            }
         }
         if (detectedBoundaries.size > 1) return null
-        return mergePolarityEstimates(TwoFinderGridEstimator.estimate(image), TwoFinderGridEstimator.estimate(inverse))
+        return mergePolarityEstimates(
+            trace.measure("NORMAL_TWO_FINDERS") { TwoFinderGridEstimator.estimate(image, cancellation) },
+            trace.measure("INVERTED_TWO_FINDERS") { TwoFinderGridEstimator.estimate(inverse, cancellation) })
+    }
+
+    /** Preserve periodicity geometry and role assignment; this only adjudicates conflicting grids. */
+    internal fun resolvePeriodicityConflict(image: LumaImage, inverse: LumaImage,
+        normal: InitialGridEstimate, inverted: InitialGridEstimate,
+        cancellation: RecoveryCancellation = RecoveryCancellation.NONE): InitialGridEstimate? {
+        fun supported(input: LumaImage, estimate: InitialGridEstimate): Boolean {
+            cancellation.check()
+            val last = (16 + 4 * estimate.version).toDouble()
+            return try {
+                val h = Homography.fromCorrespondences(
+                    listOf(PointD(0.0, 0.0), PointD(last, 0.0), PointD(last, last), PointD(0.0, last)),
+                    estimate.moduleCenterQuad.asList())
+                val boundary = ImageQuad(h.map(-.5, -.5), h.map(last + .5, -.5),
+                    h.map(last + .5, last + .5), h.map(-.5, last + .5))
+                // Reuse the boundary verifier's strict three-Finder, separator, timing and
+                // centering checks. Test only the proposed version, not a new version search.
+                fromNormalizedBoundary(input, boundary, cancellation, estimate.version..estimate.version)
+                    ?.autoAssignedFinders?.size == 3
+            } catch (_: IllegalArgumentException) {
+                false
+            }
+        }
+        val normalSupported = supported(image, normal)
+        val invertedSupported = supported(inverse, inverted)
+        return when {
+            normalSupported == invertedSupported -> null
+            normalSupported -> normal
+            else -> inverted
+        }
     }
 
     /** Both inputs use source-image coordinates; only image-verified roles establish polarity. */
@@ -81,9 +124,10 @@ object InitialGridEstimator {
         fromBoundary(image, LumaImage(image.width, image.height,
             IntArray(image.pixels.size) { 255 - image.pixels[it] }), boundary)
 
-    private fun fromBoundary(image: LumaImage, inverse: LumaImage, boundary: ImageQuad): InitialGridEstimate? {
-        val normal = fromNormalizedBoundary(image, boundary)
-        val inverted = fromNormalizedBoundary(inverse, boundary)
+    private fun fromBoundary(image: LumaImage, inverse: LumaImage, boundary: ImageQuad,
+        cancellation: RecoveryCancellation = RecoveryCancellation.NONE): InitialGridEstimate? {
+        val normal = fromNormalizedBoundary(image, boundary, cancellation)
+        val inverted = fromNormalizedBoundary(inverse, boundary, cancellation)
         // Conflicting polarity evidence must not silently select an orientation.
         if (normal != null && inverted != null) return null
         val result = normal ?: inverted ?: return null
@@ -91,7 +135,9 @@ object InitialGridEstimator {
             else if (normal != null) FinderPolarity.NORMAL else FinderPolarity.INVERTED)
     }
 
-    private fun fromNormalizedBoundary(image: LumaImage, boundary: ImageQuad): InitialGridEstimate? {
+    private fun fromNormalizedBoundary(image: LumaImage, boundary: ImageQuad,
+        cancellation: RecoveryCancellation, versions: IntRange = 1..40): InitialGridEstimate? {
+        cancellation.check()
         val points = boundary.asList()
         if (points.any { !it.x.isFinite() || !it.y.isFinite() }) return null
         for (i in 0..3) {
@@ -105,7 +151,8 @@ object InitialGridEstimator {
             val worstFinderMismatch: Double, val timingMismatch: Double, val separatorMismatch: Double)
         val allScores = mutableListOf<Double>()
         val choices = mutableListOf<Choice>()
-        for (version in 1..40) {
+        for (version in versions) {
+            cancellation.check()
             val n = 17 + 4 * version
             if ((0..3).any { points[it].distanceTo(points[(it + 1) % 4]) / n < .75 }) continue
             for (rotation in 0..3) {

@@ -13,6 +13,7 @@ data class RecoveryDisplayConditions(
     val listDecodingAdditionalErrors: Int = ListDecodingLimit.DEFAULT,
     val knownBitErrorLimit: Int = 0,
     val assumeUtf8ByteSegments: Boolean = false,
+    val exactSpaceBitLimit: Int = partialBitSearchLimit,
 )
 
 fun inputAgreementText(known: Int, mismatches: Int, format: Boolean, compact: Boolean = false): String {
@@ -51,13 +52,26 @@ fun RecoveryDisplayConditions.listDecodingLimitText(): String = if (listDecoding
 else localizedText("通常RSからの追加探索上限: ＋${listDecodingAdditionalErrors}語／RSブロック（GS・Wu）",
     "List-decoding extension limit: +$listDecodingAdditionalErrors symbols per RS block (GS/Wu)")
 
+fun RecoveryDisplayConditions.bitSearchLimitText(): String = buildString {
+    append(if (partialBitSearchLimit == 0) localizedText(
+        "「?」の白黒を仮定する探索: OFF", "Search by assuming black/white values for ?: OFF")
+    else localizedText(
+        "「?」の白黒を仮定する探索: 最大${partialBitSearchLimit}bit／RSブロック",
+        "Search by assuming black/white values for ?: up to $partialBitSearchLimit bits per RS block"))
+    append(localizedText(
+        "\n既知bitを維持するRS解の残余自由度上限: ${exactSpaceBitLimit}bit／RSブロック",
+        "\nExact RS residual dimension limit: $exactSpaceBitLimit bits per RS block"))
+    append(localizedText(
+        "\n「*」で指定したセルの0/1探索は、この上限の対象外です。OFFでも、RSの条件から不明セルの値を求める処理は行います。",
+        "\nThe 0/1 search for cells marked * is outside this limit. Even when OFF, RS constraints are still used to solve unknown cells."))
+}
+
 fun RecoveryCandidate.conditionText(): String = buildString {
     val conditions = displayConditions
     conditions?.let {
         append(localizedText("既知bit誤り探索: ${it.knownBitErrorLimit}bit（0はOFF）\n", "Known-bit error search: ${it.knownBitErrorLimit} bits (0 is off)\n"))
         append(it.limitText(true)).append('\n').append(it.limitText(false))
-        append(localizedText("\n部分bit探索・自由度の上限: ${it.partialBitSearchLimit}bit／RSブロック",
-            "\nPartial-bit search / dimension limit: ${it.partialBitSearchLimit} bits per RS block"))
+        append('\n').append(it.bitSearchLimitText())
         append('\n').append(it.listDecodingLimitText())
         append(localizedText("\n形式の選択: ECC ", "\nFormat selection: ECC "))
         append(if (it.format?.ecLevel != null) localizedText("指定", "specified") else localizedText("自動", "automatic"))

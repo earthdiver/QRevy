@@ -11,19 +11,31 @@ internal data class RecoveryDiagnosticContext(
     val selectedEntry: RecoveryResultEntry?,
     val selectedCandidateNumber: Int? = null,
     val discoveredCandidates: RecoveryDiscoveryCount? = null,
+    val aggregatesTrials: Boolean = selectedEntry != null,
 )
 
 /** Builds diagnostic content without retaining an Activity, Views, or mutable UI state. */
 internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
     fun searchResultDescription(context: RecoveryDiagnosticContext): String {
         val diagnostic = searchEvidence(context)
+        if (context.aggregatesTrials) return listOf(
+            selectedTrialSummary(context),
+            ui("全試行の累積結果（条件・格子をまとめた集計）", "Cumulative results across trial conditions and grids"),
+            context.discoveredCandidates?.let { discoveryCountText(it, japanese) }.orEmpty(),
+            ui("結果一覧: ${context.candidateCount}件", "Results available: ${context.candidateCount}"),
+            ui("各候補に適用した条件は、候補を選択して確認できます。",
+                "Select a candidate to review the conditions applied to it."),
+            completionText(diagnostic), diagnostic.completionReasonsText(),
+            if (context.candidatesOmitted || diagnostic.candidatesOmitted)
+                ui("保持上限により、一部の候補は省略しています。", "Some candidates were omitted at the retention limit.") else "",
+        ).filter(String::isNotBlank).joinToString("\n")
         val completeness = diagnostic.completeness
         val reasons = diagnostic.completionReasonsText()
         val description = if (diagnostic.coverageComplete && diagnostic.completedSteps == 0 &&
             SearchIncompleteReason.INTERNAL_ERROR in diagnostic.incompleteReasons) {
-            completeness.description() + "\n" + reasons
+            completionText(diagnostic) + "\n" + reasons
         } else searchResultText(context.candidateCount, completeness,
-            context.candidatesOmitted || diagnostic.candidatesOmitted, reasons)
+            context.candidatesOmitted || diagnostic.candidatesOmitted, reasons, completionText(diagnostic))
         val count = context.discoveredCandidates ?: return description
         return buildString {
             append(discoveryCountText(count, japanese))
@@ -49,7 +61,7 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
             append(ui("\n比較対象は、画像の読み取りと手動編集を反映した、修復開始時の既知の0/1です。",
                 "\nComparisons use known 0/1 values at repair start, including image sampling and manual edits."))
             append('\n').append(candidate.inputComparisonText())
-            append(ui("\n\n今回の探索全体\n", "\n\nSearch-wide results\n"))
+            append(if (context.aggregatesTrials) "\n\n" else ui("\n\n今回の探索全体\n", "\n\nSearch-wide results\n"))
             append(searchResultDescription(context))
         }
         val scope = context.selectedCandidateNumber?.let { number ->
@@ -160,14 +172,40 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
     private fun searchOverview(context: RecoveryDiagnosticContext): String {
         val diagnostic = searchEvidence(context)
         return listOf(
-            ui("今回の探索全体", "Search-wide status"),
-            diagnostic.completeness.description(),
+            selectedTrialSummary(context),
+            if (context.aggregatesTrials) ui("全試行の累積状況（異なる条件・格子を含む）",
+                "Cumulative status across trial conditions and grids") else ui("今回の探索全体", "Search-wide status"),
+            completionText(diagnostic),
             diagnostic.completionReasonsText(),
             if (context.candidatesOmitted || diagnostic.candidatesOmitted)
                 ui("候補の省略: あり（保持上限）", "Candidates omitted: yes (retention limit)")
             else ui("候補の省略: なし", "Candidates omitted: no"),
         ).filter(String::isNotBlank).joinToString("\n")
     }
+
+    private fun selectedTrialSummary(context: RecoveryDiagnosticContext): String {
+        if (!context.aggregatesTrials) return ""
+        val entry = context.selectedEntry ?: return ""
+        val count = entry.attempt.recoveries.filter { it.isSelectableRecovery }.map { it.identity() }.distinct().size
+        val diagnostic = entry.attempt.searchDiagnostic ?: entry.candidate.searchDiagnostic
+        return listOf(
+            ui("選択候補を得た試行（表示中の設定）", "Trial that produced the selected candidate (displayed settings)"),
+            ui("この試行の保持候補: ${count}件", "Candidates retained from this trial: $count"),
+            diagnostic?.let { completionText(it) } ?: ui("この試行の完了状況は記録されていません。",
+                "Completion of this trial was not recorded."),
+            if (diagnostic?.candidatesOmitted == true) ui("この試行には保持上限による候補の省略があります。",
+                "Some candidates from this trial were omitted at the retention limit.") else "",
+        ).filter(String::isNotBlank).joinToString("\n")
+    }
+
+    /** Display uncertainty without changing solver completeness or automatic acceptance. */
+    private fun completionText(diagnostic: RecoverySearchDiagnostic): String =
+        if (!diagnostic.unresolvedCalculations) diagnostic.completeness.description()
+        else if (diagnostic.completeness == SearchCompleteness.COMPLETE) ui(
+            "実行した探索処理は終了しましたが、未解決の処理が残っています。",
+            "The attempted search passes finished, but unresolved processing remains.")
+        else diagnostic.completeness.description() + "\n" + ui("未解決の処理も残っています。",
+            "Unresolved processing also remains.")
 
     private fun listDecodingIneligible(diagnostic: RecoverySearchDiagnostic?): Boolean =
         diagnostic?.listDecoding?.let { summary -> summary.trials == 0 && summary.reusedTrials == 0 &&
@@ -295,7 +333,7 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
             GeometryModel.TWO_FINDER -> ui("2 Finder", "Two Finder patterns")
             GeometryModel.AFFINE -> ui("アフィン変換", "Affine")
             GeometryModel.PROJECTIVE -> if (patternRefined) ui("固定パターンで射影補正", "Pattern-refined projective grid") else ui("射影変換", "Projective")
-            GeometryModel.MANUAL_PROJECTIVE -> ui("手動射影", "Manual projective")
+            GeometryModel.MANUAL_PROJECTIVE -> ui("四隅に基づく射影変換", "Projective mapping from four corners")
             GeometryModel.THIN_PLATE_SPLINE -> ui("曲面補正を使用", "Distortion correction applied")
         }
         val role = when (geometry.role) {

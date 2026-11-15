@@ -160,8 +160,12 @@ def main():
         for run in runs:
             action = run['request']['action']
             completed(run, list_disabled=action == 'list-disabled')
-            assert len(run['candidates']) == (1 if action == 'single-on' else 0), action
-        candidate = runs[0]['candidates'][0]
+            assert len(run['candidates']) == {'single-on': 2, 'single-off': 5}.get(action, 0), action
+        assert {c['text'] for c in runs[0]['candidates']} == {PAYLOAD, 'QBefy repair`d.'}
+        assert all(c['text'] is None for c in runs[1]['candidates'])
+        assert all(c['selectableRecovery'] for c in runs[1]['candidates'])
+        assert all(c['selectableRecovery'] for c in runs[0]['candidates'])
+        candidate = next(c for c in runs[0]['candidates'] if c['text'] == PAYLOAD)
         assert candidate['text'] == PAYLOAD
         assert (candidate['version'], candidate['ecc'], candidate['mask']) == (1, 'L', 0)
         assert [word & 255 for word in candidate['codewords']] == qr.data_cache
@@ -195,8 +199,12 @@ def main():
         image_runs = run_harness(harness, 'run', work / 'image-requests.jsonl', work / 'image-runs.jsonl')
         for run in image_runs:
             completed(run, list_disabled=run['request']['action'] == 'list-disabled')
-            assert len(run['candidates']) == (1 if run['request']['action'] == 'single-on' else 0)
-        image_candidate = image_runs[0]['candidates'][0]
+            assert len(run['candidates']) == {'single-on': 2, 'single-off': 5}.get(run['request']['action'], 0)
+        assert {c['text'] for c in image_runs[0]['candidates']} == {PAYLOAD, 'QBefy repair`d.'}
+        assert all(c['text'] is None for c in image_runs[1]['candidates'])
+        assert all(c['selectableRecovery'] for c in image_runs[1]['candidates'])
+        assert all(c['selectableRecovery'] for c in image_runs[0]['candidates'])
+        image_candidate = next(c for c in image_runs[0]['candidates'] if c['text'] == PAYLOAD)
         assert image_candidate['codewords'] == candidate['codewords']
         sampled = (work / image_candidate['inputMatrix']).read_text().splitlines()
         assert sampled == [row.replace('*', '?') for row in before]
@@ -229,6 +237,9 @@ def main():
         render(after, before=before).save(args.output / 'details.png')
         def comparison(run):
             return dict(action=run['request']['action'], candidate_count=len(run['candidates']),
+                        validated_candidate_count=sum(c['selectableRecovery'] for c in run['candidates']),
+                        text_candidate_count=sum(c['text'] is not None for c in run['candidates']),
+                        candidates=[{k: v for k, v in c.items() if k != 'inputMatrix'} for c in run['candidates']],
                         search_diagnostic=run['searchDiagnostic'],
                         failure_reason=(run.get('failure') or {}).get('reason'))
         # Keep runtime paths and timings out of the reproducible artifact's requests.
@@ -239,7 +250,7 @@ def main():
             erroneous_codewords_zero_based=list(ERROR_WORDS),
             erased_suffix_bit_range_half_open=[132, 152],
             settings=dict(single_segment_assumption=True, ecc='Automatic', mask='Automatic',
-                format_error_limit='Automatic (6 bits)', data_ecc_error_limit='Automatic (2 bits)',
+                format_error_limit='Automatic (6 bits)', data_ecc_error_limit='Automatic (11 bits; 5%)',
                 priority_search_limit=4, partial_bit_search_limit=12, list_decoding_additional_errors=1,
                 image_automatic_thresholds=True, image_black_max=preparation['blackMax'],
                 image_white_min=preparation['whiteMin']),
@@ -257,7 +268,7 @@ def main():
             sha256={p: hashlib.sha256((args.output / p).read_bytes()).hexdigest()
                     for p in ['before.txt', 'before.png', 'after.txt', 'after.png', 'details.png']})
         (args.output / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
-        print('Verified PNG and TEXT recovery: one exact candidate; no candidates without single-segment forcing or priority.')
+        print('Verified PNG and TEXT recovery: two text candidates, including the original; five structure-valid candidates without decoded text when single-segment forcing is off; none without priority.')
         print('Verified ordinary recovery with list stages disabled: no candidates.')
 
 

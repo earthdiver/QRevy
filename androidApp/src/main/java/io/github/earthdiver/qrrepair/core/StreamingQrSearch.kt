@@ -17,18 +17,24 @@ internal class StreamingQrSearch(private val rs: ReedSolomonErasures) {
         onStops: (Set<CombinationSearchStop>) -> Unit,
         onSearch: (SearchCompleteness) -> Unit,
         payloadChecks: RecoveryPayloadChecks = RecoveryPayloadChecks(),
+        exactSpaceBitLimit: Int = partialBitLimit,
+        maximumNodes: Int = 65_536,
+        stopAfterParsed: Int = Int.MAX_VALUE,
+        onNodes: (Int) -> Unit = {},
         evaluate: (List<PartialCodewordSolver.Result>) -> Boolean,
     ): Outcome {
         val stops = linkedSetOf<CombinationSearchStop>()
         var parsed = false
         var candidates = 0
+        var parsedCount = 0
+        var traversal: RsPayloadTraversal? = null
         val sources = mutableListOf<RsCandidateSource>()
         var working = 16_384L + spaces.sumOf { it?.restrictionWorkingBytes ?: 0L } + de.blocks.sumOf { 2048L + it.codewords.size * 64L + it.numDataCodewords * 4096L }
         try {
             for ((index, block) in de.blocks.withIndex()) {
                 cancellation.check()
                 val space = spaces[index]
-                val limit = if (allowEnumeration && nonEnumerable[index].isEmpty()) partialBitLimit else 0
+                val limit = if (allowEnumeration && nonEnumerable[index].isEmpty()) exactSpaceBitLimit else 0
                 val required = if (exactOnly) 0L else blockCandidateWorkingBytes(block, 0.takeIf { space?.dimension == 0 },
                     allowEnumeration, nonEnumerable[index], false, de.ecSymbolsPerBlock, partialBitSearchLimit = partialBitLimit)
                 if (required > workingLimitBytes - working) {
@@ -49,8 +55,9 @@ internal class StreamingQrSearch(private val rs: ReedSolomonErasures) {
                         else RsFailureReason.BIT_SPACE_LIMIT)
                 sources += RsCandidateSource(block, fixed, space, limit)
             }
-            val traversal = payloadChecks.traversal(sources, version, 65_536, cancellation)
-            val combinations = traversal.combinations { prefix ->
+            val activeTraversal = payloadChecks.traversal(sources, version, maximumNodes, cancellation)
+            traversal = activeTraversal
+            val combinations = activeTraversal.combinations { prefix ->
                 val data = prefix.flatMapIndexed { index, result ->
                     result.corrected.take(de.blocks[index].numDataCodewords).map { it.toByte() }
                 }.toByteArray()
@@ -61,13 +68,20 @@ internal class StreamingQrSearch(private val rs: ReedSolomonErasures) {
             for (combination in combinations) {
                 cancellation.check()
                 candidates++
-                parsed = evaluate(combination) || parsed
+                if (evaluate(combination)) { parsed = true; parsedCount++ }
+                if (parsedCount >= stopAfterParsed) {
+                    stops += CombinationSearchStop.COMBINATION_LIMIT
+                    break
+                }
             }
-            if (traversal.limited) stops += CombinationSearchStop.NODE_LIMIT
+            if (activeTraversal.limited) stops += CombinationSearchStop.NODE_LIMIT
             onSearch(SearchCompleteness.COMPLETE)
-            return if (candidates == 0 && traversal.dimensionLimitedBlock != null)
-                Outcome(parsed, candidates, traversal.dimensionLimitedBlock, RsFailureReason.BIT_SPACE_LIMIT)
+            return if (activeTraversal.dimensionLimitedBlock != null)
+                Outcome(parsed, candidates, activeTraversal.dimensionLimitedBlock, RsFailureReason.BIT_SPACE_LIMIT)
             else Outcome(parsed, candidates)
-        } finally { onStops(stops) }
+        } finally {
+            onNodes(traversal?.nodes ?: 0)
+            onStops(stops)
+        }
     }
 }

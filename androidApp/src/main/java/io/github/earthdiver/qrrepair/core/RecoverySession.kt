@@ -66,6 +66,10 @@ data class RecoverySnapshot(
     val samplingInverted: Boolean? = null,
     /** Runtime override; the editable preference remains unchanged. */
     val oneTimeSingleSegment: Boolean = false,
+    /** Automatic-scan conditions, separate from every editable preference. */
+    val automaticScanAssumption: AutomaticScanAssumption? = null,
+    /** Actual automatic list extension, independent of the editable detailed-analysis limit. */
+    val automaticScanListExtension: Int = 1,
 )
 
 data class RecoveryHistoryEntry(

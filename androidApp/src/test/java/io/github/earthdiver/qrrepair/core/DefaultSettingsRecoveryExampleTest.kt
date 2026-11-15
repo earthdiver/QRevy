@@ -43,7 +43,7 @@ class DefaultSettingsRecoveryExampleTest {
         assertEquals(4, defaults.prioritySearchLimit)
         assertEquals(12, defaults.partialBitSearchLimit)
         assertEquals(1, defaults.listDecodingAdditionalErrors)
-        assertEquals(2, defaults.effectiveDataEccMismatchLimit)
+        assertEquals(11, defaults.effectiveDataEccMismatchLimit)
         return RecoveryEngine().recoverWithDiagnostics(f.matrix,
             trustKnownPayloadCount = single,
             formatConstraint = defaults.formatConstraint,
@@ -57,7 +57,9 @@ class DefaultSettingsRecoveryExampleTest {
     @Test fun defaultSettingsRecoverTheOriginalThroughPriorityHeaderAndListDecoding() {
         val f = fixture()
         val outcome = recover(f, single = true)
-        val candidate = outcome.candidates.single()
+        assertEquals(setOf(text, "QBefy repair`d."), outcome.candidates.map { it.text }.toSet())
+        assertEquals(2, outcome.candidates.size)
+        val candidate = outcome.candidates.single { it.text == text }
         assertEquals(text, candidate.text)
         assertArrayEquals(f.original, candidate.correctedInterleaved)
         assertEquals(2, candidate.knownBitMismatchesAfterCorrection)
@@ -77,9 +79,13 @@ class DefaultSettingsRecoveryExampleTest {
         assertTrue(outcome.searchDiagnostic.incompleteReasons.isEmpty())
     }
 
-    @Test fun disablingTheSingleSegmentAssumptionReturnsNoCandidates() {
+    @Test fun disablingTheSingleSegmentAssumptionReturnsStructuredCandidatesWithoutDecodedText() {
         val outcome = recover(fixture(), single = false)
-        assertTrue(outcome.candidates.isEmpty())
+        assertEquals(5, outcome.candidates.size)
+        assertTrue(outcome.candidates.none { it.text == text })
+        assertTrue(outcome.candidates.all { it.text == null })
+        assertTrue(outcome.candidates.all { it.isSelectableRecovery })
+        assertEquals(setOf(4, 5), outcome.candidates.map { it.knownBitMismatchesAfterCorrection }.toSet())
         assertTrue(outcome.searchDiagnostic.coverageComplete)
         assertFalse(outcome.searchDiagnostic.unsearched)
         assertTrue(outcome.searchDiagnostic.incompleteReasons.isEmpty())

@@ -6,8 +6,8 @@ import kotlin.math.round
 
 /** Similarity grids from observed Finders; missing Finder roles are never assigned. */
 internal object TwoFinderGridEstimator {
-    fun estimate(image: LumaImage): InitialGridEstimate? {
-        val finders = FinderDetector(image).detect(6).filter {
+    fun estimate(image: LumaImage, cancellation: RecoveryCancellation = RecoveryCancellation.NONE): InitialGridEstimate? {
+        val finders = FinderDetector(image, cancellation = cancellation).detect(6).filter {
             it.evidence == FinderEvidence.COMPLETE_CROSS && it.score >= 1.0 && it.moduleSize >= 2.0
         }
         if (finders.size < 2) return null
@@ -15,6 +15,7 @@ internal object TwoFinderGridEstimator {
             val timing: TimingEvidence, val separatorsValid: Boolean)
         val choices = mutableListOf<Choice>()
         for (fit in GeometryFitter.twoFinderHypotheses(finders)) {
+            cancellation.check()
             val g = fit.geometry
             // V1 has only five timing cells per axis and no alignment: insufficient independent evidence.
             if (g.version < 2) continue

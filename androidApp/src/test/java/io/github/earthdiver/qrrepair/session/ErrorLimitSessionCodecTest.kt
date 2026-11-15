@@ -12,6 +12,60 @@ import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
 
 class ErrorLimitSessionCodecTest {
+    @Test fun previousDefaultsKeepTheirEffectiveLimitsAcrossAllVersionsAndHistoryEntries() {
+        val settings = (1..40).map { PreprocessSettings(version = it, dataEccMismatchLimit = 19).withInitialErrorLimits() }
+        val original = payload(settings.first()).copy(historyEntries = settings.map {
+            RecoveryHistoryEntry(kind = HistoryEventKind.SETTINGS, label = "Limits",
+                snapshot = RecoverySnapshot(null, null, null, -1, it))
+        }, historyCursor = 3)
+        val bytes = RecoverySessionCodec.encode(original)
+        // Schema 40 has the same field layout, but a different meaning for Default.
+        ByteBuffer.wrap(bytes).putInt(4, 40)
+        val restored = RecoverySessionCodec.decode(bytes)
+        assertEquals(3, restored.historyCursor)
+        for ((index, entry) in restored.historyEntries.withIndex()) {
+            val version = index + 1
+            val expected = if (version <= 4) ErrorLimitPolicy.strictData(version) else ErrorLimitPolicy.relaxedData(version)
+            val actual = requireNotNull(entry.snapshot.preprocessSettings)
+            assertEquals(settings[index].copy(dataEccMismatchLimitMode = ErrorLimitMode.MANUAL,
+                dataEccMismatchLimit = expected), actual)
+            assertEquals(expected, actual.effectiveDataEccMismatchLimit)
+        }
+        val resaved = RecoverySessionCodec.decode(RecoverySessionCodec.encode(restored))
+        assertEquals(restored.historyEntries, resaved.historyEntries)
+        assertEquals(restored.historyCursor, resaved.historyCursor)
+    }
+
+    @Test fun previousExplicitModesAndAutomaticExecutionOverridesRemainUnchanged() {
+        for (mode in ErrorLimitMode.entries) for (assumption in AutomaticScanAssumption.entries) {
+            val settings = PreprocessSettings(dataEccMismatchLimit = 19,
+                dataEccMismatchLimitMode = mode).withInitialErrorLimits().copy(dataEccMismatchLimitMode = mode)
+            val original = payload(settings).let { it.copy(historyEntries = it.historyEntries.map { entry ->
+                entry.copy(snapshot = entry.snapshot.copy(automaticScanAssumption = assumption,
+                    geometry = GridGeometry(1, FinderRole.TOP_LEFT, 20.0, 20.0, 3.0, 0.0).asProjective(),
+                    workingMatrix = QrMatrix(21)))
+            }) }
+            val bytes = RecoverySessionCodec.encode(original)
+            ByteBuffer.wrap(bytes).putInt(4, 40)
+            val snapshot = RecoverySessionCodec.decode(bytes).historyEntries.single().snapshot
+            val actual = requireNotNull(snapshot.preprocessSettings)
+            if (mode != ErrorLimitMode.AUTOMATIC) assertEquals(settings, actual)
+            assertEquals(assumption, snapshot.automaticScanAssumption)
+            val execution = QuickAutoRecovery.executionSettings(actual, assumption, snapshot.automaticScanListExtension)
+            assertEquals(if (assumption == AutomaticScanAssumption.EXACT_KNOWN_BITS) 0 else 11,
+                execution.effectiveDataEccMismatchLimit)
+        }
+    }
+
+    @Test fun newDefaultsStayAutomaticAfterSavingAndRecalculateAtFivePercent() {
+        val settings = PreprocessSettings().withInitialErrorLimits()
+        val actual = requireNotNull(RecoverySessionCodec.decode(RecoverySessionCodec.encode(payload(settings)))
+            .historyEntries.single().snapshot.preprocessSettings)
+        assertEquals(settings, actual)
+        assertEquals(11, actual.effectiveDataEccMismatchLimit)
+        assertEquals(54, actual.copy(version = 5).effectiveDataEccMismatchLimit)
+    }
+
     private fun payload(settings: PreprocessSettings) = RecoverySessionCodec.Payload(
         "error-limit-settings", 1L, UiMode.ANALYSIS,
         listOf(RecoveryHistoryEntry(kind = HistoryEventKind.SETTINGS, label = "Error limits",
@@ -45,7 +99,7 @@ class ErrorLimitSessionCodecTest {
 
     @Test fun checksummedInvalidModeOrdinalsAreRejectedForEitherLimit() {
         val encoded = RecoverySessionCodec.encode(payload(PreprocessSettings()))
-        for (offsetFromEnd in listOf(41, 37)) {
+        for (offsetFromEnd in listOf(42, 38)) {
             for (invalid in listOf(-1, ErrorLimitMode.entries.size, Int.MAX_VALUE)) {
                 val altered = rewrite(encoded) { raw ->
                     ByteBuffer.wrap(raw).putInt(raw.size - offsetFromEnd, invalid)
@@ -61,7 +115,7 @@ class ErrorLimitSessionCodecTest {
     @Test fun currentSchemaRejectsMissingModeFieldsEvenWithAValidChecksum() {
         val encoded = RecoverySessionCodec.encode(payload(PreprocessSettings()))
         val missing = rewrite(encoded) { raw ->
-            raw.copyOfRange(0, raw.size - 41) + raw.copyOfRange(raw.size - 33, raw.size)
+            raw.copyOfRange(0, raw.size - 42) + raw.copyOfRange(raw.size - 34, raw.size)
         }
         assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) {
             RecoverySessionCodec.decode(missing)

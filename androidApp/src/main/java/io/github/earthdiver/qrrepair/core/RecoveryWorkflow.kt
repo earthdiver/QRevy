@@ -5,12 +5,14 @@ data class RecoveryProgress(
     val variantIndex: Int,
     val variantCount: Int,
     val done: Int,
+    /** Negative until lazy geometry generation finishes. */
     val total: Int,
     val message: String,
 )
 
 /** Runs the requested sampling profiles with one retention budget and one result accumulator. */
-internal class RecoveryWorkflow(private val engine: RecoveryEngine) {
+internal class RecoveryWorkflow(private val engine: RecoveryEngine,
+    private val observationCache: RecoveryObservationCache = RecoveryObservationCache()) {
     fun run(
         image: LumaImage,
         settings: PreprocessSettings,
@@ -24,6 +26,7 @@ internal class RecoveryWorkflow(private val engine: RecoveryEngine) {
         onProgress: (RecoveryProgress) -> Unit = {},
     ): AutoRecoveryResult {
         require(settings.preRecoveryPrioritySearch.size <= settings.prioritySearchLimit) { "Priority marks exceed the configured limit" }
+        val sampleGrid = observationCache.sampler(image) { cancellation.check() }
         val variants = settings.variants()
         val accumulator = RecoveryResultAccumulator(retentionBudget)
         var finders = emptyList<FinderCandidate>()
@@ -36,7 +39,7 @@ internal class RecoveryWorkflow(private val engine: RecoveryEngine) {
             try {
                 finders = AutoRecoveryEngine(engine).run(
                     image, profile = profile, retentionBudget = retentionBudget, resultAccumulator = accumulator,
-                    cancellation = cancellation,
+                    cancellation = cancellation, sampleGrid = sampleGrid,
                     stopRequested = stopRequested,
                     onPriorityProgress = onPriorityProgress,
                     listDecodingBudget = listDecodingBudget, knownBitErrorBudget = knownBitErrorBudget,

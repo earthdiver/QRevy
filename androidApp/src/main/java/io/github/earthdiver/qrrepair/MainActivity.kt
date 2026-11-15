@@ -19,6 +19,13 @@ import io.github.earthdiver.qrrepair.core.ListDecodingBudget
 import io.github.earthdiver.qrrepair.core.RecoveryRetentionBudget
 import io.github.earthdiver.qrrepair.core.RecoverySelectionIdentity
 import io.github.earthdiver.qrrepair.core.SamplingProfile
+import io.github.earthdiver.qrrepair.core.AutomaticScanAssumption
+import io.github.earthdiver.qrrepair.core.QuickAutoRecovery
+import io.github.earthdiver.qrrepair.core.hasOnlyErasedTextEdits
+import io.github.earthdiver.qrrepair.core.QuickAutoRecoveryResult
+import io.github.earthdiver.qrrepair.core.AutoRecoveryResult
+import io.github.earthdiver.qrrepair.core.RecoveryExecutionPolicy
+import io.github.earthdiver.qrrepair.core.RecoveryCancellation
 
 import android.app.Activity
 import android.app.AlertDialog
@@ -147,6 +154,10 @@ class MainActivity : Activity() {
     private data class RetainedImageImport(val source: Bitmap, val state: Bundle)
     private var inputProgressDialog: AlertDialog? = null
     private var inputProgressGeneration: Int? = null
+    private var pendingInitialAnalysis: Pair<BitmapUtils.Prepared, InitialImageAnalysis>? = null
+    private var automaticDiagnostic: AutomaticRepairDiagnosticSession? = null
+    private val automaticDiagnosticsEnabled: Boolean
+        get() = applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
     private var importEditorDialog: AlertDialog? = null
     private var importEditor: ImageAdjustmentEditor? = null
     private var importSource: Bitmap? = null
@@ -225,6 +236,7 @@ class MainActivity : Activity() {
     private val finderSearchGeneration = AtomicInteger(0)
     @Volatile private var lastPersistenceWarningAtMs = 0L
     private val recoveryEngine = RecoveryEngine()
+    private val recoveryWorkflow = RecoveryWorkflow(recoveryEngine)
     private lateinit var workspaceSession: WorkspaceSessionCoordinator
     private val sessionHistory: RecoverySessionHistory get() = workspaceSession.history
     private val sessionId: String? get() = workspaceSession.id
@@ -236,6 +248,8 @@ class MainActivity : Activity() {
         set(value) {
             if (field !== value) {
                 savedCorrectionPreview = null
+                pendingInitialAnalysis = null
+                automaticDiagnostic = null
                 closePreprocessEditor()
             }
             field = value
@@ -802,22 +816,46 @@ class MainActivity : Activity() {
     }
 
     private fun showAppMenu() {
-        val labels = arrayOf(
+        val labels = mutableListOf(
             getString(if (modernStyle) R.string.saved_work else R.string.recent_work),
             getString(R.string.version_info),
             getString(R.string.licenses_privacy),
             getString(R.string.language),
             getString(R.string.appearance),
+            ui("簡易自動修復", "Quick automatic repair") +
+                ui("：", ": ") + if (AutomaticRepairPreferences.enabled(this)) "ON" else "OFF",
         )
-        AlertDialog.Builder(this).setTitle(R.string.menu).setItems(labels) { _, which ->
+        if (automaticDiagnosticsEnabled) labels += ui("開発者向けメニュー", "Developer menu")
+        AlertDialog.Builder(this).setTitle(R.string.menu).setItems(labels.toTypedArray()) { _, which ->
             when (which) {
                 0 -> showRecentSessions()
                 1 -> showVersionInfo()
                 2 -> showLicensesAndPrivacy()
                 3 -> showLanguageDialog()
                 4 -> showStyleDialog()
+                5 -> showAutomaticRepairDialog()
+                6 -> showDeveloperMenu()
             }
         }.show()
+    }
+
+    private fun showDeveloperMenu() {
+        AlertDialog.Builder(this).setTitle(ui("開発者向けメニュー", "Developer menu"))
+            .setItems(arrayOf(ui("簡易自動修復の診断情報", "Quick automatic repair diagnostics"))) { _, _ ->
+                showAutomaticDiagnostics()
+            }.show()
+    }
+
+    private fun showAutomaticRepairDialog() {
+        val enabled = AutomaticRepairPreferences.enabled(this)
+        AlertDialog.Builder(this)
+            .setTitle(ui("簡易自動修復", "Quick automatic repair"))
+            .setSingleChoiceItems(arrayOf(ui("ON（通常読み取りに失敗したら自動修復）", "ON (try recovery when ordinary reading fails)"),
+                ui("OFF（詳細解析へ進む）", "OFF (continue to detailed analysis)")), if (enabled) 0 else 1) { dialog, which ->
+                AutomaticRepairPreferences.save(this, which == 0)
+                dialog.dismiss()
+            }
+            .setNegativeButton(R.string.close, null).show()
     }
 
     private fun showStyleDialog() {
@@ -1354,6 +1392,21 @@ class MainActivity : Activity() {
         selectedQr = recoveryState.selectedRecovery?.takeIf { it.isSelectableRecovery }?.let(RecoverySelectionIdentity::from),
         samplingInverted = recoveryState.samplingProfile?.inverted,
         oneTimeSingleSegment = recoveryState.oneTimeSingleSegment,
+        automaticScanAssumption = recoveryState.selectedRecovery?.displayConditions?.takeIf {
+            it.partialBitSearchLimit == 0 && (preprocessSettings.preRecoveryEdits.isEmpty() || preprocessSettings.hasOnlyErasedTextEdits())
+        }?.let {
+            when {
+                it.assumeUtf8ByteSegments && it.trustSingleSegment -> AutomaticScanAssumption.UTF8_SINGLE_SEGMENT
+                it.assumeUtf8ByteSegments -> AutomaticScanAssumption.UTF8
+                it.trustSingleSegment -> AutomaticScanAssumption.SINGLE_SEGMENT
+                it.dataEccLimit == 0 -> AutomaticScanAssumption.EXACT_KNOWN_BITS
+                else -> AutomaticScanAssumption.NONE
+            }
+        },
+        automaticScanListExtension = recoveryState.selectedRecovery?.displayConditions?.takeIf {
+            it.partialBitSearchLimit == 0 && (preprocessSettings.preRecoveryEdits.isEmpty() || preprocessSettings.hasOnlyErasedTextEdits()) &&
+                it.listDecodingAdditionalErrors == 2
+        }?.listDecodingAdditionalErrors ?: 1,
     )
 
     private fun preparedFor(settings: PreprocessSettings): BitmapUtils.Prepared? {
@@ -1568,14 +1621,17 @@ class MainActivity : Activity() {
         val source = snapshot.sourceMatrix?.copy() ?: matrix.copy()
         recoveryState.oneTimeSingleSegment = snapshot.oneTimeSingleSegment
         val requestSettings = preprocessSettings.recoverySnapshot().let {
-            if (snapshot.oneTimeSingleSegment) it.copy(trustKnownPayloadCount = true) else it
+            if (snapshot.automaticScanAssumption != null) QuickAutoRecovery.executionSettings(it,
+                snapshot.automaticScanAssumption, snapshot.automaticScanListExtension)
+            else if (snapshot.oneTimeSingleSegment) it.copy(trustKnownPayloadCount = true) else it
         }
         val token = workGeneration.incrementAndGet()
         historyRestoreToken = token
         // A restored snapshot represents one concrete saved geometry even though auto recovery is not persisted.
         recoveryState.restoreAttempt(geometry, source, matrix,
             snapshot.samplingInverted?.let { SamplingProfile(requestSettings, it) })
-        if (maxOf(requestSettings.preRecoveryPrioritySearch.size, matrix.prioritySearchCoordinates().size) > requestSettings.prioritySearchLimit) {
+        if (snapshot.automaticScanAssumption == null &&
+            maxOf(requestSettings.preRecoveryPrioritySearch.size, matrix.prioritySearchCoordinates().size) > requestSettings.prioritySearchLimit) {
             historyRestoreToken = null
             refreshMainResultSelector()
             onRestored?.invoke()
@@ -1592,6 +1648,8 @@ class MainActivity : Activity() {
         recoveryTasks.execute(
             generation = token,
             task = { cancellation ->
+                val automaticBudget = if (snapshot.automaticScanAssumption != null)
+                    io.github.earthdiver.qrrepair.core.AutomaticScanBudget() else null
                 recoveryEngine.recoverWithDiagnostics(
                     matrix.copy(),
                     trustKnownPayloadCount = requestSettings.trustKnownPayloadCount,
@@ -1608,13 +1666,19 @@ class MainActivity : Activity() {
                         RecoveryRetentionBudget(it.retainedBytes, workingLimitBytes = it.workingBytes)
                     },
                     cancellation = cancellation,
-                    stopRequested = { progressDialog.stopped.get() },
+                    stopRequested = { progressDialog.stopped.get() || automaticBudget?.stopped() == true },
+                    stopIsTimeLimit = { !progressDialog.stopped.get() && automaticBudget?.stopped() == true },
                     listDecodingBudget = ListDecodingBudget(
                         onProgress = progressDialog::listDecodingProgress,
                         onIdle = progressDialog::listDecodingIdle,
                     ),
                     discoveryCounter = RecoveryDiscoveryCounter(onChanged = progressDialog::candidatesFound),
                     onPriorityProgress = progressDialog::priorityProgress,
+                    allowAutomaticPrioritySearch = snapshot.automaticScanAssumption != null && requestSettings.hasOnlyErasedTextEdits(),
+                    executionPolicy = if (snapshot.automaticScanAssumption == AutomaticScanAssumption.EXACT_KNOWN_BITS)
+                        RecoveryExecutionPolicy.AUTOMATIC_EXACT
+                        else if (snapshot.automaticScanAssumption != null) RecoveryExecutionPolicy.AUTOMATIC_EXTENDED
+                        else RecoveryExecutionPolicy.DETAILED,
                 )
             },
             onResult = { outcome ->
@@ -1873,6 +1937,7 @@ class MainActivity : Activity() {
         candidatesOmitted = recoveryState.candidatesOmitted,
         searchDiagnostic = recoveryState.searchDiagnostic,
         selectedEntry = recoveryState.autoResult?.entries?.getOrNull(recoveryState.recoveryIndex),
+        aggregatesTrials = recoveryState.autoResult != null,
         selectedCandidateNumber = decodedRecoveryEntries().indexOfFirst { it.first == recoveryState.recoveryIndex }
             .takeIf { it >= 0 }?.plus(1),
     )
@@ -1937,7 +2002,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun beginInputImport(message: String): Int {
+    private fun beginInputImport(message: String, onStop: (() -> Unit)? = null): Int {
         val token = workGeneration.incrementAndGet()
         inputProgressDialog?.dismiss()
         inputProgressGeneration = token
@@ -1953,6 +2018,9 @@ class MainActivity : Activity() {
                 gravity = Gravity.CENTER
                 setPadding(0, dp(16), 0, 0)
             })
+            if (onStop != null) addView(button(ui("詳細解析へ", "Detailed analysis")) {
+                onStop()
+            })
         }
         inputProgressDialog = AlertDialog.Builder(this)
             .setView(content)
@@ -1962,7 +2030,7 @@ class MainActivity : Activity() {
                 dialog.window?.apply {
                     setBackgroundDrawable(android.graphics.drawable.ColorDrawable(
                         if (modernStyle) PrecisionStyle.BACKGROUND else android.graphics.Color.WHITE))
-                    setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    if (onStop == null) setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                         android.view.ViewGroup.LayoutParams.MATCH_PARENT)
                 }
             }
@@ -1993,7 +2061,11 @@ class MainActivity : Activity() {
     }
 
     private fun loadTextMatrix(uri: Uri) {
-        val token = beginInputImport(ui("テキスト行列を読み込み中…", "Loading text matrix…"))
+        val automaticRepair = AutomaticRepairPreferences.enabled(this)
+        val stop = java.util.concurrent.atomic.AtomicBoolean(false)
+        val token = beginInputImport(if (automaticRepair) ui("処理中", "Processing")
+            else ui("テキスト行列を読み込み中…", "Loading text matrix…"),
+            onStop = if (automaticRepair) ({ stop.set(true) }) else null)
         executor.execute {
             var bitmap: Bitmap? = null
             try {
@@ -2010,7 +2082,7 @@ class MainActivity : Activity() {
                 } ?: throw IllegalArgumentException("Could not open the text matrix")
                 val text = bytes.toString(Charsets.UTF_8)
                 require(text.toByteArray(Charsets.UTF_8).contentEquals(bytes)) { "Text matrix must be UTF-8" }
-                val parsed = QrTextMatrixParser.parse(text)
+                val parsed = QrTextMatrixParser.parse(text, enforcePriorityLimit = !automaticRepair)
                 val rendered = BitmapUtils.renderTextMatrixSource(parsed.matrix)
                 bitmap = rendered
                 val p = BitmapUtils.prepare(rendered)
@@ -2056,6 +2128,13 @@ class MainActivity : Activity() {
                     return@execute
                 }
                 val standardResult = decodeStandardQr(p.bitmap)
+                val automatic = if (standardResult == null && automaticRepair && !stop.get() && token == workGeneration.get()) {
+                    QuickAutoRecovery().runTextMatrix(p.luma, settings,
+                        io.github.earthdiver.qrrepair.core.AutomaticScanBudget.forImport(
+                            firstRun = QuickAutoStartupState.process.claim(),
+                            stopRequested = { stop.get() || token != workGeneration.get() || Thread.currentThread().isInterrupted },
+                            trace = if (automaticDiagnosticsEnabled) io.github.earthdiver.qrrepair.core.AutomaticScanTrace() else null))
+                } else null
                 runOnUiThread {
                     if (token != workGeneration.get()) {
                         p.bitmap.recycle()
@@ -2068,6 +2147,9 @@ class MainActivity : Activity() {
                     preprocessSettings = settings
                     savedCellEditState = null
                     recoveryState.clear()
+                    automaticDiagnostic = automatic?.let {
+                        AutomaticRepairDiagnosticSession(p.luma, settings, it.diagnosticReport.orEmpty(), textMatrix = true)
+                    }
                     workspaceSession.beginNew(p.bitmap) { error ->
                         reportPersistenceFailure(ui("疑似画像の保存に失敗", "Synthetic image save failed"), error)
                     }
@@ -2095,7 +2177,16 @@ class MainActivity : Activity() {
                         "テキスト行列を読み込みました（V${parsed.version}、${settings.preRecoveryPrioritySearch.size}個の*）。",
                         "Text matrix imported (Version ${parsed.version}, ${settings.preRecoveryPrioritySearch.size} * cell(s)).",
                     )
-                    if (standardResult != null) showImmediateQrResult(standardResult) else showPreprocessDialog()
+                    if (standardResult != null) {
+                        if (stop.get()) {
+                            renderImmediateQrResult(immediateQrResult(standardResult), showNotice = false)
+                            showPreprocessDialog()
+                        } else showImmediateQrResult(standardResult)
+                    } else {
+                        if (automatic != null) retainAutomaticResult(automatic)
+                        if (automatic != null && !stop.get()) showAutomaticResult(automatic)
+                        else showPreprocessDialog()
+                    }
                     if (removedPriority.isNotEmpty()) {
                         AlertDialog.Builder(this@MainActivity)
                             .setMessage(getString(R.string.priority_revalidated,
@@ -2160,8 +2251,11 @@ class MainActivity : Activity() {
     }
 
     private fun acceptDecodedImage(bitmap: Bitmap, cleanupFile: File? = null, imageAdjustment: ImageAdjustment = ImageAdjustment(), distortionCorrection: Boolean = false) {
-        val token = beginInputImport(ui("画像を解析用に準備中…", "Preparing image for analysis…"))
-        imageImports.prepare(token, bitmap, cleanupFile, imageAdjustment, distortionCorrection) { result ->
+        val stop = java.util.concurrent.atomic.AtomicBoolean(false)
+        val automaticRepair = AutomaticRepairPreferences.enabled(this)
+        val token = beginInputImport(ui("処理中", "Processing"), onStop = if (automaticRepair) ({ stop.set(true) }) else null)
+        imageImports.prepare(token, bitmap, cleanupFile, imageAdjustment, distortionCorrection,
+            stopRequested = stop::get, automaticRepair = automaticRepair, diagnostics = automaticDiagnosticsEnabled) { result ->
             val p = result.source
             val adjusted = result.adjusted
             val initialGrid = result.initialGrid
@@ -2169,6 +2263,7 @@ class MainActivity : Activity() {
             immediateResultShown = false
             prepared = p
             analysisPrepared = adjusted
+            pendingInitialAnalysis = if (result.initialization.initialized) null else p to result.initialization
             savedCellEditState = null
             preprocessSettings = result.settings
             workspaceSession.beginNew(p.bitmap) { error ->
@@ -2199,11 +2294,174 @@ class MainActivity : Activity() {
             refreshMainResultSelector()
             statusText.text = ui("画像 ${p.bitmap.width}×${p.bitmap.height}px。修復前設定を確認してください。", "Image ${p.bitmap.width}×${p.bitmap.height}px. Review the pre-repair settings.")
             if (standardResult != null) {
-                showImmediateQrResult(standardResult)
+                if (stop.get()) {
+                    renderImmediateQrResult(immediateQrResult(standardResult), showNotice = false)
+                    showPreprocessDialog()
+                } else showImmediateQrResult(standardResult)
             } else {
-                showPreprocessDialog()
+                val automatic = result.automaticResult
+                automatic?.let {
+                    automaticDiagnostic = AutomaticRepairDiagnosticSession(adjusted.luma, result.settings, it.diagnosticReport.orEmpty(),
+                        result.initialization.boundaries)
+                }
+                if (automatic != null) retainAutomaticResult(automatic)
+                if (automatic != null && !stop.get()) showAutomaticResult(automatic)
+                else showPreprocessDialog()
             }
         }
+    }
+
+    private fun showAutomaticDiagnostics() {
+        val diagnostic = automaticDiagnostic
+        if (diagnostic == null) {
+            AlertDialog.Builder(this).setTitle(ui("簡易自動修復の診断情報", "Quick automatic repair diagnostics"))
+                .setMessage(ui("簡易自動修復をONにして画像を読み込んでください。診断記録はこの画面を開いている間だけ保持します。",
+                    "Import an image with automatic repair enabled. Diagnostic records are kept for this activity only."))
+                .setPositiveButton(R.string.close, null).show()
+            return
+        }
+        val text = diagnostic.report()
+        val view = TextView(this).apply { this.text = text; setTextIsSelectable(true); setPadding(dp(16), dp(12), dp(16), dp(12)); textSize = 12f }
+        val dialog = AlertDialog.Builder(this).setTitle(ui("簡易自動修復の診断情報", "Quick automatic repair diagnostics"))
+            .setView(ScrollView(this).apply { addView(view) })
+            .setPositiveButton(R.string.close, null)
+            .setNeutralButton(ui("診断をコピー", "Copy diagnostics"), null).create()
+        dialog.show()
+        dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+            (getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                .setPrimaryClip(android.content.ClipData.newPlainText("QRevy diagnostic", diagnostic.report()))
+            Toast.makeText(this, ui("診断をコピーしました", "Diagnostics copied"), Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun retainAutomaticResult(result: QuickAutoRecoveryResult) {
+        val recovery = result.recovery
+        recoveryState.autoResult = recovery
+        if (recovery.entries.isNotEmpty()) {
+            val selected = result.selected?.identity()
+            // A displayed candidate is not an automatic-success decision. Keep retained
+            // candidates available for inspection even when the automatic trial is unresolved.
+            val displayIndex = recovery.entries.indexOfFirst { it.candidate.identity() == selected }.coerceAtLeast(0)
+            recoveryState.showResults(recovery, displayIndex)
+        } else recovery.bestAttempt?.let { attempt ->
+            recoveryState.showAttempt(recovery.attempts.indexOf(attempt), attempt.hypothesis.geometry,
+                attempt.matrix, attempt.recoveries, attempt.failure, -1)
+        }
+        if (recoveryState.workingMatrix != null) {
+            refreshInspector()
+            updateSummary()
+            updateContentPreview()
+            val zeroErrorTrial = recoveryState.selectedRecovery?.displayConditions?.let { it.dataEccLimit == 0 }
+                ?: (result.assumption == AutomaticScanAssumption.EXACT_KNOWN_BITS)
+            recordHistory(HistoryEventKind.AUTO_RECOVERY, ui("フルオート解析", "Automatic scan"),
+                if (zeroErrorTrial)
+                    ui("短時間の探索。データ・ECC誤り0bit。", "Short search; zero data/ECC bit errors.")
+                else ui("短時間の探索。データ・ECC上限5%。", "Short search; 5% data/ECC allowance."))
+        }
+    }
+
+    private fun showAutomaticFailure(result: QuickAutoRecoveryResult) {
+        val inputSource = prepared
+        val generation = workGeneration.get()
+        val session = automaticDiagnostic
+        val reason = result.failureReason ?: io.github.earthdiver.qrrepair.core.QuickAutoFailureReason.classify(
+            result.recovery, preprocessSettings.manualQuad != null, null)
+        fun current() = prepared === inputSource && generation == workGeneration.get()
+        showWorkspace()
+        statusText.text = reason.message()
+        val retryMode = session?.nextRetry?.takeIf { reason == io.github.earthdiver.qrrepair.core.QuickAutoFailureReason.TIME_LIMIT }
+        val message = reason.message() + "\n\n" + when (retryMode) {
+            QuickAutoRetryMode.TEN_SECONDS -> ui(
+                "同じ入力・格子を使い、最大10秒の時間枠で最初から再試行できます。途中で詳細解析へ切り替えられます。",
+                "Retry the same input and grid from the beginning with a time allowance of up to 10 seconds. You can switch to detailed analysis at any time.")
+            QuickAutoRetryMode.UNLIMITED -> ui(
+                "同じ入力・格子を使い、時間制限なしで最初から再試行できます。時間がかかる場合がありますが、途中で詳細解析へ切り替えられます。探索量・メモリの上限、復号条件、成功判定は維持します。",
+                "Retry the same input and grid from the beginning without time limits. This may take longer; you can switch to detailed analysis at any time. Search and memory limits, decoding conditions, and success criteria remain unchanged.")
+            null -> ui(
+            "詳細解析で格子や条件を確認できます。", "You can review the grid and conditions in detailed analysis.")
+        }
+        val dialog = AlertDialog.Builder(this).setTitle(ui("簡易自動修復の結果", "Quick automatic repair result"))
+            .setMessage(message)
+            .setPositiveButton(ui("詳細解析へ", "Detailed analysis")) { _, _ -> if (current()) showPreprocessDialog() }
+            .setNegativeButton(R.string.close, null)
+        if (retryMode != null) dialog.setNeutralButton(if (retryMode == QuickAutoRetryMode.TEN_SECONDS)
+            ui("時間枠を広げて再試行（10秒）", "Retry with more time (10 seconds)")
+            else ui("時間制限なしで再試行", "Retry without time limits")) { _, _ ->
+            if (current() && automaticDiagnostic === session && session.nextRetry == retryMode)
+                extendAutomaticRepair(requireNotNull(session))
+        }
+        dialog.show()
+    }
+
+    private fun extendAutomaticRepair(session: AutomaticRepairDiagnosticSession) {
+        val retryMode = session.nextRetry ?: return
+        closePreprocessEditor()
+        val inputSource = prepared
+        val stop = java.util.concurrent.atomic.AtomicBoolean(false)
+        val token = beginInputImport(ui("処理中", "Processing"), onStop = { stop.set(true) })
+        executor.execute {
+            val trace = io.github.earthdiver.qrrepair.core.AutomaticScanTrace()
+            val extended = runCatching {
+                session.extend(trace, { stop.get() || token != workGeneration.get() || Thread.currentThread().isInterrupted })
+            }
+            runOnUiThread {
+                finishInputImport(token)
+                if (isDestroyed || token != workGeneration.get() || prepared !== inputSource || automaticDiagnostic !== session)
+                    return@runOnUiThread
+                val extension = extended.getOrNull()
+                if (extension != null && preprocessSettings != extension.settings) {
+                    preprocessSettings = extension.settings
+                    savedCellEditState = null
+                    pendingInitialAnalysis = null
+                    recordPreprocessHistory(preprocessSettings, ui("延長時の格子推定", "Grid estimated during extended repair"))
+                    persistSessionAsync()
+                }
+                val result = extension?.result ?: QuickAutoRecoveryResult(AutoRecoveryResult(emptyList(), emptyList()),
+                    failureReason = io.github.earthdiver.qrrepair.core.QuickAutoFailureReason.INTERNAL_ERROR)
+                if (extended.isFailure) {
+                    val report = trace.report() + "\nERROR: " + extended.exceptionOrNull()?.javaClass?.simpleName
+                    if (retryMode == QuickAutoRetryMode.TEN_SECONDS) session.extendedReport = report
+                    else session.unlimitedRepairReport = report
+                }
+                retainAutomaticResult(result)
+                if (stop.get()) showPreprocessDialog() else showAutomaticResult(result)
+            }
+        }
+    }
+
+    private fun showAutomaticResult(result: QuickAutoRecoveryResult) {
+        val candidate = result.selected ?: run { showAutomaticFailure(result); return }
+        val inputSource = prepared
+        val generation = workGeneration.get()
+        showWorkspace()
+        val condition = when (result.assumption) {
+            AutomaticScanAssumption.UTF8_SINGLE_SEGMENT -> ui("UTF-8と単一セグメントを仮定した候補です。",
+                "This candidate assumes UTF-8 and a single segment.")
+            AutomaticScanAssumption.UTF8 -> ui("UTF-8を仮定した候補です。", "This candidate assumes UTF-8.")
+            AutomaticScanAssumption.SINGLE_SEGMENT -> ui("単一セグメントを仮定した候補です。", "This candidate assumes a single segment.")
+            AutomaticScanAssumption.EXACT_KNOWN_BITS -> ui("読み取れたデータ・ECC bitに誤りがない条件で検証した候補です。",
+                "This candidate was verified assuming the observed data/ECC bits are correct.")
+            else -> ""
+        }
+        val other = if (result.recovery.discoveredCandidates?.value?.let { it > 1 } == true)
+            ui("別の条件では他の候補も見つかっています。", "Other candidates were found under different conditions.") else ""
+        val text = candidate.text ?: ui("（テキストなし）", "(No text)")
+        statusText.text = ui("復元候補が見つかりました。", "A recovery candidate was found.")
+        val message = listOf(text, condition, other,
+            ui("試した条件の範囲で候補が1件になりました。詳しく解析しますか？",
+                "One candidate remains within the conditions tried. Continue with detailed analysis?"))
+            .filter { it.isNotEmpty() }.joinToString("\n\n")
+        AlertDialog.Builder(this)
+            .setTitle(ui("復元候補が見つかりました", "Recovery candidate found"))
+            .setMessage(message)
+            .setPositiveButton(ui("詳しく解析する", "Analyze in detail")) { _, _ ->
+                if (prepared === inputSource && generation == workGeneration.get()) showPreprocessDialog()
+            }
+            .setNegativeButton(ui("完了", "Done"), null)
+            .setNeutralButton(ui("内容をコピー", "Copy content")) { _, _ ->
+                (getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                    .setPrimaryClip(android.content.ClipData.newPlainText("QRevy", candidate.text.orEmpty()))
+            }.show()
     }
 
     private fun immediateQrResult(result: Result) = ImmediateQrResult(
@@ -2299,7 +2557,7 @@ class MainActivity : Activity() {
             generation = token,
             task = { cancellation ->
                 val memoryPolicy = RecoveryMemoryPolicy.current()
-                RecoveryWorkflow(recoveryEngine).run(
+                recoveryWorkflow.run(
                     p.luma, requestSettings,
                     retentionBudget = RecoveryRetentionBudget(memoryPolicy.retainedBytes,
                         workingLimitBytes = memoryPolicy.workingBytes),
@@ -2312,7 +2570,10 @@ class MainActivity : Activity() {
                     discoveryCounter = RecoveryDiscoveryCounter(onChanged = progressDialog::candidatesFound),
                     onPriorityProgress = progressDialog::priorityProgress,
                     onProgress = { progress ->
-                        progressDialog.phase("${progress.profile.label}: ${progress.message} (${progress.done}/${progress.total})")
+                        val count = if (progress.total < 0)
+                            ui("${progress.done}格子を試行済み", "${progress.done} grids tried")
+                        else "${progress.done}/${progress.total}"
+                        progressDialog.phase("${progress.profile.label}: ${progress.message} ($count)")
                     },
                 )
             },
@@ -2395,6 +2656,28 @@ class MainActivity : Activity() {
         showWorkspace()
         val source = prepared ?: run {
             statusText.text = ui("先に画像を選択してください。", "Select an image first.")
+            return
+        }
+        if (pendingInitialAnalysis == null && immediateResultShown && preprocessSettings.photographicSource &&
+            preprocessSettings.manualQuad == null) {
+            val adjusted = analysisPrepared ?: source
+            pendingInitialAnalysis = source to InitialImageAnalysis(source, adjusted, preprocessSettings, emptyList()) { image, _, cancellation ->
+                io.github.earthdiver.qrrepair.core.InitialGridEstimator.estimate(image,
+                    io.github.earthdiver.qrrepair.core.ZxingCppGridDetector.detect(adjusted.bitmap), cancellation)
+            }
+        }
+        pendingInitialAnalysis?.takeIf { it.first === source && !it.second.initialized }?.let { (_, initialization) ->
+            val token = beginInputImport(ui("処理中", "Processing"))
+            executor.execute {
+                initialization.initialize(RecoveryCancellation { token != workGeneration.get() || Thread.currentThread().isInterrupted })
+                runOnUiThread {
+                    if (token != workGeneration.get() || isDestroyed) return@runOnUiThread
+                    finishInputImport(token)
+                    preprocessSettings = initialization.settings
+                    recordPreprocessHistory(preprocessSettings, ui("初期格子を推定", "Estimated initial grid"))
+                    showPreprocessPage(initialPage, restoredDraft)
+                }
+            }
             return
         }
         preprocessEditor?.let {

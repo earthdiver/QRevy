@@ -38,7 +38,8 @@ class SavedCurvedDataTest {
                 preRecoveryEdits = mapOf(fixed to ModuleValue.ONE, soft to ModuleValue.ZERO, erased to ModuleValue.ERASED),
                 preRecoverySoftEdits = setOf(soft), preRecoveryPrioritySearch = setOf(erased))
             val data = requireNotNull(sampleSavedPreRecoveryData(image, configured))
-            val repair = AutoRecoveryEngine().run(image, profile = configured.variants().first(),
+            // Compare the saved observation with the displayed-grid attempt, before any fallback grids.
+            val repair = AutoRecoveryEngine().run(image, maxGeometryAttempts = 1, profile = configured.variants().first(),
                 listDecodingBudget = ListDecodingBudget(0))
             assertEquals(listOf(geometry), repair.testedHypotheses.map { it.geometry })
             val expected = repair.attempts.single().matrix

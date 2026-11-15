@@ -20,6 +20,8 @@ When no repair candidate is found, **Data** shows the input, including its unkno
 
 ## Candidates and content
 
+When results combine several trials, diagnostics separate **Trial that produced the selected candidate (displayed settings)** from **Cumulative results across trial conditions and grids**. The trial count describes the candidates retained from that trial. The cumulative count also includes candidates obtained under other assumptions or grids. For example, automatic repair can select one candidate under the UTF-8 and single-segment assumptions while retaining three candidates across all trials. Select each candidate to inspect its own conditions.
+
 The result list contains up to 256 selectable candidates from all reading attempts. Each attempt uses one combination of grid position and reading conditions. Retention or memory limits can leave other candidates out of the list.
 
 Each distinct recovered QR counts once. **Calculation methods yielding this QR** describes the methods and reading attempts that produced it.
@@ -39,6 +41,7 @@ Finding a candidate and completing the search are separate outcomes.
 | Search completed within the specified conditions and search policy. | The app finished its defined search range, including normal endings at search limits. It did not necessarily check every mathematically possible solution. |
 | Some combinations remain unchecked. | Interruption, a time limit, insufficient working memory, or an internal error prevented required work. |
 | Search completion could not be determined. | The available records do not establish whether the search finished. |
+| The attempted search passes finished, but unresolved processing remains. | The recorded passes ended, but some processing remains inconclusive. A resolved selected trial can coexist with unresolved trials under other conditions. |
 | Others omitted / Candidates omitted (retention limit) | Some candidates already found are absent from the list and cannot be selected. This is separate from unfinished searching. |
 
 List decoding has a cumulative time allowance of **600 seconds (10 minutes) per repair**, excluding ordinary searches. Known-bit error search has a separate cumulative allowance of 30 seconds and one million trials. When it runs, its trial count is shown; reaching its time or trial limit is reported as a reason combinations remain unchecked. Timeout, insufficient memory, or interruption preserves validated candidates already found. A completed search does not establish uniqueness, and completion without a candidate does not prove that no solution exists.
@@ -60,6 +63,8 @@ Format comparison also excludes **fixed 0/1 cells whose values are determined by
 An error limit of **0 bits** requires agreement at every compared known bit. Increasing an error limit does not permit changes to protected fixed cells. Explicit version, ECC, and mask selections are enforced.
 
 ## Diagnostic details
+
+The settings show **Search by assuming black/white values for ?** as **OFF** for a zero limit, or **up to N bits per RS block** for a positive limit. The 0/1 search for cells marked `*` is outside this limit. Even when OFF, RS constraints are still used to solve unknown cells; the exact RS residual dimension limit is shown separately. Search time limits are reported separately from user interruption, including timed trials before a later successful trial. Alternative block calculations retain their temporary image-erasure descriptions. The four-corner geometry label describes a projective mapping from four corners; it does not imply that the corners were manually assigned.
 
 | Section | What it describes |
 | --- | --- |

@@ -40,8 +40,13 @@ class InputImportProgressTest {
                 import(activity, input)
                 progress = field(activity, "inputProgressDialog")
                 assertTrue(progress.isShowing)
-                assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, progress.window!!.attributes.width)
-                assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, progress.window!!.attributes.height)
+                if (input == "image") {
+                    assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, progress.window!!.attributes.width)
+                    assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, progress.window!!.attributes.height)
+                } else {
+                    assertEquals("Processing", field<TextView>(activity, "statusText").text.toString())
+                    assertEquals(ViewGroup.LayoutParams.WRAP_CONTENT, progress.window!!.attributes.height)
+                }
                 assertEquals(255, Color.alpha((progress.window!!.decorView.background as ColorDrawable).color))
                 assertSame(previous, field(activity, "prepared"))
                 assertSame(settings, field(activity, "preprocessSettings"))
@@ -62,6 +67,8 @@ class InputImportProgressTest {
                 assertSame(settings, field(activity, "preprocessSettings"))
             } else {
                 assertNotSame(previous, field(activity, "prepared"))
+                (ShadowDialog.getLatestDialog() as AlertDialog).getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+                shadowOf(Looper.getMainLooper()).idle()
                 assertNotNull(field<Any?>(activity, "preprocessEditor"))
             }
         }
@@ -147,7 +154,7 @@ class InputImportProgressTest {
                 shadowOf(Looper.getMainLooper()).idle()
                 assertTrue(progress.isShowing)
                 assertSame(progress, ShadowDialog.getLatestDialog())
-                assertEquals("Preparing image for analysis…", field<TextView>(activity, "statusText").text.toString())
+                assertEquals("Processing", field<TextView>(activity, "statusText").text.toString())
             } finally {
                 release.countDown()
                 nextRelease.countDown()

@@ -91,6 +91,67 @@ class CurvedTimingPolarityTest {
         }
     }
 
+    @Test fun automaticRecoveryReachesRefinedCurvesWithoutSavingTemporaryOptions() {
+        val image = render(shapes[4], "blur-noise")
+        val base = seed(0.0)
+        val saved = PreprocessSettings(version = 4, manualQuad = base.imageQuad,
+            lmCorrectionEnabled = false, blackMax = 80, whiteMin = 175, photographicSource = true,
+            automaticThresholds = true)
+        val profile = SamplingProfile(saved, false)
+        val curves = CurvedGridDetector(image, profile).candidates(base)
+        assertTrue(curves.size > 2)
+        val firstMatrix = MatrixSampler(image, profile).sample(curves.first()).first
+        assertTrue(RecoveryEngine().recoverWithDiagnostics(firstMatrix, maxKnownDataEccMismatches = 40,
+            executionPolicy = RecoveryExecutionPolicy.AUTOMATIC_BASIC).candidates.isEmpty())
+        val progressive = CurvedGridDetector(image, profile, maxContourWorkingBytes = 0)
+        var evaluated = 0
+        val found = progressive.progressiveCandidates(base).firstOrNull { candidate ->
+            evaluated++
+            RecoveryEngine().recoverWithDiagnostics(MatrixSampler(image, profile).sample(candidate).first,
+            maxKnownDataEccMismatches = 40, executionPolicy = RecoveryExecutionPolicy.AUTOMATIC_BASIC)
+            .candidates.any { it.text == text }
+        }
+        assertNotNull("Patch-based correction must reach a usable candidate before contour extraction", found)
+        assertFalse(progressive.contourMemoryLimited)
+        assertTrue(evaluated < curves.size)
+        val result = QuickAutoRecovery().run(image, saved, AutomaticScanBudget(clockMillis = { 0L }, trace = AutomaticScanTrace()))
+        assertEquals(text, result.selected?.text)
+        assertTrue(result.diagnosticReport!!.contains("CURVE_GENERATION: CANDIDATE"))
+        assertTrue(result.diagnosticReport.contains("CURVE_RANKING:"))
+        assertTrue(result.diagnosticReport.contains("curved=true"))
+        assertTrue(result.recovery.testedHypotheses.any { it.geometry.warp != null })
+        assertFalse(saved.lmCorrectionEnabled)
+        assertFalse(saved.distortionCorrection)
+    }
+
+    @Test fun progressiveOrderingKeepsDetailedCandidatesAndStopsBeforeUnusedContourWork() {
+        for (inverted in listOf(false, true)) {
+            val normal = render(shapes[4], "blur-noise")
+            val image = if (inverted) LumaImage(size, size, IntArray(size * size) { 255 - normal.pixels[it] }) else normal
+            val profile = SamplingProfile(PreprocessSettings(version = 4, automaticThresholds = true), inverted)
+            val base = seed(0.0)
+            val detailed = CurvedGridDetector(image, profile).candidates(base)
+            val uncached = CurvedGridDetector(image, profile, cachePatternSamples = false).candidates(base)
+            assertEquals("Cached image matching must preserve every landmark exactly", uncached, detailed)
+            val progressive = CurvedGridDetector(image, profile).progressiveCandidates(base).toList()
+            assertEquals(detailed.toSet(), progressive.toSet())
+            val aligned = progressive.first().warp!!.landmarks
+            val timed = progressive[1].warp!!.landmarks
+            assertTrue("The first fit uses finder/alignment observations", aligned.none { it.smoothing == 1e-3 })
+            assertTrue("Refine the aligned fit before trying the finder-only fallback", timed.containsAll(aligned))
+            assertTrue("The next candidate must add timing observations", timed.any { it.smoothing == 1e-3 })
+            assertEquals(detailed.take(1), CurvedGridDetector(image, profile).candidates(base, maxCandidates = 1))
+            var stop = false
+            val detector = CurvedGridDetector(image, profile, stopRequested = { stop }, maxContourWorkingBytes = 0)
+            val iterator = detector.progressiveCandidates(base).iterator()
+            assertTrue(iterator.hasNext())
+            iterator.next()
+            stop = true
+            assertFalse(iterator.hasNext())
+            assertFalse(detector.contourMemoryLimited)
+        }
+    }
+
     @Test fun unambiguousTimingStillImprovesCurvedSamplingInEitherImagePolarity() {
         val shape=shapes[4]
         for(inverted in listOf(false,true)) {

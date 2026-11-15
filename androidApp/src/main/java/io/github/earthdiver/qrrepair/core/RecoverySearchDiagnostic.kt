@@ -7,7 +7,7 @@ enum class RecoveryInputBlocker { FORMAT_SELECTION, FORMAT_LIMIT, STRUCTURAL_FIX
 
 enum class RecoveryCandidateRejection { FIXED_CELLS, MISMATCH_LIMIT, QR_STRUCTURE, UTF8_BYTE_SEGMENT, SINGLE_SEGMENT_STRUCTURE, LIST_DECODING_MISMATCH_LIMIT }
 
-enum class SearchIncompleteReason { USER_INTERRUPTED, WORKING_MEMORY_LIMIT, LIST_DECODING_TIME_LIMIT, KNOWN_BIT_SEARCH_LIMIT, KNOWN_BIT_SEARCH_TIME_LIMIT, INTERNAL_ERROR }
+enum class SearchIncompleteReason { USER_INTERRUPTED, WORKING_MEMORY_LIMIT, LIST_DECODING_TIME_LIMIT, KNOWN_BIT_SEARCH_LIMIT, KNOWN_BIT_SEARCH_TIME_LIMIT, INTERNAL_ERROR, TIME_LIMIT }
 
 /** Evidence from the whole search, independent of the representative candidate or failure. */
 data class RecoverySearchDiagnostic(
@@ -36,6 +36,7 @@ data class RecoverySearchDiagnostic(
     val knownBitSearchAttempted: Boolean = false,
     val knownBitTrials: Long = 0,
     val listDecodingExecution: ListDecodingExecution? = null,
+    val formatOutcomes: List<RecoveryFormatOutcome> = emptyList(),
 ) {
     val completeness: SearchCompleteness get() = when {
         unsearched || incompleteReasons.isNotEmpty() -> SearchCompleteness.UNSEARCHED
@@ -55,6 +56,7 @@ data class RecoverySearchDiagnostic(
             SearchIncompleteReason.KNOWN_BIT_SEARCH_TIME_LIMIT -> localizedText("既知bit誤り探索が時間切れで終了しました。", "Known-bit error search reached its time limit.")
             SearchIncompleteReason.KNOWN_BIT_SEARCH_LIMIT -> localizedText("既知bit誤り探索が試行数の上限に達しました。", "Known-bit error search reached its trial limit.")
             SearchIncompleteReason.USER_INTERRUPTED -> localizedText("利用者が探索を中断しました。", "Search was interrupted by the user.")
+            SearchIncompleteReason.TIME_LIMIT -> localizedText("探索の時間上限に達したため終了しました。", "Search stopped at its time limit.")
             SearchIncompleteReason.WORKING_MEMORY_LIMIT -> localizedText(
                 "計算用メモリの上限により、一部または全部の探索を実行できませんでした。",
                 "The working-memory limit prevented some or all of the search from running.")
@@ -97,6 +99,8 @@ data class RecoverySearchDiagnostic(
                 decodedCandidate = known.any { it.decodedCandidate },
                 singleSegmentRetryAvailable = known.any { it.singleSegmentRetryAvailable },
                 unresolvedCalculations = known.any { it.unresolvedCalculations },
+                // Keep geometry/assumption outcomes separate: one cannot resolve another.
+                formatOutcomes = known.flatMap { it.formatOutcomes }.distinct(),
                 unsearched = known.any { it.unsearched || it.incompleteReasons.isNotEmpty() },
                 incompleteReasons = known.flatMapTo(linkedSetOf()) { it.incompleteReasons },
                 completedSteps = known.sumOf { it.completedSteps },
@@ -165,6 +169,7 @@ fun SearchCompleteness.description(): String = when (this) {
 fun searchResultText(candidateCount: Int, completeness: SearchCompleteness, candidatesOmitted: Boolean = false,
     reasons: String = RecoverySearchDiagnostic(unsearched = completeness == SearchCompleteness.UNSEARCHED,
         solverCompleteness = completeness).completionReasonsText(),
+    completionDescription: String = completeness.description(),
 ): String {
     require(candidateCount >= 0)
     val result = when {
@@ -176,7 +181,7 @@ fun searchResultText(candidateCount: Int, completeness: SearchCompleteness, cand
         else -> localizedText("調べた範囲では修復候補は見つかりませんでした。", "No recovery candidate was found in the checked range.")
     }
     return localizedText("指定の条件下で探索を行いました。", "Searched under the specified conditions.") +
-        "\n" + result + "\n" + completeness.description() + reasons.takeIf { it.isNotBlank() }?.let { "\n$it" }.orEmpty()
+        "\n" + result + "\n" + completionDescription + reasons.takeIf { it.isNotBlank() }?.let { "\n$it" }.orEmpty()
 }
 
 fun RecoveryDisplayConditions?.candidateCalculationPolicyText(): String =

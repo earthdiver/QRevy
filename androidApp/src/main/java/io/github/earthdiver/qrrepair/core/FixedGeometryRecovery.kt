@@ -125,6 +125,7 @@ class AutoRecoveryEngine(
         knownBitErrorBudget: KnownBitErrorBudget = KnownBitErrorBudget(),
         discoveryCounter: RecoveryDiscoveryCounter = RecoveryDiscoveryCounter(),
         onProgress: ((done: Int, total: Int, message: String) -> Unit)? = null,
+        sampleGrid: ((GridGeometry, SamplingProfile) -> Pair<QrMatrix, MatrixSampler.SamplingStats>)? = null,
     ): AutoRecoveryResult {
         cancellation.check()
         require(maxFinders >= 0) { "maxFinders must be non-negative" }
@@ -134,6 +135,24 @@ class AutoRecoveryEngine(
         val preview = (settings.previewGeometry ?: settings.lmGeometry)?.takeIf {
             (settings.distortionCorrection || settings.lmGeometry != null) && settings.logicalQuad != null && it.version == settings.version
         }?.let { GeometryHypothesis(emptyList(), it, quickGeometryScore(image, it, profile)) }
+        val uncorrected = if (preview != null && settings.lmCorrectionEnabled && maxGeometryAttempts > 1) {
+            try {
+                val quad = settings.logicalQuad!!
+                val dimension = 17 + 4 * settings.version
+                val pitch = (quad.topLeft.distanceTo(quad.topRight) + quad.topLeft.distanceTo(quad.bottomLeft)) /
+                    (2.0 * (dimension - 1))
+                val original = GridGeometry(settings.version, FinderRole.TOP_LEFT, quad.topLeft.x, quad.topLeft.y,
+                    pitch, 0.0, quad, GeometryModel.MANUAL_PROJECTIVE).reanchored()
+                val sameGrid = original.moduleCenterQuad() == preview.geometry.moduleCenterQuad() && preview.geometry.warp == null
+                if (!sameGrid && needsUncorrectedGridVerification(image, profile, original,
+                        stopped = { cancellation.check(); stopRequested() }))
+                    GeometryHypothesis(emptyList(), original, quickGeometryScore(image, original, profile))
+                else null
+            } catch (_: IllegalArgumentException) {
+                // An unusable reference must not suppress the valid selected correction.
+                null
+            }
+        } else null
         val seeds = if (preview != null && !settings.searchQuadNeighborhood) emptyList()
             else manualGeometrySeeds(settings.copy(manualQuad = settings.lmGeometry?.moduleCenterQuad() ?: settings.manualQuad))
         val selectedSeeds = seeds.take(maxGeometryAttempts)
@@ -172,36 +191,24 @@ class AutoRecoveryEngine(
         val patternFit = if (settings.searchQuadNeighborhood && !patternLimitReached)
             projectivePatternHypothesis(image, profile, ordinary) { cancellation.check(); stopRequested() }
         else null
-        val curvedDetector = if (settings.distortionCorrection) CurvedGridDetector(image, profile, cancellation, stopRequested,
+        var generationInterrupted = false
+        val generationStopped = { stopRequested().also { if (it) generationInterrupted = true } }
+        val curvedDetector = if (settings.distortionCorrection) CurvedGridDetector(image, profile, cancellation, generationStopped,
             minOf(maxContourWorkingBytes, retentionBudget.workingLimitBytes, RecoveryMemoryPolicy.current().workingBytes)) else null
         // The joint fit adds one seed without displacing the four ordinary curvature seeds.
         val curvedSeeds = (listOfNotNull(patternFit) + ordinary.sortedBy { it.quickScore }.take(4))
             .distinctBy { it.geometry }
-        val jointReplacements = mutableMapOf<GridGeometry, GridGeometry>()
-        val curved = if (curvedDetector != null) curvedSeeds.flatMap { base ->
-            cancellation.check()
-            val candidates = curvedDetector.candidates(base.geometry)
-            if (base.patternRefined || settings.lmGeometry != null) {
-                val initial = candidates.minByOrNull { quickGeometryScore(image, it, profile) } ?: base.geometry
-                if (initial != preview?.geometry) {
-                    jointlyRefinedGeometry(image, initial, profile) { cancellation.check(); stopRequested() }
-                        ?.let { jointReplacements[initial] = it }
-                }
-            }
-            candidates.map { geometry ->
-                base.copy(geometry = geometry, quickScore = quickGeometryScore(image, geometry, profile))
-            }
-        } else emptyList()
-        if (curvedDetector?.contourMemoryLimited == true) resultAccumulator.markIncomplete(SearchIncompleteReason.WORKING_MEMORY_LIMIT)
-        // Honor the displayed grid first, then try the joint pattern fit before neighborhood candidates.
-        val hypotheses = (listOfNotNull(preview).take(maxGeometryAttempts) + listOfNotNull(patternFit) + ordinary + curved)
-            .distinctBy { it.geometry }.map { hypothesis ->
-                // The displayed/saved grid is authoritative. Additional search replaces a slot
-                // in place, including the LM slot when no curved landmarks were available.
-                val replacement = jointReplacements[hypothesis.geometry]?.takeIf { hypothesis.geometry != preview?.geometry }
-                if (replacement == null) hypothesis else hypothesis.copy(geometry = replacement,
-                    quickScore = quickGeometryScore(image, replacement, profile))
-            }.distinctBy { it.geometry }
+        val leading = listOfNotNull(preview, uncorrected).take(maxGeometryAttempts)
+        val ordinarySlots = leading.filter { it !== preview } + listOfNotNull(patternFit) + ordinary
+        val hypotheses = detailedGeometrySequence(
+            preview = leading.firstOrNull { it === preview }, ordinary = ordinarySlots,
+            curvedSeeds = if (curvedDetector == null) emptyList() else curvedSeeds,
+            needsJointFit = { it.patternRefined || settings.lmGeometry != null },
+            curves = { requireNotNull(curvedDetector).detailedCandidates(it) },
+            score = { quickGeometryScore(image, it, profile) },
+            refine = { jointlyRefinedGeometry(image, it, profile) { cancellation.check(); generationStopped() } },
+            check = { cancellation.check() },
+        )
         val finders = settings.manualFinders.entries.take(maxFinders).map { (_, point) -> confirmedFinderCandidate(settings, point) }
         var completed = 0
         var interrupted = false
@@ -213,13 +220,14 @@ class AutoRecoveryEngine(
             }
             cancellation.check()
             onPriorityProgress?.invoke(0, 0)
-            onProgress?.invoke(index, hypotheses.size, localizedText(
+            onProgress?.invoke(index, -1, localizedText(
                 "指定QR格子 / V${hypothesis.geometry.version} を試行中",
                 "Trying selected QR grid / V${hypothesis.geometry.version}",
             ))
             runCatching {
                 cancellation.check()
-                val (matrix, stats) = MatrixSampler(image, profile).sample(hypothesis.geometry)
+                val (matrix, stats) = sampleGrid?.invoke(hypothesis.geometry, profile)
+                    ?: MatrixSampler(image, profile).sample(hypothesis.geometry)
                 settings.preRecoveryEdits.forEach { (coord, value) ->
                     if (coord.x in 0 until matrix.dimension && coord.y in 0 until matrix.dimension) {
                         matrix.set(coord.x, coord.y, value, 1f, settings.sourceForPreRecoveryEdit(value, coord))
@@ -257,6 +265,12 @@ class AutoRecoveryEngine(
                 resultAccumulator.add(it, profile)
             }
         }
+        if (curvedDetector?.contourMemoryLimited == true) resultAccumulator.markIncomplete(SearchIncompleteReason.WORKING_MEMORY_LIMIT)
+        // A stop during lazy candidate generation can end the sequence without yielding another grid.
+        if (generationInterrupted && !interrupted) {
+            resultAccumulator.markIncomplete(SearchIncompleteReason.USER_INTERRUPTED)
+            interrupted = true
+        }
         // Completion counts describe finished attempts, not a late stop-button state.
         if (!interrupted) resultAccumulator.completePolicy(hasExcludedInputs =
             patternLimitReached || seeds.size > selectedSeeds.size || selectedSeeds.size != baseHypotheses.size ||
@@ -264,7 +278,7 @@ class AutoRecoveryEngine(
                 (settings.distortionCorrection && ordinary.size > 4))
         val result = resultAccumulator.result(finders).copy(discoveredCandidates = discoveryCounter.snapshot)
         val unfinished = result.searchDiagnostic?.completeness != SearchCompleteness.COMPLETE
-        onProgress?.invoke(completed, hypotheses.size, if (unfinished)
+        onProgress?.invoke(completed, if (interrupted) -1 else completed, if (unfinished)
             localizedText("試行終了（完了状況は結果を確認してください）", "Trials ended; see results for completion status")
             else localizedText("試行完了", "Trials completed"))
         return result

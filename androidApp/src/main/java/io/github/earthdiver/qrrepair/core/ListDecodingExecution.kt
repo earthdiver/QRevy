@@ -7,6 +7,7 @@ enum class ListDecodingStage { WITHOUT_ASSIGNMENTS, ADDITIONAL }
 enum class ListDecodingStatus {
     NOT_REACHED, RUNNING, COMPLETED, INELIGIBLE, DEFERRED, TIME_LIMIT, WORKING_MEMORY_LIMIT, SEARCH_LIMIT,
     INTERRUPTED, INTERNAL_ERROR, ORIGINAL_RS_SUCCEEDED, ZERO_ERROR_LIMIT, INPUT_CONSTRAINT, DISABLED,
+    REPAIR_TIME_LIMIT,
 }
 
 /** Decisions survive candidate eviction and are aggregated independently of decoder trial counts. */
@@ -32,6 +33,7 @@ data class ListDecodingExecution(
             ListDecodingStatus.WORKING_MEMORY_LIMIT -> localizedText("計算用メモリの上限により未完了です", "unfinished at the working-memory limit")
             ListDecodingStatus.SEARCH_LIMIT -> localizedText("所定の探索範囲で終了し、未検査の組合せがあります", "stopped at the search boundary; some combinations remain unchecked")
             ListDecodingStatus.INTERRUPTED -> localizedText("利用者の中断により未完了、または未開始です", "unfinished or not started because the user interrupted repair")
+            ListDecodingStatus.REPAIR_TIME_LIMIT -> localizedText("探索の時間上限により未完了、または未開始です", "unfinished or not started because the repair search reached its time limit")
             ListDecodingStatus.INTERNAL_ERROR -> localizedText("内部エラーにより未完了、または未開始です", "unfinished or not started because of an internal error")
             ListDecodingStatus.ORIGINAL_RS_SUCCEEDED -> localizedText("未実行：元の観測値に対する通常RSで検証済み候補を得たためです。正解の証明ではありません", "not run: conventional RS on the original observations produced a validated candidate; this is not proof of correctness")
             ListDecodingStatus.DISABLED -> localizedText("未実行：リスト復号がOFFのためです", "not run: list decoding is off")

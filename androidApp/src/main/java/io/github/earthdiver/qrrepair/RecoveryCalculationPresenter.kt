@@ -124,7 +124,8 @@ internal class RecoveryCalculationPresenter(private val japanese: Boolean) {
                             else {
                                 add(blockCalculationText(RecoveryBlockMethod(block, derivation.bitConstraintSolved,
                                     derivation.rsMargin.takeUnless { derivation.bitConstraintSolved || derivation.listDecoding != null || derivation.knownBitSearch },
-                                    derivation.guessedBits, derivation.listDecoding, derivation.knownBitErrors.takeIf { derivation.knownBitSearch }), derivation.errataPositions.size))
+                                    derivation.guessedBits, derivation.listDecoding, derivation.knownBitErrors.takeIf { derivation.knownBitSearch },
+                                    derivation.imageErasures), derivation.errataPositions.size))
                                 if (selected?.errataPositions != derivation.errataPositions)
                                     add(positionsText("補完・訂正対象", "Target", derivation.errataPositions))
                                 if (derivation.guessedPositions.isNotEmpty())

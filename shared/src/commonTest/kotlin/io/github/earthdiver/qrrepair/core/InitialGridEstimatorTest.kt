@@ -3,6 +3,7 @@ package io.github.earthdiver.qrrepair.core
 import kotlin.math.floor
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -33,6 +34,65 @@ class InitialGridEstimatorTest {
 
     private val perspective = ImageQuad(PointD(55.0, 45.0), PointD(330.0, 65.0),
         PointD(305.0, 350.0), PointD(85.0, 305.0))
+
+    @Test fun quietZoneDoesNotTurnAnInvertedBackgroundIntoAConflictingQrGrid() {
+        for (version in listOf(1, 4, 7)) for (margin in listOf(10, 20, 40)) {
+            val span = (17 + 4 * version) * 5
+            val size = span + 2 * margin
+            val a = margin.toDouble(); val b = a + span
+            val points = ImageQuad(PointD(a, a), PointD(b, a), PointD(b, b), PointD(a, b)).asList()
+            for (rotation in 0..3) {
+                val quad = ImageQuad(points[rotation], points[(rotation + 1) % 4],
+                    points[(rotation + 2) % 4], points[(rotation + 3) % 4])
+                val rendered = render(version, quad, size = size)
+                val expected = assertNotNull(GridPeriodicityEstimator.estimate(rendered))
+                assertEquals(version, expected.version)
+                for (inverted in listOf(false, true)) {
+                    val image = if (!inverted) rendered else LumaImage(size, size,
+                        IntArray(size * size) { 255 - rendered.pixels[it] })
+                    val result = assertNotNull(InitialGridEstimator.estimate(image, emptyList()),
+                        "V$version margin=$margin rotation=$rotation inverted=$inverted")
+                    assertEquals(version, result.version)
+                    assertEquals(InitialGridSource.PERIODICITY, result.source)
+                    assertTrue(result.autoAssignedFinders.isEmpty())
+                    assertEquals(FinderPolarity.UNKNOWN, result.confirmedPolarity)
+                    for ((actual, center) in result.moduleCenterQuad.asList().zip(expected.moduleCenterQuad.asList()))
+                        assertTrue(actual.distanceTo(center) < .001)
+                }
+            }
+        }
+    }
+
+    @Test fun twoStructurallySupportedOppositePolarityGridsRemainAmbiguous() {
+        val firstQuad = ImageQuad(PointD(20.0, 20.0), PointD(125.0, 20.0),
+            PointD(125.0, 125.0), PointD(20.0, 125.0))
+        val secondQuad = ImageQuad(PointD(220.0, 220.0), PointD(365.0, 220.0),
+            PointD(365.0, 365.0), PointD(220.0, 365.0))
+        val first = render(1, firstQuad)
+        val second = render(3, secondQuad)
+        val image = LumaImage(400, 400, IntArray(160000) { i ->
+            if (i % 400 in 210..375 && i / 400 in 210..375) 255 - second.pixels[i] else first.pixels[i]
+        })
+        val inverse = LumaImage(400, 400, IntArray(160000) { 255 - image.pixels[it] })
+        val normal = assertNotNull(InitialGridEstimator.fromBoundary(image, firstQuad))
+        val inverted = assertNotNull(InitialGridEstimator.fromBoundary(image, secondQuad))
+        assertEquals(3, normal.autoAssignedFinders.size)
+        assertEquals(3, inverted.autoAssignedFinders.size)
+        assertNull(InitialGridEstimator.resolvePeriodicityConflict(image, inverse, normal, inverted))
+        assertNull(InitialGridEstimator.resolvePeriodicityConflict(inverse, image, inverted, normal))
+    }
+
+    @Test fun cancellationDuringStructuralConflictVerificationPropagates() {
+        val image = render(3, perspective)
+        val normal = assertNotNull(InitialGridEstimator.fromBoundary(image, perspective))
+        val inverse = LumaImage(image.width, image.height, IntArray(image.pixels.size) { 255 - image.pixels[it] })
+        var checks = 0
+        assertFailsWith<RecoveryCancelledException> {
+            InitialGridEstimator.resolvePeriodicityConflict(image, inverse, normal, normal.copy(version = 4),
+                RecoveryCancellation { ++checks >= 3 })
+        }
+        assertEquals(3, checks)
+    }
 
     @Test fun boundaryValidationUsesOneThresholdInsideThePolygonRegardlessOfBackground() {
         val rendered = render(3, perspective)

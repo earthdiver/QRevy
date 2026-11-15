@@ -11,6 +11,128 @@ import java.nio.ByteBuffer
 import java.util.zip.GZIPInputStream
 
 class RecoverySessionCodecTest {
+    @Test fun automaticTextMarksAboveFourteenSurviveSavingAndLegacySchemasStillRejectThem() {
+        val marks = QrCellRegions(1).codewordCoordinates.take(32).toSet()
+        val settings = PreprocessSettings(preRecoveryEdits = marks.associateWith { ModuleValue.ERASED },
+            preRecoveryPrioritySearch = marks)
+        val matrix = QrMatrix(21).apply { marks.forEach { setPrioritySearch(it.x, it.y, true) } }
+        val history = entry().let { it.copy(snapshot = it.snapshot.copy(preprocessSettings = settings,
+            sourceMatrix = matrix.copy(), workingMatrix = matrix, automaticScanAssumption = AutomaticScanAssumption.NONE)) }
+        val bytes = RecoverySessionCodec.encode(RecoverySessionCodec.Payload("many-text-marks", 1L, UiMode.ANALYSIS, listOf(history), 0))
+        val restored = RecoverySessionCodec.decode(bytes).historyEntries.single().snapshot
+        assertEquals(settings, restored.preprocessSettings)
+        assertEquals(matrix.prioritySearchCoordinates(), restored.workingMatrix!!.prioritySearchCoordinates())
+        assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) {
+            RecoverySessionCodec.decode(bytes.copyOf().also { ByteBuffer.wrap(it).putInt(4, 39) })
+        }
+    }
+
+    @Test fun importedTextPriorityMarksRoundTripSeparatelyFromAutomaticExecution() {
+        val settings = PreprocessSettings(preRecoveryEdits = mapOf(Coord(20, 20) to ModuleValue.ERASED),
+            preRecoveryPrioritySearch = setOf(Coord(20, 20)))
+        val history = entry().let { it.copy(snapshot = it.snapshot.copy(preprocessSettings = settings,
+            automaticScanAssumption = AutomaticScanAssumption.UTF8_SINGLE_SEGMENT)) }
+        val payload = RecoverySessionCodec.Payload("text-automatic", 1L, UiMode.ANALYSIS, listOf(history), 0)
+        val bytes = RecoverySessionCodec.encode(payload)
+        val restored = RecoverySessionCodec.decode(bytes).historyEntries.single().snapshot
+        assertEquals(settings, restored.preprocessSettings)
+        val actual = QuickAutoRecovery.executionSettings(restored.preprocessSettings!!, restored.automaticScanAssumption!!)
+        assertTrue(actual.preRecoveryEdits.isEmpty())
+        assertTrue(actual.preRecoveryPrioritySearch.isEmpty())
+        assertEquals(0, actual.knownBitErrorLimit)
+        assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) {
+            RecoverySessionCodec.decode(bytes.copyOf().also { ByteBuffer.wrap(it).putInt(4, 39) })
+        }
+    }
+
+    @Test fun automaticTextExceptionRejectsFixedAndPhotographicEditsOnReadAndWrite() {
+        val p = Coord(20, 20)
+        val invalidSettings = listOf(
+            PreprocessSettings(preRecoveryEdits = mapOf(p to ModuleValue.ZERO)),
+            PreprocessSettings(preRecoveryEdits = mapOf(p to ModuleValue.ONE)),
+            PreprocessSettings(photographicSource = true, preRecoveryEdits = mapOf(p to ModuleValue.ERASED)),
+        )
+        for (settings in invalidSettings) {
+            val history = entry().let { it.copy(snapshot = it.snapshot.copy(preprocessSettings = settings)) }
+            val payload = RecoverySessionCodec.Payload("invalid-text-auto", 1L, UiMode.ANALYSIS, listOf(history), 0)
+            val raw = QrrContainerCodec.decode(RecoverySessionCodec.encode(payload)).bytes
+            // Give a valid detailed snapshot an automatic-condition tag and extension byte.
+            raw[raw.lastIndex] = 1
+            val bytes = QrrContainerCodec.encode { it.write(raw); it.writeByte(1) }
+            assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(bytes) }
+            assertThrows(IllegalArgumentException::class.java) {
+                RecoverySessionCodec.encode(payload.copy(historyEntries = listOf(history.copy(
+                    snapshot = history.snapshot.copy(automaticScanAssumption = AutomaticScanAssumption.NONE)))))
+            }
+        }
+    }
+
+    @Test fun automaticConditionsRoundTripSeparatelyFromSavedLmAndErrorLimits() {
+        val lm = GridGeometry(1, FinderRole.TOP_LEFT, 20.0, 20.0, 3.0, 0.0).asProjective()
+        val settings = PreprocessSettings(lmCorrectionEnabled = true, knownBitErrorLimit = 2,
+            manualQuad = lm.imageQuad, lmGeometry = lm).withInitialErrorLimits()
+        for (assumption in AutomaticScanAssumption.entries) for (extension in 1..2) {
+            if (assumption == AutomaticScanAssumption.EXACT_KNOWN_BITS && extension == 2) continue
+            val history = entry().let { it.copy(snapshot = it.snapshot.copy(
+                preprocessSettings = settings, automaticScanAssumption = assumption, automaticScanListExtension = extension)) }
+            val payload = RecoverySessionCodec.Payload("automatic", 1L, UiMode.ANALYSIS, listOf(history), 0)
+            val restored = RecoverySessionCodec.decode(RecoverySessionCodec.encode(payload)).historyEntries.single().snapshot
+            assertEquals(assumption, restored.automaticScanAssumption)
+            assertEquals(extension, restored.automaticScanListExtension)
+            assertEquals(settings, restored.preprocessSettings)
+            assertEquals(11, restored.preprocessSettings!!.effectiveDataEccMismatchLimit)
+            val actual = QuickAutoRecovery.executionSettings(restored.preprocessSettings, assumption,
+                restored.automaticScanListExtension)
+            assertEquals(if (assumption == AutomaticScanAssumption.EXACT_KNOWN_BITS) 0 else 11,
+                actual.effectiveDataEccMismatchLimit)
+            assertEquals(if (assumption == AutomaticScanAssumption.EXACT_KNOWN_BITS) 0 else extension,
+                actual.listDecodingAdditionalErrors)
+        }
+    }
+
+    @Test fun olderSchemasRetainTheirSupportedAssumptionsAndRejectUnsupportedTags() {
+        for (version in listOf(36, 37, 38)) for (assumption in AutomaticScanAssumption.entries) {
+            val history = entry().let { it.copy(snapshot = it.snapshot.copy(
+                preprocessSettings = PreprocessSettings(), automaticScanAssumption = assumption)) }
+            val payload = RecoverySessionCodec.Payload("legacy-automatic", 1L, UiMode.ANALYSIS, listOf(history), 0)
+            val raw = QrrContainerCodec.decode(RecoverySessionCodec.encode(payload)).bytes
+            // The single snapshot ends with the extension byte introduced in schema 39.
+            val bytes = QrrContainerCodec.encode { it.write(raw, 0, raw.size - 1) }
+                .also { ByteBuffer.wrap(it).putInt(4, version) }
+            if (assumption.ordinal >= when (version) { 36 -> 3; 37 -> 4; else -> 5 }) {
+                assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) { RecoverySessionCodec.decode(bytes) }
+            } else {
+                val restored = RecoverySessionCodec.decode(bytes).historyEntries.single().snapshot
+                assertEquals(assumption, restored.automaticScanAssumption)
+                assertEquals(1, restored.automaticScanListExtension)
+            }
+        }
+    }
+
+    @Test fun invalidAutomaticListExtensionsAreRejectedOnReadAndWrite() {
+        for (assumption in listOf(AutomaticScanAssumption.NONE, AutomaticScanAssumption.EXACT_KNOWN_BITS)) {
+            val history = entry().let { it.copy(snapshot = it.snapshot.copy(
+                preprocessSettings = PreprocessSettings(), automaticScanAssumption = assumption)) }
+            val payload = RecoverySessionCodec.Payload("invalid-extension", 1L, UiMode.ANALYSIS, listOf(history), 0)
+            val raw = QrrContainerCodec.decode(RecoverySessionCodec.encode(payload)).bytes
+            val invalid = if (assumption == AutomaticScanAssumption.EXACT_KNOWN_BITS) listOf(0, 2, 3, 255) else listOf(0, 3, 255)
+            for (extension in invalid) {
+                val altered = raw.copyOf().apply { this[lastIndex] = extension.toByte() }
+                assertThrows(RecoverySessionCodec.CorruptSessionException::class.java) {
+                    RecoverySessionCodec.decode(QrrContainerCodec.encode { it.write(altered) })
+                }
+                assertThrows(IllegalArgumentException::class.java) {
+                    RecoverySessionCodec.encode(payload.copy(historyEntries = listOf(history.copy(
+                        snapshot = history.snapshot.copy(automaticScanListExtension = extension)))))
+                }
+            }
+        }
+        val history = entry().let { it.copy(snapshot = it.snapshot.copy(automaticScanListExtension = 2)) }
+        assertThrows(IllegalArgumentException::class.java) {
+            RecoverySessionCodec.encode(RecoverySessionCodec.Payload("missing-assumption", 1L, UiMode.ANALYSIS, listOf(history), 0))
+        }
+    }
+
     private fun entry(label: String = "state"): RecoveryHistoryEntry {
         val matrix = QrMatrix(21)
         matrix.set(10, 10, ModuleValue.ONE, 0.75f, ModuleSource.USER)
@@ -136,7 +258,7 @@ class RecoverySessionCodecTest {
     @Test fun olderSettingsDefaultOffAndMalformedNewLimitIsRejected() {
         fun raw(limit:Int):ByteArray {
             val encoded=RecoverySessionCodec.encode(settingsPayload(PreprocessSettings(knownBitErrorLimit=limit)))
-            val current = GZIPInputStream(ByteArrayInputStream(encoded,48,encoded.size-48)).use { it.readBytes() }
+            val current = GZIPInputStream(ByteArrayInputStream(encoded,48,encoded.size-48)).use { it.readBytes() }.dropLast(1).toByteArray()
             // Schema 28 ends after the known-bit search limit.
             return current.copyOfRange(0, current.size - 8) + current.copyOfRange(current.size - 3, current.size)
         }
@@ -156,7 +278,7 @@ class RecoverySessionCodecTest {
     }
 
     private fun schema28Settings(encoded: ByteArray): ByteArray {
-        val raw = QrrContainerCodec.decode(encoded).bytes
+        val raw = QrrContainerCodec.decode(encoded).bytes.dropLast(1).toByteArray()
         val legacy = raw.copyOfRange(0, raw.size - 8) + raw.copyOfRange(raw.size - 3, raw.size)
         return QrrContainerCodec.encode { it.write(legacy) }.also { ByteBuffer.wrap(it).putInt(4, 28) }
     }

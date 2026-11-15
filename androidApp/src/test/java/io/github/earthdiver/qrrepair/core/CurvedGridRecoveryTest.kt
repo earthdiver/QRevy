@@ -76,6 +76,9 @@ class CurvedGridRecoveryTest {
         val loose = ImageQuad(PointD(6.0, 6.0), PointD(side - 7.0, 6.0),
             PointD(side - 7.0, side - 7.0), PointD(6.0, side - 7.0))
         for (variant in 0..3) {
+            // This is a geometry regression, not a heap-pressure test. Reclaim previous
+            // fixtures before the engine measures available heap for contour extraction.
+            System.gc()
             val original = image(amplitude = 2.8, inverted = variant == 1)
             fun transform(p: PointD): PointD = when (variant) {
                 2 -> PointD(p.y, p.x)
@@ -102,7 +105,8 @@ class CurvedGridRecoveryTest {
                 listDecodingBudget = ListDecodingBudget(0))
             assertFalse(ordinary.entries.any { it.candidate.payloadParsed && it.candidate.text == text })
             val result = AutoRecoveryEngine().run(input, profile = profile, listDecodingBudget = ListDecodingBudget(0))
-            assertTrue("No recovery for variant $variant", result.entries.any { it.candidate.payloadParsed && it.candidate.text == text })
+            assertTrue("No recovery for variant $variant: ${result.searchDiagnostic}",
+                result.entries.any { it.candidate.payloadParsed && it.candidate.text == text })
             assertTrue(result.testedHypotheses.all { it.geometry.version == 4 })
             assertTrue(result.testedHypotheses.any { it.geometry.warp != null && it.geometry.imageQuad != q })
             assertTrue(result.entries.all { it.candidate.knownBitMismatchesAfterCorrection <= selected.effectiveDataEccMismatchLimit!! })

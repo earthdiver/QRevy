@@ -17,6 +17,7 @@ class FinderDetector(
     blackThresholdOverride: Int? = null,
     whiteThresholdOverride: Int? = null,
     private val minimumModuleSize: Double = .8,
+    private val cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
 ) {
     private val blackThreshold = blackThresholdOverride?.coerceIn(0, 254) ?: image.threshold
     private val whiteThreshold = whiteThresholdOverride?.coerceIn(blackThreshold + 1, 255)
@@ -35,6 +36,7 @@ class FinderDetector(
     private data class Run(val value: PixelClass, val start: Int, val length: Int)
 
     fun detect(maxCandidates: Int = 6): List<FinderCandidate> {
+        cancellation.check()
         val rowStep = max(1, image.height / 700)
         return rankedCandidates(scanRows(0, image.height, rowStep) + blackComponentSeeds(), maxCandidates)
     }
@@ -74,6 +76,7 @@ class FinderDetector(
         val raw = mutableListOf<RawCandidate>()
         var y = startY
         while (y < endY) {
+            cancellation.check()
             val runs = rowRuns(y)
             for (i in 0..runs.size - 5) {
                 val r = runs.subList(i, i + 5)
@@ -136,12 +139,14 @@ class FinderDetector(
         val out = mutableListOf<RawCandidate>()
         fun visitedIndex(x: Int, y: Int) = (y - y0) * regionWidth + (x - x0)
         for (sy in y0 until y1) for (sx in x0 until x1) {
+            if (sx == x0) cancellation.check()
             val startVisited = visitedIndex(sx, sy)
             if (visited[startVisited] || classify(sx, sy) != PixelClass.BLACK) continue
             var head = 0; var tail = 0
             queue[tail++] = sy * image.width + sx; visited[startVisited] = true
             var minX = sx; var maxX = sx; var minY = sy; var maxY = sy; var area = 0
             while (head < tail) {
+                if (head % 1024 == 0) cancellation.check()
                 val index = queue[head++]; val x = index % image.width; val y = index / image.width
                 area++; minX = minOf(minX, x); maxX = maxOf(maxX, x); minY = minOf(minY, y); maxY = maxOf(maxY, y)
                 fun add(nx: Int, ny: Int) {
@@ -312,6 +317,7 @@ class FinderDetector(
         // later local optimizer from reaching the correct orientation and pitch.
         var angleDeg = 0
         while (angleDeg < 90) {
+            cancellation.check()
             val angle = angleDeg * PI / 180.0
             var scale = 0.68
             while (scale <= 1.36 + 1e-9) {

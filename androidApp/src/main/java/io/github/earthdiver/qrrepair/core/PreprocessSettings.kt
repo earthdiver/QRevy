@@ -144,7 +144,7 @@ data class PreprocessSettings(
         require(partialBitSearchLimit in PartialBitSearchLimit.supported)
         require(listDecodingAdditionalErrors in ListDecodingLimit.supported)
         require(knownBitErrorLimit in 0..2)
-        require(preRecoveryPrioritySearch.size <= 14)
+        require(preRecoveryPrioritySearch.size <= if (photographicSource) 14 else (17 + 4 * version) * (17 + 4 * version))
         require(preRecoveryPrioritySearch.all { preRecoveryEdits[it] == ModuleValue.ERASED })
         require(formatMismatchLimit == null || formatMismatchLimit in 0..30)
         require(dataEccMismatchLimit == null || dataEccMismatchLimit in 0..MAX_QR_DATA_ECC_BITS)

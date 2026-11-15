@@ -13,6 +13,77 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class RecoveryDiagnosticOverviewTest {
+    @Test fun selectedTrialAndCumulativeCandidatesHaveSeparateConditionsCountsAndCompletion() {
+        val selected = candidate().let { it.copy(displayConditions = it.displayConditions!!.copy(
+            assumeUtf8ByteSegments = true, trustSingleSegment = true, partialBitSearchLimit = 0, exactSpaceBitLimit = 8)) }
+        val geometry = GridGeometry(selected.version, FinderRole.TOP_LEFT, 30.0, 30.0, 5.0, 0.0)
+        val complete = RecoverySearchDiagnostic(solverCompleteness = SearchCompleteness.COMPLETE, completedSteps = 1)
+        val attempt = GeometryAttempt(GeometryHypothesis(emptyList(), geometry, 0.0), QrMatrix(geometry.dimension),
+            MatrixSampler.SamplingStats(128.0, 64.0, 32.0), listOf(selected), searchDiagnostic = complete)
+        val entry = RecoveryResultEntry(attempt, selected, null)
+        val cumulative = complete.copy(unresolvedCalculations = true,
+            candidateRejections = setOf(RecoveryCandidateRejection.UTF8_BYTE_SEGMENT))
+        inBothLanguages { ja ->
+            val context = RecoveryDiagnosticContext(3, false, false, cumulative, entry, 3, RecoveryDiscoveryCount.Exact(3))
+            val presenter = RecoveryDiagnosticPresenter(ja)
+            val report = presenter.candidateReport(selected, geometry, context)
+            val summary = presenter.searchResultDescription(context)
+            for (text in listOf(report.sections.last().details, summary)) {
+                assertTrue(text, text.contains(if (ja) "この試行の保持候補: 1件" else "Candidates retained from this trial: 1"))
+                assertTrue(text, text.contains(if (ja) "全試行の累積結果" else "Cumulative results across trial conditions and grids"))
+                assertTrue(text, text.contains(if (ja) "見つかった候補: 3件" else "Candidates found: 3"))
+                assertFalse(text, text.contains(if (ja) "指定条件を満たす修復候補が3件" else "3 recovery candidates meeting the specified conditions"))
+            }
+            for (text in listOf(report.overview, report.sections.last().summary, summary)) {
+                assertTrue(text, text.contains(if (ja) "未解決の処理が残っています" else "unresolved processing remains"))
+                assertTrue(text, text.contains(SearchCompleteness.COMPLETE.description())) // Selected trial only.
+            }
+            val settings = report.sections.first().summary
+            assertTrue(settings.contains(if (ja) "バイト区間の UTF-8 仮定: ON" else "UTF-8 assumption for Byte segments: ON"))
+            assertEquals(SearchCompleteness.COMPLETE, cumulative.completeness)
+            assertTrue(cumulative.unresolvedCalculations)
+        }
+    }
+
+    @Test fun interruptedAndOmittedTrialsNeverAcquireAUniqueCompletedLabel() {
+        val selected = candidate()
+        val geometry = GridGeometry(selected.version, FinderRole.TOP_LEFT, 30.0, 30.0, 5.0, 0.0)
+        val diagnostic = RecoverySearchDiagnostic(solverCompleteness = SearchCompleteness.COMPLETE,
+            unresolvedCalculations = true, incompleteReasons = setOf(SearchIncompleteReason.USER_INTERRUPTED), candidatesOmitted = true)
+        val attempt = GeometryAttempt(GeometryHypothesis(emptyList(), geometry, 0.0), QrMatrix(geometry.dimension),
+            MatrixSampler.SamplingStats(128.0, 64.0, 32.0), listOf(selected), searchDiagnostic = diagnostic)
+        inBothLanguages { ja ->
+            val context = RecoveryDiagnosticContext(1, true, true, diagnostic,
+                RecoveryResultEntry(attempt, selected, null), 1, RecoveryDiscoveryCount.AtLeast(2))
+            val text = RecoveryDiagnosticPresenter(ja).searchResultDescription(context)
+            assertTrue(text.contains(if (ja) "見つかった候補: 2件以上" else "Candidates found: at least 2"))
+            assertTrue(text.contains(if (ja) "保持上限" else "retention limit"))
+            assertTrue(text.contains(if (ja) "未解決" else "Unresolved"))
+            assertTrue(text.contains(SearchCompleteness.UNSEARCHED.description()))
+            assertFalse(text.contains(SearchCompleteness.COMPLETE.description()))
+        }
+    }
+
+    @Test fun unresolvedDirectSearchDoesNotClaimUnqualifiedCompletion() = inBothLanguages { ja ->
+        val diagnostic = RecoverySearchDiagnostic(solverCompleteness = SearchCompleteness.COMPLETE, unresolvedCalculations = true)
+        val text = RecoveryDiagnosticPresenter(ja).searchResultDescription(RecoveryDiagnosticContext(1, false, false, diagnostic, null))
+        assertTrue(text.contains(if (ja) "未解決の処理が残っています" else "unresolved processing remains"))
+        assertFalse(text.contains(SearchCompleteness.COMPLETE.description()))
+        assertEquals(SearchCompleteness.COMPLETE, diagnostic.completeness)
+    }
+
+    @Test fun fourCornerGeometryDoesNotClaimTheCornersWereManuallyAssigned() = inBothLanguages { ja ->
+        val geometry = GridGeometry(1, FinderRole.TOP_LEFT, 30.0, 30.0, 5.0, 0.0).asProjective()
+            .copy(model = GeometryModel.MANUAL_PROJECTIVE)
+        val text = RecoveryDiagnosticPresenter(ja).geometryDiagnosticText(geometry)
+        assertTrue(text.contains(if (ja) "四隅に基づく射影変換" else "Projective mapping from four corners"))
+        assertFalse(text.contains(if (ja) "手動" else "Manual"))
+        val warp = ThinPlateWarp(listOf(PointD(0.0, 0.0), PointD(1.0, 0.0), PointD(0.0, 1.0))
+            .map { WarpLandmark(it, PointD(0.0, 0.0)) })
+        val curved = RecoveryDiagnosticPresenter(ja).geometryDiagnosticText(geometry.copy(model = GeometryModel.THIN_PLATE_SPLINE, warp = warp))
+        assertTrue(curved.contains(if (ja) "曲面補正を使用" else "Distortion correction applied"))
+    }
+
     private fun candidate(): RecoveryCandidate {
         val qr = Encoder.encode("HELLO", ErrorCorrectionLevel.M)
         val matrix = QrMatrix(qr.matrix.width).apply {

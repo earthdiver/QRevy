@@ -453,7 +453,7 @@
     "white_min": 229,
     "provisional_black_max": 64,
     "provisional_white_min": 192,
-    "data_ecc_error_limit": 5,
+    "data_ecc_error_limit": 28,
     "format_error_limit": 6,
     "priority_limit": 4,
     "partial_bit_limit": 12,
@@ -487,6 +487,8 @@
           "LIST_DECODING_MISMATCH_LIMIT"
         ],
         "acceptedCandidate": true,
+        "decodedCandidate": true,
+        "singleSegmentRetryAvailable": false,
         "unresolvedCalculations": true,
         "unsearched": false,
         "incompleteReasons": [],
@@ -509,9 +511,9 @@
         "listDecoding": {
           "trials": 258,
           "interpolations": 1,
-          "elapsedMillis": 323,
+          "elapsedMillis": 364,
           "mismatchLimits": [
-            5
+            28
           ],
           "skipReasons": [
             "TOO_MANY_ERASURES",
@@ -535,6 +537,8 @@
             "5": 256
           }
         },
+        "knownBitSearchAttempted": false,
+        "knownBitTrials": 0,
         "listDecodingExecution": {
           "stages": {
             "WITHOUT_ASSIGNMENTS": [
@@ -548,7 +552,121 @@
             "WITHOUT_ASSIGNMENTS": 0,
             "ADDITIONAL": 258
           }
-        }
+        },
+        "formatOutcomes": [
+          {
+            "ecLevel": "M",
+            "dataMask": 3,
+            "state": "UNRESOLVED",
+            "hasCandidate": true,
+            "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+          },
+          {
+            "ecLevel": "M",
+            "dataMask": 5,
+            "state": "EXCLUDED",
+            "hasCandidate": false,
+            "reason": "ALL_PRIORITY_ASSIGNMENTS_EXCLUDED"
+          },
+          {
+            "ecLevel": "L",
+            "dataMask": 1,
+            "state": "EXCLUDED",
+            "hasCandidate": false,
+            "reason": "ALL_PRIORITY_ASSIGNMENTS_EXCLUDED"
+          },
+          {
+            "ecLevel": "L",
+            "dataMask": 5,
+            "state": "EXCLUDED",
+            "hasCandidate": false,
+            "reason": "ALL_PRIORITY_ASSIGNMENTS_EXCLUDED"
+          },
+          {
+            "ecLevel": "L",
+            "dataMask": 6,
+            "state": "EXCLUDED",
+            "hasCandidate": false,
+            "reason": "ALL_PRIORITY_ASSIGNMENTS_EXCLUDED"
+          },
+          {
+            "ecLevel": "H",
+            "dataMask": 4,
+            "state": "EXCLUDED",
+            "hasCandidate": false,
+            "reason": "ALL_PRIORITY_ASSIGNMENTS_EXCLUDED"
+          },
+          {
+            "ecLevel": "Q",
+            "dataMask": 0,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+          },
+          {
+            "ecLevel": "Q",
+            "dataMask": 7,
+            "state": "EXCLUDED",
+            "hasCandidate": false,
+            "reason": "ALL_PRIORITY_ASSIGNMENTS_EXCLUDED"
+          },
+          {
+            "ecLevel": "M",
+            "dataMask": 4,
+            "state": "EXCLUDED",
+            "hasCandidate": false,
+            "reason": "ALL_PRIORITY_ASSIGNMENTS_EXCLUDED"
+          },
+          {
+            "ecLevel": "L",
+            "dataMask": 0,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+          },
+          {
+            "ecLevel": "L",
+            "dataMask": 4,
+            "state": "EXCLUDED",
+            "hasCandidate": false,
+            "reason": "ALL_PRIORITY_ASSIGNMENTS_EXCLUDED"
+          },
+          {
+            "ecLevel": "L",
+            "dataMask": 7,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+          },
+          {
+            "ecLevel": "H",
+            "dataMask": 5,
+            "state": "EXCLUDED",
+            "hasCandidate": false,
+            "reason": "ALL_PRIORITY_ASSIGNMENTS_EXCLUDED"
+          },
+          {
+            "ecLevel": "Q",
+            "dataMask": 1,
+            "state": "EXCLUDED",
+            "hasCandidate": false,
+            "reason": "ALL_PRIORITY_ASSIGNMENTS_EXCLUDED"
+          },
+          {
+            "ecLevel": "Q",
+            "dataMask": 5,
+            "state": "EXCLUDED",
+            "hasCandidate": false,
+            "reason": "ALL_PRIORITY_ASSIGNMENTS_EXCLUDED"
+          },
+          {
+            "ecLevel": "Q",
+            "dataMask": 6,
+            "state": "EXCLUDED",
+            "hasCandidate": false,
+            "reason": "ALL_PRIORITY_ASSIGNMENTS_EXCLUDED"
+          }
+        ]
       }
     },
     {
@@ -556,8 +674,12 @@
       "candidate_count": 0,
       "search_diagnostic": {
         "inputBlocker": null,
-        "candidateRejections": [],
+        "candidateRejections": [
+          "QR_STRUCTURE"
+        ],
         "acceptedCandidate": false,
+        "decodedCandidate": false,
+        "singleSegmentRetryAvailable": true,
         "unresolvedCalculations": true,
         "unsearched": false,
         "incompleteReasons": [],
@@ -572,9 +694,9 @@
         "listDecoding": {
           "trials": 0,
           "interpolations": 0,
-          "elapsedMillis": 110,
+          "elapsedMillis": 159,
           "mismatchLimits": [
-            5
+            28
           ],
           "skipReasons": [
             "TOO_MANY_ERASURES",
@@ -589,6 +711,8 @@
           "hardRadiusTrials": {},
           "completedHardRadiusTrials": {}
         },
+        "knownBitSearchAttempted": false,
+        "knownBitTrials": 0,
         "listDecodingExecution": {
           "stages": {
             "WITHOUT_ASSIGNMENTS": [
@@ -602,7 +726,121 @@
             "WITHOUT_ASSIGNMENTS": 0,
             "ADDITIONAL": 0
           }
-        }
+        },
+        "formatOutcomes": [
+          {
+            "ecLevel": "M",
+            "dataMask": 3,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+          },
+          {
+            "ecLevel": "M",
+            "dataMask": 5,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+          },
+          {
+            "ecLevel": "L",
+            "dataMask": 1,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+          },
+          {
+            "ecLevel": "L",
+            "dataMask": 5,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+          },
+          {
+            "ecLevel": "L",
+            "dataMask": 6,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+          },
+          {
+            "ecLevel": "H",
+            "dataMask": 4,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+          },
+          {
+            "ecLevel": "Q",
+            "dataMask": 0,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+          },
+          {
+            "ecLevel": "Q",
+            "dataMask": 7,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+          },
+          {
+            "ecLevel": "M",
+            "dataMask": 4,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+          },
+          {
+            "ecLevel": "L",
+            "dataMask": 0,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+          },
+          {
+            "ecLevel": "L",
+            "dataMask": 4,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+          },
+          {
+            "ecLevel": "L",
+            "dataMask": 7,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+          },
+          {
+            "ecLevel": "H",
+            "dataMask": 5,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+          },
+          {
+            "ecLevel": "Q",
+            "dataMask": 1,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+          },
+          {
+            "ecLevel": "Q",
+            "dataMask": 5,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+          },
+          {
+            "ecLevel": "Q",
+            "dataMask": 6,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+          }
+        ]
       }
     },
     {
@@ -612,7 +850,9 @@
         "inputBlocker": null,
         "candidateRejections": [],
         "acceptedCandidate": false,
-        "unresolvedCalculations": false,
+        "decodedCandidate": false,
+        "singleSegmentRetryAvailable": false,
+        "unresolvedCalculations": true,
         "unsearched": false,
         "incompleteReasons": [],
         "completedSteps": 81,
@@ -628,9 +868,9 @@
         "listDecoding": {
           "trials": 0,
           "interpolations": 0,
-          "elapsedMillis": 17,
+          "elapsedMillis": 9,
           "mismatchLimits": [
-            5
+            28
           ],
           "skipReasons": [],
           "methodTrials": {},
@@ -641,6 +881,8 @@
           "hardRadiusTrials": {},
           "completedHardRadiusTrials": {}
         },
+        "knownBitSearchAttempted": false,
+        "knownBitTrials": 0,
         "listDecodingExecution": {
           "stages": {
             "WITHOUT_ASSIGNMENTS": [
@@ -654,7 +896,121 @@
             "WITHOUT_ASSIGNMENTS": 0,
             "ADDITIONAL": 0
           }
-        }
+        },
+        "formatOutcomes": [
+          {
+            "ecLevel": "M",
+            "dataMask": 3,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "SINGLE_SEGMENT_HEADER_UNRESOLVED"
+          },
+          {
+            "ecLevel": "M",
+            "dataMask": 5,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "SINGLE_SEGMENT_HEADER_UNRESOLVED"
+          },
+          {
+            "ecLevel": "L",
+            "dataMask": 1,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "SINGLE_SEGMENT_HEADER_UNRESOLVED"
+          },
+          {
+            "ecLevel": "L",
+            "dataMask": 5,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "SINGLE_SEGMENT_HEADER_UNRESOLVED"
+          },
+          {
+            "ecLevel": "L",
+            "dataMask": 6,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "SINGLE_SEGMENT_HEADER_UNRESOLVED"
+          },
+          {
+            "ecLevel": "H",
+            "dataMask": 4,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "SINGLE_SEGMENT_HEADER_UNRESOLVED"
+          },
+          {
+            "ecLevel": "Q",
+            "dataMask": 0,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "SINGLE_SEGMENT_HEADER_UNRESOLVED"
+          },
+          {
+            "ecLevel": "Q",
+            "dataMask": 7,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "SINGLE_SEGMENT_HEADER_UNRESOLVED"
+          },
+          {
+            "ecLevel": "M",
+            "dataMask": 4,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "SINGLE_SEGMENT_HEADER_UNRESOLVED"
+          },
+          {
+            "ecLevel": "L",
+            "dataMask": 0,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "SINGLE_SEGMENT_HEADER_UNRESOLVED"
+          },
+          {
+            "ecLevel": "L",
+            "dataMask": 4,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "SINGLE_SEGMENT_HEADER_UNRESOLVED"
+          },
+          {
+            "ecLevel": "L",
+            "dataMask": 7,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "SINGLE_SEGMENT_HEADER_UNRESOLVED"
+          },
+          {
+            "ecLevel": "H",
+            "dataMask": 5,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "SINGLE_SEGMENT_HEADER_UNRESOLVED"
+          },
+          {
+            "ecLevel": "Q",
+            "dataMask": 1,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "SINGLE_SEGMENT_HEADER_UNRESOLVED"
+          },
+          {
+            "ecLevel": "Q",
+            "dataMask": 5,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "SINGLE_SEGMENT_HEADER_UNRESOLVED"
+          },
+          {
+            "ecLevel": "Q",
+            "dataMask": 6,
+            "state": "UNRESOLVED",
+            "hasCandidate": false,
+            "reason": "SINGLE_SEGMENT_HEADER_UNRESOLVED"
+          }
+        ]
       }
     }
   ],
@@ -810,7 +1166,7 @@
       ],
       "correctedInterleaved": null,
       "knownBitMismatches": null,
-      "knownBitMismatchLimit": 5,
+      "knownBitMismatchLimit": 28,
       "manualConflicts": [],
       "qrStructureValid": null
     },
@@ -820,7 +1176,9 @@
         "bitConstraintSolved": true,
         "rsMargin": null,
         "guessedBits": 0,
-        "listDecoding": null
+        "listDecoding": null,
+        "knownBitErrors": null,
+        "imageErasures": []
       }
     ],
     "searchDiagnostic": {
@@ -829,6 +1187,8 @@
         "LIST_DECODING_MISMATCH_LIMIT"
       ],
       "acceptedCandidate": true,
+      "decodedCandidate": true,
+      "singleSegmentRetryAvailable": false,
       "unresolvedCalculations": true,
       "unsearched": false,
       "incompleteReasons": [],
@@ -851,9 +1211,9 @@
       "listDecoding": {
         "trials": 258,
         "interpolations": 1,
-        "elapsedMillis": 323,
+        "elapsedMillis": 364,
         "mismatchLimits": [
-          5
+          28
         ],
         "skipReasons": [
           "TOO_MANY_ERASURES",
@@ -877,6 +1237,8 @@
           "5": 256
         }
       },
+      "knownBitSearchAttempted": false,
+      "knownBitTrials": 0,
       "listDecodingExecution": {
         "stages": {
           "WITHOUT_ASSIGNMENTS": [
@@ -890,7 +1252,121 @@
           "WITHOUT_ASSIGNMENTS": 0,
           "ADDITIONAL": 258
         }
-      }
+      },
+      "formatOutcomes": [
+        {
+          "ecLevel": "M",
+          "dataMask": 3,
+          "state": "UNRESOLVED",
+          "hasCandidate": true,
+          "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+        },
+        {
+          "ecLevel": "M",
+          "dataMask": 5,
+          "state": "EXCLUDED",
+          "hasCandidate": false,
+          "reason": "ALL_PRIORITY_ASSIGNMENTS_EXCLUDED"
+        },
+        {
+          "ecLevel": "L",
+          "dataMask": 1,
+          "state": "EXCLUDED",
+          "hasCandidate": false,
+          "reason": "ALL_PRIORITY_ASSIGNMENTS_EXCLUDED"
+        },
+        {
+          "ecLevel": "L",
+          "dataMask": 5,
+          "state": "EXCLUDED",
+          "hasCandidate": false,
+          "reason": "ALL_PRIORITY_ASSIGNMENTS_EXCLUDED"
+        },
+        {
+          "ecLevel": "L",
+          "dataMask": 6,
+          "state": "EXCLUDED",
+          "hasCandidate": false,
+          "reason": "ALL_PRIORITY_ASSIGNMENTS_EXCLUDED"
+        },
+        {
+          "ecLevel": "H",
+          "dataMask": 4,
+          "state": "EXCLUDED",
+          "hasCandidate": false,
+          "reason": "ALL_PRIORITY_ASSIGNMENTS_EXCLUDED"
+        },
+        {
+          "ecLevel": "Q",
+          "dataMask": 0,
+          "state": "UNRESOLVED",
+          "hasCandidate": false,
+          "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+        },
+        {
+          "ecLevel": "Q",
+          "dataMask": 7,
+          "state": "EXCLUDED",
+          "hasCandidate": false,
+          "reason": "ALL_PRIORITY_ASSIGNMENTS_EXCLUDED"
+        },
+        {
+          "ecLevel": "M",
+          "dataMask": 4,
+          "state": "EXCLUDED",
+          "hasCandidate": false,
+          "reason": "ALL_PRIORITY_ASSIGNMENTS_EXCLUDED"
+        },
+        {
+          "ecLevel": "L",
+          "dataMask": 0,
+          "state": "UNRESOLVED",
+          "hasCandidate": false,
+          "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+        },
+        {
+          "ecLevel": "L",
+          "dataMask": 4,
+          "state": "EXCLUDED",
+          "hasCandidate": false,
+          "reason": "ALL_PRIORITY_ASSIGNMENTS_EXCLUDED"
+        },
+        {
+          "ecLevel": "L",
+          "dataMask": 7,
+          "state": "UNRESOLVED",
+          "hasCandidate": false,
+          "reason": "PRIORITY_ASSIGNMENT_UNRESOLVED"
+        },
+        {
+          "ecLevel": "H",
+          "dataMask": 5,
+          "state": "EXCLUDED",
+          "hasCandidate": false,
+          "reason": "ALL_PRIORITY_ASSIGNMENTS_EXCLUDED"
+        },
+        {
+          "ecLevel": "Q",
+          "dataMask": 1,
+          "state": "EXCLUDED",
+          "hasCandidate": false,
+          "reason": "ALL_PRIORITY_ASSIGNMENTS_EXCLUDED"
+        },
+        {
+          "ecLevel": "Q",
+          "dataMask": 5,
+          "state": "EXCLUDED",
+          "hasCandidate": false,
+          "reason": "ALL_PRIORITY_ASSIGNMENTS_EXCLUDED"
+        },
+        {
+          "ecLevel": "Q",
+          "dataMask": 6,
+          "state": "EXCLUDED",
+          "hasCandidate": false,
+          "reason": "ALL_PRIORITY_ASSIGNMENTS_EXCLUDED"
+        }
+      ]
     },
     "inputQuad": [
       [
@@ -985,10 +1461,10 @@
   },
   "original_codewords_match": true,
   "original_matrix_match": true,
-  "core_source_sha256": "1c3639f4c5c6ff2d755e6baefefba05898dabbb307b4cafdc0f6daed8cfbf75d",
+  "core_source_sha256": "fdafc71ea1c84495cb027b338f03717747ba2a40fdd60a989aff3ccc47d7c7a8",
   "generator_packages": {
     "qrcode": "8.2",
-    "Pillow": "12.3.0",
+    "Pillow": "11.3.0",
     "zxing-cpp": "3.1.1"
   },
   "sha256": {

@@ -34,7 +34,10 @@ class RecoverySearchDiagnosticTest {
         val failure = outcome.failure!!
         assertTrue(failure.conventionalRsDiagnostic!!.succeeded)
         assertEquals(RecoveryInputBlocker.ZERO_MISMATCH, failure.searchDiagnostic!!.inputBlocker)
-        assertTrue(failure.searchDiagnostic.candidateCalculations > 0)
+        assertEquals(0, failure.searchDiagnostic.candidateCalculations)
+        assertEquals(RecoveryFormatState.EXCLUDED, failure.searchDiagnostic.formatOutcomes.single().state)
+        assertEquals("NO_EXACT_SOLUTION", failure.searchDiagnostic.formatOutcomes.single().reason)
+        assertFalse(failure.searchDiagnostic.unresolvedCalculations)
         val candidate = engine.recover(matrix(), maxKnownDataEccMismatches = 0, formatConstraint = format).first()
         assertNull(candidate.searchDiagnostic!!.inputBlocker)
         assertTrue(candidate.searchDiagnostic.acceptedCandidate)

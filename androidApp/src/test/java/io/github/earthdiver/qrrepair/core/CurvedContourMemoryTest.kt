@@ -49,6 +49,22 @@ class CurvedContourMemoryTest {
         assertTrue(limited.memoryLimited)
     }
 
+    @Test fun contiguousConvolutionPreservesFinderObservationsAtEveryScaleAndPolarity() {
+        val (normal, geometry) = fixture()
+        for (inverted in listOf(false, true)) {
+            val image = if (inverted) LumaImage(normal.width, normal.height,
+                IntArray(normal.pixels.size) { 255 - normal.pixels[it] }) else normal
+            val reference = CurvedFinderContours(image, inverted) { false }.seeds(geometry)
+            val optimized = CurvedFinderContours(image, inverted, fastConvolution = true) { false }
+            assertTrue(reference.isNotEmpty())
+            assertEquals(reference, optimized.seeds(geometry))
+            assertFalse(optimized.memoryLimited)
+            val limited = CurvedFinderContours(image, inverted, maxWorkingBytes = 0, fastConvolution = true) { false }
+            assertTrue(limited.seeds(geometry).isEmpty())
+            assertTrue(limited.memoryLimited)
+        }
+    }
+
     @Test fun contourBudgetExhaustionStillAllowsPatchCandidatesAndOrdinaryRecovery() {
         val (image, geometry) = fixture(side = 256)
         val settings = PreprocessSettings(version = 1, manualQuad = geometry.imageQuad,

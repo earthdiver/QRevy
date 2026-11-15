@@ -4,6 +4,8 @@ import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -27,7 +29,7 @@ data class GridPeriodicityEstimate(
  */
 object GridPeriodicityEstimator {
     private data class Edge(val x: Double, val y: Double, val gx: Double, val gy: Double, val weight: Double)
-    private data class Period(val pitch: Double, val agreement: Double, val boundaryPhase: Double)
+    internal data class Period(val pitch: Double, val agreement: Double, val boundaryPhase: Double)
     private data class DarkProjection(
         val u: List<Double>,
         val v: List<Double>,
@@ -37,20 +39,25 @@ object GridPeriodicityEstimator {
         val maxV: Double,
     )
 
-    fun estimate(image: LumaImage): GridPeriodicityEstimate? {
+    fun estimate(image: LumaImage, cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
+        trace: GridEstimationTrace? = null): GridPeriodicityEstimate? {
+        cancellation.check()
         if (minOf(image.width, image.height) < 42) return null
         val stride = max(1, max(image.width, image.height) / 700)
         val edges = ArrayList<Edge>()
         val orientation = DoubleArray(90)
-        for (y in 1 until image.height - 1 step stride) for (x in 1 until image.width - 1 step stride) {
-            val gx = (image.luma(x + 1, y) - image.luma(x - 1, y)).toDouble()
-            val gy = (image.luma(x, y + 1) - image.luma(x, y - 1)).toDouble()
-            val magnitude = hypot(gx, gy)
-            if (magnitude < 36.0) continue
-            val angle = ((atan2(gy, gx) * 180.0 / PI) % 180.0 + 180.0) % 180.0
-            val bin = (angle / 2.0).roundToInt() % 90
-            orientation[bin] += magnitude
-            edges += Edge(x.toDouble(), y.toDouble(), gx, gy, magnitude)
+        trace.measure("EDGES") {
+            for (y in 1 until image.height - 1 step stride) for (x in 1 until image.width - 1 step stride) {
+                if (x == 1) cancellation.check()
+                val gx = (image.luma(x + 1, y) - image.luma(x - 1, y)).toDouble()
+                val gy = (image.luma(x, y + 1) - image.luma(x, y - 1)).toDouble()
+                val magnitude = hypot(gx, gy)
+                if (magnitude < 36.0) continue
+                val angle = ((atan2(gy, gx) * 180.0 / PI) % 180.0 + 180.0) % 180.0
+                val bin = (angle / 2.0).roundToInt() % 90
+                orientation[bin] += magnitude
+                edges += Edge(x.toDouble(), y.toDouble(), gx, gy, magnitude)
+            }
         }
         if (edges.size < 80) return null
 
@@ -58,7 +65,8 @@ object GridPeriodicityEstimator {
         // strong single-direction structures such as text lines and fences.
         val axisBin = orientation.indices.maxByOrNull { orientation[it] + orientation[(it + 45) % 90] } ?: return null
         val axisAngle = axisBin * 2.0 * PI / 180.0
-        val ux = cos(axisAngle); val uy = sin(axisAngle)
+        val ux = if (axisBin == 45) 0.0 else cos(axisAngle)
+        val uy = if (axisBin == 45) 1.0 else sin(axisAngle)
         val vx = -uy; val vy = ux
         val uCoordinates = ArrayList<Pair<Double, Double>>()
         val vCoordinates = ArrayList<Pair<Double, Double>>()
@@ -72,11 +80,13 @@ object GridPeriodicityEstimator {
         if (uCoordinates.size < 30 || vCoordinates.size < 30) return null
 
         val maxPitch = minOf(image.width, image.height).toDouble() / 20.0
-        val uPeriods = periods(uCoordinates, maxPitch)
-        val vPeriods = periods(vCoordinates, maxPitch)
+        val uPeriods = trace.measure("U_PERIODS") { periods(uCoordinates, maxPitch, cancellation) }
+        val vPeriods = trace.measure("V_PERIODS") { periods(vCoordinates, maxPitch, cancellation) }
         if (uPeriods.isEmpty() || vPeriods.isEmpty()) return null
 
-        val dark = projectedDark(image, ux, uy, vx, vy, stride) ?: return null
+        val dark = trace.measure("DARK_SUPPORT") {
+            projectedDark(image, ux, uy, vx, vy, stride, cancellation)
+        } ?: return null
         val spanU = dark.maxU - dark.minU + 1.0
         val spanV = dark.maxV - dark.minV + 1.0
         data class Choice(val u: Period, val v: Period, val version: Int, val cost: Double, val agreement: Double)
@@ -100,8 +110,15 @@ object GridPeriodicityEstimator {
 
         // Select a dimension-sized, phase-aligned window. This discards spreadsheet headers and
         // other narrow periodic margins instead of mistaking the entire photograph for the QR.
-        val uEdge = bestWindow(dark.u, dark.minU, dark.maxU, choice.u, dimension) ?: return null
-        val vEdge = bestWindow(dark.v, dark.minV, dark.maxV, choice.v, dimension) ?: return null
+        val ordinaryU = bestWindow(dark.u, dark.minU, dark.maxU, choice.u, dimension)
+        val ordinaryV = bestWindow(dark.v, dark.minV, dark.maxV, choice.v, dimension)
+        val anchored = if (ordinaryU == null || ordinaryV == null)
+            trace.measure("FINDER_ANCHOR") {
+                finderAnchoredWindow(image, dimension, choice.u, choice.v, ux, uy, dark, cancellation, trace)
+            } ?: return null
+        else null
+        val uEdge = anchored?.first ?: ordinaryU ?: return null
+        val vEdge = anchored?.second ?: ordinaryV ?: return null
         val u0 = uEdge + choice.u.pitch * .5
         val u1 = uEdge + choice.u.pitch * (dimension - .5)
         val v0 = vEdge + choice.v.pitch * .5
@@ -116,19 +133,139 @@ object GridPeriodicityEstimator {
         )
     }
 
-    private fun periods(coordinates: List<Pair<Double, Double>>, maxPitch: Double): List<Period> {
+    /** Extends missing dark support only when a surviving Finder and timing agree with the phase. */
+    private fun finderAnchoredWindow(
+        image: LumaImage, dimension: Int, u: Period, v: Period, ux: Double, uy: Double,
+        dark: DarkProjection, cancellation: RecoveryCancellation, trace: GridEstimationTrace?,
+    ): Pair<Double, Double>? {
+        // One Finder cannot constrain perspective. Keep this fallback to nearly square modules.
+        if (dimension < 25 || abs(u.pitch / v.pitch - 1.0) > .08) return null
+        // Period, phase and dark support already bound the possible windows. Verify their corner
+        // templates directly instead of repeating a whole-image Finder scale/angle search.
+        fun starts(minimum: Double, maximum: Double, period: Period): List<Double> {
+            val first = ceil((maximum - (dimension + .5) * period.pitch - period.boundaryPhase) / period.pitch).toInt()
+            val last = floor((minimum + .5 * period.pitch - period.boundaryPhase) / period.pitch).toInt()
+            return (first..last).map { period.boundaryPhase + it * period.pitch }
+        }
+        val uStarts = starts(dark.minU, dark.maxU, u)
+        val vStarts = starts(dark.minV, dark.maxV, v)
+        trace?.record("FINDER_WINDOWS", "windows=${uStarts.size * vStarts.size}")
+        val accepted = mutableListOf<Pair<Double, Double>>()
+        val offsets = listOf(0.0 to 0.0, -.2 to 0.0, .2 to 0.0, 0.0 to -.2, 0.0 to .2)
+        fun point(a: Double, b: Double) = PointD(ux * a - uy * b, uy * a + ux * b)
+        for (startU in uStarts) for (startV in vStarts)
+            for (right in listOf(false, true)) for (bottom in listOf(false, true)) {
+            cancellation.check()
+            val fx = if (right) dimension - 4 else 3
+            val fy = if (bottom) dimension - 4 else 3
+            // The proposed window must contain the observed dark extent, not just the anchor.
+            if (dark.minU < startU - u.pitch * .5 || dark.maxU > startU + (dimension + .5) * u.pitch ||
+                dark.minV < startV - v.pitch * .5 || dark.maxV > startV + (dimension + .5) * v.pitch) continue
+            fun sample(x: Double, y: Double): Double? {
+                val p = point(startU + (x + .5) * u.pitch, startV + (y + .5) * v.pitch)
+                return image.sampleMean(p.x, p.y, 0.0)
+            }
+            if (listOf(0 to 0, dimension - 1 to 0, dimension - 1 to dimension - 1, 0 to dimension - 1)
+                    .any { (x, y) -> sample(x.toDouble(), y.toDouble()) == null }) continue
+            fun finderBlack(x: Int, y: Int) = abs(x) == 3 || abs(y) == 3 || (abs(x) <= 1 && abs(y) <= 1)
+            val blacks = mutableListOf<Double>(); val whites = mutableListOf<Double>()
+            for (y in -3..3) for (x in -3..3) {
+                val value = sample((fx + x).toDouble(), (fy + y).toDouble()) ?: continue
+                if (finderBlack(x, y)) blacks += value else whites += value
+            }
+            if (blacks.size != 33 || whites.size != 16) continue
+            val black = blacks.sorted()[blacks.size / 2]; val white = whites.sorted()[whites.size / 2]
+            if (white - black < 64) continue
+            // This evidence-only unknown band does not change module sampling or saved thresholds.
+            fun observed(x: Double, y: Double): Boolean? {
+                val value = sample(x, y) ?: return null
+                return when {
+                    value <= black + (white - black) * .3 -> true
+                    value >= black + (white - black) * .7 -> false
+                    else -> null
+                }
+            }
+            if (offsets.any { (dx, dy) ->
+                    var errors = 0
+                    for (y in -3..3) for (x in -3..3)
+                        if (observed(fx + x + dx, fy + y + dy) != finderBlack(x, y)) errors++
+                    errors > 2
+                }) continue
+            val sx = if (right) -4 else 4; val sy = if (bottom) -4 else 4
+            if (offsets.any { (dx, dy) ->
+                    var whitesKnown = 0; var errors = 0
+                    val cells = (-3..3).flatMap { listOf(fx + sx to fy + it, fx + it to fy + sy) } +
+                        (fx + sx to fy + sy)
+                    for ((x, y) in cells) when (observed(x + dx, y + dy)) {
+                        false -> whitesKnown++
+                        true -> errors++
+                        null -> Unit
+                    }
+                    whitesKnown < 12 || errors > 1
+                }) continue
+            // Try all logical rotations; mirror swaps the two timing axes and gives the same test.
+            // No logical Finder role is assigned from this provisional geometry.
+            val supported = (0..3).any { rotation ->
+                fun rotated(x: Double, y: Double): Pair<Double, Double> = when (rotation) {
+                    0 -> x to y
+                    1 -> dimension - 1 - y to x
+                    2 -> dimension - 1 - x to dimension - 1 - y
+                    else -> y to dimension - 1 - x
+                }
+                val missingCorner = rotated((dimension - 4).toDouble(), (dimension - 4).toDouble())
+                if (missingCorner.first == fx.toDouble() && missingCorner.second == fy.toDouble()) return@any false
+                offsets.all { (dx, dy) ->
+                    var strongAxes = 0; var contradicts = false
+                    for (horizontal in listOf(true, false)) {
+                        var known = 0; var errors = 0; var blackCount = 0
+                        for (i in 8..dimension - 9) {
+                            val (x, y) = if (horizontal) rotated(i + dx, 6.0 + dy) else rotated(6.0 + dx, i + dy)
+                            val bit = observed(x, y) ?: continue
+                            known++
+                            if (bit) blackCount++
+                            if (bit != (i % 2 == 0)) errors++
+                        }
+                        if (errors > known * .05) contradicts = true
+                        if (known >= 8 && known >= (dimension - 16) * .6 && blackCount >= 3 && known - blackCount >= 3)
+                            strongAxes++
+                    }
+                    !contradicts && strongAxes >= 1
+                }
+            }
+            if (supported && accepted.none { abs(it.first - startU) < .01 && abs(it.second - startV) < .01 })
+                accepted += startU to startV
+        }
+        // Multiple anchors may support the same grid, but distinct supported extents remain ambiguous.
+        return accepted.singleOrNull()
+    }
+
+    internal fun periods(coordinates: List<Pair<Double, Double>>, maxPitch: Double,
+        cancellation: RecoveryCancellation): List<Period> {
         // The phase statistic converges with far fewer samples than a camera frame contains.
         // Deterministic even sampling keeps import latency bounded without changing provenance.
         val sampleStep = max(1, coordinates.size / 12_000)
-        val samples = coordinates.filterIndexed { index, _ -> index % sampleStep == 0 }.take(12_000)
+        val weights = linkedMapOf<Double, Double>()
+        var count = 0
+        for (index in coordinates.indices step sampleStep) {
+            if (count++ >= 12_000) break
+            if (index % 256 == 0) cancellation.check()
+            val (coordinate, rawWeight) = coordinates[index]
+            weights[coordinate] = (weights[coordinate] ?: 0.0) + rawWeight.coerceAtMost(510.0)
+        }
+        // Identical projections have identical phases at every pitch. Summing their weights
+        // removes repeated trigonometry without quantizing coordinates or dropping evidence.
+        val positions = weights.keys.toDoubleArray()
+        val summedWeights = weights.values.toDoubleArray()
+        val total = summedWeights.sum()
         val candidates = ArrayList<Period>()
         var pitch = 2.0
         while (pitch <= maxPitch) {
-            var real = 0.0; var imaginary = 0.0; var total = 0.0
-            for ((coordinate, rawWeight) in samples) {
-                val weight = rawWeight.coerceAtMost(510.0)
-                val phase = coordinate / pitch * 2.0 * PI
-                real += weight * cos(phase); imaginary += weight * sin(phase); total += weight
+            cancellation.check()
+            var real = 0.0; var imaginary = 0.0
+            for (index in positions.indices) {
+                val phase = positions[index] / pitch * 2.0 * PI
+                real += summedWeights[index] * cos(phase)
+                imaginary += summedWeights[index] * sin(phase)
             }
             val agreement = if (total == 0.0) 0.0 else hypot(real, imaginary) / total
             var phase = atan2(imaginary, real) / (2.0 * PI) * pitch
@@ -137,6 +274,7 @@ object GridPeriodicityEstimator {
             pitch += .25
         }
         val fundamental = candidates.filter { candidate ->
+            cancellation.check()
             (2..4).none { harmonic ->
                 candidates.any { larger ->
                     abs(larger.pitch - candidate.pitch * harmonic) <= .26 &&
@@ -154,6 +292,7 @@ object GridPeriodicityEstimator {
         vx: Double,
         vy: Double,
         stride: Int,
+        cancellation: RecoveryCancellation,
     ): DarkProjection? {
         var minU = Double.POSITIVE_INFINITY; var maxU = Double.NEGATIVE_INFINITY
         var minV = Double.POSITIVE_INFINITY; var maxV = Double.NEGATIVE_INFINITY
@@ -162,6 +301,7 @@ object GridPeriodicityEstimator {
         // or shaded paper background as dark and enlarge the symbol by several modules.
         val threshold = minOf(image.threshold, 96)
         for (y in 0 until image.height step stride) for (x in 0 until image.width step stride) {
+            if (x == 0) cancellation.check()
             if (image.luma(x, y) > threshold) continue
             val u = x * ux + y * uy; val v = x * vx + y * vy
             minU = minOf(minU, u); maxU = maxOf(maxU, u)
@@ -195,7 +335,7 @@ object GridPeriodicityEstimator {
         for (index in first..last) {
             val start = period.boundaryPhase + index * period.pitch
             val end = start + length
-            // Permit half a module beyond the sampled image for tightly cropped photographs.
+            // Permit half a module beyond the observed dark support for tightly cropped photographs.
             if (start < minimum - period.pitch * .5 || end > maximum + period.pitch * .5) continue
             val count = values.count { it in start..end }
             if (count > bestCount) { bestCount = count; bestStart = start }

@@ -31,7 +31,7 @@ You can also enable **Force single-segment terminator and padding** manually bef
 | ECC level and data mask | Automatic |
 | Black/white thresholds | Automatic (black at most 4; white at least 229 for this grid) |
 | Format-bit error limit | Default (6 bits) |
-| Data/ECC error limit | Default (5 bits) |
+| Data/ECC error limit | Default (5%, rounded up to 28 bits) |
 | Priority-search cell limit | Default (4 bits) |
 | Partial-bit search / degrees-of-freedom limit | Default (12 bits) |
 | Additional list-decoding errors | Default (1 symbol) |
