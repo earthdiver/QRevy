@@ -139,7 +139,7 @@ A **validated candidate** passes QR structure and input checks; content decoding
 The progress dialog shows elapsed time and the number of candidates found. **Interrupt repair** stops the repair and retains validated candidates already found. In detailed analysis, list decoding (searching beyond the usual error-correction range) has a cumulative limit of **10 minutes per repair**, excluding ordinary search time, so the whole repair can take longer. Validated candidates remain available after a timeout or insufficient memory.
 
 1. Review the recovered content. If several candidates remain, open **Candidate contents** to compare their full text and tap one to select it.
-2. Open **Show diagnostics** to check input disagreements, search completion, and omitted-candidate notices. One candidate or a completed search does not prove the result is correct.
+2. Check the selected trial's conditions and termination, along with omitted-candidate notices, in the result summary. Open **Show diagnostics** to check input disagreements and records including other trial conditions and grids. Normal endings at search boundaries are distinguished from timeouts and user interruption, with the unchecked work explained. One candidate or a completed search does not prove the result is correct.
 3. Open **Show detailed results** and tap cells to inspect their values and reasons. **Show same codeword** highlights the cells in the same codeword (a group of eight bits). **Data** shows bits and hexadecimal (**HEX**) values.
 
 See [Understanding repair results](RECOVERY_RESULT_FIELDS.en.md) for result statuses, field meanings, cell colors, and comparison examples. [QRevy recovery strategy](RECOVERY_STRATEGY.en.md) explains the search order and when each method applies.
@@ -155,6 +155,8 @@ The app saves automatically on import and before repair. It keeps at most **20 s
 Tap an entry in **Saved work** or **Recent work** to reopen it. Long-press to delete one, or use **Delete all** to remove the list. Deleting the entry currently on screen leaves that open work available; saving afterward creates a new entry.
 
 **Operation history** keeps up to **40 states**; memory and file-size limits can reduce that number. The selected and latest states are kept when older states are trimmed. Reopening a state saved after repair recomputes its candidates. If the previous candidate is no longer found, the app leaves the result unselected and explains why.
+
+Quick automatic repair saves its execution assumptions and list-decoding extension separately from the advanced settings, even when no candidate is found. Reopening its history uses those execution conditions. If the history lacks those conditions, the app retains the saved input without recalculating candidates and asks you to review the settings before repairing.
 
 ### Export and privacy
 

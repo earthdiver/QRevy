@@ -38,17 +38,34 @@ For a message split across several QR symbols (**Structured Append**), the resul
 
 Finding a candidate and completing the search are separate outcomes.
 
+When a candidate is selected from multiple trials, the result summary shows the conditions and termination of the trial that produced it. Counts across all conditions and omissions are labeled separately. Under **Processing in this run**, **Search records across trials (including other conditions and grids)** retains aggregate evidence, including earlier trials that did not succeed. These records include the selected trial; they are not failures of the selected candidate. Without a selected trial, the summary describes the whole search.
+
 | Display | Meaning |
 | --- | --- |
-| Search completed within the specified conditions and search policy. | The app finished its defined search range, including normal endings at search limits. It did not necessarily check every mathematically possible solution. |
-| Some combinations remain unchecked. | Interruption, a time limit, insufficient working memory, or an internal error prevented required work. |
-| Search completion could not be determined. | The available records do not establish whether the search finished. |
-| The attempted search passes finished, but unresolved processing remains. | The recorded passes ended, but some processing remains inconclusive. A resolved selected trial can coexist with unresolved trials under other conditions. |
+| Search completed within the specified conditions and search policy. | The app finished the checks defined by the selected conditions and search method. It did not necessarily check every mathematically possible solution. When an additional-search boundary or a count/work limit is recorded, the specific termination reason below is shown. |
+| Additional search after finding a candidate ended at the boundary defined by the search policy. | Normal termination at the additional-search boundary; combinations beyond it were not checked. It is not a timeout. |
+| Candidate combination checks / candidate filtering ended at the count / amount of work defined by the search policy. | Normal termination at a combination-count or work limit. The remaining combinations or branches were not checked. |
+| A trial / list-decoding fallback / known-bit error search reached its time limit. | The named work timed out; remaining checks in that work were not performed. Other trials can still succeed. |
+| Search was interrupted by the user. | Checks remaining at interruption were not performed. Memory limits and internal errors have their own explanations. |
+| Unknown-bit combinations exceeded this calculation's enumeration range. | The calculation could not determine candidate existence beyond its range. Format records identify the affected ECC/masks. Other explanations identify missing header information, unresolved star assignments, or calculations that could not correct the observed input. |
+| Search completion could not be determined. | Execution records are insufficient. Missing reasons are stated explicitly rather than inferred to be timeouts or normal completion. |
 | Others omitted / Candidates omitted (retention limit) | Some candidates already found are absent from the list and cannot be selected. This is separate from unfinished searching. |
 
 In detailed analysis, list decoding has a cumulative time allowance of **600 seconds (10 minutes) per repair**, excluding ordinary searches. Known-bit error search has a separate cumulative allowance of 30 seconds and one million trials. When it runs, its trial count is shown; reaching its time or trial limit is reported as a reason combinations remain unchecked. Quick automatic repair uses separate [time allowances and retry limits](RECOVERY_STRATEGY.en.md#time-and-resource-limits).
 
 Search time limits are reported separately from user interruption. Timed-out trials remain in the record even if a later trial succeeds. Timeout, insufficient memory, or interruption preserves validated candidates already found. A completed search does not establish uniqueness, and completion without a candidate does not prove that no solution exists.
+
+Quick automatic repair ends when a trial meets its success criteria. A repair can also reach a configured search boundary before its time allowance expires. Termination notices describe checks that were not performed or could not determine a result; they do not mean processing is still running.
+
+### Examples of normal termination
+
+The counts below are hypothetical examples, not actual search limits or settings. The number of combinations checked also differs from the number of recovery candidates found.
+
+| Termination type | Example | What was not checked |
+| --- | --- | --- |
+| Completed within the specified conditions and search policy | The selected conditions yield 80 combinations to check, and all 80 checks finish. Candidates may or may not be found. | Possibilities outside the selected conditions and search method. For example, a trial assuming a single segment excludes QR codes with multiple segments. |
+| Additional search after finding a candidate ended at the prescribed boundary | The initial plan is to check 100 combinations. A candidate is found at combination 20, and checks continue through combination 100. More combinations exist, but the search range is not expanded further. | Combinations 101 onward. Finding a candidate is the reason for not expanding the additional search. |
+| Ended at a count or work limit | The plan allows at most 1,000 combination checks. More combinations remain, but the search ends after checking 1,000. | Combinations 1,001 onward. The amount of search allowed, rather than candidate existence alone, determines termination. |
 
 ## Input agreement and QR settings
 
@@ -72,8 +89,8 @@ An error limit of **0 bits** requires agreement at every compared known bit. Inc
 | --- | --- |
 | Settings for this run | The settings used for this repair |
 | Input before repair | The starting input and its conventional RS reference check |
-| Processing in this run | Candidate methods and calculation records, list-decoding execution status, and single-segment forcing application status |
-| Verification results | Structure checks, final decoding, input mismatches, search completion, and omissions |
+| Processing in this run | Candidate methods and calculation records, format/trial search records, list-decoding execution status, and single-segment forcing application status |
+| Verification results | Structure checks, final decoding, and input mismatches |
 
 A **codeword** is a group of eight bits. In RS calculation records, **symbol** and **byte** also refer to this unit. An **RS block** is a group of codewords processed together for error correction. Counts of unknown or corrected codewords differ from counts of repaired cells: filling one unknown bit can resolve a whole codeword.
 
@@ -91,7 +108,7 @@ Results from **Retry this time only** show the runtime forcing condition. It app
 
 The conventional RS reference check uses the input before structure-based filling or temporary assignments. Reference calculations describe their own input and conditions; one failed calculation does not establish why the whole search failed.
 
-When no candidate is found, **Processing in this run** reports the search outcome and completion status. Without search-wide records, completion remains unknown even if the reference input's search completed.
+When no candidate is found, **Processing in this run** explains the recorded outcome, while the result summary reports completion. Without search-wide records, completion remains unknown even if the reference input's search completed.
 
 ### Methods shown in diagnostics
 

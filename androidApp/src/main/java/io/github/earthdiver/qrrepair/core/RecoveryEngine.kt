@@ -728,7 +728,8 @@ class RecoveryEngine(private val rs: ReedSolomonErasures = ReedSolomonErasures()
                             stops - CombinationSearchStop.SUCCESS_WINDOW else stops
                         if (pending.isNotEmpty()) {
                             inputLimited = true
-                            run.markUnresolved("SEARCH_LIMIT")
+                            // Keep the concrete boundary without changing completion or acceptance.
+                            run.markUnresolved(pending.singleOrNull()?.name ?: "SEARCH_LIMIT")
                         }
                         run.combinationSearch = run.combinationSearch.afterPass(stops)
                     }

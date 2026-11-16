@@ -18,7 +18,7 @@ enum class DiagnosticStage {
     }
 }
 
-enum class DiagnosticDetailId { TEXT, METHODS, CALCULATIONS, SINGLE_SEGMENT, SEARCH }
+enum class DiagnosticDetailId { TEXT, METHODS, CALCULATIONS, SINGLE_SEGMENT, SEARCH, TRIALS }
 
 /** Stable identities keep disclosure state independent of translated titles and candidate values. */
 data class DiagnosticDetailGroup(

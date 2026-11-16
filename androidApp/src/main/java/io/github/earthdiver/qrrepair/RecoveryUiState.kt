@@ -22,6 +22,8 @@ import io.github.earthdiver.qrrepair.core.RecoverySearchDiagnostic
  */
 internal class RecoveryUiState {
     var oneTimeSingleSegment = false
+    /** Execution origin is independent of whether a trial retained a candidate or failure. */
+    var quickAutomatic = false
     var autoResult: AutoRecoveryResult? = null
     var attemptIndex: Int = -1
     var geometry: GridGeometry? = null
@@ -67,6 +69,7 @@ internal class RecoveryUiState {
 
     fun clear() {
         oneTimeSingleSegment = false
+        quickAutomatic = false
         directSearchDiagnostic = null
         directDiscoveredCandidates = null
         autoResult = null
@@ -152,6 +155,7 @@ internal class RecoveryUiState {
     }
 
     fun restoreAttempt(geometry: GridGeometry, source: QrMatrix, working: QrMatrix, profile: SamplingProfile? = null) {
+        quickAutomatic = false
         autoResult = null
         clearAttempt()
         this.geometry = geometry

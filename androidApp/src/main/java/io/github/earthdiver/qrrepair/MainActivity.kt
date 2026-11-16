@@ -5,6 +5,7 @@ import io.github.earthdiver.qrrepair.core.formatGroupDetailText
 import io.github.earthdiver.qrrepair.core.ModuleSource
 import io.github.earthdiver.qrrepair.core.resultContentText
 import io.github.earthdiver.qrrepair.core.resultExplanationText
+import io.github.earthdiver.qrrepair.core.terminationText
 import io.github.earthdiver.qrrepair.core.candidatePairComparisonText
 import io.github.earthdiver.qrrepair.ui.ResultActionRow
 import io.github.earthdiver.qrrepair.core.RecoveryDiagnosticReport
@@ -1390,31 +1391,32 @@ class MainActivity : Activity() {
 
     private fun scrollRow(vararg children: View): HorizontalScrollView = dialogViews.scrollRow(*children)
 
-    private fun currentSnapshot(): RecoverySnapshot = RecoverySnapshot(
-        geometry = recoveryState.geometry,
-        sourceMatrix = recoveryState.sourceMatrix?.copy(),
-        workingMatrix = recoveryState.workingMatrix?.copy(),
-        recoveryIndex = recoveryState.recoveryIndex,
-        preprocessSettings = preprocessSettings,
-        selectedQr = recoveryState.selectedRecovery?.takeIf { it.isSelectableRecovery }?.let(RecoverySelectionIdentity::from),
-        samplingInverted = recoveryState.samplingProfile?.inverted,
-        oneTimeSingleSegment = recoveryState.oneTimeSingleSegment,
-        automaticScanAssumption = recoveryState.selectedRecovery?.displayConditions?.takeIf {
-            it.partialBitSearchLimit == 0 && (preprocessSettings.preRecoveryEdits.isEmpty() || preprocessSettings.hasOnlyErasedTextEdits())
-        }?.let {
-            when {
-                it.assumeUtf8ByteSegments && it.trustSingleSegment -> AutomaticScanAssumption.UTF8_SINGLE_SEGMENT
-                it.assumeUtf8ByteSegments -> AutomaticScanAssumption.UTF8
-                it.trustSingleSegment -> AutomaticScanAssumption.SINGLE_SEGMENT
-                it.dataEccLimit == 0 -> AutomaticScanAssumption.EXACT_KNOWN_BITS
-                else -> AutomaticScanAssumption.NONE
-            }
-        },
-        automaticScanListExtension = recoveryState.selectedRecovery?.displayConditions?.takeIf {
-            it.partialBitSearchLimit == 0 && (preprocessSettings.preRecoveryEdits.isEmpty() || preprocessSettings.hasOnlyErasedTextEdits()) &&
-                it.listDecodingAdditionalErrors == 2
-        }?.listDecodingAdditionalErrors ?: 1,
-    )
+    private fun currentSnapshot(): RecoverySnapshot {
+        val automaticSettings = recoveryState.samplingProfile?.settings?.takeIf {
+            recoveryState.quickAutomatic &&
+                (preprocessSettings.preRecoveryEdits.isEmpty() || preprocessSettings.hasOnlyErasedTextEdits())
+        }
+        return RecoverySnapshot(
+            geometry = recoveryState.geometry,
+            sourceMatrix = recoveryState.sourceMatrix?.copy(),
+            workingMatrix = recoveryState.workingMatrix?.copy(),
+            recoveryIndex = recoveryState.recoveryIndex,
+            preprocessSettings = preprocessSettings,
+            selectedQr = recoveryState.selectedRecovery?.takeIf { it.isSelectableRecovery }?.let(RecoverySelectionIdentity::from),
+            samplingInverted = recoveryState.samplingProfile?.inverted,
+            oneTimeSingleSegment = recoveryState.oneTimeSingleSegment,
+            automaticScanAssumption = automaticSettings?.let {
+                when {
+                    it.assumeUtf8ByteSegments && it.trustKnownPayloadCount -> AutomaticScanAssumption.UTF8_SINGLE_SEGMENT
+                    it.assumeUtf8ByteSegments -> AutomaticScanAssumption.UTF8
+                    it.trustKnownPayloadCount -> AutomaticScanAssumption.SINGLE_SEGMENT
+                    it.effectiveDataEccMismatchLimit == 0 -> AutomaticScanAssumption.EXACT_KNOWN_BITS
+                    else -> AutomaticScanAssumption.NONE
+                }
+            },
+            automaticScanListExtension = automaticSettings?.listDecodingAdditionalErrors?.takeIf { it == 2 } ?: 1,
+        )
+    }
 
     private fun preparedFor(settings: PreprocessSettings): BitmapUtils.Prepared? {
         val source = prepared ?: return null
@@ -1505,7 +1507,7 @@ class MainActivity : Activity() {
                 if (active) append("● ") else append("○ ")
                 append(DateFormat.format("HH:mm:ss", Date(entry.timestampMs))).append("  ")
                 append("[").append(historyKindLabel(entry.kind)).append("] ")
-                append(entry.label)
+                append(historyDisplayLabel(entry.label))
                 if (entry.detail.isNotBlank()) append(" — ").append(entry.detail.take(80))
                 if (changedCells != null) append(ui(" — Δ ${changedCells}セル", " — Δ $changedCells cells"))
             }) {
@@ -1535,7 +1537,13 @@ class MainActivity : Activity() {
 
     private fun restoreHistoryIndex(index: Int) {
         val entry = sessionHistory.jump(index) ?: return
-        restoreHistoryEntry(entry, ui("履歴: ${entry.label}", "History: ${entry.label}"))
+        val label = historyDisplayLabel(entry.label)
+        restoreHistoryEntry(entry, ui("履歴: $label", "History: $label"))
+    }
+
+    private fun historyDisplayLabel(label: String): String = when (label) {
+        "フルオート解析", "Automatic scan", "簡易自動修復", "Quick automatic repair" -> ui("簡易自動修復", "Quick automatic repair")
+        else -> label
     }
 
     private fun restoreHistoryEntry(entry: RecoveryHistoryEntry, prefix: String) {
@@ -1627,6 +1635,23 @@ class MainActivity : Activity() {
         }
         val source = snapshot.sourceMatrix?.copy() ?: matrix.copy()
         recoveryState.oneTimeSingleSegment = snapshot.oneTimeSingleSegment
+        if (entry.kind == HistoryEventKind.AUTO_RECOVERY && snapshot.automaticScanAssumption == null &&
+            entry.label in setOf("フルオート解析", "Automatic scan", "簡易自動修復", "Quick automatic repair")) {
+            // Older empty automatic trials did not save their runtime conditions. Do not
+            // substitute detailed settings or guess which automatic assumptions were used.
+            workGeneration.incrementAndGet()
+            historyRestoreToken = null
+            recoveryState.restoreAttempt(geometry, source, matrix)
+            refreshInspector()
+            refreshMainResultSelector()
+            updateContentPreview()
+            statusText.text = ui("簡易自動修復の実行条件が保存されていないため、候補を再計算していません。",
+                "Candidates were not recalculated because this quick automatic repair's execution conditions were not saved.")
+            guideText.text = ui("保存済みの入力は保持しています。設定を確認して修復してください。",
+                "The saved input is retained. Review the settings before repairing.")
+            onRestored?.invoke()
+            return
+        }
         val requestSettings = preprocessSettings.recoverySnapshot().let {
             if (snapshot.automaticScanAssumption != null) QuickAutoRecovery.executionSettings(it,
                 snapshot.automaticScanAssumption, snapshot.automaticScanListExtension)
@@ -1636,7 +1661,9 @@ class MainActivity : Activity() {
         historyRestoreToken = token
         // A restored snapshot represents one concrete saved geometry even though auto recovery is not persisted.
         recoveryState.restoreAttempt(geometry, source, matrix,
-            snapshot.samplingInverted?.let { SamplingProfile(requestSettings, it) })
+            (snapshot.samplingInverted ?: false.takeIf { snapshot.automaticScanAssumption != null })
+                ?.let { SamplingProfile(requestSettings, it) })
+        recoveryState.quickAutomatic = snapshot.automaticScanAssumption != null
         if (snapshot.automaticScanAssumption == null &&
             maxOf(requestSettings.preRecoveryPrioritySearch.size, matrix.prioritySearchCoordinates().size) > requestSettings.prioritySearchLimit) {
             historyRestoreToken = null
@@ -1715,7 +1742,7 @@ class MainActivity : Activity() {
                 return@listRecent
             }
             val labels = recent.map {
-                "${DateFormat.format("MM/dd HH:mm", Date(it.updatedAtMs))}  ${it.lastLabel.ifBlank { ui("QR修復", "QR repair") }}  (${it.historyCount}${ui("履歴", " entries")})"
+                "${DateFormat.format("MM/dd HH:mm", Date(it.updatedAtMs))}  ${historyDisplayLabel(it.lastLabel).ifBlank { ui("QR修復", "QR repair") }}  (${it.historyCount}${ui("履歴", " entries")})"
             }.toTypedArray()
             val title = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -1836,6 +1863,11 @@ class MainActivity : Activity() {
 
     private fun searchResultDescription(): String = diagnosticPresenter().searchResultDescription(diagnosticContext())
 
+    private fun showResultNotice(message: String) {
+        statusText.text = if (recoveryState.selectedRecovery != null || recoveryState.failure != null)
+            message + "\n\n" + searchResultDescription() else message
+    }
+
     private fun updateContentPreview() {
         immediateResultShown = false
         showWorkspace()
@@ -1863,15 +1895,13 @@ class MainActivity : Activity() {
                     val text = preview.resultContentText(candidate.text) { start, end -> ranges += start until end }
                     highlightedRecoveredText(text, ranges)
                 } else ui("誤り訂正の条件は満たしましたが、内容は読み取れませんでした。", "The error-correction conditions were met, but the content could not be read.")
-                resultExplanationText.text = candidate.resultExplanationText()
+                resultExplanationText.text = candidate.resultExplanationText(includeSearchTermination = false)
                 resultExplanationText.visibility = View.VISIBLE
                 setDiagnosticReport(candidateDiagnosticReport(candidate, geometry))
                 if (!candidate.payloadParsed && preview?.qrStructureValid != true) configureNextResultAction()
             }
             failure != null -> {
-                contentPreviewText.text = listOf(searchResultDescription(),
-                    recoveryState.searchDiagnostic?.failureExplanation(failure.displayConditions).orEmpty())
-                    .filter(String::isNotBlank).joinToString("\n")
+                contentPreviewText.text = ui("表示できる修復候補はありません。", "No recovery candidate is available to display.")
                 if (failure.stage == io.github.earthdiver.qrrepair.core.RecoveryFailureStage.PAYLOAD_VALIDATION &&
                     failure.reason == null && !hasInconsistentInputFailure() &&
                     failure.conventionalRsDiagnostic?.settingsAccepted == true) {
@@ -1939,6 +1969,10 @@ class MainActivity : Activity() {
         searchDiagnostic = recoveryState.searchDiagnostic,
         selectedEntry = recoveryState.autoResult?.entries?.getOrNull(recoveryState.recoveryIndex),
         aggregatesTrials = recoveryState.autoResult != null,
+        searchSummaryShownSeparately = true,
+        combinationStops = (recoveryState.selectedRecovery?.combinationSearch
+            ?: recoveryState.failure?.combinationSearch?.takeIf { recoveryState.autoResult == null })?.stops.orEmpty(),
+        trialCount = recoveryState.autoResult?.attemptedGeometries,
         selectedCandidateNumber = decodedRecoveryEntries().indexOfFirst { it.first == recoveryState.recoveryIndex }
             .takeIf { it >= 0 }?.plus(1),
     )
@@ -2263,13 +2297,14 @@ class MainActivity : Activity() {
             recoveryState.showAttempt(recovery.attempts.indexOf(attempt), attempt.hypothesis.geometry,
                 attempt.matrix, attempt.recoveries, attempt.failure, -1)
         }
+        recoveryState.quickAutomatic = true
         if (recoveryState.workingMatrix != null) {
             refreshInspector()
             updateSummary()
             updateContentPreview()
-            val zeroErrorTrial = recoveryState.selectedRecovery?.displayConditions?.let { it.dataEccLimit == 0 }
+            val zeroErrorTrial = recoveryState.samplingProfile?.settings?.let { it.effectiveDataEccMismatchLimit == 0 }
                 ?: (result.assumption == AutomaticScanAssumption.EXACT_KNOWN_BITS)
-            recordHistory(HistoryEventKind.AUTO_RECOVERY, ui("フルオート解析", "Automatic scan"),
+            recordHistory(HistoryEventKind.AUTO_RECOVERY, ui("簡易自動修復", "Quick automatic repair"),
                 if (zeroErrorTrial)
                     ui("短時間の探索。データ・ECC誤り0bit。", "Short search; zero data/ECC bit errors.")
                 else ui("短時間の探索。データ・ECC上限5%。", "Short search; 5% data/ECC allowance."))
@@ -2284,9 +2319,12 @@ class MainActivity : Activity() {
             result.recovery, preprocessSettings.manualQuad != null, null)
         fun current() = prepared === inputSource && generation == workGeneration.get()
         showWorkspace()
-        statusText.text = reason.message()
+        statusText.text = listOf(reason.message(),
+            if (recoveryState.workingMatrix != null) searchResultDescription() else "")
+            .filter(String::isNotBlank).joinToString("\n\n")
         val retryMode = session?.nextRetry?.takeIf { reason == io.github.earthdiver.qrrepair.core.QuickAutoFailureReason.TIME_LIMIT }
-        val message = reason.message() + "\n\n" + when (retryMode) {
+        val termination = result.recovery.searchDiagnostic?.terminationText().orEmpty()
+        val message = listOf(reason.message(), termination).filter(String::isNotBlank).joinToString("\n\n") + "\n\n" + when (retryMode) {
             QuickAutoRetryMode.TEN_SECONDS -> ui(
                 "同じ入力・格子を使い、最大10秒の時間枠で最初から再試行できます。途中で詳細解析へ切り替えられます。",
                 "Retry the same input and grid from the beginning with a time allowance of up to 10 seconds. You can switch to detailed analysis at any time.")
@@ -2362,7 +2400,7 @@ class MainActivity : Activity() {
         val other = if (result.recovery.discoveredCandidates?.value?.let { it > 1 } == true)
             ui("別の条件では他の候補も見つかっています。", "Other candidates were found under different conditions.") else ""
         val text = candidate.text ?: ui("（テキストなし）", "(No text)")
-        statusText.text = ui("復元候補が見つかりました。", "A recovery candidate was found.")
+        statusText.text = searchResultDescription()
         val message = listOf(text, condition, other,
             ui("試した条件の範囲で候補が1件になりました。詳しく解析しますか？",
                 "One candidate remains within the conditions tried. Continue with detailed analysis?"))
@@ -2841,9 +2879,9 @@ class MainActivity : Activity() {
                 "\n表示中の読み取り結果のデータコード語列は${distinctPayloads}種類です。",
                 "\nCandidates for the displayed reading have $distinctPayloads distinct data codeword sequences.",
             )
-            c != null && QrContentPreviewParser.parse(c)?.qrStructureValid == true -> ui(
+            c != null && QrContentPreviewParser.parse(c)?.qrStructureValid == true -> searchResultDescription() + "\n" + ui(
                 "QRのデータ形式を確認しました\n文字として表示できないデータです。", "The QR data format was verified\nThe data cannot be displayed as text.")
-            c != null -> ui("誤り訂正の条件を満たす候補はありますが、内容を読み取れませんでした", "Error-correction candidates exist, but their content could not be read")
+            c != null -> searchResultDescription() + "\n" + ui("誤り訂正の条件を満たす候補はありますが、内容を読み取れませんでした", "Error-correction candidates exist, but their content could not be read")
             else -> searchResultDescription()
         }
         statusText.text = buildString {
@@ -2896,14 +2934,14 @@ class MainActivity : Activity() {
     private fun startSavePng() {
         val candidate = recoveryState.selectedRecovery
         if (!candidate.isSavableQrResult(QrContentPreviewParser.parse(candidate))) {
-            statusText.text = ui(
+            showResultNotice(ui(
                 "検証済みの修復結果がないため、結果PNGは保存できません。調査用画像は修復設定の詳細画面から保存できます。",
                 "A result PNG cannot be saved because there is no validated repair result. Diagnostic input images can be saved from detailed repair settings.",
-            )
+            ))
             return
         }
         if (matrixForPng() == null) {
-            statusText.text = ui("保存するQR行列がありません。", "No QR matrix is available to save.")
+            showResultNotice(ui("保存するQR行列がありません。", "No QR matrix is available to save."))
             return
         }
         val results = displayedDecodedRecoveryEntries()
@@ -2955,7 +2993,7 @@ class MainActivity : Activity() {
     private fun startSaveDiagnosticInput(bitmap: Bitmap? = null, owned: Boolean = false) {
         if (prepared == null) {
             if (owned) bitmap?.recycle()
-            statusText.text = ui("保存する入力画像がありません。", "No input image is available to save.")
+            showResultNotice(ui("保存する入力画像がありません。", "No input image is available to save."))
             return
         }
         releasePendingDiagnosticBitmap()
@@ -2982,10 +3020,10 @@ class MainActivity : Activity() {
                     }
                 } ?: throw IllegalStateException(ui("保存先を開けません", "Could not open the destination"))
                 runOnUiThread {
-                    statusText.text = ui("デバッグ用入力画像を保存しました（${pending.bitmap.width}×${pending.bitmap.height}px）。", "Saved debug input image (${pending.bitmap.width}×${pending.bitmap.height} px).")
+                    showResultNotice(ui("デバッグ用入力画像を保存しました（${pending.bitmap.width}×${pending.bitmap.height}px）。", "Saved debug input image (${pending.bitmap.width}×${pending.bitmap.height} px)."))
                 }
             } catch (t: Throwable) {
-                runOnUiThread { statusText.text = ui("入力画像の保存失敗: ${t.message}", "Input image save failed: ${t.message}") }
+                runOnUiThread { showResultNotice(ui("入力画像の保存失敗: ${t.message}", "Input image save failed: ${t.message}")) }
             } finally {
                 if (pending.owned) pending.bitmap.recycle()
             }
@@ -3016,14 +3054,14 @@ class MainActivity : Activity() {
                     (0 until matrix.dimension).any { x -> matrix[x, y].value == ModuleValue.ERASED }
                 }
                 runOnUiThread {
-                    statusText.text = if (hasUnknown) {
+                    showResultNotice(if (hasUnknown) {
                         ui("PNGを保存しました。未確定の?は診断用グレーで出力されます。", "PNG saved. Unresolved ? cells are shown in diagnostic grey.")
                     } else {
                         ui("修復結果のPNGを保存しました。", "Repair result PNG saved.")
-                    }
+                    })
                 }
             } catch (t: Throwable) {
-                runOnUiThread { statusText.text = ui("PNG保存失敗: ${t.message}", "PNG save failed: ${t.message}") }
+                runOnUiThread { showResultNotice(ui("PNG保存失敗: ${t.message}", "PNG save failed: ${t.message}")) }
             }
         }
     }

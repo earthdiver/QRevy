@@ -37,6 +37,8 @@ data class RecoverySearchDiagnostic(
     val knownBitTrials: Long = 0,
     val listDecodingExecution: ListDecodingExecution? = null,
     val formatOutcomes: List<RecoveryFormatOutcome> = emptyList(),
+    /** Stop evidence for presentation; policy boundaries do not imply interruption. */
+    val combinationStops: Set<CombinationSearchStop> = emptySet(),
 ) {
     val completeness: SearchCompleteness get() = when {
         unsearched || incompleteReasons.isNotEmpty() -> SearchCompleteness.UNSEARCHED
@@ -101,6 +103,7 @@ data class RecoverySearchDiagnostic(
                 unresolvedCalculations = known.any { it.unresolvedCalculations },
                 // Keep geometry/assumption outcomes separate: one cannot resolve another.
                 formatOutcomes = known.flatMap { it.formatOutcomes }.distinct(),
+                combinationStops = known.flatMapTo(linkedSetOf()) { it.combinationStops },
                 unsearched = known.any { it.unsearched || it.incompleteReasons.isNotEmpty() },
                 incompleteReasons = known.flatMapTo(linkedSetOf()) { it.incompleteReasons },
                 completedSteps = known.sumOf { it.completedSteps },

@@ -264,7 +264,7 @@ class ListDecodingDiagnosticPresentationTest {
         val report = RecoveryDiagnosticPresenter(ja).candidateReport(candidate(false), null, context(diagnostic))
         assertFalse(report.fullText().contains(if (ja) "仮置きも使うリスト復号" else "List decoding including tentative assignments"))
         assertTrue(report.overview.contains(
-            if (ja) "リスト復号による追加探索は時間切れで終了しました" else "List-decoding fallback ended at the time limit"))
+            if (ja) "リスト復号による追加探索が時間切れになりました" else "List-decoding fallback reached its time limit"))
     }
 
     @Test fun zeroTrialsDoNotClaimIneligibilityForUnfinishedOrReusedWork() = inBothLanguages { ja ->
@@ -333,9 +333,9 @@ class ListDecodingDiagnosticPresentationTest {
         assertTrue(processing.details.contains(if (ja) "11ビット" else "11 bits"))
         assertFalse(processing.summary.contains(if (ja) "補間" else "Interpolation"))
         assertTrue(processing.details.contains(if (ja) "一部試行の復号計算を省略" else "Decoding skipped for some trials"))
-        assertTrue(processing.summary.contains(if (ja) "時間切れ" else "time limit"))
-        assertTrue(report.overview.contains(if (ja) "リスト復号による追加探索は時間切れで終了しました" else "List-decoding fallback ended at the time limit"))
-        assertTrue(report.overview.contains(if (ja) "未探索の組合せ" else "combinations remain unchecked"))
+        assertFalse(processing.summary.contains(if (ja) "時間切れ" else "time limit"))
+        assertTrue(report.overview.contains(if (ja) "リスト復号による追加探索が時間切れになりました" else "List-decoding fallback reached its time limit"))
+        assertTrue(report.overview.contains(if (ja) "その追加探索で残っていた組合せ" else "Remaining combinations in that fallback"))
         assertFalse(report.fullText().contains(if (ja) "累計600秒" else "600-second"))
     }
 
@@ -399,11 +399,11 @@ class ListDecodingDiagnosticPresentationTest {
         val structure = report.sections[2].groups.single { it.id == DiagnosticDetailId.SINGLE_SEGMENT }
         assertEquals(if (ja) "単一セグメントの終端後構造の強制の適用状況（参考診断の入力）"
             else "Single-segment terminator and padding forcing application status (reference diagnostic input)", structure.title)
-        assertTrue(structure.summary.contains(if (ja) "探索全体の集計は記録されていません"
-            else "Totals across all sampled inputs were not recorded"))
+        assertTrue(structure.summary.contains(if (ja) "別条件・格子の試行は含みません"
+            else "excluding trials with other conditions or grids"))
         assertEquals(diagnostic.singleSegmentProcessingText(), structure.text)
         assertFalse(structure.fullText().contains(if (ja) "（探索全体）" else "(whole search)"))
-        assertTrue(report.sections[2].summary.contains(SearchCompleteness.UNKNOWN.description()))
+        assertTrue(report.overview.contains(SearchCompleteness.UNKNOWN.description()))
     }
 
     @Test fun singleSegmentApplicationRemainsVisibleWithoutListDecodingDetails() = inBothLanguages { ja ->

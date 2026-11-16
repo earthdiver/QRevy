@@ -11,8 +11,8 @@ internal fun QuickAutoFailureReason.message(): String = when (this) {
         "Multiple candidates were found; a single result could not be established.")
     QuickAutoFailureReason.SEARCH_LIMIT -> localizedText("探索量またはメモリの上限に達し、検証を完了できませんでした。",
         "A search or memory limit prevented verification from finishing.")
-    QuickAutoFailureReason.UNRESOLVED -> localizedText("未解決の検証が残り、修復結果を確定できませんでした。",
-        "Unresolved checks remain, so a repair result could not be confirmed.")
+    QuickAutoFailureReason.UNRESOLVED -> localizedText("試した条件では、候補を選ぶために必要な確認を終えられませんでした。",
+        "The checks needed to select a candidate could not be completed under the conditions tried.")
     QuickAutoFailureReason.NO_CANDIDATE -> localizedText("今回試した条件では、検証を通る修復候補が見つかりませんでした。",
         "No verified repair candidate was found under the conditions tried.")
     QuickAutoFailureReason.INTERRUPTED -> localizedText("解析を中断しました。", "Analysis was stopped.")

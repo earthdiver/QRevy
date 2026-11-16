@@ -45,14 +45,15 @@ fun QrContentPreview.resultContentText(fullText: String?, onRecoveredText: ((Int
     fnc1ApplicationIndicator?.let { append(localizedText("\nFNC1アプリケーション識別子: $it", "\nFNC1 application indicator: $it")) }
 }
 
-fun RecoveryCandidate.resultExplanationText(): String = buildString {
+fun RecoveryCandidate.resultExplanationText(includeSearchTermination: Boolean = true): String = buildString {
     append(compactUsedMethodsText())
     if ((manualDataEccMismatches ?: 0) > 0) append(localizedText(
         "\n手動指定と異なる値: ${manualDataEccMismatches}bit（データ・ECC領域）",
         "\nValues differing from manual entries: $manualDataEccMismatches bits (data/ECC region)"))
-    if (combinationSearch.unsearched) append(localizedText(
-        "\n探索は途中で終了しました。未確認の組合せがあります。",
-        "\nSearch ended early. Some combinations remain unchecked."))
+    if (includeSearchTermination && combinationSearch.stops.isNotEmpty()) {
+        append('\n').append((searchDiagnostic ?: RecoverySearchDiagnostic(coverageComplete = false))
+            .terminationText(combinationSearch.stops))
+    }
 }
 
 /** Candidate numbers are one-based display labels, independent of list positions. */

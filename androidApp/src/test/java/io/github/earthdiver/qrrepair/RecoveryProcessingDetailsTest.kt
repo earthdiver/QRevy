@@ -150,11 +150,11 @@ class RecoveryProcessingDetailsTest {
                 if (ja) "リスト復号の実行状況（参考診断の入力）" else "List decoding execution status (reference diagnostic input)"
             }
             assertEquals(expectedTitle, search.title)
-            assertTrue(search.summary.contains(if (ja) "探索全体の集計は記録されていません" else "Totals across all sampled inputs were not recorded"))
+            assertTrue(search.summary.contains(if (ja) "別条件・格子の試行は含みません" else "excluding trials with other conditions or grids"))
             assertTrue(search.summary.contains(if (ja) "試行回数（対象の入力）: 3回" else "trials (identified input): 3"))
             assertTrue(search.text.contains(if (ja) "再利用: 2回" else "reused: 2"))
             assertFalse(search.fullText().contains(if (ja) "（探索全体）" else "(whole search)"))
-            assertTrue(report.sections.last().summary.contains(SearchCompleteness.UNKNOWN.description()))
+            assertTrue(report.overview.contains(SearchCompleteness.UNKNOWN.description()))
         }
     }
 
@@ -178,7 +178,7 @@ class RecoveryProcessingDetailsTest {
         assertTrue(alternative.text.contains(if (ja) "件数は修復候補の件数ではありません" else "counts are not candidate counts"))
         assertTrue(alternative.text.contains(if (ja) "ブロック1・同じ値を得た別の計算: 2通り" else "Block 1: 2 other calculations"))
         assertTrue(alternative.text.contains(if (ja) "別の読み取り試行1" else "Other sampled-input attempt 1"))
-        assertEquals(listOf(DiagnosticDetailId.METHODS, DiagnosticDetailId.CALCULATIONS, DiagnosticDetailId.SEARCH), processing.groups.map { it.id })
+        assertEquals(listOf(DiagnosticDetailId.METHODS, DiagnosticDetailId.CALCULATIONS, DiagnosticDetailId.TRIALS), processing.groups.map { it.id })
         assertFalse(processing.groups.last().text.contains(if (ja) "方法A" else "Method A"))
     }
 
@@ -189,8 +189,8 @@ class RecoveryProcessingDetailsTest {
         val report = RecoveryDiagnosticPresenter(ja).failureReport(failure,
             GridGeometry(1, FinderRole.TOP_LEFT, 10.0, 10.0, 2.0, 0.0), context(diagnostic).copy(candidateCount = 0, selectedCandidateNumber = null))
         val groups = report.sections[2].groups
-        assertTrue(report.sections[2].summary.contains(if (ja) "調べた範囲では修復候補は見つかりませんでした" else "No recovery candidate was found in the checked range"))
-        assertTrue(report.sections[2].summary.contains(SearchCompleteness.UNKNOWN.description()))
+        assertTrue(report.overview.contains(if (ja) "調べた範囲では修復候補は見つかりませんでした" else "No recovery candidate was found in the checked range"))
+        assertTrue(report.overview.contains(SearchCompleteness.UNKNOWN.description()))
         assertFalse(report.sections[2].summary.contains(if (ja) "参考" else "reference"))
         val reference = groups.single { it.id == DiagnosticDetailId.CALCULATIONS }
         assertTrue(reference.collapsible)
@@ -201,7 +201,7 @@ class RecoveryProcessingDetailsTest {
         assertFalse(groups.single { it.id == DiagnosticDetailId.SEARCH }.summary.contains(if (ja) "選択中" else "selected candidate"))
     }
 
-    @Test fun noCandidateProcessingExplainsCompletionBeforeAnyReferenceCalculation() = inBothLanguages { ja ->
+    @Test fun searchOverviewExplainsCompletionBeforeAnyReferenceCalculation() = inBothLanguages { ja ->
         val failure = RecoveryFailure(ErrorCorrectionLevel.M, 2, 30, 0, 30, RecoveryFailureStage.REED_SOLOMON,
             reason = RecoveryFailureReason.BOUNDED_BIT_SEARCH_LIMIT,
             failedBlockIndex = 0, rsBlockCount = 1, ecSymbolsPerBlock = 10, failedBlockErasures = 24,
@@ -214,22 +214,17 @@ class RecoveryProcessingDetailsTest {
             val report = RecoveryDiagnosticPresenter(ja).failureReport(failure, null,
                 context(diagnostic).copy(candidateCount = 0, selectedCandidateNumber = null))
             val processing = report.sections[2]
-            assertTrue(processing.summary.contains(if (ja) "調べた範囲では修復候補は見つかりませんでした"
+            assertTrue(report.overview.contains(if (ja) "調べた範囲では修復候補は見つかりませんでした"
                 else "No recovery candidate was found in the checked range"))
-            if (diagnostic.completeness == SearchCompleteness.COMPLETE) {
-                assertTrue(processing.summary.contains(if (ja) "実行した探索処理は終了しましたが、未解決の処理が残っています。"
-                    else "The attempted search passes finished, but unresolved processing remains."))
-                assertFalse(processing.summary.contains(diagnostic.completeness.description()))
-            } else {
-                assertTrue(processing.summary.contains(diagnostic.completeness.description()))
-                assertTrue(processing.summary.contains(if (ja) "未解決の処理も残っています。"
-                    else "Unresolved processing also remains."))
-            }
-            assertFalse(processing.summary.contains(if (ja) "参考" else "reference"))
-            assertFalse(processing.summary.contains(if (ja) "消失" else "erasure"))
+            assertTrue(report.overview.contains(diagnostic.terminationText()))
+            assertTrue(report.overview.contains(if (ja) "対象の形式・計算と理由は記録されていません"
+                else "their format, calculation, and reason were not recorded"))
+            assertFalse(report.overview.contains(SearchCompleteness.COMPLETE.description()))
+            assertFalse(report.overview.contains(if (ja) "参考" else "reference"))
+            assertFalse(report.overview.contains(if (ja) "消失" else "erasure"))
             val view = RecoveryDiagnosticView(RuntimeEnvironment.getApplication())
             view.showReport(report, resetExpanded = true)
-            assertTrue(diagnosticText(view).contains(processing.summary))
+            assertTrue(diagnosticText(view).contains(report.overview))
             diagnosticButton(view, DiagnosticStage.PROCESSING).performClick()
             assertFalse(diagnosticText(view).contains(if (ja) "失敗ブロックのECCシンボル数" else "ECC symbols in the failing block"))
             diagnosticCalculationButton(view, processing.groups.single { it.id == DiagnosticDetailId.CALCULATIONS }.title).performClick()
@@ -242,13 +237,13 @@ class RecoveryProcessingDetailsTest {
         val failure = RecoveryFailure(ErrorCorrectionLevel.M, 2, 30, 0, 30, RecoveryFailureStage.PAYLOAD_VALIDATION,
             searchDiagnostic = local)
         val presenter = RecoveryDiagnosticPresenter(ja)
-        val missing = presenter.failureReport(failure, null, context(null).copy(candidateCount = 0)).sections[2]
-        assertTrue(missing.summary.contains(SearchCompleteness.UNKNOWN.description()))
-        assertFalse(missing.summary.contains(SearchCompleteness.COMPLETE.description()))
+        val missing = presenter.failureReport(failure, null, context(null).copy(candidateCount = 0))
+        assertTrue(missing.overview.contains(SearchCompleteness.UNKNOWN.description()))
+        assertFalse(missing.overview.contains(SearchCompleteness.COMPLETE.description()))
         val unsearched = presenter.failureReport(failure, null,
-            context(local).copy(candidateCount = 0, unsearched = true)).sections[2]
-        assertTrue(unsearched.summary.contains(SearchCompleteness.UNSEARCHED.description()))
-        assertFalse(unsearched.summary.contains(SearchCompleteness.COMPLETE.description()))
+            context(local).copy(candidateCount = 0, unsearched = true))
+        assertTrue(unsearched.overview.contains(if (ja) "対象の処理と終了理由は記録されていません" else "the affected work and stop reason were not recorded"))
+        assertFalse(unsearched.overview.contains(SearchCompleteness.COMPLETE.description()))
     }
 
     @Test fun initialPartialBitAnalysisIsExplainedOnceWithoutDroppingItsConditions() = inBothLanguages { ja ->

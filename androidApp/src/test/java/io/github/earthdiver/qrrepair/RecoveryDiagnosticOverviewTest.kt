@@ -22,25 +22,36 @@ class RecoveryDiagnosticOverviewTest {
             MatrixSampler.SamplingStats(128.0, 64.0, 32.0), listOf(selected), searchDiagnostic = complete)
         val entry = RecoveryResultEntry(attempt, selected, null)
         val cumulative = complete.copy(unresolvedCalculations = true,
+            incompleteReasons = setOf(SearchIncompleteReason.TIME_LIMIT),
+            formatOutcomes = listOf(RecoveryFormatOutcome(ErrorCorrectionLevel.Q, 6,
+                RecoveryFormatState.UNRESOLVED, false, "BIT_SPACE_LIMIT")),
             candidateRejections = setOf(RecoveryCandidateRejection.UTF8_BYTE_SEGMENT))
         inBothLanguages { ja ->
             val context = RecoveryDiagnosticContext(3, false, false, cumulative, entry, 3, RecoveryDiscoveryCount.Exact(3))
             val presenter = RecoveryDiagnosticPresenter(ja)
             val report = presenter.candidateReport(selected, geometry, context)
             val summary = presenter.searchResultDescription(context)
-            for (text in listOf(report.sections.last().details, summary)) {
-                assertTrue(text, text.contains(if (ja) "この試行の保持候補: 1件" else "Candidates retained from this trial: 1"))
-                assertTrue(text, text.contains(if (ja) "全試行の累積結果" else "Cumulative results across trial conditions and grids"))
-                assertTrue(text, text.contains(if (ja) "見つかった候補: 3件" else "Candidates found: 3"))
-                assertFalse(text, text.contains(if (ja) "指定条件を満たす修復候補が3件" else "3 recovery candidates meeting the specified conditions"))
+            val trial = summary
+            assertTrue(trial.contains(if (ja) "この試行の保持候補: 1件" else "Candidates retained from this trial: 1"))
+            assertTrue(trial.contains(SearchCompleteness.COMPLETE.description()))
+            assertTrue(summary.contains(if (ja) "全条件・格子の結果一覧" else "Results across all conditions and grids"))
+            assertTrue(summary.contains(if (ja) "見つかった候補: 3件" else "Candidates found: 3"))
+            assertFalse(summary.contains(if (ja) "指定条件を満たす修復候補が3件" else "3 recovery candidates meeting the specified conditions"))
+            for (text in listOf(report.overview, summary)) {
+                assertFalse(text, text.contains(if (ja) "試行の時間上限" else "trial reached its time limit"))
+                assertFalse(text, text.contains(if (ja) "不明ビットの組合せ" else "Unknown-bit combinations"))
+                assertTrue(text, text.contains(SearchCompleteness.COMPLETE.description()))
+                assertTrue(text, text.contains(if (ja) "UTF-8と単一セグメントを仮定" else "assuming UTF-8 and a single segment"))
             }
-            for (text in listOf(report.overview, report.sections.last().summary, summary)) {
-                assertTrue(text, text.contains(if (ja) "未解決の処理が残っています" else "unresolved processing remains"))
-                assertTrue(text, text.contains(SearchCompleteness.COMPLETE.description())) // Selected trial only.
-            }
+            val records = report.sections[2].groups.single { it.id == DiagnosticDetailId.TRIALS }
+            assertTrue(records.collapsible)
+            assertTrue(records.summary.contains(if (ja) "選択候補を得た試行と、別条件" else "include the selected candidate's trial and trials with other conditions"))
+            assertTrue(records.text.contains(if (ja) "試行の時間上限" else "trial reached its time limit"))
+            assertTrue(records.text.contains(if (ja) "不明ビットの組合せ" else "Unknown-bit combinations"))
+            assertTrue(records.text.contains("Q/6"))
             val settings = report.sections.first().summary
             assertTrue(settings.contains(if (ja) "バイト区間の UTF-8 仮定: ON" else "UTF-8 assumption for Byte segments: ON"))
-            assertEquals(SearchCompleteness.COMPLETE, cumulative.completeness)
+            assertEquals(SearchCompleteness.UNSEARCHED, cumulative.completeness)
             assertTrue(cumulative.unresolvedCalculations)
         }
     }
@@ -58,8 +69,8 @@ class RecoveryDiagnosticOverviewTest {
             val text = RecoveryDiagnosticPresenter(ja).searchResultDescription(context)
             assertTrue(text.contains(if (ja) "見つかった候補: 2件以上" else "Candidates found: at least 2"))
             assertTrue(text.contains(if (ja) "保持上限" else "retention limit"))
-            assertTrue(text.contains(if (ja) "未解決" else "Unresolved"))
-            assertTrue(text.contains(SearchCompleteness.UNSEARCHED.description()))
+            assertTrue(text.contains(if (ja) "対象の形式・計算と理由は記録されていません" else "their format, calculation, and reason were not recorded"))
+            assertTrue(text.contains(if (ja) "利用者が探索を中断" else "interrupted by the user"))
             assertFalse(text.contains(SearchCompleteness.COMPLETE.description()))
         }
     }
@@ -67,7 +78,7 @@ class RecoveryDiagnosticOverviewTest {
     @Test fun unresolvedDirectSearchDoesNotClaimUnqualifiedCompletion() = inBothLanguages { ja ->
         val diagnostic = RecoverySearchDiagnostic(solverCompleteness = SearchCompleteness.COMPLETE, unresolvedCalculations = true)
         val text = RecoveryDiagnosticPresenter(ja).searchResultDescription(RecoveryDiagnosticContext(1, false, false, diagnostic, null))
-        assertTrue(text.contains(if (ja) "未解決の処理が残っています" else "unresolved processing remains"))
+        assertTrue(text.contains(if (ja) "対象の形式・計算と理由は記録されていません" else "their format, calculation, and reason were not recorded"))
         assertFalse(text.contains(SearchCompleteness.COMPLETE.description()))
         assertEquals(SearchCompleteness.COMPLETE, diagnostic.completeness)
     }
@@ -112,14 +123,14 @@ class RecoveryDiagnosticOverviewTest {
             val report = RecoveryDiagnosticPresenter(ja).candidateReport(selected, null,
                 RecoveryDiagnosticContext(3, true, true, diagnostic, null, 2))
             assertEquals(if (ja) "候補2の診断（保持中3件）" else "Diagnostics for candidate 2 (3 retained)", report.scope)
-            val text = report.overview
+            val text = report.overview + "\n" + report.sections.last().summary
             assertTrue(text.contains(if (ja) "QR構造: 確認済み" else "QR structure: verified"))
             assertTrue(text.contains(if (ja) "最終復号: 成功していません" else "Final decoding: not successful"))
             assertTrue(text.contains(if (ja) "形式情報: 不一致2bit／比較対象28bit" else "Format information: 2 mismatches / 28 bits compared"))
             assertTrue(text.contains(if (ja) "データ・ECC: 不一致3bit／比較対象192bit" else "Data/ECC: 3 mismatches / 192 bits compared"))
             assertTrue(text.contains(if (ja) "テキストとしての復号には成功していません" else "Decoding as text has not succeeded"))
             assertFalse(text.contains(if (ja) "文字として表示できない" else "cannot be displayed as text"))
-            assertTrue(text.contains(if (ja) "未探索の組合せ" else "combinations remain unchecked"))
+            assertTrue(text.contains(if (ja) "その追加探索で残っていた組合せ" else "Remaining combinations in that fallback"))
             assertTrue(text.contains(if (ja) "時間切れ" else "time limit"))
             assertTrue(text.contains(if (ja) "候補の省略: あり" else "Candidates omitted: yes"))
             assertTrue(text.contains(if (ja) "同一であることを保証するものではありません" else "does not establish"))
@@ -129,8 +140,6 @@ class RecoveryDiagnosticOverviewTest {
                 if (ja) "最終復号: 成功していません" else "Final decoding: not successful",
                 if (ja) "形式情報: 不一致2bit／比較対象28bit" else "Format information: 2 mismatches / 28 bits compared",
                 if (ja) "データ・ECC: 不一致3bit／比較対象192bit" else "Data/ECC: 3 mismatches / 192 bits compared",
-                if (ja) "時間切れ" else "time limit",
-                if (ja) "候補の省略: あり" else "Candidates omitted: yes",
             )) assertTrue(evidence, summary.contains(evidence))
         }
     }
@@ -149,13 +158,12 @@ class RecoveryDiagnosticOverviewTest {
                 val presenter = RecoveryDiagnosticPresenter(ja)
                 val report = if (count == 0) presenter.failureReport(failure, null, context)
                     else presenter.candidateReport(selected, null, context)
-                assertTrue("$count/$completeness", report.overview.contains(completeness.description()))
-                assertTrue("$count/$completeness", report.sections.last().summary.contains(completeness.description()))
-                assertTrue(report.sections.last().summary.contains(if (ja) "候補の省略: なし" else "Candidates omitted: no"))
+                assertTrue("$count/$completeness", report.overview.contains(diagnostic.terminationText()))
+                assertFalse("$count/$completeness", report.sections.last().summary.contains(diagnostic.terminationText()))
                 if (count == 0) {
                     assertTrue(report.overview.contains(if (ja) "調べた範囲では" else "in the checked range"))
                     assertFalse(report.overview.contains(if (ja) "QR構造: 確認済み" else "QR structure: verified"))
-                } else assertTrue(report.overview.contains(if (ja) "最終復号: 成功" else "Final decoding: succeeded"))
+                } else assertTrue(report.sections.last().summary.contains(if (ja) "最終復号: 成功" else "Final decoding: succeeded"))
             }
         }
     }
@@ -182,10 +190,10 @@ class RecoveryDiagnosticOverviewTest {
             val report = RecoveryDiagnosticPresenter(ja).candidateReport(selected, null,
                 RecoveryDiagnosticContext(1, false, false, null, null, 1))
             assertTrue(report.overview.contains(SearchCompleteness.UNKNOWN.description()))
-            assertTrue(report.overview.contains(if (ja) "形式情報: 比較対象0bit（一致は未確認）" else "Format information: 0 known bits to compare (agreement unknown)"))
-            assertTrue(report.overview.contains(if (ja) "データ・ECC: 比較対象0bit（一致は未確認）" else "Data/ECC: 0 known bits to compare (agreement unknown)"))
+            assertTrue(report.sections.last().summary.contains(if (ja) "形式情報: 比較対象0bit（一致は未確認）" else "Format information: 0 known bits to compare (agreement unknown)"))
+            assertTrue(report.sections.last().summary.contains(if (ja) "データ・ECC: 比較対象0bit（一致は未確認）" else "Data/ECC: 0 known bits to compare (agreement unknown)"))
             assertTrue(report.sections.last().summary.contains(if (ja) "比較対象0bit（一致は未確認）" else "0 known bits to compare (agreement unknown)"))
-            assertTrue(report.sections.last().summary.contains(SearchCompleteness.UNKNOWN.description()))
+            assertFalse(report.sections.last().summary.contains(SearchCompleteness.UNKNOWN.description()))
             assertTrue(report.sections[0].summary.contains(if (ja) "記録されていません" else "not recorded"))
             assertTrue(report.sections[1].summary.contains(if (ja) "記録なし" else "Not recorded"))
             assertFalse(report.sections[1].summary.contains(if (ja) "未実行" else "not run"))
@@ -200,11 +208,11 @@ class RecoveryDiagnosticOverviewTest {
         assertTrue(report.overview.contains(if (ja) "修復処理を実行できませんでした" else "prevented repair from running"))
         assertFalse(report.fullText().contains(if (ja) "探索しました" else "were searched"))
         assertFalse(report.fullText().contains(if (ja) "探索を行いました" else "Searched under"))
-        assertTrue(report.sections[2].summary.contains(if (ja) "修復処理を実行できませんでした" else "prevented repair from running"))
+        assertFalse(report.sections[2].summary.contains(if (ja) "修復処理を実行できませんでした" else "prevented repair from running"))
         assertFalse(report.sections[2].summary.contains(if (ja) "調べた範囲では修復候補は見つかりませんでした"
             else "No recovery candidate was found in the checked range"))
         assertTrue(report.sections[2].details.isBlank())
-        assertTrue(report.sections.last().summary.contains(if (ja) "修復処理を実行できませんでした" else "prevented repair from running"))
+        assertFalse(report.sections.last().summary.contains(if (ja) "修復処理を実行できませんでした" else "prevented repair from running"))
     }
 
     @Test fun failureSummaryLabelsTheReferenceInputAndDistinguishesMissingComparisonFromZeroKnownBits() = inBothLanguages { ja ->
@@ -251,9 +259,9 @@ class RecoveryDiagnosticOverviewTest {
             assertTrue(diagnosticText(view).contains(second.sections.last().summary))
             assertFalse(diagnosticText(view).contains(if (ja) "不一致9bit／比較対象100bit" else "9 mismatches / 100 bits compared"))
             val verification = second.sections.last()
-            for (text in listOf(verification.summary, verification.details)) {
-                assertTrue(text.contains(SearchCompleteness.UNSEARCHED.description()))
-                assertTrue(text.contains(if (ja) "終了理由を確認できません" else "stop reason is unavailable"))
+            for (text in listOf(second.overview, diagnosticText(view))) {
+                assertTrue(text.contains(if (ja) "確認を終えていない探索" else "Some searches were not fully checked"))
+                assertTrue(text.contains(if (ja) "対象の処理と終了理由は記録されていません" else "the affected work and stop reason were not recorded"))
                 assertTrue(text.contains(if (ja) "保持上限" else "retention limit"))
             }
             assertFalse(diagnosticText(view).contains(verification.details))

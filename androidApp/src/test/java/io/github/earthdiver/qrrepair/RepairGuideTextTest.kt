@@ -16,6 +16,7 @@ import io.github.earthdiver.qrrepair.core.RecoverySearchDiagnostic
 import io.github.earthdiver.qrrepair.core.RecoveryInputBlocker
 import io.github.earthdiver.qrrepair.core.RecoveryDisplayConditions
 import io.github.earthdiver.qrrepair.core.searchResultText
+import io.github.earthdiver.qrrepair.core.terminationText
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
@@ -270,7 +271,7 @@ class RepairGuideTextTest {
             assertEquals(searchResultText(0, io.github.earthdiver.qrrepair.core.SearchCompleteness.COMPLETE),
                 view("statusText").text.toString())
             assertEquals(View.VISIBLE, view("contentPreviewText").visibility)
-            assertTrue(view("contentPreviewText").text.contains(if (language == AppLanguage.JAPANESE)
+            assertTrue(diagnosticText(activity).contains(if (language == AppLanguage.JAPANESE)
                 "不一致上限（0bit）を満たすRS候補はありません" else "No RS candidate meets the zero-bit mismatch limit"))
             assertFalse(diagnosticText(activity).contains(if (language == AppLanguage.JAPANESE)
                 "ECCシンボル数: 17" else "ECC symbols in the failing block: 17"))
@@ -369,8 +370,8 @@ class RepairGuideTextTest {
                 "この形式で入力済みの白黒を保つ組合せのすべて" else "Unknown bits with the same value"))
             assertTrue(processing.contains(if (language == AppLanguage.JAPANESE)
                 "不明コード語数（全ブロック合計）: 13" else "Unknown codewords after structure filling and priority assignments (all blocks): 13"))
-            assertTrue(text.substring(positions[3]).contains(if (language == AppLanguage.JAPANESE)
-                "修復候補が2件見つかりました" else "2 recovery candidates"))
+            assertTrue(text.contains(if (language == AppLanguage.JAPANESE)
+                "保持中2件" else "2 retained"))
             activity.finish()
         }
     }
@@ -403,7 +404,10 @@ class RepairGuideTextTest {
                     invoke(activity, null)
                 }
                 val preview = text("contentPreviewText")
-                assertEquals("$style/$language/$stage", searchResultText(0, io.github.earthdiver.qrrepair.core.SearchCompleteness.UNKNOWN), preview)
+                assertEquals("$style/$language/$stage", searchResultText(0,
+                    io.github.earthdiver.qrrepair.core.SearchCompleteness.UNKNOWN, reasons = "",
+                    completionDescription = RecoverySearchDiagnostic(coverageComplete = false).terminationText()), text("statusText"))
+                assertEquals(localizedText("表示できる修復候補はありません。", "No recovery candidate is available to display."), preview)
                 assertFalse(preview.contains(if (language == AppLanguage.JAPANESE) "この試行" else "this attempt"))
                 assertFalse(preview.contains(if (language == AppLanguage.JAPANESE) "誤り訂正レベル:" else "Error correction level:"))
                 val report = MainActivity::class.java.getDeclaredField("diagnosticReport")

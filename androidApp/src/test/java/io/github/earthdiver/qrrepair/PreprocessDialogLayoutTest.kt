@@ -1101,14 +1101,16 @@ class PreprocessDialogLayoutTest {
         val guide = text("guideText")
         val candidateDetails = text("contentPreviewText")
         val diagnostics = (MainActivity::class.java.getDeclaredField("diagnosticReport").apply { isAccessible = true }.get(activity) as io.github.earthdiver.qrrepair.core.RecoveryDiagnosticReport).fullText()
-        assertEquals(io.github.earthdiver.qrrepair.core.searchResultText(0, io.github.earthdiver.qrrepair.core.SearchCompleteness.UNSEARCHED), status)
+        val termination = if (interrupted) "利用者が探索を中断しました。" else "候補の組合せの確認は、仕様で定めた件数までで終了しました。"
+        assertTrue(status, status.contains(termination))
         assertTrue(guide.contains("81"))
         assertTrue(!guide.contains("推奨セル"))
         assertTrue(!guide.contains("絞り込めるセル"))
         assertTrue(!guide.contains("探索上限"))
         assertTrue(diagnostics.contains("形式情報領域: 修復開始時の比較対象25bitとの不一致 0bit"))
+        assertEquals(1, listOf(status, candidateDetails, diagnostics).joinToString("\n")
+            .split(termination).size - 1)
         for (message in listOf(status, candidateDetails, diagnostics)) {
-            assertTrue(message.contains("未探索の組合せが残っています"))
             assertFalse(message.contains("探索範囲の上限に達しました"))
         }
         assertTrue(diagnostics.contains("追加確認の目安: 81bit"))

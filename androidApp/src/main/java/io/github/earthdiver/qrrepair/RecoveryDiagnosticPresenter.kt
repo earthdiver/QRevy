@@ -12,30 +12,45 @@ internal data class RecoveryDiagnosticContext(
     val selectedCandidateNumber: Int? = null,
     val discoveredCandidates: RecoveryDiscoveryCount? = null,
     val aggregatesTrials: Boolean = selectedEntry != null,
+    val searchSummaryShownSeparately: Boolean = false,
+    val combinationStops: Set<CombinationSearchStop> = emptySet(),
+    val trialCount: Int? = null,
 )
 
 /** Builds diagnostic content without retaining an Activity, Views, or mutable UI state. */
 internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
     fun searchResultDescription(context: RecoveryDiagnosticContext): String {
         val diagnostic = searchEvidence(context)
+        context.selectedEntry?.let { selected ->
+            val trial = selected.attempt.searchDiagnostic ?: selected.candidate.searchDiagnostic
+            return listOf(
+                ui("選択候補を得た試行（表示中の設定）", "Trial that produced the selected candidate (displayed settings)"),
+                assumptionText(selected.candidate.displayConditions),
+                selectedTrialSummary(context),
+                trial?.terminationText(selected.candidate.combinationSearch.stops) ?: missingTrialRecord(),
+                if (context.trialCount != 1) ui("全条件・格子の結果一覧: ${context.candidateCount}件", "Results across all conditions and grids: ${context.candidateCount}") else "",
+                context.discoveredCandidates?.let { discoveryCountText(it, japanese) }.orEmpty(),
+                if (context.trialCount != 1) ui("別条件・格子を含む探索の記録は、診断情報で確認できます。", "Diagnostics contain search records including other conditions and grids.") else "",
+                if (context.candidatesOmitted || diagnostic.candidatesOmitted)
+                    ui("保持上限により、一部の候補は省略しています。", "Some candidates were omitted at the retention limit.") else "",
+            ).filter(String::isNotBlank).joinToString("\n")
+        }
         if (context.aggregatesTrials) return listOf(
-            selectedTrialSummary(context),
             ui("全試行の累積結果（条件・格子をまとめた集計）", "Cumulative results across trial conditions and grids"),
             context.discoveredCandidates?.let { discoveryCountText(it, japanese) }.orEmpty(),
             ui("結果一覧: ${context.candidateCount}件", "Results available: ${context.candidateCount}"),
             ui("各候補に適用した条件は、候補を選択して確認できます。",
                 "Select a candidate to review the conditions applied to it."),
-            completionText(diagnostic), diagnostic.completionReasonsText(),
+            diagnostic.terminationText(context.combinationStops),
             if (context.candidatesOmitted || diagnostic.candidatesOmitted)
                 ui("保持上限により、一部の候補は省略しています。", "Some candidates were omitted at the retention limit.") else "",
         ).filter(String::isNotBlank).joinToString("\n")
         val completeness = diagnostic.completeness
-        val reasons = diagnostic.completionReasonsText()
         val description = if (diagnostic.coverageComplete && diagnostic.completedSteps == 0 &&
             SearchIncompleteReason.INTERNAL_ERROR in diagnostic.incompleteReasons) {
-            completionText(diagnostic) + "\n" + reasons
+            diagnostic.terminationText(context.combinationStops)
         } else searchResultText(context.candidateCount, completeness,
-            context.candidatesOmitted || diagnostic.candidatesOmitted, reasons, completionText(diagnostic))
+            context.candidatesOmitted || diagnostic.candidatesOmitted, "", diagnostic.terminationText(context.combinationStops))
         val count = context.discoveredCandidates ?: return description
         return buildString {
             append(discoveryCountText(count, japanese))
@@ -45,6 +60,18 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
             append("\n").append(description)
         }
     }
+
+    private fun assumptionText(conditions: RecoveryDisplayConditions?): String = when {
+        conditions?.assumeUtf8ByteSegments == true && conditions.trustSingleSegment -> ui(
+            "UTF-8と単一セグメントを仮定して得た候補です。", "This candidate was obtained assuming UTF-8 and a single segment.")
+        conditions?.trustSingleSegment == true -> ui("単一セグメントを仮定して得た候補です。", "This candidate was obtained assuming a single segment.")
+        conditions?.assumeUtf8ByteSegments == true -> ui("UTF-8を仮定して得た候補です。", "This candidate was obtained assuming UTF-8.")
+        conditions?.dataEccLimit == 0 -> ui("入力の既知データ・ECCビットと完全に一致する条件で得た候補です。",
+            "This candidate was obtained requiring exact agreement with known data/ECC bits.")
+        else -> ""
+    }
+
+    private fun missingTrialRecord(): String = ui("この試行の終了理由は記録されていません。", "The termination reason for this trial was not recorded.")
 
     fun candidateReport(candidate: RecoveryCandidate, geometry: GridGeometry?, context: RecoveryDiagnosticContext): RecoveryDiagnosticReport {
         val preview = QrContentPreviewParser.parse(candidate)
@@ -61,8 +88,6 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
             append(ui("\n比較対象は、画像の読み取りと手動編集を反映した、修復開始時の既知の0/1です。",
                 "\nComparisons use known 0/1 values at repair start, including image sampling and manual edits."))
             append('\n').append(candidate.inputComparisonText())
-            append(if (context.aggregatesTrials) "\n\n" else ui("\n\n今回の探索全体\n", "\n\nSearch-wide results\n"))
-            append(searchResultDescription(context))
         }
         val scope = context.selectedCandidateNumber?.let { number ->
             ui("候補${number}の診断（保持中${context.candidateCount}件）",
@@ -83,9 +108,8 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
                 "\n指定した単一セグメントの終端後構造の強制を適用した候補です。",
                 "\nThis candidate uses the specified single-segment assumption."))
         }
-        val verificationSummary = candidateChecks + "\n\n" + searchOverview(context)
-        val overview = buildString {
-            append(verificationSummary)
+        val verificationSummary = buildString {
+            append(candidateChecks)
             append(ui("\n元の内容と同一であることを保証するものではありません。",
                 "\nThis does not establish that the original content was recovered."))
         }
@@ -96,7 +120,7 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
             DiagnosticSection(DiagnosticStage.VERIFICATION,
                 verificationSummary,
                 listOf(verification, preview?.toDisplayText().orEmpty()).filter(String::isNotBlank).joinToString("\n\n")),
-        ), overview)
+        ), if (context.searchSummaryShownSeparately) "" else searchOverview(context))
     }
 
     fun failureReport(failure: RecoveryFailure, geometry: GridGeometry?, context: RecoveryDiagnosticContext): RecoveryDiagnosticReport {
@@ -113,8 +137,7 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
             }
         }.trim()
         val verification = buildString {
-            append(searchResultDescription(context))
-            append("\n\n").append(referenceTarget(failure, geometry))
+            append(referenceTarget(failure, geometry))
             append(ui("\n\n参考診断の形式と入力との比較\n", "\n\nComparison of the reference format with the input\n"))
             append(inputAgreementText(failure.formatKnownBits, failure.formatMismatches, true))
             if (failure.knownBitMismatches != null && failure.knownBitsCompared != null) {
@@ -138,16 +161,16 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
                     wholeSearch = context.searchDiagnostic != null) else null,
             listDecodingProcessingGroup(context.searchDiagnostic ?: failure.searchDiagnostic, hasCandidate = false,
                 wholeSearch = context.searchDiagnostic != null),
+            searchRecordGroup(context, context.searchDiagnostic ?: failure.searchDiagnostic),
         )
         return RecoveryDiagnosticReport(ui("修復結果の診断", "Recovery result diagnostics"), listOf(
             failure.displayConditions.runSettingsSection(),
             input,
             DiagnosticSection(DiagnosticStage.PROCESSING,
-                listOf(searchResultDescription(context), explanation).filter(String::isNotBlank).joinToString("\n"), groups),
+                explanation, groups),
             DiagnosticSection(DiagnosticStage.VERIFICATION,
                 buildString {
                     append(ui("保持している修復候補: ${context.candidateCount}件", "Retained recovery candidates: ${context.candidateCount}"))
-                    append('\n').append(searchOverview(context))
                     append("\n\n").append(referenceTarget(failure, geometry))
                     append(ui("\n修復開始時の入力との比較", "\nComparison with the input at repair start"))
                     append('\n').append(inputAgreementText(failure.formatKnownBits, failure.formatMismatches, true, compact = true))
@@ -157,7 +180,7 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
                     } else append(ui("\nデータ・ECCの比較結果: 記録なし", "\nData/ECC comparison: not recorded"))
                 },
                 verification),
-        ), listOf(searchResultDescription(context), explanation).filter(String::isNotBlank).joinToString("\n"))
+        ), if (context.searchSummaryShownSeparately) "" else searchResultDescription(context))
     }
 
     private fun referenceTarget(failure: RecoveryFailure, geometry: GridGeometry?): String =
@@ -170,13 +193,13 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
             ?: RecoverySearchDiagnostic(unsearched = context.unsearched, coverageComplete = false)
 
     private fun searchOverview(context: RecoveryDiagnosticContext): String {
+        if (context.selectedEntry != null) return searchResultDescription(context)
         val diagnostic = searchEvidence(context)
         return listOf(
-            selectedTrialSummary(context),
             if (context.aggregatesTrials) ui("全試行の累積状況（異なる条件・格子を含む）",
                 "Cumulative status across trial conditions and grids") else ui("今回の探索全体", "Search-wide status"),
-            completionText(diagnostic),
-            diagnostic.completionReasonsText(),
+            ui("保持している修復候補: ${context.candidateCount}件", "Retained recovery candidates: ${context.candidateCount}"),
+            diagnostic.terminationText(context.combinationStops),
             if (context.candidatesOmitted || diagnostic.candidatesOmitted)
                 ui("候補の省略: あり（保持上限）", "Candidates omitted: yes (retention limit)")
             else ui("候補の省略: なし", "Candidates omitted: no"),
@@ -187,25 +210,38 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
         if (!context.aggregatesTrials) return ""
         val entry = context.selectedEntry ?: return ""
         val count = entry.attempt.recoveries.filter { it.isSelectableRecovery }.map { it.identity() }.distinct().size
-        val diagnostic = entry.attempt.searchDiagnostic ?: entry.candidate.searchDiagnostic
         return listOf(
-            ui("選択候補を得た試行（表示中の設定）", "Trial that produced the selected candidate (displayed settings)"),
             ui("この試行の保持候補: ${count}件", "Candidates retained from this trial: $count"),
-            diagnostic?.let { completionText(it) } ?: ui("この試行の完了状況は記録されていません。",
-                "Completion of this trial was not recorded."),
-            if (diagnostic?.candidatesOmitted == true) ui("この試行には保持上限による候補の省略があります。",
+            if (entry.attempt.searchDiagnostic?.candidatesOmitted == true) ui("この試行には保持上限による候補の省略があります。",
                 "Some candidates from this trial were omitted at the retention limit.") else "",
         ).filter(String::isNotBlank).joinToString("\n")
     }
 
-    /** Display uncertainty without changing solver completeness or automatic acceptance. */
-    private fun completionText(diagnostic: RecoverySearchDiagnostic): String =
-        if (!diagnostic.unresolvedCalculations) diagnostic.completeness.description()
-        else if (diagnostic.completeness == SearchCompleteness.COMPLETE) ui(
-            "実行した探索処理は終了しましたが、未解決の処理が残っています。",
-            "The attempted search passes finished, but unresolved processing remains.")
-        else diagnostic.completeness.description() + "\n" + ui("未解決の処理も残っています。",
-            "Unresolved processing also remains.")
+    private fun searchRecordGroup(context: RecoveryDiagnosticContext, selected: RecoverySearchDiagnostic?): DiagnosticDetailGroup? {
+        val aggregate = context.selectedEntry != null && context.trialCount != 1
+        val diagnostic = if (aggregate) context.searchDiagnostic else selected
+        val selectedTermination = context.selectedEntry?.let {
+            (it.attempt.searchDiagnostic ?: it.candidate.searchDiagnostic)?.terminationText(it.candidate.combinationSearch.stops)
+        }
+        val text = listOf(
+            if (aggregate) diagnostic?.terminationText()?.let {
+                if (it == selectedTermination) ui("全試行の集計でも、選択試行と同じ終了理由が記録されています。",
+                    "The aggregate records have the same termination reasons as the selected trial.") else it
+            } ?: missingTrialRecord() else "",
+            diagnostic?.formatTerminationDetails().orEmpty(),
+            if (aggregate) listDecodingProcessingText(diagnostic, wholeSearch = true) else "",
+        ).filter(String::isNotBlank).joinToString("\n\n")
+        if (text.isBlank()) return null
+        return DiagnosticDetailGroup(DiagnosticDetailId.TRIALS,
+            if (aggregate) ui("全試行の探索記録（別条件・格子を含む）", "Search records across trials (including other conditions and grids)")
+            else ui("形式ごとの探索記録", "Search records by format"),
+            if (aggregate) ui(
+                "選択候補を得た試行と、別条件・格子の試行を含む集計です。同じECC・マスクでも、異なる条件の記録があります。選択試行の終了状況は結果の概要に表示しています。",
+                "These totals include the selected candidate's trial and trials with other conditions or grids. The same ECC/mask can have records under different conditions. The selected trial's termination is shown in the result summary.")
+            else ui("結果の概要に示した終了理由について、対象のECC・マスクを確認できます。",
+                "These records identify the ECC/masks affected by the termination reasons in the result summary."),
+            text, collapsible = true)
+    }
 
     private fun listDecodingIneligible(diagnostic: RecoverySearchDiagnostic?): Boolean =
         diagnostic?.listDecoding?.let { summary -> summary.trials == 0 && summary.reusedTrials == 0 &&
@@ -230,14 +266,20 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
 
     private fun candidateProcessingSection(candidate: RecoveryCandidate, context: RecoveryDiagnosticContext): DiagnosticSection {
         val methods = candidate.groupedMethodRecords()
-        return DiagnosticSection(DiagnosticStage.PROCESSING, candidate.compactUsedMethodsText(), listOfNotNull(
+        val selectedDiagnostic = if (context.selectedEntry != null)
+            context.selectedEntry.attempt.searchDiagnostic ?: candidate.searchDiagnostic
+            else context.searchDiagnostic ?: candidate.searchDiagnostic
+        return DiagnosticSection(DiagnosticStage.PROCESSING,
+            candidate.compactUsedMethodsText(), listOfNotNull(
             DiagnosticDetailGroup(DiagnosticDetailId.METHODS,
                 ui("この候補を得た方法", "Methods used to obtain this candidate"),
                 text = listOf(candidate.processingMethodsText(), candidate.displayConditions.candidateCalculationPolicyText())
                     .filter(String::isNotBlank).joinToString("\n\n")),
             RecoveryCalculationPresenter(japanese).group(candidate, methods, context.selectedEntry,
                 combinationStopReasons(candidate.combinationSearch)),
-            listDecodingProcessingGroup(context.searchDiagnostic ?: candidate.searchDiagnostic, wholeSearch = context.searchDiagnostic != null),
+            listDecodingProcessingGroup(selectedDiagnostic,
+                wholeSearch = context.selectedEntry == null && context.searchDiagnostic != null),
+            searchRecordGroup(context, selectedDiagnostic),
         ))
     }
 
@@ -247,8 +289,8 @@ internal class RecoveryDiagnosticPresenter(private val japanese: Boolean) {
         else ui("参考診断の入力", "reference diagnostic input")
 
     private fun searchRecordScopeDescription(wholeSearch: Boolean, hasCandidate: Boolean): String =
-        if (!wholeSearch) ui("対象の入力についての集計です。他の読み取り入力も含む探索全体の集計は記録されていません。",
-            "These totals cover the identified input. Totals across all sampled inputs were not recorded.")
+        if (!wholeSearch) ui("対象の入力についての集計です。別条件・格子の試行は含みません。",
+            "These totals cover the identified input, excluding trials with other conditions or grids.")
         else if (hasCandidate) ui("選択中の候補に使わなかった入力・ブロックの試行も含む集計です。",
             "These totals also include input and block trials that did not produce the selected candidate.")
         else ui("探索した入力・ブロック全体の集計です。", "These totals cover all searched inputs and blocks.")

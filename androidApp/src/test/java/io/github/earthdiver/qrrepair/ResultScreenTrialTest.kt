@@ -330,6 +330,8 @@ class ResultScreenTrialTest {
             assertEquals(View.GONE, field<View>(activity, "resultCopyButton").visibility)
             assertEquals(View.VISIBLE, field<View>(activity, "resultSavePngButton").visibility)
             install(activity, matrix, listOf(result.copy(text = null, dataBytes = byteArrayOf(0x01))))
+            assertEquals(1, (field<TextView>(activity, "statusText").text.toString() + diagnosticText(activity))
+                .split(result.searchDiagnostic!!.completeness.description()).size - 1)
             assertTrue(field<TextView>(activity, "contentPreviewText").text.contains("誤り訂正の条件は満たしましたが"))
             assertTrue(diagnosticText(activity).contains("QR構造: 確認できませんでした"))
             assertTrue(diagnosticText(activity).contains("最終復号: 成功していません"))
@@ -338,6 +340,8 @@ class ResultScreenTrialTest {
             assertEquals(View.GONE, field<View>(activity, "resultSavePngButton").visibility)
             MainActivity::class.java.getDeclaredMethod("startSavePng").apply { isAccessible = true }.invoke(activity)
             assertTrue(field<TextView>(activity, "statusText").text.contains("検証済みの修復結果がない"))
+            assertEquals(1, (field<TextView>(activity, "statusText").text.toString() + diagnosticText(activity))
+                .split(result.searchDiagnostic!!.completeness.description()).size - 1)
         }
     }
 
@@ -399,7 +403,8 @@ class ResultScreenTrialTest {
         val (matrix, result) = candidate("ABC-123")
         for (style in AppStyle.entries) withActivity(style, AppLanguage.JAPANESE) { activity ->
             install(activity, matrix, listOf(result.copy(combinationSearch = CombinationSearchSummary(1, setOf(CombinationSearchStop.WORKING_MEMORY_LIMIT)))))
-            assertTrue(field<TextView>(activity, "resultExplanationText").text.contains("未確認の組合せ"))
+            assertTrue(field<TextView>(activity, "statusText").text.contains("計算用メモリの上限"))
+            assertFalse(field<TextView>(activity, "resultExplanationText").text.contains("計算用メモリの上限"))
             val state = field<RecoveryUiState>(activity, "recoveryState")
             state.recoveries = emptyList()
             state.selectRecovery(-1)
@@ -407,7 +412,7 @@ class ResultScreenTrialTest {
                 reason = RecoveryFailureReason.QR_COMBINATION_SEARCH_LIMIT,
                 searchDiagnostic = RecoverySearchDiagnostic(unsearched = true))
             refresh(activity)
-            assertTrue(field<TextView>(activity, "contentPreviewText").text.contains("未探索の組合せ"))
+            assertTrue(field<TextView>(activity, "statusText").text.contains("対象の処理と終了理由は記録されていません"))
             assertFalse(field<TextView>(activity, "contentPreviewText").text.contains("上限に達しました"))
             assertTrue(field<TextView>(activity, "guideText").text.startsWith("次に試すこと"))
             val next = field<View>(activity, "resultNextAction")

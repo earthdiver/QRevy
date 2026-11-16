@@ -74,9 +74,12 @@ class CombinationSearchSummaryTest {
         assertTrue(results.all { it.searchDiagnostic?.candidatesOmitted == true })
         assertTrue(results.all { it.searchDiagnostic?.completeness == SearchCompleteness.COMPLETE })
         assertTrue(results.all { it.payloadParsed && CombinationSearchStop.SUCCESS_WINDOW in it.combinationSearch.stops })
+        assertTrue(results.all { CombinationSearchStop.SUCCESS_WINDOW in it.searchDiagnostic!!.combinationStops })
+        assertTrue(results.first().searchDiagnostic!!.formatOutcomes.any { it.reason == "SUCCESS_WINDOW" })
         val clean = engine.recover(source, maxKnownDataEccMismatches = 0).single()
         assertTrue(clean.combinationSearch.stops.isEmpty())
         assertEquals(1, clean.combinationSearch.passes)
         assertFalse(clean.searchDiagnostic!!.candidatesOmitted)
+        assertTrue(clean.searchDiagnostic!!.combinationStops.isEmpty())
     }
 }

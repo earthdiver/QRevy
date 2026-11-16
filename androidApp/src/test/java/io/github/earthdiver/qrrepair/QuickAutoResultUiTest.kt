@@ -6,6 +6,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.os.Looper
+import android.widget.TextView
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.google.zxing.qrcode.encoder.Encoder
 import io.github.earthdiver.qrrepair.core.*
@@ -27,9 +28,10 @@ class QuickAutoResultUiTest {
         withResult { activity, _, saved ->
             val report = field("diagnosticReport").get(activity) as RecoveryDiagnosticReport
             val text = report.fullText()
-            assertTrue(text.contains("Trial that produced the selected candidate (displayed settings)"))
-            assertTrue(text.contains("Candidates retained from this trial: 1"))
-            assertTrue(text.contains("Cumulative results across trial conditions and grids"))
+            val status = (field("statusText").get(activity) as TextView).text
+            assertTrue(status.contains("Trial that produced the selected candidate (displayed settings)"))
+            assertTrue(status.contains("Candidates retained from this trial: 1"))
+            assertFalse(text.contains("Trial that produced the selected candidate (displayed settings)"))
             assertTrue(report.sections.first().summary.contains("Search by assuming black/white values for ?: OFF"))
             assertTrue(report.sections.first().summary.contains("Exact RS residual dimension limit: 8 bits"))
             assertEquals(saved, field("preprocessSettings").get(activity))
@@ -94,8 +96,29 @@ class QuickAutoResultUiTest {
             assertEquals(saved, field("preprocessSettings").get(activity))
         }
 
+    @Test fun successfulTrialDoesNotInheritEarlierTimeoutOrInconclusiveCalculations() {
+        val earlier = RecoverySearchDiagnostic(unresolvedCalculations = true,
+            incompleteReasons = setOf(SearchIncompleteReason.TIME_LIMIT),
+            formatOutcomes = listOf(RecoveryFormatOutcome(ErrorCorrectionLevel.Q, 6,
+                RecoveryFormatState.UNRESOLVED, false, "BIT_SPACE_LIMIT")))
+        withResult(AutomaticScanAssumption.SINGLE_SEGMENT, priorDiagnostic = earlier) { activity, _, _ ->
+            val status = (field("statusText").get(activity) as TextView).text.toString()
+            assertTrue(status, status.contains("assuming a single segment"))
+            assertTrue(status, status.contains(SearchCompleteness.COMPLETE.description()))
+            assertFalse(status.contains("time limit"))
+            assertFalse(status.contains("Unknown-bit combinations"))
+            val report = field("diagnosticReport").get(activity) as RecoveryDiagnosticReport
+            val records = report.sections[2].groups.single { it.id == DiagnosticDetailId.TRIALS }
+            assertTrue(records.text.contains("trial reached its time limit"))
+            assertTrue(records.text.contains("Unknown-bit combinations"))
+            assertTrue(records.text.contains("Q/6"))
+            assertFalse((field("resultExplanationText").get(activity) as TextView).text.contains("time limit"))
+        }
+    }
+
     private fun withResult(assumption: AutomaticScanAssumption = AutomaticScanAssumption.UTF8,
         listExtension: Int = 1,
+        priorDiagnostic: RecoverySearchDiagnostic? = null,
         check: (MainActivity, AlertDialog, PreprocessSettings) -> Unit) {
         AppLanguageManager.save(RuntimeEnvironment.getApplication(), AppLanguage.ENGLISH)
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
@@ -125,7 +148,10 @@ class QuickAutoResultUiTest {
             val profile = SamplingProfile(actual, false)
             val attempt = GeometryAttempt(GeometryHypothesis(emptyList(), geometry, 0.0), matrix,
                 MatrixSampler.SamplingStats(128.0, 64.0, 32.0), outcome.candidates, searchDiagnostic = outcome.searchDiagnostic)
-            val result = QuickAutoRecoveryResult(AutoRecoveryResult(emptyList(), listOf(attempt), profile,
+            val attempts = listOfNotNull(priorDiagnostic?.let {
+                attempt.copy(recoveries = emptyList(), searchDiagnostic = it)
+            }, attempt)
+            val result = QuickAutoRecoveryResult(AutoRecoveryResult(emptyList(), attempts, profile,
                 discoveredCandidates = outcome.discoveredCandidates), candidate, assumption)
             for (method in listOf("retainAutomaticResult", "showAutomaticResult")) {
                 MainActivity::class.java.getDeclaredMethod(method, QuickAutoRecoveryResult::class.java)

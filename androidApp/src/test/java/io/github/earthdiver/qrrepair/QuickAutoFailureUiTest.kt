@@ -108,10 +108,28 @@ class QuickAutoFailureUiTest {
         }
     }
 
-    private fun show(activity: MainActivity, reason: QuickAutoFailureReason) {
+    @Test fun failureDialogExplainsTheRecordedCalculationInsteadOfOnlySayingUnresolved() {
+        for (language in AppLanguage.entries) {
+            AppLanguageManager.save(RuntimeEnvironment.getApplication(), language)
+            val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+            try {
+                val diagnostic = RecoverySearchDiagnostic(unresolvedCalculations = true,
+                    formatOutcomes = listOf(RecoveryFormatOutcome(ErrorCorrectionLevel.M, 1,
+                        RecoveryFormatState.UNRESOLVED, false, "BIT_SPACE_LIMIT")))
+                show(controller.get(), QuickAutoFailureReason.UNRESOLVED, diagnostic)
+                val message = shadowOf(ShadowDialog.getLatestDialog() as AlertDialog).message.toString()
+                assertTrue(message, message.contains(if (language == AppLanguage.JAPANESE)
+                    "不明ビットの組合せが、この計算で列挙する範囲を超えました" else "Unknown-bit combinations exceeded this calculation's enumeration range"))
+                assertFalse(message.contains(if (language == AppLanguage.JAPANESE) "未解決の処理" else "unresolved processing"))
+                assertFalse(message.contains(SearchCompleteness.COMPLETE.description()))
+            } finally { controller.pause().stop().destroy() }
+        }
+    }
+
+    private fun show(activity: MainActivity, reason: QuickAutoFailureReason, diagnostic: RecoverySearchDiagnostic? = null) {
         MainActivity::class.java.getDeclaredMethod("showAutomaticResult", QuickAutoRecoveryResult::class.java)
             .apply { isAccessible = true }.invoke(activity,
-                QuickAutoRecoveryResult(AutoRecoveryResult(emptyList(), emptyList()), failureReason = reason))
+                QuickAutoRecoveryResult(AutoRecoveryResult(emptyList(), emptyList(), searchDiagnostic = diagnostic), failureReason = reason))
     }
     private fun field(name: String) = MainActivity::class.java.getDeclaredField(name).apply { isAccessible = true }
 }

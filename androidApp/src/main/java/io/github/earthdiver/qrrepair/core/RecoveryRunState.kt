@@ -148,6 +148,7 @@ internal class RecoveryRunState(
             singleSegmentRetryAvailable = singleSegmentRetryAvailable,
             unresolvedCalculations = unresolvedOutsideFormat || formats.any { it.state == RecoveryFormatState.UNRESOLVED },
             formatOutcomes = formats,
+            combinationStops = combinationSearch.stops,
             unsearched = incompleteReasons.isNotEmpty() || combinationSearch.unsearched,
             incompleteReasons = incompleteReasons + combinationSearch.incompleteReasons,
             completedSteps = completedSteps,

@@ -111,7 +111,7 @@ class QuickAutoRetainedCandidateUiTest {
     private fun assertFailure(activity: MainActivity, result: QuickAutoRecoveryResult, dialog: AlertDialog) {
         assertNull(result.selected)
         assertTrue(shadowOf(dialog).message.toString().contains(result.failureReason!!.message()))
-        assertEquals(result.failureReason.message(), (field("statusText").get(activity) as TextView).text.toString())
+        assertTrue((field("statusText").get(activity) as TextView).text.toString().startsWith(result.failureReason.message()))
         assertEquals(if (AppLanguageManager.current == AppLanguage.JAPANESE) "詳細解析へ" else "Detailed analysis",
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).text.toString())
     }
