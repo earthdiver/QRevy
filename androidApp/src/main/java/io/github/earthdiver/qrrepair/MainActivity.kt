@@ -387,14 +387,7 @@ class MainActivity : Activity() {
     }
 
     private fun showLicensesAndPrivacy() {
-        fun rawText(id: Int): String = resources.openRawResource(id).bufferedReader(Charsets.UTF_8).use { it.readText() }
-        val text = buildString {
-            append(rawText(R.raw.privacy))
-            append("\n\n────────────────────────\n\n")
-            append(rawText(R.raw.third_party_notices))
-            append("\n\n────────────────────────\nApache License 2.0\n\n")
-            append(rawText(R.raw.apache_2_0))
-        }
+        val text = licenseText(resources)
         val body = TextView(this).apply {
             setTextIsSelectable(true)
             textSize = 12f
@@ -421,6 +414,7 @@ class MainActivity : Activity() {
     }
 
     private fun buildUi(): View = (if (modernStyle) buildModernUi() else buildClassicUi()).also {
+        protectSystemBars(it)
         configureResultLayout()
     }
 

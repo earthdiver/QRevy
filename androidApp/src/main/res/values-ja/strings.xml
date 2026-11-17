@@ -235,4 +235,6 @@
     <string name="known_bit_note">欠損と誤りが混在するときの追加探索です。上限はRSブロックごとではなくQR全体に適用されます。操作全体で30秒・100万試行まで。固定セルと信頼したヘッダーの条件を維持します。</string>
     <string name="image_distortion_correction">曲面に合わせて格子を補正</string>
     <string name="image_distortion_unavailable">曲面補正に使える目印・座標変換が得られなかったため、通常の解析のみを行いました。</string>
+    <string name="threshold_enter_value">数値入力</string>
+    <string name="threshold_enter_value_for">数値入力: %1$s</string>
 </resources>

@@ -48,6 +48,30 @@ class PrivacyLocalizationTest {
         } finally { controller.pause().stop().destroy() }
     }
 
+    @Test fun noticesHaveFormattedHeadingsAndKeepLicenseBodiesWithoutDevelopmentInstructions() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        try {
+            val resources = controller.get().resources
+            val text = licenseText(resources)
+            assertTrue(text is android.text.Spanned)
+            val styled = text as android.text.Spanned
+            assertTrue(styled.getSpans(0, text.length, android.text.style.StyleSpan::class.java).isNotEmpty())
+            assertFalse(text.contains("# Third-party notices"))
+            assertFalse(text.contains("Release-audit note"))
+            assertFalse(text.contains("releaseRuntimeClasspath"))
+            assertFalse(text.contains("must be reviewed separately"))
+            fun raw(id: Int) = resources.openRawResource(id).bufferedReader().use { it.readText() }
+            assertTrue(text.contains(raw(R.raw.apache_2_0)))
+            val nativeBodies = raw(R.raw.third_party_notices)
+                .substringAfter("## ZXing-C++ bundled conversion code and native runtime notices\n")
+            assertTrue(nativeBodies.isNotBlank())
+            assertTrue(text.contains(nativeBodies))
+            for (notice in listOf("Copyright (C) 2022 gitlost", "Bjoern Hoehrmann", "Copyright 2016-2024 JetBrains")) {
+                assertTrue("Missing notice: $notice", text.contains(notice))
+            }
+        } finally { controller.pause().stop().destroy() }
+    }
+
     private fun descendants(view: View): List<View> = listOf(view) +
         if (view is ViewGroup) (0 until view.childCount).flatMap { descendants(view.getChildAt(it)) } else emptyList()
 }

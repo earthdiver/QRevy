@@ -10,6 +10,11 @@ import android.widget.SeekBar
 import android.widget.TextView
 import io.github.earthdiver.qrrepair.core.PreprocessSettings
 
+internal data class ThresholdInputActions(
+    val enterBlackValue: () -> Unit,
+    val enterWhiteValue: () -> Unit,
+)
+
 /** Owns threshold controls, paired values, and numeric entry for one pre-repair editor. */
 internal class PreprocessThresholdControls(
     private val activity: Activity,
@@ -50,7 +55,7 @@ internal class PreprocessThresholdControls(
         onChanged: () -> Unit,
         onInteraction: () -> Unit,
         noteDraftChange: (String, String, String) -> Unit,
-    ) {
+    ): ThresholdInputActions {
         fun updateThreshold(slider: SeekBar, progress: Int, manual: Boolean) {
             if (updatingThresholdControls) return
             updatingThresholdControls = true
@@ -84,27 +89,26 @@ internal class PreprocessThresholdControls(
         }
         black.setOnSeekBarChangeListener(listener)
         white.setOnSeekBarChangeListener(listener)
-        fun bindThresholdInput(label: TextView, slider: SeekBar, offset: Int) {
-            label.setOnLongClickListener {
-                val inverted = previewInverted()
-                fun imageValue(logical: Int) = if (inverted) 255 - logical else logical
-                val first = imageValue(offset)
-                val last = imageValue(slider.max + offset)
-                showThresholdInput(label.text, imageValue(slider.progress + offset), minOf(first, last)..maxOf(first, last)) { value ->
-                    val logical = if (inverted) 255 - value else value
-                    updateThreshold(slider, logical - offset, manual = true)
-                    recordThresholdChange(slider)
-                }
-                true
+        fun thresholdInputAction(label: TextView, slider: SeekBar, offset: Int): () -> Unit = {
+            val inverted = previewInverted()
+            fun imageValue(logical: Int) = if (inverted) 255 - logical else logical
+            val first = imageValue(offset)
+            val last = imageValue(slider.max + offset)
+            showThresholdInput(label.text, imageValue(slider.progress + offset), minOf(first, last)..maxOf(first, last)) { value ->
+                val logical = if (inverted) 255 - value else value
+                updateThreshold(slider, logical - offset, manual = true)
+                recordThresholdChange(slider)
             }
         }
-        bindThresholdInput(blackLabel, black, offset = 0)
-        bindThresholdInput(whiteLabel, white, offset = 1)
         automaticThresholds.setOnCheckedChangeListener { _, checked ->
             if (updatingThresholdControls) return@setOnCheckedChangeListener
             onInvalidate(); onChanged()
             noteDraftChange("threshold-auto", ui("閾値を自動設定", "Set thresholds automatically"), if (checked) "ON" else "OFF")
         }
+        return ThresholdInputActions(
+            enterBlackValue = thresholdInputAction(blackLabel, black, offset = 0),
+            enterWhiteValue = thresholdInputAction(whiteLabel, white, offset = 1),
+        )
     }
 
     private fun showThresholdInput(title: CharSequence, current: Int, range: IntRange, applyValue: (Int) -> Unit) {

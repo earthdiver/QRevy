@@ -732,7 +732,7 @@ class PreprocessDialogControllerTest {
         }
     }
 
-    @Test fun thresholdLabelEntryUsesDisplayedPolarityAndUpdatesThePreviewAndSavedPair() {
+    @Test fun thresholdButtonEntryUsesDisplayedPolarityAndUpdatesThePreviewAndSavedPair() {
         for (inverted in listOf(false, true)) {
             val settings = PreprocessSettings(
                 polarity = if (inverted) PolarityMode.INVERTED else PolarityMode.NORMAL,
@@ -746,7 +746,7 @@ class PreprocessDialogControllerTest {
                 val sliders = controls.filterIsInstance<SeekBar>().filter { it.max == 254 }
                 val originalProgress = sliders.map { it.progress }
                 fun openInput(): Pair<AlertDialog, EditText> {
-                    assertTrue(label.performLongClick())
+                    assertTrue((label.parent as ViewGroup).getChildAt(1).performClick())
                     shadowOf(Looper.getMainLooper()).idle()
                     val popup = ShadowDialog.getLatestDialog() as AlertDialog
                     return popup to views(popup.window!!.decorView).filterIsInstance<EditText>().single()
@@ -782,6 +782,59 @@ class PreprocessDialogControllerTest {
                 assertEquals(progress + 1, saved.whiteMin)
                 assertFalse(saved.automaticThresholds)
             }
+        }
+    }
+
+    @Test fun thresholdNumericEntryIsAvailableOnlyThroughButtons() {
+        for (style in AppStyle.entries) withDialog(style = style) { dialog, _, _, _ ->
+            val labels = views(dialog.window!!.decorView).filterIsInstance<TextView>().filter {
+                it.text.startsWith("画像の暗部") || it.text.startsWith("画像の明部")
+            }
+            assertEquals(2, labels.size)
+            for (label in labels) {
+                assertFalse(label.isClickable)
+                assertFalse(label.isLongClickable)
+                val previousDialog = ShadowDialog.getLatestDialog()
+                assertFalse(label.performClick())
+                assertFalse(label.performLongClick())
+                shadowOf(Looper.getMainLooper()).idle()
+                assertSame(previousDialog, ShadowDialog.getLatestDialog())
+
+                val button = (label.parent as ViewGroup).getChildAt(1) as Button
+                assertEquals("数値入力", button.text.toString())
+                assertTrue(button.performClick())
+                shadowOf(Looper.getMainLooper()).idle()
+                val popup = ShadowDialog.getLatestDialog() as AlertDialog
+                assertNotSame(previousDialog, popup)
+                assertTrue(popup.isShowing)
+                assertTrue(views(popup.window!!.decorView).filterIsInstance<TextView>().any {
+                    it.text.toString() == label.text.toString()
+                })
+                assertEquals(1, views(popup.window!!.decorView).filterIsInstance<EditText>().size)
+                popup.getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+                shadowOf(Looper.getMainLooper()).idle()
+            }
+        }
+    }
+
+    @Test fun numericEntryButtonsKeepBothSlidersAtTheirFullWidthAndHeight() {
+        for (style in AppStyle.entries) withDialog(style = style) { dialog, _, _, _ ->
+            val decor = dialog.window!!.decorView
+            decor.measure(View.MeasureSpec.makeMeasureSpec(360, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(640, View.MeasureSpec.EXACTLY))
+            decor.layout(0, 0, 360, 640)
+            val sliders = views(decor).filterIsInstance<SeekBar>().filter { it.max == 254 }
+            assertEquals(2, sliders.size)
+            for (slider in sliders) {
+                val parent = slider.parent as ViewGroup
+                assertEquals(parent.width - parent.paddingLeft - parent.paddingRight, slider.width)
+                val baseline = SeekBar(slider.context).apply { max = 254 }
+                baseline.measure(View.MeasureSpec.makeMeasureSpec(slider.width, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                assertEquals(baseline.measuredHeight, slider.height)
+                assertTrue(slider.width > 0 && slider.height > 0)
+            }
+            assertEquals(2, views(decor).filterIsInstance<Button>().count { it.text == "数値入力" })
         }
     }
 

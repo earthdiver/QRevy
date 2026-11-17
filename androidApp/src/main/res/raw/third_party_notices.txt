@@ -2,13 +2,11 @@
 
 This project uses the following third-party components.
 
-> **Release-audit note:** The entries below cover direct runtime dependencies and known test dependencies in this source tree. Android/Gradle may resolve additional transitive runtime artifacts. Before distributing an APK/AAB, generate the actual `releaseRuntimeClasspath` and reconcile every resolved artifact and required NOTICE/license text. `scripts/release-audit.sh` and CI produce that dependency report; this hand-maintained file must not be treated as exhaustive until that gate has passed.
-
 ## Runtime dependencies included in the Android application
 
 ### ZXing-C++ Android 3.1.1
 
-- Artifact: `io.github.zxing-cpp:android:3.1.1`
+- Artifact: io.github.zxing-cpp:android:3.1.1
 - License: Apache License 2.0
 - Upstream: https://github.com/zxing-cpp/zxing-cpp/tree/v3.1.1
 - Used offline for candidate QR boundaries only; native decoded text is not accepted as a repair result.
@@ -16,116 +14,114 @@ This project uses the following third-party components.
 - Packaged native ABIs: arm64-v8a, armeabi-v7a, x86, x86_64.
 - Published dependencies: CameraX core 1.5.2 and Kotlin stdlib 2.3.20, resolved to this app's existing newer versions.
 - The published AAR includes JNI consumer keep rules. Its reader-only build disables barcode writers.
-- Apache License 2.0 is available in the app's license screen and at `licenses/Apache-2.0.txt`.
+- Apache License 2.0 is available in the app's license screen and at licenses/Apache-2.0.txt.
 
 ### ZXing core 3.5.4
 
-- Artifact: `com.google.zxing:core:3.5.4`
+- Artifact: com.google.zxing:core:3.5.4
 - License: Apache License 2.0
 - Upstream: https://github.com/zxing/zxing
 
-ZXing upstream NOTICE (release `zxing-3.5.4`):
+ZXing upstream NOTICE (release zxing-3.5.4):
 
-> NOTICES FOR BARCODE4J
->
-> Barcode4J
-> Copyright 2002-2010 Jeremias Märki
-> Copyright 2005-2006 Dietmar Bürkle
->
-> Portions of this software were contributed under section 5 of the
-> Apache License. Contributors are listed under:
-> http://barcode4j.sourceforge.net/contributors.html
->
-> NOTICES FOR JCOMMANDER
->
-> Copyright 2010 Cedric Beust cedric@beust.com
+NOTICES FOR BARCODE4J
+
+Barcode4J
+Copyright 2002-2010 Jeremias Märki
+Copyright 2005-2006 Dietmar Bürkle
+
+Portions of this software were contributed under section 5 of the
+Apache License. Contributors are listed under:
+http://barcode4j.sourceforge.net/contributors.html
+
+NOTICES FOR JCOMMANDER
+
+Copyright 2010 Cedric Beust cedric@beust.com
 
 ### AndroidX
 
-- Artifacts: `androidx.activity:activity-ktx`, `androidx.core:core`, `androidx.exifinterface:exifinterface`, `androidx.camera:*`, and transitive AndroidX components including `androidx.lifecycle:*` and `androidx.savedstate:*`
+- Artifacts: androidx.activity:activity-ktx, androidx.core:core, androidx.exifinterface:exifinterface, androidx.camera:*, and transitive AndroidX components including androidx.lifecycle:* and androidx.savedstate:*
 - License: Apache License 2.0
 - Upstream: https://github.com/androidx/androidx
 
-A copy of Apache License 2.0 is included at `licenses/Apache-2.0.txt`.
+A copy of Apache License 2.0 is included at licenses/Apache-2.0.txt.
 
 ### Kotlin / Kotlin Multiplatform 2.4.21
 
-- Component: Kotlin standard/native runtime and Kotlin Multiplatform framework output used by `shared`
+- Component: Kotlin standard/native runtime and Kotlin Multiplatform framework output used by shared
 - License: Apache License 2.0
 - Upstream: https://github.com/JetBrains/kotlin
-- Kotlin/Native runtime code may be included in `QRRepairCore.xcframework`.
+- Kotlin/Native runtime code may be included in QRRepairCore.xcframework.
 
-A copy of Apache License 2.0 is included at `licenses/Apache-2.0.txt`.
+A copy of Apache License 2.0 is included at licenses/Apache-2.0.txt.
 
 ### Kotlinx Coroutines 1.9.0
 
-- Artifacts: `org.jetbrains.kotlinx:kotlinx-coroutines-core`, `org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm`, `org.jetbrains.kotlinx:kotlinx-coroutines-android`
+- Artifacts: org.jetbrains.kotlinx:kotlinx-coroutines-core, org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm, org.jetbrains.kotlinx:kotlinx-coroutines-android
 - License: Apache License 2.0
 - Upstream: https://github.com/Kotlin/kotlinx.coroutines/tree/1.9.0
 - Scope: transitive runtime dependencies of AndroidX components.
-- License copy: `licenses/Apache-2.0.txt`
+- License copy: licenses/Apache-2.0.txt
 
-Upstream [NOTICE](https://github.com/Kotlin/kotlinx.coroutines/blob/1.9.0/license/NOTICE.txt):
+Upstream NOTICE (https://github.com/Kotlin/kotlinx.coroutines/blob/1.9.0/license/NOTICE.txt):
 
-> kotlinx.coroutines library.
-> Copyright 2016-2024 JetBrains s.r.o and contributors
+kotlinx.coroutines library.
+Copyright 2016-2024 JetBrains s.r.o and contributors
 
 ### Kotlinx AtomicFU 0.28.0
 
-- Artifacts: `org.jetbrains.kotlinx:atomicfu`, `org.jetbrains.kotlinx:atomicfu-jvm`
+- Artifacts: org.jetbrains.kotlinx:atomicfu, org.jetbrains.kotlinx:atomicfu-jvm
 - License: Apache License 2.0
 - Upstream: https://github.com/Kotlin/kotlinx-atomicfu/tree/0.28.0
 - Scope: transitive runtime dependencies of AndroidX components.
-- License copy: `licenses/Apache-2.0.txt`
+- License copy: licenses/Apache-2.0.txt
 
-Upstream [NOTICE](https://github.com/Kotlin/kotlinx-atomicfu/blob/0.28.0/license/NOTICE.txt):
+Upstream NOTICE (https://github.com/Kotlin/kotlinx-atomicfu/blob/0.28.0/license/NOTICE.txt):
 
-> kotlinx.atoimcfu library.
-> Copyright 2017 JetBrains s.r.o and respective authors and developers
+kotlinx.atoimcfu library.
+Copyright 2017 JetBrains s.r.o and respective authors and developers
 
 ### Kotlinx Serialization 1.7.3
 
-- Artifacts: `org.jetbrains.kotlinx:kotlinx-serialization-core`, `org.jetbrains.kotlinx:kotlinx-serialization-core-jvm`
+- Artifacts: org.jetbrains.kotlinx:kotlinx-serialization-core, org.jetbrains.kotlinx:kotlinx-serialization-core-jvm
 - License: Apache License 2.0
 - Upstream: https://github.com/Kotlin/kotlinx.serialization/tree/v1.7.3
 - Scope: transitive runtime dependency of AndroidX SavedState.
-- License copy: `licenses/Apache-2.0.txt`
+- License copy: licenses/Apache-2.0.txt
 
-Upstream [NOTICE](https://github.com/Kotlin/kotlinx.serialization/blob/v1.7.3/license/NOTICE.txt):
+Upstream NOTICE (https://github.com/Kotlin/kotlinx.serialization/blob/v1.7.3/license/NOTICE.txt):
 
-> kotlinx.serialization library.
-> Copyright 2017-2019 JetBrains s.r.o and respective authors and developers
+kotlinx.serialization library.
+Copyright 2017-2019 JetBrains s.r.o and respective authors and developers
 
 ## Build/test-only dependencies
 
 ### Robolectric 4.17
 
-- Artifact: `org.robolectric:robolectric:4.17`
+- Artifact: org.robolectric:robolectric:4.17
 - License: primarily MIT License; a subset of upstream files is Apache License 2.0
 - Upstream: https://github.com/robolectric/robolectric
 - Scope: Android unit tests only; it is not packaged into the application APK/AAB.
-- License copies: `licenses/MIT-Robolectric.txt`, `licenses/Apache-2.0.txt`
-
-Robolectric has transitive test dependencies with their own license obligations. The resolved test dependency graph must be reviewed separately when test artifacts or source distributions are published.
+- License copies: licenses/MIT-Robolectric.txt, licenses/Apache-2.0.txt
 
 ### JUnit 4.13.2
 
-- Artifact: `junit:junit:4.13.2`
+- Artifact: junit:junit:4.13.2
 - License: Eclipse Public License 1.0
 - Upstream license: https://junit.org/junit4/license.html
 - Scope: unit tests only; it is not packaged into the application APK/AAB.
-- License copy: `licenses/EPL-1.0.txt`
+- License copy: licenses/EPL-1.0.txt
 
 ### Hamcrest Core 1.3
 
-- Artifact: `org.hamcrest:hamcrest-core:1.3` (transitive test dependency of JUnit 4.13.2)
+- Artifact: org.hamcrest:hamcrest-core:1.3 (transitive test dependency of JUnit 4.13.2)
 - License: BSD 3-Clause / New BSD License
 - Scope: unit tests only; it is not packaged into the application APK/AAB.
-- License copy: `licenses/BSD-3-Clause-Hamcrest.txt`
+- License copy: licenses/BSD-3-Clause-Hamcrest.txt
 
 ### Gradle Wrapper/bootstrap
 
-Gradle-generated wrapper scripts and wrapper components are licensed under Apache License 2.0. The repository pins Gradle 9.8.2 and verifies the official distribution SHA-256 before bootstrapping.
+Gradle-generated wrapper scripts and wrapper components are licensed under Apache License 2.0.
 
 ## QR Code trademark
 

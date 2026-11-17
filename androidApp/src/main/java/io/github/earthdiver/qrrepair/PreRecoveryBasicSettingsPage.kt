@@ -29,8 +29,10 @@ internal class PreRecoveryBasicSettingsPage(
     versionButton: Button,
     blackLabel: TextView,
     blackSeekBar: SeekBar,
+    enterBlackValue: () -> Unit,
     whiteLabel: TextView,
     whiteSeekBar: SeekBar,
+    enterWhiteValue: () -> Unit,
     useUnknownColors: CheckBox,
     scrollContentFooter: View? = null,
     automaticThresholds: CheckBox? = null,
@@ -94,9 +96,24 @@ internal class PreRecoveryBasicSettingsPage(
             lmControls?.let { addSettingsItem(it, 4) }
             addSettingsItem(useUnknownColors, 4)
             automaticThresholds?.let { addSettingsItem(it, 4) }
-            addSettingsItem(blackLabel, 6)
+            fun thresholdRow(label: TextView, enterValue: () -> Unit): View = LinearLayout(context).apply {
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                addView(label, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                addView(buttonFactory(context.getString(R.string.threshold_enter_value), enterValue).apply {
+                    contentDescription = context.getString(R.string.threshold_enter_value_for, label.text)
+                }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+                // Keep the accessibility label in sync with automatic sampling and polarity.
+                label.addTextChangedListener(object : android.text.TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                        getChildAt(1).contentDescription = context.getString(R.string.threshold_enter_value_for, s)
+                    }
+                    override fun afterTextChanged(s: android.text.Editable?) = Unit
+                })
+            }
+            addSettingsItem(thresholdRow(blackLabel, enterBlackValue), 6)
             addView(blackSeekBar)
-            addSettingsItem(whiteLabel, 4)
+            addSettingsItem(thresholdRow(whiteLabel, enterWhiteValue), 4)
             addView(whiteSeekBar)
             if (!AppStylePreferences.isModern(context)) {
                 addView(View(context), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(12)))

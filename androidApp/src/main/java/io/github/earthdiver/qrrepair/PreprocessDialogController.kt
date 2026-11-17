@@ -254,7 +254,7 @@ internal class PreprocessDialogController(
             activePreviewProfile = profile
             refreshClassificationMatrix()
         }
-        thresholds.bind(
+        val thresholdInputs = thresholds.bind(
             previewInverted = ::previewInverted,
             onInvalidate = ::invalidateSamplingPreview,
             onChanged = ::refreshLabels,
@@ -813,8 +813,10 @@ internal class PreprocessDialogController(
             automaticThresholds = thresholds.automaticThresholds,
             blackLabel = thresholds.blackLabel,
             blackSeekBar = thresholds.black,
+            enterBlackValue = thresholdInputs.enterBlackValue,
             whiteLabel = thresholds.whiteLabel,
             whiteSeekBar = thresholds.white,
+            enterWhiteValue = thresholdInputs.enterWhiteValue,
             useUnknownColors = useUnknownColors,
             scrollContentFooter = formatControls.view,
             actions = BasicSettingsPageActions(
@@ -971,12 +973,6 @@ internal class PreprocessDialogController(
                 setContentView(root)
                 clearFlags(android.view.WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
             }
-            val availableHeight = (resources.displayMetrics.heightPixels * .98f).toInt()
-            dialog.window?.setLayout(
-                if (modernStyle) android.view.WindowManager.LayoutParams.MATCH_PARENT
-                    else (resources.displayMetrics.widthPixels * .98f).toInt(),
-                if (modernStyle) android.view.WindowManager.LayoutParams.MATCH_PARENT else availableHeight,
-            )
             fun capturePreprocessSettings(): PreprocessSettings =
                 editor.captureSettings(controlSnapshot(), geometrySnapshot())
             captureEditorDraft = {
@@ -1045,6 +1041,9 @@ internal class PreprocessDialogController(
             }
         }
         dialog.show()
+        fitDialogToViewport(activity, dialog,
+            heightFraction = if (modernStyle) 1f else .98f,
+            widthFraction = if (modernStyle) 1f else .98f)
         pageHost.navigateTo(initialPage)
     }
 

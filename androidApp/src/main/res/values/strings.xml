@@ -239,4 +239,6 @@
     <string name="known_bit_note">Optional fallback for mixed missing and incorrect cells. The limit applies to the whole QR, not each RS block. Shares a 30-second / 1,000,000-trial allowance across the operation. Fixed cells and trusted header conditions remain enforced.</string>
     <string name="image_distortion_correction">Correct grid for curved surfaces</string>
     <string name="image_distortion_unavailable">No usable landmarks or distortion mapping were found. Only ordinary analysis was performed.</string>
+    <string name="threshold_enter_value">Enter value</string>
+    <string name="threshold_enter_value_for">Enter value: %1$s</string>
 </resources>
