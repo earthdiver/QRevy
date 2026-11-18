@@ -33,13 +33,15 @@ class MirroredInputOverlayTest {
     @Test fun toggleExchangesRolesAndPreservesConfirmedPolarityAndImagePositions() {
         val overlay = overlay()
         val candidate = FinderCandidate(190.0, 50.0, 10.0, 0.0, 1.0, 5, polarity = FinderPolarity.INVERTED)
-        overlay.setVerifiedFinder(FinderRole.TOP_RIGHT, candidate)
+        assertTrue(overlay.setVerifiedFinder(FinderRole.TOP_RIGHT, candidate))
+        val aligned = overlay.imageQuad()
+        val original = GridGeometry(1, FinderRole.TOP_LEFT, 20.0, 25.0, 10.0, 0.0, aligned)
+        assertTrue(original.moduleToImage(17.0, 3.0).distanceTo(PointD(190.0, 50.0)) < .02)
         overlay.setMirroredInput(true)
-        assertEquals(quad.transposed(), overlay.imageQuad())
+        assertEquals(aligned.transposed(), overlay.imageQuad())
         assertEquals(mapOf(FinderRole.BOTTOM_LEFT to PointD(190.0, 50.0)), overlay.finderPoints())
         assertEquals(FinderPolarity.INVERTED, overlay.confirmedFinderPolarity())
         assertTrue(overlay.isLogicalGridAssigned())
-        val original = GridGeometry(1, FinderRole.TOP_LEFT, 20.0, 25.0, 10.0, 0.0, quad)
         val mirrored = original.copy(imageQuad = overlay.imageQuad())
         assertTrue(io.github.earthdiver.qrrepair.RecoveryDiagnosticPresenter(false)
             .geometryDiagnosticText(mirrored).contains("mirrored input"))
@@ -50,9 +52,9 @@ class MirroredInputOverlayTest {
                 .distanceTo(mirrored.moduleToImage(coord.y.toDouble(), coord.x.toDouble())) < 1e-8)
         }
         overlay.setMirroredInput(true)
-        assertEquals(quad.transposed(), overlay.imageQuad())
+        assertEquals(aligned.transposed(), overlay.imageQuad())
         overlay.setMirroredInput(false)
-        assertEquals(quad, overlay.imageQuad())
+        assertEquals(aligned, overlay.imageQuad())
         assertEquals(mapOf(FinderRole.TOP_RIGHT to PointD(190.0, 50.0)), overlay.finderPoints())
     }
 
@@ -73,9 +75,12 @@ class MirroredInputOverlayTest {
             val point = before.topLeft + PointD(span * .25, span * .75)
             overlay.setVerifiedFinder(FinderRole.TOP_RIGHT,
                 FinderCandidate(point.x, point.y, span / 20, 0.0, 1.0, 5, polarity = FinderPolarity.INVERTED))
+            val aligned = overlay.imageQuad()
             overlay.remapRectifiedImage(bitmap, before, after)
             assertTrue(overlay.isLogicalGridAssigned())
-            after.transposed().asList().zip(overlay.imageQuad().asList()).forEach { (expected, actual) ->
+            val scale = (after.topRight.x - after.topLeft.x) / span
+            aligned.asList().zip(overlay.imageQuad().asList()).forEach { (old, actual) ->
+                val expected = after.topLeft + (old - before.topLeft) * scale
                 assertTrue(expected.distanceTo(actual) < 1e-6)
             }
             val expected = after.topLeft + PointD((after.topRight.x - after.topLeft.x) * .25,

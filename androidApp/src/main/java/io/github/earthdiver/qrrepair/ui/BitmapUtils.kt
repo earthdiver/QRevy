@@ -35,9 +35,29 @@ object BitmapUtils {
     /** Geometry first, tones last: restoring and editing use exactly the same pipeline. */
     fun forSettings(source: Prepared, settings: io.github.earthdiver.qrrepair.core.PreprocessSettings,
                     quietModules: Double = 1.0): Prepared {
+        // Retain the exact historical raster when opening an unchanged legacy session.
+        if (settings.legacyImageRotationDegrees != null &&
+            settings.rotationDegrees == settings.legacyImageRotationDegrees) {
+            return legacyForSettings(source, settings, quietModules)
+        }
         var working = source
         try {
-            if (settings.rotationDegrees % 360f != 0f) working = rotate(source.bitmap, settings.rotationDegrees)
+            if (settings.perspectiveCorrectionQuad != null || settings.rotationDegrees % 360f != 0f) {
+                working = renderTransform(source.bitmap, imageTransform(source.bitmap, settings, quietModules))
+            }
+            val adjusted = adjust(working, settings.imageAdjustment)
+            if (working.bitmap !== source.bitmap && working.bitmap !== adjusted.bitmap) working.bitmap.recycle()
+            return adjusted
+        } catch (error: Throwable) {
+            if (working.bitmap !== source.bitmap && !working.bitmap.isRecycled) working.bitmap.recycle()
+            throw error
+        }
+    }
+
+    private fun legacyForSettings(source: Prepared, settings: PreprocessSettings, quietModules: Double): Prepared {
+        var working = source
+        try {
+            if (settings.rotationDegrees % 360f != 0f) working = legacyRotate(source.bitmap, settings.rotationDegrees)
             settings.perspectiveCorrectionQuad?.let { quad ->
                 val next = rectify(working.bitmap, quad, settings.version, quietModules).prepared
                 if (working.bitmap !== source.bitmap && working.bitmap !== next.bitmap) working.bitmap.recycle()
@@ -153,27 +173,21 @@ object BitmapUtils {
         }
     }
 
-    /** Keeps ordered grid corners on the same source modules when rotation clears rectification. */
+    /** Maps through the immutable source so the ordered grid survives every image transform. */
     internal fun gridAfterRotation(source: Bitmap, quad: ImageQuad, before: PreprocessSettings,
                                    degrees: Float): ImageQuad {
-        val unrectify = before.perspectiveCorrectionQuad?.let { original ->
-            Homography.fromCorrespondences(rectifiedGrid(original, before.version).asList(), original.asList())
-        }
-        val oldRotation = RotationLayout(source, before.rotationDegrees).pixelCenterTransform()
-        val inverse = Matrix().also { check(oldRotation.invert(it)) }
-        val nextRotation = RotationLayout(source, degrees).pixelCenterTransform()
-        val transform = Matrix().apply { setConcat(nextRotation, inverse) }
-        fun mapped(point: PointD): PointD {
-            val rotatedSource = unrectify?.map(point) ?: point
-            val coordinates = floatArrayOf(rotatedSource.x.toFloat(), rotatedSource.y.toFloat())
-            transform.mapPoints(coordinates)
-            return PointD(coordinates[0].toDouble(), coordinates[1].toDouble())
-        }
-        return ImageQuad(mapped(quad.topLeft), mapped(quad.topRight), mapped(quad.bottomRight), mapped(quad.bottomLeft))
+        val toSource = imageTransform(source, before).sourceToImage.inverse()
+        val toImage = imageTransform(source, before.copy(rotationDegrees = degrees)).sourceToImage
+        return mapQuad(quad) { toImage.map(toSource.map(it)) }
     }
 
     /** Rotates pixels into a new white-backed bitmap; every downstream coordinate uses this image. */
     fun rotate(source: Bitmap, degrees: Float): Prepared {
+        if (degrees % 360f == 0f) return prepare(source)
+        return renderTransform(source, imageTransform(source, PreprocessSettings(rotationDegrees = degrees)))
+    }
+
+    private fun legacyRotate(source: Bitmap, degrees: Float): Prepared {
         if (degrees % 360f == 0f) return prepare(source)
         val layout = RotationLayout(source, degrees)
         val out = Bitmap.createBitmap(
@@ -194,6 +208,109 @@ object BitmapUtils {
             out.recycle()
             throw error
         }
+    }
+
+    internal data class ImageTransform(
+        val width: Int, val height: Int, val sourceToImage: Homography,
+        val baseWidth: Int, val baseHeight: Int, val imageToBase: Homography,
+    )
+
+    internal fun mapQuad(quad: ImageQuad, mapped: (PointD) -> PointD): ImageQuad =
+        ImageQuad(mapped(quad.topLeft), mapped(quad.topRight), mapped(quad.bottomRight), mapped(quad.bottomLeft))
+
+    internal fun sourceQuad(source: Bitmap, settings: PreprocessSettings, selection: ImageQuad): ImageQuad {
+        val inverse = imageTransform(source, settings).sourceToImage.inverse()
+        return mapQuad(selection) {
+            val p = inverse.map(it)
+            // Canonicalize sub-micropixel roundoff from inverse mappings, not image measurements.
+            PointD(kotlin.math.round(p.x * 1_000_000.0) / 1_000_000.0,
+                kotlin.math.round(p.y * 1_000_000.0) / 1_000_000.0)
+        }
+    }
+
+    private val identity = Homography(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
+
+    private fun compose(after: Homography, before: Homography): Homography {
+        fun values(h: Homography) = doubleArrayOf(h.h11, h.h12, h.h13, h.h21, h.h22, h.h23, h.h31, h.h32, 1.0)
+        val a = values(after); val b = values(before)
+        val c = DoubleArray(9) { i -> (0..2).sumOf { k -> a[(i / 3) * 3 + k] * b[k * 3 + i % 3] } }
+        require(c[8].isFinite() && kotlin.math.abs(c[8]) > 1e-12)
+        return Homography(c[0] / c[8], c[1] / c[8], c[2] / c[8], c[3] / c[8], c[4] / c[8],
+            c[5] / c[8], c[6] / c[8], c[7] / c[8])
+    }
+
+    private fun Matrix.homography(): Homography {
+        val values = FloatArray(9)
+        getValues(values)
+        return Homography(values[0].toDouble(), values[1].toDouble(), values[2].toDouble(),
+            values[3].toDouble(), values[4].toDouble(), values[5].toDouble(), values[6].toDouble(), values[7].toDouble())
+    }
+
+    /** Geometry only: no intermediate bitmap or resampling, including output size limiting. */
+    internal fun imageTransform(source: Bitmap, settings: PreprocessSettings, quietModules: Double = 1.0): ImageTransform {
+        var width = source.width
+        var height = source.height
+        var sourceToBase = identity
+        if (settings.perspectiveCorrectionQuad == null && settings.legacyImageRotationDegrees == settings.rotationDegrees) {
+            val oldLayout = RotationLayout(source, settings.rotationDegrees)
+            val (outWidth, outHeight) = preparedSize(oldLayout.width, oldLayout.height)
+            val oldRotation = oldLayout.pixelCenterTransform().homography()
+            return ImageTransform(outWidth, outHeight, oldRotation, width, height, oldRotation.inverse())
+        }
+        settings.perspectiveCorrectionQuad?.let { quad ->
+            val layout = rectificationLayout(quad, settings.version, quietModules)
+            width = minOf(layout.outputSize, MAX_PREPARED_DIMENSION)
+            height = width
+            sourceToBase = Homography.fromCorrespondences(quad.asList(), layout.quadAtSize(width, height).asList())
+            settings.legacyImageRotationDegrees?.let { reference ->
+                val oldRotation = RotationLayout(source, reference).pixelCenterTransform().homography()
+                sourceToBase = compose(sourceToBase, oldRotation)
+            }
+        }
+        val degrees = settings.rotationDegrees.toDouble() -
+            (settings.legacyImageRotationDegrees?.takeIf { settings.perspectiveCorrectionQuad != null } ?: 0f)
+        val radians = degrees * kotlin.math.PI / 180.0
+        fun snapped(value: Double) = if (kotlin.math.abs(value) < 1e-12) 0.0 else value
+        val c = snapped(kotlin.math.cos(radians)); val s = snapped(kotlin.math.sin(radians))
+        val left = minOf(0.0, width * c, -height * s, width * c - height * s)
+        val top = minOf(0.0, width * s, height * c, width * s + height * c)
+        val rotatedWidth = kotlin.math.ceil(kotlin.math.abs(width * c) + kotlin.math.abs(height * s)).toInt().coerceAtLeast(1)
+        val rotatedHeight = kotlin.math.ceil(kotlin.math.abs(width * s) + kotlin.math.abs(height * c)).toInt().coerceAtLeast(1)
+        val (outWidth, outHeight) = preparedSize(rotatedWidth, rotatedHeight)
+        val sx = outWidth.toDouble() / rotatedWidth
+        val sy = outHeight.toDouble() / rotatedHeight
+        val rotation = Homography(c * sx, -s * sx, ((c - s) * .5 - left) * sx - .5,
+            s * sy, c * sy, ((s + c) * .5 - top) * sy - .5, 0.0, 0.0)
+        return ImageTransform(outWidth, outHeight, compose(rotation, sourceToBase), width, height, rotation.inverse())
+    }
+
+    private fun renderTransform(source: Bitmap, transform: ImageTransform): Prepared {
+        val pixels = IntArray(source.width * source.height)
+        source.getPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
+        fun channel(pixel: Int, shift: Int): Int {
+            val alpha = Color.alpha(pixel)
+            return (((pixel ushr shift) and 255) * alpha + 255 * (255 - alpha) + 127) / 255
+        }
+        fun pixel(x: Int, y: Int): Int = if (x in 0 until source.width && y in 0 until source.height)
+            pixels[y * source.width + x] else Color.WHITE
+        val inverse = transform.sourceToImage.inverse()
+        val output = IntArray(transform.width * transform.height) { Color.WHITE }
+        for (y in 0 until transform.height) for (x in 0 until transform.width) {
+            val base = transform.imageToBase.map(x.toDouble(), y.toDouble())
+            if (base.x < -.5 || base.y < -.5 || base.x >= transform.baseWidth - .5 || base.y >= transform.baseHeight - .5) continue
+            val point = runCatching { inverse.map(x.toDouble(), y.toDouble()) }.getOrNull() ?: continue
+            if (!point.x.isFinite() || !point.y.isFinite() || point.x < -1.0 || point.y < -1.0 ||
+                point.x >= source.width || point.y >= source.height) continue
+            val ix = kotlin.math.floor(point.x).toInt(); val iy = kotlin.math.floor(point.y).toInt()
+            val fx = point.x - ix; val fy = point.y - iy
+            val p00 = pixel(ix, iy); val p10 = pixel(ix + 1, iy)
+            val p01 = pixel(ix, iy + 1); val p11 = pixel(ix + 1, iy + 1)
+            fun interpolated(shift: Int): Int = ((channel(p00, shift) * (1 - fx) + channel(p10, shift) * fx) * (1 - fy) +
+                (channel(p01, shift) * (1 - fx) + channel(p11, shift) * fx) * fy).roundToInt().coerceIn(0, 255)
+            output[y * transform.width + x] = Color.rgb(interpolated(16), interpolated(8), interpolated(0))
+        }
+        val bitmap = Bitmap.createBitmap(output, transform.width, transform.height, Bitmap.Config.ARGB_8888)
+        return try { prepare(bitmap) } catch (error: Throwable) { bitmap.recycle(); throw error }
     }
 
     private data class RectificationLayout(val outputSize: Int, val qrQuad: ImageQuad) {

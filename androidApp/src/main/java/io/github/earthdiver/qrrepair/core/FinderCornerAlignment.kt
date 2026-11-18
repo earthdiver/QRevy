@@ -2,6 +2,36 @@ package io.github.earthdiver.qrrepair.core
 
 import kotlin.math.hypot
 
+/** Fits every assigned finder while retaining corners that have no finder constraint. */
+internal fun alignQuadToFinders(quad: ImageQuad, version: Int, finders: Map<FinderRole, PointD>): ImageQuad {
+    require(version in 1..40 && finders.isNotEmpty())
+    val last = (16 + 4 * version).toDouble()
+    val modules = listOf(PointD(0.0, 0.0), PointD(last, 0.0), PointD(last, last), PointD(0.0, last))
+    val roles = listOf(FinderRole.TOP_LEFT, FinderRole.TOP_RIGHT, null, FinderRole.BOTTOM_LEFT)
+    val original = quad.asList()
+    val anchors = modules.mapIndexed { index, point ->
+        if (roles[index] !in finders) point else when (roles[index]) {
+            FinderRole.TOP_LEFT -> PointD(3.0, 3.0)
+            FinderRole.TOP_RIGHT -> PointD(last - 3.0, 3.0)
+            else -> PointD(3.0, last - 3.0)
+        }
+    }
+    val fitted = Homography.fromCorrespondences(anchors,
+        original.mapIndexed { index, point -> finders[roles[index]] ?: point })
+    val corners = modules.mapIndexed { index, point ->
+        if (roles[index] in finders) fitted.map(point) else original[index]
+    }
+    fun cross(points: List<PointD>, index: Int): Double {
+        val a = points[(index + 1) % 4] - points[index]
+        val b = points[(index + 2) % 4] - points[(index + 1) % 4]
+        return a.x * b.y - a.y * b.x
+    }
+    require(corners.all { it.x.isFinite() && it.y.isFinite() })
+    // Reject folded or reversed grids before replacing any observations.
+    require(corners.indices.all { cross(corners, it) * cross(original, 0) > 0.0 })
+    return ImageQuad(corners[0], corners[1], corners[2], corners[3])
+}
+
 /** Aligns the corner nearest [role] until its projective finder center reaches [finderCenter]. */
 internal fun alignQuadCornerToFinder(
     quad: ImageQuad,

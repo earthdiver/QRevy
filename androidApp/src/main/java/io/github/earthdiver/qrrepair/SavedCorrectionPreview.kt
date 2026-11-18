@@ -11,11 +11,11 @@ internal data class SavedCorrectionPreview(
     val correction: DistortionPreviewState.Snapshot,
 ) {
     data class ImageKey(val adjustment: ImageAdjustment, val rotation: Float, val perspective: ImageQuad?,
-        val version: Int, val width: Int, val height: Int) {
+        val version: Int, val width: Int, val height: Int, val legacyImageRotation: Float? = null) {
         companion object {
             fun from(settings: PreprocessSettings, width: Int, height: Int) = ImageKey(
                 settings.imageAdjustment, settings.rotationDegrees, settings.perspectiveCorrectionQuad,
-                settings.version, width, height)
+                settings.version, width, height, settings.legacyImageRotationDegrees)
         }
     }
 }

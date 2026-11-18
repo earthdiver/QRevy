@@ -82,6 +82,20 @@ class EditorGestureBoundaryTest {
         }
     }
 
+    @Test fun sparseWideBrushFillsBetweenSamplesAndClipsAtGridEdges() =
+        exercise(EditorTool.BRUSH_ERASURE_WIDE) { view, commits ->
+            send(view, MotionEvent.ACTION_DOWN, 0)
+            send(view, MotionEvent.ACTION_UP, 20)
+            assertEquals(listOf((9..11).flatMap { y -> (0..20).map { x -> Coord(x, y) } }.toSet()), commits)
+        }
+
+    @Test fun wideBrushReleaseOutsideReachesTheBoundaryWithClippedFootprints() =
+        exercise(EditorTool.BRUSH_ERASURE_WIDE) { view, commits ->
+            send(view, MotionEvent.ACTION_DOWN, 4)
+            send(view, MotionEvent.ACTION_UP, -2)
+            assertEquals(listOf((9..11).flatMap { y -> (0..5).map { x -> Coord(x, y) } }.toSet()), commits)
+        }
+
     private fun render(view: View) = Bitmap.createBitmap(250, 250, Bitmap.Config.ARGB_8888).also { view.draw(Canvas(it)) }
 
     private fun send(view: View, action: Int, x: Int) {

@@ -238,6 +238,34 @@ class PreprocessEditorModelTest {
         }
     }
 
+    @Test fun transformedImagesRetainCorrectionChoicesAndRejectBothKindsOfStaleWork() {
+        for (lmEnabled in listOf(false, true)) for (curved in listOf(false, true)) {
+            val source = image()
+            val transformed = BitmapUtils.forSettings(source, PreprocessSettings(rotationDegrees = 90f,
+                perspectiveCorrectionQuad = grid.quad))
+            val editor = PreprocessEditorModel(PreprocessSettings(lmCorrectionEnabled = lmEnabled,
+                distortionCorrection = curved), source, source, null, null, { false }, { true })
+            try {
+                val oldLm = editor.requestLm(controls, grid)
+                val oldCurve = editor.requestCorrection(controls, grid)
+                editor.cells.applyValues(listOf(Coord(10, 10)), ModuleValue.ONE) { ModuleValue.ZERO }
+                editor.replaceWorking(transformed)
+                assertEquals(lmEnabled, editor.lmEnabled)
+                assertEquals(curved, editor.settings.distortionCorrection)
+                if (oldLm != null) assertFalse(editor.acceptLm(oldLm,
+                    Result.success(DistortionPreviewState.Calculation(listOf(oldLm.input.base)))))
+                if (oldCurve != null) assertFalse(editor.correction.accept(oldCurve, listOf(oldCurve.input.base)))
+                val newLm = editor.requestLm(controls, grid)
+                val newCurve = editor.requestCorrection(controls, grid)
+                assertEquals(lmEnabled, newLm != null)
+                assertEquals(curved, newCurve != null)
+                if (newLm != null) assertSame(transformed.luma, newLm.input.image)
+                if (newCurve != null) assertSame(transformed.luma, newCurve.input.image)
+                assertEquals(ModuleValue.ONE, editor.cells.edits[Coord(10, 10)])
+            } finally { editor.release(); source.bitmap.recycle() }
+        }
+    }
+
     @Test fun previewEditsNeverAlterTheNextObservation() {
         val source = image()
         try {

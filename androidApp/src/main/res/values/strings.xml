@@ -78,7 +78,8 @@
     <string name="nudge_step">Nudge: %1$s</string>
     <string name="select_nudge_step">Select nudge step</string>
     <string name="apply_perspective">Rectify selection to a square</string>
-    <string name="perspective_applied">The analysis image was rectified to a square. Finder assignments and grid orientation were cleared; assign Finder roles again.</string>
+    <string name="perspective_applied">Perspective correction applied. Finder assignments and grid orientation are preserved.</string>
+    <string name="clear_perspective">Remove perspective correction</string>
     <string name="tap_orange_corner">Tap an orange corner first.</string>
     <string name="cancel">Cancel</string>
     <string name="clear">Clear</string>

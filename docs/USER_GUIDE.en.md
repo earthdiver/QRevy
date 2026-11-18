@@ -54,7 +54,9 @@ In Classic, choose **Repair** to open the settings. In Modern, use **01 Repair s
 3. Check **QR Version** and align the orange corner handles with the centers of the outermost cells. Version 1 has 21 cells per side; each subsequent version adds four. Changing Version clears cell edits after confirmation.
 4. Review the cell values in the preview. Adjust the white/unknown/black thresholds if damaged areas are being read as definite `0` or `1` values.
 
-Automatic estimates may need correction. If only an outline appears, select **QR Version**, even if the displayed value is already correct, to show a grid. Until a Finder role is assigned, provisional alignment guides appear at all four corners and along all four sides, with dashed outlines. Adjust the corners and assign a Finder role as described below. **Rectify selection to a square** clears Finder roles and orientation; assign a role again afterward.
+Automatic estimates may need correction. If only an outline appears, select **QR Version**, even if the displayed value is already correct, to show a grid. Until a Finder role is assigned, provisional alignment guides appear at all four corners and along all four sides, with dashed outlines. Adjust the corners and assign a Finder role as described below.
+
+For a QR code photographed at an angle, align the four corners and tap **Rectify selection to a square**. To undo it, tap **Remove perspective correction**. To undo rotation only, use **Reset rotation**.
 
 **Set thresholds automatically** starts enabled for image imports. It recalculates thresholds when the grid changes. To enter an exact value, tap **Enter value** beside either threshold label, enter the value, and tap **Apply**. Applying a value or moving a slider switches to manual thresholds. Turning the option off keeps the current values. Manual thresholds stay unchanged during corner adjustment and sampling fine-tuning. Turn the option on to recalculate them. Saved work retains the mode and values.
 
@@ -77,7 +79,7 @@ When Finder patterns establish whether black and white are reversed, that interp
 
 **Correct grid using LM** uses the Levenberg–Marquardt (LM) method to fit the grid to patterns in the image. It is ON for new work. Once corners, version, and orientation are assigned, inspect the corrected grid and cell values. If correction cannot be applied, the original grid is used. Turning the option OFF restores the original grid without clearing cell edits.
 
-While LM correction is ON, assigning or changing a Finder recalculates the correction. Changing corner positions or orientation turns LM correction OFF; turn it on again if needed. Editing cell values or their fixed designation keeps the correction active. Saved work restores the correction choice and the original corners.
+Manually changing corner positions, version, or mirror interpretation turns LM correction OFF; turn it on again if needed.
 
 **Correct grid for curved surfaces** is for curved paper or labels and defaults to OFF. Turn it on and inspect the preview. If several candidates are available, choose one under **Distortion: candidate**. Repair uses the displayed grid, and the correction recalculates when you finish adjusting corners. If correction is unavailable, the screen reports this and uses a straight grid. It can be combined with LM correction. See [distortion correction and its acceptance conditions](RECOVERY_STRATEGY.en.md#distortion-correction) for details.
 
@@ -221,7 +223,7 @@ Debug builds, intended for development and testing, provide **Menu → Developer
 
 ## 8. Saved-work compatibility
 
-QRR is the app's saved-work format. The app writes format version **41** and reads versions **23–41**; other versions are rejected. The table describes how older work is restored and which information each format can retain.
+QRR is the app's saved-work format. The app writes format version **42** and reads versions **23–42**; other versions are rejected. The table describes how older work is restored and which information each format can retain.
 
 | File versions | Item | Behavior when opened |
 | --- | --- | --- |
@@ -236,14 +238,14 @@ QRR is the app's saved-work format. The app writes format version **41** and rea
 | 23–32 | Image sampling margins for temporary erasures | Not stored |
 | 23–33 | LM correction | OFF |
 | 34 | LM correction | ON only when a selected LM grid was saved |
-| 35–41 | LM correction | Restore the on/off choice saved separately from the grid |
+| 35–42 | LM correction | Restore the on/off choice saved separately from the grid |
 | 23–35 | Quick automatic repair assumptions | No runtime override separate from advanced settings |
-| 36–41 | Quick automatic repair assumptions | Restore separately from editable advanced settings |
-| 37–41 | Automatic trial assuming observed data/ECC bits are correct | Can restore this runtime assumption |
-| 38–41 | Automatic trial combining UTF-8 and single-segment assumptions | Can restore this runtime assumption |
+| 36–42 | Quick automatic repair assumptions | Restore separately from editable advanced settings |
+| 37–42 | Automatic trial assuming observed data/ECC bits are correct | Can restore this runtime assumption |
+| 38–42 | Automatic trial combining UTF-8 and single-segment assumptions | Can restore this runtime assumption |
 | 36–38 | Automatic list-decoding extension | +1 codeword |
-| 39–41 | Automatic list-decoding extension | Restore the value saved separately from advanced settings |
-| 40–41 | TXT unknown-cell and priority marks | Preserve imported marks, including more than 14 `*` cells, and the mark positions oriented for automatic repair |
+| 39–42 | Automatic list-decoding extension | Restore the value saved separately from advanced settings |
+| 40–42 | TXT unknown-cell and priority marks | Preserve imported marks, including more than 14 `*` cells, and the mark positions oriented for automatic repair |
 | 23–40 | Default data/ECC error limit | Restore each history entry's previous effective bit count as Manual |
 
 Selecting Default again applies the current 5% data/ECC limit. Other modes and separately saved automatic-repair execution conditions are unchanged. Handling imported TXT unknown-cell marks does not bypass fixed 0/1 edits.

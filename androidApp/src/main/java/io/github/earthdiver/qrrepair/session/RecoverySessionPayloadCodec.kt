@@ -263,10 +263,19 @@ internal object RecoverySessionPayloadCodec {
         settings.formatMismatchLimit?.let(out::writeInt)
         out.writeBoolean(settings.dataEccMismatchLimit != null)
         settings.dataEccMismatchLimit?.let(out::writeInt)
-        out.writeBoolean(settings.perspectiveCorrectionQuad != null)
+        // 0: none, 1: legacy quad at current angle, 2: source quad, 3: legacy quad at fixed angle, 4: legacy rotation only.
+        val perspectiveKind = when {
+            settings.perspectiveCorrectionQuad == null && settings.legacyImageRotationDegrees != null -> 4
+            settings.perspectiveCorrectionQuad == null -> 0
+            settings.legacyImageRotationDegrees == null -> 2
+            settings.legacyImageRotationDegrees == settings.rotationDegrees -> 1
+            else -> 3
+        }
+        out.writeByte(perspectiveKind)
         settings.perspectiveCorrectionQuad?.asList()?.forEach { point ->
             out.writeDouble(point.x); out.writeDouble(point.y)
         }
+        if (perspectiveKind >= 3) out.writeFloat(requireNotNull(settings.legacyImageRotationDegrees))
         out.writeBoolean(settings.manualQuad != null)
         settings.manualQuad?.asList()?.forEach { point ->
             out.writeDouble(point.x); out.writeDouble(point.y)
@@ -361,10 +370,20 @@ internal object RecoverySessionPayloadCodec {
         val dataEccMismatchLimit = if (input.readBoolean()) {
             input.readInt().also { requireCorrupt(it in 0..MAX_QR_DATA_ECC_BITS, "invalid data/ECC error limit") }
         } else null
-        val perspectiveQuad = if (input.readBoolean()) {
+        val perspectiveKind = input.readUnsignedByte()
+        requireCorrupt(perspectiveKind in 0..(if (formatVersion >= 42) 4 else 1), "invalid perspective coordinate system")
+        val perspectiveQuad = if (perspectiveKind in 1..3) {
             val points = List(4) { PointD(input.readDouble(), input.readDouble()) }
             ImageQuad(points[0], points[1], points[2], points[3])
         } else null
+        val legacyImageRotation = when (perspectiveKind) {
+            0 -> rotation.takeIf { formatVersion < 42 && it != 0f }
+            1 -> rotation
+            3, 4 -> input.readFloat().also {
+                requireCorrupt(it.isFinite() && it in -360f..360f, "invalid perspective reference rotation")
+            }
+            else -> null
+        }
         val quad = if (input.readBoolean()) {
             val points = List(4) { PointD(input.readDouble(), input.readDouble()) }
             ImageQuad(points[0], points[1], points[2], points[3])
@@ -484,6 +503,7 @@ internal object RecoverySessionPayloadCodec {
                 dataEccMismatchLimitMode = dataEccMismatchLimitMode,
                 lockManualBits = lockManualBits,
                 perspectiveCorrectionQuad = perspectiveQuad,
+                legacyImageRotationDegrees = legacyImageRotation,
                 manualQuad = quad,
                 manualFinders = manualFinders,
                 visibleFinderRole = visibleFinderRole,
@@ -522,6 +542,8 @@ internal object RecoverySessionPayloadCodec {
 
     private fun validatePreprocessSettings(settings: PreprocessSettings) {
         require(settings.rotationDegrees.isFinite() && settings.rotationDegrees in -360f..360f)
+        require(settings.legacyImageRotationDegrees == null || (
+            settings.legacyImageRotationDegrees.isFinite() && settings.legacyImageRotationDegrees in -360f..360f))
         require(settings.version in 1..40)
         require(settings.blackMax in 0..254 && settings.whiteMin in 1..255 && settings.blackMax < settings.whiteMin)
         require(settings.unknownColorClusters.size <= 4)

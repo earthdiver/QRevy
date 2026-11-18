@@ -71,8 +71,10 @@ data class PreprocessSettings(
     val dataEccMismatchLimitMode: ErrorLimitMode = ErrorLimitMode.MANUAL,
     /** Protect fixed 0/1 edits unless the user enables correction of fixed cells. */
     val lockManualBits: Boolean = true,
-    /** Source-image quadrilateral rectified before all sampling; null leaves the rotated image intact. */
+    /** Quad in the immutable source image, rectified before rotation and grid correction. */
     val perspectiveCorrectionQuad: ImageQuad? = null,
+    /** QRR <= 41 raster compatibility; a legacy perspective quad uses this fixed rotated coordinate system. */
+    val legacyImageRotationDegrees: Float? = null,
     val manualQuad: ImageQuad? = null,
     /** Assigned centers, set manually or by verified initialization; removable in the Finder UI. */
     val manualFinders: Map<FinderRole, PointD> = emptyMap(),
@@ -135,6 +137,8 @@ data class PreprocessSettings(
 
     init {
         require(rotationDegrees.isFinite() && rotationDegrees in -360f..360f)
+        require(legacyImageRotationDegrees == null || (
+            legacyImageRotationDegrees.isFinite() && legacyImageRotationDegrees in -360f..360f))
         require(blackMax in 0..254 && whiteMin in 1..255 && blackMax < whiteMin)
         require(provisionalBlackMax in 0..254 && provisionalWhiteMin in 1..255 && provisionalBlackMax < provisionalWhiteMin)
         require(unknownColorClusters.size <= 4)

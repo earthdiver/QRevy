@@ -86,12 +86,37 @@ class PreprocessDialogStateTest {
     }
 
     @Test
-    fun geometryChangeNormalizesRotationAndClearsPerspectiveCorrection() {
-        val state = PreprocessDialogState(PreprocessSettings())
+    fun resettingZeroRotationPreservesPerspectiveCorrection() {
+        val state = PreprocessDialogState(PreprocessSettings(perspectiveCorrectionQuad = quad))
+        state.resetRotation()
+        assertEquals(0f, state.rotationDegrees)
+        assertEquals(quad, state.perspectiveCorrectionQuad)
+    }
+
+    @Test
+    fun resettingNonzeroRotationPreservesPerspectiveCorrection() {
+        val state = PreprocessDialogState(PreprocessSettings(rotationDegrees = 90f, perspectiveCorrectionQuad = quad))
+        state.resetRotation()
+        assertEquals(0f, state.rotationDegrees)
+        assertEquals(quad, state.perspectiveCorrectionQuad)
+    }
+
+    @Test
+    fun rotationNormalizesTheAccumulatedAngleAndPreservesPerspectiveCorrection() {
+        val state = PreprocessDialogState(PreprocessSettings(perspectiveCorrectionQuad = quad))
 
         state.rotateBy(270f)
 
         assertEquals(-90f, state.rotationDegrees)
+        assertEquals(quad, state.perspectiveCorrectionQuad)
+    }
+
+    @Test fun repeatedFineRotationReturnsExactlyToZero() {
+        val state = PreprocessDialogState(PreprocessSettings(perspectiveCorrectionQuad = quad))
+        repeat(3600) { state.rotateBy(.1f) }
+        assertEquals(0f, state.rotationDegrees)
+        assertEquals(quad, state.perspectiveCorrectionQuad)
+        state.clearPerspectiveCorrection()
         assertNull(state.perspectiveCorrectionQuad)
     }
 

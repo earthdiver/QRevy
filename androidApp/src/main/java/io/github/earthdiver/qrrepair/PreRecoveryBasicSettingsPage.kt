@@ -19,6 +19,7 @@ internal data class BasicSettingsPageActions(
     val applyPerspectiveCorrection: () -> Unit,
     val beginFinderPlacement: (FinderRole) -> Unit,
     val beginFinderRemoval: () -> Boolean,
+    val clearPerspectiveCorrection: () -> Unit = {},
 )
 
 /** Builds the basic pre-recovery settings page; image analysis and state remain with the host. */
@@ -68,6 +69,7 @@ internal class PreRecoveryBasicSettingsPage(
                 nudgeStepButton,
                 buttonFactory(context.getString(R.string.apply_perspective), actions.applyPerspectiveCorrection),
             )), 4)
+            addView(buttonFactory(context.getString(R.string.clear_perspective), actions.clearPerspectiveCorrection))
             fun nudgeButton(label: String, dx: Int, dy: Int) = buttonFactory(label) {
                 if (!actions.nudgeCorner(dx, dy, nudgeSteps[nudgeStepIndex])) {
                     toast(context.getString(R.string.tap_orange_corner))

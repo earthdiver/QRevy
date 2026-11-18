@@ -157,11 +157,7 @@ internal class PreprocessEditorModel(
     init { cells.priorityLimit = initial.prioritySearchLimit }
 
     fun replaceWorking(replacement: BitmapUtils.Prepared) {
-        disableLm()
-        invalidateSampling()
-        correction.invalidate()
-        restoreCorrection = null
-        savedCorrection = null
+        invalidateCorrections()
         val previous = working
         working = replacement
         releaseIfTemporary(previous, replacement)
@@ -228,7 +224,8 @@ internal class PreprocessEditorModel(
         savedCorrection = null
         if (cached != null && cached.referenceQuad == grid.quad && cached.imageKey == SavedCorrectionPreview.ImageKey.from(
                 settings.previewSettings(controls).copy(rotationDegrees = settings.rotationDegrees,
-                    perspectiveCorrectionQuad = settings.perspectiveCorrectionQuad), working.luma.width, working.luma.height) &&
+                    perspectiveCorrectionQuad = settings.perspectiveCorrectionQuad,
+                    legacyImageRotationDegrees = settings.legacyImageRotationDegrees), working.luma.width, working.luma.height) &&
             correction.restoreCompleted(request, cached.correction)) {
             restoreCorrection = null
             return null

@@ -110,6 +110,82 @@ class PreprocessDialogControllerTest {
         }
     }
 
+    @Test fun finderReassignmentMovesTheSampledGridWithLmOffAndPreservesEdits() {
+        val physical = ImageQuad(PointD(20.0, 25.0), PointD(220.0, 15.0), PointD(215.0, 225.0), PointD(25.0, 210.0))
+        val edits = mapOf(Coord(10, 10) to ModuleValue.ONE)
+        for (mirrored in listOf(false, true)) for (role in FinderRole.entries) for (count in 1..3) {
+            val quad = if (mirrored) physical.transposed() else physical
+            val geometry = GridGeometry(1, role, 50.0, 50.0, 10.0, 0.0, quad)
+            val module = geometry.finderModulePoint(role)
+            val oldPoint = geometry.moduleToImage(module.x, module.y)
+            val target = oldPoint + PointD(4.0, -3.0)
+            val finders = (listOf(role) + FinderRole.entries.filter { it != role }.take(count - 1)).associateWith {
+                val m = geometry.finderModulePoint(it)
+                geometry.moduleToImage(m.x, m.y)
+            }
+            val initial = PreprocessSettings(lmCorrectionEnabled = false, mirroredInput = mirrored,
+                manualQuad = quad, manualFinders = finders, preRecoveryEdits = edits,
+                lockManualBits = true)
+            withDialog(initial) { dialog, host, _, _ ->
+                val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
+                overlay.layout(0, 0, 240, 240)
+                overlay.finderPlacementRole = role
+                val event = MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, target.x.toFloat(), target.y.toFloat(), 0)
+                try { assertTrue(overlay.onTouchEvent(event)) } finally { event.recycle() }
+                shadowOf(Looper.getMainLooper()).idle()
+                val sampled = requireNotNull(overlay.previewGeometry())
+                assertTrue(sampled.moduleToImage(module.x, module.y).distanceTo(target) < .02)
+                (finders + (role to target)).forEach { (r, point) ->
+                    val m = sampled.finderModulePoint(r)
+                    assertTrue(sampled.moduleToImage(m.x, m.y).distanceTo(point) < .02)
+                }
+                val movedIndex = when (role) {
+                    FinderRole.TOP_LEFT -> 0
+                    FinderRole.TOP_RIGHT -> 1
+                    FinderRole.BOTTOM_LEFT -> 3
+                }
+                quad.asList().zip(overlay.imageQuad().asList()).forEachIndexed { index, (before, after) ->
+                    if (index == movedIndex) assertTrue(before.distanceTo(after) > 1.0)
+                    else if (listOf(FinderRole.TOP_LEFT, FinderRole.TOP_RIGHT, null, FinderRole.BOTTOM_LEFT)[index] !in finders)
+                        assertEquals(before, after)
+                }
+                click(dialog, "保存")
+                val saved = host.saves.last().settings
+                assertEquals(overlay.imageQuad(), saved.manualQuad)
+                assertFalse(saved.lmCorrectionEnabled)
+                assertEquals(edits, saved.fixedPreRecoveryEdits)
+                assertTrue(saved.manualFinders.getValue(role).distanceTo(target) < .001)
+                finders.filterKeys { it != role }.forEach { (r, point) -> assertEquals(point, saved.manualFinders[r]) }
+            }
+        }
+    }
+
+    @Test fun resettingZeroRotationPreservesTheRectifiedImageGridAndDraft() {
+        val perspective = ImageQuad(PointD(20.0, 30.0), PointD(220.0, 20.0),
+            PointD(210.0, 220.0), PointD(30.0, 210.0))
+        val rectified = BitmapUtils.rectifiedGrid(perspective, 1)
+        val edits = mapOf(Coord(10, 10) to ModuleValue.ONE)
+        val initial = PreprocessSettings(perspectiveCorrectionQuad = perspective, manualQuad = rectified,
+            manualFinders = mapOf(FinderRole.TOP_LEFT to PointD(50.0, 50.0)), preRecoveryEdits = edits,
+            lmCorrectionEnabled = true, lockManualBits = true)
+        withDialog(initial) { dialog, host, _, working ->
+            val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
+            click(dialog, "保存")
+            val before = host.saves.last()
+            click(dialog, "詳細設定")
+            click(dialog, "回転リセット")
+            assertTrue(overlay.isLogicalGridAssigned())
+            assertEquals(rectified, overlay.imageQuad())
+            assertEquals(initial.manualFinders, overlay.finderPoints())
+            click(dialog, "保存")
+            val after = host.saves.last()
+            assertSame(working.bitmap, after.image.bitmap)
+            assertEquals(before.settings, after.settings)
+            assertEquals(before.events, after.events)
+            assertEquals(edits, after.settings.fixedPreRecoveryEdits)
+        }
+    }
+
     @Test fun japaneseDialogFixtureHandlesAndRestoresAnEnglishIncomingLanguage() =
         withTestAppLanguage(AppLanguage.ENGLISH) {
             withDialog { dialog, _, _, _ ->
@@ -337,7 +413,7 @@ class PreprocessDialogControllerTest {
         }
     }
 
-    @Test fun rectificationKeepsPhysicalCornersButRequiresFinderReassignment() {
+    @Test fun rectificationPreservesFinderRolesPolarityAndFixedEdits() {
         for (mirrored in listOf(false, true)) for (style in AppStyle.entries) {
             val physicalQuad = ImageQuad(PointD(30.0, 20.0), PointD(210.0, 30.0),
                 PointD(220.0, 220.0), PointD(20.0, 210.0))
@@ -347,7 +423,8 @@ class PreprocessDialogControllerTest {
                 confirmedFinderPolarity = FinderPolarity.NORMAL,
                 preRecoveryEdits = mapOf(Coord(10, 12) to ModuleValue.ONE),
                 searchQuadNeighborhood = false)
-            checkRequiresFinderAfterSaving(initial, style) { dialog, overlay ->
+            withDialog(initial, style) { dialog, host, _, _ ->
+                val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
                 assertTrue(overlay.isLogicalGridAssigned())
                 click(dialog, "選択範囲を正方形に射影補正")
                 assertNotEquals(initial.manualQuad, overlay.imageQuad())
@@ -356,6 +433,12 @@ class PreprocessDialogControllerTest {
                 assertEquals(rectified.topLeft.x, rectified.bottomLeft.x, .001)
                 assertEquals(rectified.topLeft.distanceTo(rectified.topRight),
                     rectified.topLeft.distanceTo(rectified.bottomLeft), .001)
+                assertTrue(overlay.isLogicalGridAssigned())
+                assertEquals(initial.manualFinders.keys, overlay.finderPoints().keys)
+                assertEquals(initial.confirmedFinderPolarity, overlay.confirmedFinderPolarity())
+                click(dialog, "保存")
+                assertEquals(initial.preRecoveryEdits, host.saves.last().settings.preRecoveryEdits)
+                assertTrue(host.saves.last().settings.lmCorrectionEnabled)
             }
         }
     }
@@ -391,27 +474,18 @@ class PreprocessDialogControllerTest {
                 click(dialog, "詳細設定")
                 for (action in listOf("右90°", "回転リセット", "左90°", "+1°", "-1°", "+0.1°", "-0.1°", "回転リセット")) {
                     click(dialog, action)
-                    assertFalse(overlay.isLogicalGridAssigned())
-                    assertTrue(overlay.finderPoints().isEmpty())
-                    click(dialog, "保存")
-                    val degrees = host.saves.last().settings.rotationDegrees.toDouble()
-                    val radians = Math.toRadians(degrees)
-                    val c = kotlin.math.cos(radians)
-                    val s = kotlin.math.sin(radians)
-                    val w = source.bitmap.width.toDouble()
-                    val h = source.bitmap.height.toDouble()
-                    val left = minOf(0.0, w * c, -h * s, w * c - h * s)
-                    val top = minOf(0.0, w * s, h * c, w * s + h * c)
-                    fun rotated(p: PointD) = PointD(
-                        (p.x + .5) * c - (p.y + .5) * s - left - .5,
-                        (p.x + .5) * s + (p.y + .5) * c - top - .5)
-                    logicalQuad.asList().zip(overlay.imageQuad().asList()).forEach { (before, after) ->
-                        assertTrue("$action preserves the ordered grid: $before -> $after",
-                            rotated(before).distanceTo(after) < .001)
-                    }
-                    overlay.setFinderPoint(FinderRole.TOP_LEFT, rotated(PointD(59.5, 59.5)))
+                    assertTrue(overlay.isLogicalGridAssigned())
+                    assertEquals(initial.manualFinders.keys, overlay.finderPoints().keys)
                     click(dialog, "保存")
                     val saved = host.saves.last()
+                    assertTrue(saved.settings.lmCorrectionEnabled)
+                    assertEquals(if (rectified) physicalQuad else null, saved.settings.perspectiveCorrectionQuad)
+                    val transform = BitmapUtils.imageTransform(source.bitmap, saved.settings).sourceToImage
+                    logicalQuad.asList().zip(overlay.imageQuad().asList()).forEach { (before, after) ->
+                        assertTrue("$action preserves the ordered grid: $before -> $after",
+                            transform.map(before).distanceTo(after) < .001)
+                    }
+                    assertTrue(transform.map(PointD(59.5, 59.5)).distanceTo(overlay.finderPoints().getValue(FinderRole.TOP_LEFT)) < .001)
                     assertEquals(edits, saved.settings.preRecoveryEdits)
                     assertEquals(soft, saved.settings.preRecoverySoftEdits)
                     assertEquals(priority, saved.settings.preRecoveryPrioritySearch)
@@ -447,6 +521,43 @@ class PreprocessDialogControllerTest {
         }
     }
 
+    @Test fun imageTransformControlsKeepCorrectionPreferencesAndClearOnlyPerspective() {
+        val quad = ImageQuad(PointD(30.0, 20.0), PointD(210.0, 30.0), PointD(220.0, 220.0), PointD(20.0, 210.0))
+        for (lm in listOf(false, true)) for (curved in listOf(false, true)) {
+            val initial = PreprocessSettings(manualQuad = quad, manualFinders = mapOf(FinderRole.TOP_LEFT to PointD(55.0, 50.0)),
+                lmCorrectionEnabled = lm, distortionCorrection = curved, preRecoveryEdits = mapOf(Coord(10, 10) to ModuleValue.ONE))
+            withDialog(initial) { dialog, host, _, _ ->
+                fun saved(): PreprocessSettings {
+                    click(dialog, "保存")
+                    return host.saves.last().settings.also {
+                        assertEquals(lm, it.lmCorrectionEnabled)
+                        assertEquals(curved, it.distortionCorrection)
+                        assertEquals(initial.preRecoveryEdits, it.preRecoveryEdits)
+                        assertTrue(it.logicalGridAssigned)
+                        assertEquals(initial.manualFinders.keys, it.manualFinders.keys)
+                    }
+                }
+                click(dialog, "選択範囲を正方形に射影補正")
+                assertEquals(quad, saved().perspectiveCorrectionQuad)
+                click(dialog, "詳細設定")
+                click(dialog, "右90°")
+                assertEquals(quad, saved().perspectiveCorrectionQuad)
+                host.session!!.open(PreprocessPage.BASIC)
+                click(dialog, "射影補正を解除")
+                val cleared = saved()
+                assertNull(cleared.perspectiveCorrectionQuad)
+                assertEquals(90f, cleared.rotationDegrees)
+                host.session!!.open(PreprocessPage.DETAILS)
+                click(dialog, "回転リセット")
+                val reset = saved()
+                assertEquals(0f, reset.rotationDegrees)
+                quad.asList().zip(reset.manualQuad!!.asList()).forEach { (before, after) ->
+                    assertTrue(before.distanceTo(after) < 1e-8)
+                }
+            }
+        }
+    }
+
     private fun checkRectifiedVersionChange(mirrored: Boolean, assigned: Boolean) {
         val sourceSize = 240
         val physicalQuad = ImageQuad(PointD(20.0, 20.0), PointD(sourceSize - 20.0, 20.0),
@@ -463,7 +574,9 @@ class PreprocessDialogControllerTest {
         withDialog(initial, sourceBitmap = sourceBitmap()) { dialog, host, source, _ ->
             val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
             click(dialog, "選択範囲を正方形に射影補正")
-            val reference = overlay.imageQuad().let { if (mirrored) it.transposed() else it }
+            val sourceQuad = BitmapUtils.sourceQuad(source.bitmap, initial, physicalQuad)
+            val referenceSettings = initial.copy(perspectiveCorrectionQuad = sourceQuad)
+            val toSource = BitmapUtils.imageTransform(source.bitmap, referenceSettings).sourceToImage.inverse()
             // Preserve a user's corner adjustment as well as logical corner ordering.
             val adjusted = overlay.imageQuad().let { it.copy(bottomRight = it.bottomRight + PointD(2.0, -1.0)) }
             overlay.setPhysicalImageQuad(adjusted)
@@ -493,14 +606,13 @@ class PreprocessDialogControllerTest {
                     assertEquals(initial.mirroredInput, savedSettings.mirroredInput)
                     assertEquals(initial.imageAdjustment, savedSettings.imageAdjustment)
                     val rebuilt = BitmapUtils.forSettings(source, savedSettings)
-                    val rectified = BitmapUtils.rectify(unadjusted.bitmap, physicalQuad, requestedVersion, quietModules = 1.0)
                     try {
                         assertEquals(rebuilt.bitmap.width, saved.image.bitmap.width)
                         assertTrue(rebuilt.bitmap.sameAs(saved.image.bitmap))
                         assertArrayEquals(rebuilt.luma.pixels, saved.image.luma.pixels)
-                        val mapping = Homography.fromCorrespondences(reference.asList(), rectified.qrQuad.asList())
+                        val mapping = BitmapUtils.imageTransform(source.bitmap, savedSettings).sourceToImage
                         fun assertMapped(before: PointD, after: PointD) {
-                            assertTrue(mapping.map(before.x, before.y).distanceTo(after) < 1e-6)
+                            assertTrue(mapping.map(toSource.map(before)).distanceTo(after) < 1e-6)
                         }
                         originalQuad.asList().zip(savedSettings.manualQuad!!.asList()).forEach { (before, after) ->
                             assertMapped(before, after)
@@ -509,7 +621,6 @@ class PreprocessDialogControllerTest {
                         originalFinders.forEach { (role, point) -> assertMapped(point, savedSettings.manualFinders.getValue(role)) }
                     } finally {
                         rebuilt.bitmap.recycle()
-                        rectified.prepared.bitmap.recycle()
                     }
                     currentVersion = requestedVersion
                 }

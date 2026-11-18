@@ -55,20 +55,34 @@ internal class PreprocessDialogState(private val initial: PreprocessSettings) {
         private set
     var perspectiveCorrectionQuad: ImageQuad? = initial.perspectiveCorrectionQuad
         private set
+    var legacyImageRotationDegrees: Float? = initial.legacyImageRotationDegrees
+        private set
     fun rotateBy(delta: Float) {
-        perspectiveCorrectionQuad = null
-        rotationDegrees = normalizeRotation(rotationDegrees + delta)
+        rotationDegrees = rotationAfter(delta)
     }
 
+    fun rotationAfter(delta: Float): Float = normalizeRotation(rotationDegrees + delta)
+
     fun resetRotation() {
+        if (rotationDegrees == 0f) return
         rotationDegrees = 0f
-        perspectiveCorrectionQuad = null
     }
 
     fun applyPerspectiveCorrection(sourceQuad: ImageQuad) {
-        check(perspectiveCorrectionQuad == null) { "Perspective correction is already applied" }
         perspectiveCorrectionQuad = sourceQuad
+        legacyImageRotationDegrees = null
     }
+
+    fun clearPerspectiveCorrection() {
+        perspectiveCorrectionQuad = null
+        legacyImageRotationDegrees = null
+    }
+
+    fun imageSettings(version: Int): PreprocessSettings = initial.copy(
+        rotationDegrees = rotationDegrees, perspectiveCorrectionQuad = perspectiveCorrectionQuad,
+        legacyImageRotationDegrees = legacyImageRotationDegrees,
+        imageAdjustment = imageAdjustment, version = version,
+    )
 
     fun previewSettings(controls: PreprocessControlSnapshot): PreprocessSettings {
         val (blackMax, whiteMin) = normalizedThresholds(controls)
@@ -117,6 +131,7 @@ internal class PreprocessDialogState(private val initial: PreprocessSettings) {
             listDecodingAdditionalErrors = search.listDecodingAdditionalErrors,
             knownBitErrorLimit = search.knownBitErrorLimit,
             perspectiveCorrectionQuad = perspectiveCorrectionQuad,
+            legacyImageRotationDegrees = legacyImageRotationDegrees,
             manualQuad = geometry.quad,
             manualFinders = geometry.finders,
             visibleFinderRole = geometry.visibleFinderRole,
@@ -135,6 +150,8 @@ internal class PreprocessDialogState(private val initial: PreprocessSettings) {
         return blackMax to whiteMin
     }
 
-    private fun normalizeRotation(value: Float): Float =
-        ((value + 180f) % 360f + 360f) % 360f - 180f
+    private fun normalizeRotation(value: Float): Float {
+        val rounded = kotlin.math.round(value.toDouble() * 10_000.0) / 10_000.0
+        return (((rounded + 180.0) % 360.0 + 360.0) % 360.0 - 180.0).toFloat()
+    }
 }

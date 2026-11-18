@@ -18,12 +18,14 @@ import io.github.earthdiver.qrrepair.core.FinderCandidate
 import io.github.earthdiver.qrrepair.core.GeometryModel
 import io.github.earthdiver.qrrepair.core.GridGeometry
 import io.github.earthdiver.qrrepair.core.ImageQuad
+import io.github.earthdiver.qrrepair.core.Homography
 import io.github.earthdiver.qrrepair.core.ModuleValue
 import io.github.earthdiver.qrrepair.core.ModuleSource
 import io.github.earthdiver.qrrepair.core.QrMatrix
 import io.github.earthdiver.qrrepair.core.Coord
 import io.github.earthdiver.qrrepair.core.PointD
 import io.github.earthdiver.qrrepair.core.alignQuadCornerToFinder
+import io.github.earthdiver.qrrepair.core.alignQuadToFinders
 import io.github.earthdiver.qrrepair.core.assignedFromFinder
 import io.github.earthdiver.qrrepair.core.provisionalFinderRole
 import io.github.earthdiver.qrrepair.core.reliabilityScore
@@ -46,6 +48,11 @@ class PreprocessOverlayView(context: Context) : View(context) {
     private val autoDetectedFinders = mutableSetOf<FinderRole>()
     private val confirmedFinderRoles = mutableSetOf<FinderRole>()
     private val confirmedFinderEvidence = linkedMapOf<FinderRole, FinderCandidate>()
+    private data class ImageObservations(val quad: ImageQuad, val finders: Map<FinderRole, PointD>,
+        val evidence: Map<FinderRole, FinderCandidate>)
+    private var imageRemapSource: Pair<ImageObservations, Homography>? = null
+    private var lastRemappedObservations: ImageObservations? = null
+    private fun imageObservations() = ImageObservations(imageQuad(), finders.toMap(), confirmedFinderEvidence.toMap())
     private var confirmedPolarityHint = io.github.earthdiver.qrrepair.core.FinderPolarity.UNKNOWN
     private var finderRemovalEnabled = false
     private var dragCorner: Int? = null
@@ -131,14 +138,29 @@ class PreprocessOverlayView(context: Context) : View(context) {
         invalidate()
     }
 
-    /** Retains the grid's coordinate basis while requiring Finder confirmation in the new image. */
-    fun remapRotatedImage(value: Bitmap, quad: ImageQuad) {
+    /** Moves image observations without changing logical roles, edit coordinates, or polarity. */
+    fun remapImage(value: Bitmap, toSource: Homography, fromSource: Homography) {
+        val observations = imageObservations()
+        if (observations != lastRemappedObservations) imageRemapSource = observations to toSource
+        val (anchor, anchorToSource) = requireNotNull(imageRemapSource)
+        fun mapped(point: PointD) = fromSource.map(anchorToSource.map(point))
+        val nextCorners = anchor.quad.asList().map(::mapped)
+        val nextFinders = anchor.finders.mapValues { mapped(it.value) }
+        val nextEvidence = anchor.evidence.mapValues { (_, evidence) ->
+            val old = PointD(evidence.centerX, evidence.centerY)
+            val center = mapped(old)
+            val axis = mapped(old + PointD(kotlin.math.cos(evidence.angleRad), kotlin.math.sin(evidence.angleRad)) * evidence.moduleSize) - center
+            evidence.copy(centerX = center.x, centerY = center.y,
+                moduleSize = hypot(axis.x, axis.y), angleRad = kotlin.math.atan2(axis.y, axis.x))
+        }
         sampledQuad = null
         bitmap = value
-        quad.asList().forEachIndexed { index, point -> corners[index] = point }
-        logicalGridAssigned = false
+        corners.indices.forEach { corners[it] = nextCorners[it] }
+        finders.clear(); finders.putAll(nextFinders)
+        confirmedFinderEvidence.clear(); confirmedFinderEvidence.putAll(nextEvidence)
+        lastRemappedObservations = imageObservations()
         clearCornerSelection()
-        clearFinders()
+        invalidate()
     }
 
     /** Repositions observations when rectification changes only its margin and uniform scale. */
@@ -249,14 +271,23 @@ class PreprocessOverlayView(context: Context) : View(context) {
         invalidate()
         return ProvisionalFinderAdjustment(role)
     }
-    fun setFinderPoint(role: FinderRole, point: PointD) {
+    fun setFinderPoint(role: FinderRole, point: PointD): Boolean {
+        // Once orientation is known, the assigned position must also constrain the sampled grid.
+        if (logicalGridAssigned) {
+            val aligned = runCatching { alignQuadToFinders(imageQuad(), version, finderPoints() + (role to point)) }
+                .getOrNull() ?: return false
+            aligned.asList().forEachIndexed { index, corner -> corners[index] = corner }
+        }
         assignLogicalGrid(point, role)
         if (visibleFinderRole == role) visibleFinderRole = null
+        confirmedFinderEvidence.remove(role)
         finders[role] = point; autoDetectedFinders.remove(role); confirmedFinderRoles += role; invalidate()
+        return true
     }
-    fun setVerifiedFinder(role: FinderRole, candidate: FinderCandidate) {
+    fun setVerifiedFinder(role: FinderRole, candidate: FinderCandidate): Boolean {
+        if (!setFinderPoint(role, PointD(candidate.centerX, candidate.centerY))) return false
         confirmedFinderEvidence[role] = candidate
-        setFinderPoint(role, PointD(candidate.centerX, candidate.centerY))
+        return true
     }
     var visibleFinderRole: FinderRole? = null
     var showCornerRoles = false
@@ -834,11 +865,11 @@ class PreprocessOverlayView(context: Context) : View(context) {
                             return true
                         }
                     }
-                    assignLogicalGrid(p, role)
-                    if (visibleFinderRole == role) visibleFinderRole = null
-                    finders[role] = p
-                    confirmedFinderRoles += role
-                    autoDetectedFinders.remove(role)
+                    if (!setFinderPoint(role, p)) {
+                        finderPlacementRole = null
+                        onFinderPlacementRejected?.invoke(role)
+                        return true
+                    }
                     finderPlacementRole = null; invalidate()
                     onFinderGeometryEdited?.invoke()
                     onGeometryEditFinished?.invoke()

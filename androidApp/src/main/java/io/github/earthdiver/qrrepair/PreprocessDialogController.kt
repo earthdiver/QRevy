@@ -26,7 +26,6 @@ import io.github.earthdiver.qrrepair.core.QrMatrix
 import io.github.earthdiver.qrrepair.core.FormatEditConflict
 import io.github.earthdiver.qrrepair.core.RecoveryEngine
 import io.github.earthdiver.qrrepair.ui.BitmapUtils
-import io.github.earthdiver.qrrepair.core.ImageAdjustment
 import io.github.earthdiver.qrrepair.ui.EditorTool
 import io.github.earthdiver.qrrepair.ui.PreprocessOverlayView
 import java.util.concurrent.atomic.AtomicInteger
@@ -261,25 +260,27 @@ internal class PreprocessDialogController(
             onInteraction = overlay::clearCornerSelection,
             noteDraftChange = { key, label, detail -> noteDraftChange(key, label, detail) },
         )
+        fun imageSettings() = dialogState.imageSettings(version.progress + 1)
+        fun replaceTransformedImage(before: PreprocessSettings, after: PreprocessSettings) {
+            val toSource = BitmapUtils.imageTransform(source.bitmap, before).sourceToImage.inverse()
+            val toImage = BitmapUtils.imageTransform(source.bitmap, after).sourceToImage
+            val next = BitmapUtils.forSettings(source, after)
+            try {
+                overlay.remapImage(next.bitmap, toSource, toImage)
+            } catch (error: Throwable) {
+                if (next.bitmap !== source.bitmap && next.bitmap !== editor.working.bitmap) next.bitmap.recycle()
+                throw error
+            }
+            editor.replaceWorking(next)
+        }
         fun commitVersion(requested: Int) {
             disableLmForEdit()
             val nextVersion = requested.coerceIn(1, 40)
-            val perspectiveQuad = dialogState.perspectiveCorrectionQuad
             // Build before changing the draft so allocation/transform failure cannot leave
             // settings pointing to an image prepared for a different Version.
-            val nextWorking = perspectiveQuad?.let {
-                BitmapUtils.forSettings(source, preprocessSettings.copy(
-                    rotationDegrees = dialogState.rotationDegrees,
-                    perspectiveCorrectionQuad = it,
-                    imageAdjustment = dialogState.imageAdjustment,
-                    version = nextVersion,
-                ))
-            }
-            if (nextWorking != null) {
-                val before = BitmapUtils.rectifiedGrid(perspectiveQuad, committedVersion)
-                val after = BitmapUtils.rectifiedGrid(perspectiveQuad, nextVersion)
-                overlay.remapRectifiedImage(nextWorking.bitmap, before, after)
-                editor.replaceWorking(nextWorking)
+            if (dialogState.perspectiveCorrectionQuad != null) {
+                val before = imageSettings().copy(version = committedVersion)
+                replaceTransformedImage(before, before.copy(version = nextVersion))
             }
             // Even an empty edit map can have Undo/Redo entries in the old coordinates.
             cellEditState.clearAll()
@@ -356,10 +357,9 @@ internal class PreprocessDialogController(
                 val refined = io.github.earthdiver.qrrepair.core.refineFinder(finderWorking.luma, finderProfile.settings, hint)
                 runOnUiThread {
                     if (finderToken != finderSearchGeneration.get() || editor.working !== finderWorking) return@runOnUiThread
-                    if (refined == null) {
+                    if (refined == null || !overlay.setVerifiedFinder(role, refined)) {
                         Toast.makeText(this, ui("周辺でFinderを確定できませんでした。指定点をヒントとして解析します。", "The Finder could not be confirmed nearby. The selected point will be used as a hint."), Toast.LENGTH_LONG).show()
                     } else {
-                        overlay.setVerifiedFinder(role, refined)
                         editor.invalidateCorrections()
                         refreshCornerControls()
                         refreshClassificationMatrix()
@@ -384,32 +384,22 @@ internal class PreprocessDialogController(
             noteDraftChange("finder-$role", ui("$label Finderを解除", "Removed $label Finder"), role.name)
             Toast.makeText(this, ui("$label のFinder確定を解除しました。", "The $label Finder was unconfirmed."), Toast.LENGTH_SHORT).show()
         }
-        fun imageSettings() = preprocessSettings.copy(
-            rotationDegrees = dialogState.rotationDegrees,
-            perspectiveCorrectionQuad = dialogState.perspectiveCorrectionQuad,
-            version = version.progress + 1,
-            imageAdjustment = dialogState.imageAdjustment,
-        )
-        fun replaceRotatedImage(before: PreprocessSettings) {
-            val quad = BitmapUtils.gridAfterRotation(source.bitmap, overlay.imageQuad(), before, dialogState.rotationDegrees)
-            editor.replaceWorking(BitmapUtils.forSettings(source, imageSettings()))
-            overlay.remapRotatedImage(editor.working.bitmap, quad)
-        }
         fun rotateBy(delta: Float) {
             finderSearchGeneration.incrementAndGet()
             val before = imageSettings()
+            replaceTransformedImage(before, before.copy(rotationDegrees = dialogState.rotationAfter(delta)))
             dialogState.rotateBy(delta)
-            replaceRotatedImage(before)
             userGeometryEdited = true
             noteDraftChange("rotation", ui("画像を回転", "Rotated image"), "${"%.1f".format(dialogState.rotationDegrees)}°")
             refreshLabels()
-            Toast.makeText(activity, ui("回転 ${"%.1f".format(dialogState.rotationDegrees)}°。四隅とFinder役割を確認してください。", "Rotation ${"%.1f".format(dialogState.rotationDegrees)}°. Check the corners and Finder roles."), Toast.LENGTH_SHORT).show()
+            Toast.makeText(activity, ui("回転 ${"%.1f".format(dialogState.rotationDegrees)}°", "Rotation ${"%.1f".format(dialogState.rotationDegrees)}°"), Toast.LENGTH_SHORT).show()
         }
         fun resetRotation() {
+            if (dialogState.rotationDegrees == 0f) return
             finderSearchGeneration.incrementAndGet()
             val before = imageSettings()
+            replaceTransformedImage(before, before.copy(rotationDegrees = 0f))
             dialogState.resetRotation()
-            replaceRotatedImage(before)
             userGeometryEdited = true
             refreshLabels()
             noteDraftChange("rotation", ui("画像回転をリセット", "Reset image rotation"), "0°")
@@ -827,39 +817,33 @@ internal class PreprocessDialogController(
                 },
                 applyPerspectiveCorrection = applyPerspective@{
                     finderSearchGeneration.incrementAndGet()
-                    if (dialogState.perspectiveCorrectionQuad != null) {
-                        Toast.makeText(this, ui("台形補正は適用済みです。再適用する場合は画像を読み込み直してください。", "Perspective correction is already applied. Re-import the image to apply it again."), Toast.LENGTH_LONG).show()
-                        return@applyPerspective
-                    }
                     // Rectification preserves image handedness; mirror interpretation stays in the grid.
-                    val sourceQuad = overlay.imageQuad().let { if (dialogState.mirroredInput) it.transposed() else it }
-                    val rectified = runCatching {
-                        val unadjusted = BitmapUtils.forSettings(source, imageSettings().copy(imageAdjustment = ImageAdjustment()))
-                        try {
-                            BitmapUtils.rectify(unadjusted.bitmap, sourceQuad, version.progress + 1, quietModules = 1.0)
-                        } finally {
-                            if (unadjusted.bitmap !== source.bitmap) unadjusted.bitmap.recycle()
-                        }
+                    val before = imageSettings()
+                    val sourceQuad = runCatching {
+                        BitmapUtils.sourceQuad(source.bitmap, before,
+                            overlay.imageQuad().let { if (dialogState.mirroredInput) it.transposed() else it })
+                            .also { quad -> replaceTransformedImage(before, before.copy(
+                                perspectiveCorrectionQuad = quad, legacyImageRotationDegrees = null)) }
                     }.getOrElse {
                         Toast.makeText(this, ui("台形補正を適用できませんでした。四隅を確認してください。", "Could not rectify the image. Check the four corners."), Toast.LENGTH_LONG).show()
                         return@applyPerspective
                     }
-                    val adjusted = try {
-                        BitmapUtils.adjust(rectified.prepared, dialogState.imageAdjustment)
-                    } catch (error: Throwable) {
-                        rectified.prepared.bitmap.recycle()
-                        throw error
-                    }
-                    if (adjusted !== rectified.prepared) rectified.prepared.bitmap.recycle()
                     dialogState.applyPerspectiveCorrection(sourceQuad)
-                    editor.replaceWorking(adjusted)
-                    overlay.setBitmap(editor.working.bitmap)
-                    overlay.setPhysicalImageQuad(if (dialogState.mirroredInput) rectified.qrQuad.transposed() else rectified.qrQuad)
-                    overlay.clearFinders()
                     userGeometryEdited = true
                     refreshLabels()
                     noteDraftChange("perspective", ui("台形補正を適用", "Applied perspective correction"), "${editor.working.bitmap.width}x${editor.working.bitmap.height}")
                     Toast.makeText(this, R.string.perspective_applied, Toast.LENGTH_LONG).show()
+                },
+                clearPerspectiveCorrection = {
+                    if (dialogState.perspectiveCorrectionQuad != null) {
+                        finderSearchGeneration.incrementAndGet()
+                        val before = imageSettings()
+                        replaceTransformedImage(before, before.copy(perspectiveCorrectionQuad = null, legacyImageRotationDegrees = null))
+                        dialogState.clearPerspectiveCorrection()
+                        userGeometryEdited = true
+                        refreshLabels()
+                        noteDraftChange("perspective", ui("射影補正を解除", "Removed perspective correction"), "")
+                    }
                 },
                 beginFinderPlacement = { role ->
                     overlay.clearCornerSelection()

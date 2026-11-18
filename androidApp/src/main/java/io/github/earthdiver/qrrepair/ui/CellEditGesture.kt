@@ -3,6 +3,7 @@ package io.github.earthdiver.qrrepair.ui
 import android.view.MotionEvent
 import io.github.earthdiver.qrrepair.core.Coord
 import io.github.earthdiver.qrrepair.core.ModuleValue
+import kotlin.math.abs
 
 enum class EditorTool {
     NAVIGATE,
@@ -46,6 +47,8 @@ internal class CellEditGesture(
     )
 
     private val stroke = linkedSetOf<Coord>()
+    private var lastBrushCell: Coord? = null
+    private var lastBrushPosition: Pair<Float, Float>? = null
     val strokeCells: Set<Coord> get() = stroke
     private var rangeStart: Coord? = null
     private var rangeEnd: Coord? = null
@@ -63,6 +66,8 @@ internal class CellEditGesture(
 
     fun clearPreview() {
         stroke.clear()
+        lastBrushCell = null
+        lastBrushPosition = null
         rangeStart = null
         rangeEnd = null
     }
@@ -76,6 +81,51 @@ internal class CellEditGesture(
         rangeStart = rangeStart?.let { Coord(it.y, it.x) }
         rangeEnd = rangeEnd?.let { Coord(it.y, it.x) }
         stroke.clear()
+        lastBrushCell = null
+        lastBrushPosition = null
+    }
+
+    /** Finish the outgoing segment at the boundary, then break before a later re-entry. */
+    private fun appendBrushSample(x: Float, y: Float, size: Int, dimension: Int,
+                                  cellAt: (Float, Float) -> Coord?) {
+        val cell = cellAt(x, y)
+        val previous = lastBrushPosition
+        if (cell == null && previous != null && lastBrushCell != null) {
+            var inside = 0.0
+            var outside = 1.0
+            var boundary = requireNotNull(lastBrushCell)
+            // Query the host's actual mapping, including perspective and curved grids.
+            repeat(24) {
+                val t = (inside + outside) * .5
+                val candidate = cellAt((previous.first * (1 - t) + x * t).toFloat(),
+                    (previous.second * (1 - t) + y * t).toFloat())
+                if (candidate == null) outside = t else { inside = t; boundary = candidate }
+            }
+            appendBrushCell(boundary, size, dimension)
+        }
+        appendBrushCell(cell, size, dimension)
+        lastBrushPosition = if (cell == null) null else x to y
+    }
+
+    /** Join consecutive cells within one continuous in-grid segment. */
+    private fun appendBrushCell(cell: Coord?, size: Int, dimension: Int) {
+        val previous = lastBrushCell
+        lastBrushCell = cell
+        if (cell == null) return
+        var x = previous?.x ?: cell.x
+        var y = previous?.y ?: cell.y
+        val dx = abs(cell.x - x)
+        val dy = abs(cell.y - y)
+        val sx = if (x < cell.x) 1 else -1
+        val sy = if (y < cell.y) 1 else -1
+        var error = dx - dy
+        while (true) {
+            stroke += moduleFootprint(Coord(x, y), size, dimension)
+            if (x == cell.x && y == cell.y) break
+            val twiceError = 2 * error
+            if (twiceError > -dy) { error -= dy; x += sx }
+            if (twiceError < dx) { error += dx; y += sy }
+        }
     }
 
     /** Returns null for navigation or events belonging to another interaction. */
@@ -122,14 +172,16 @@ internal class CellEditGesture(
             else -> ModuleValue.ERASED
         }
         if (brushSize != null) {
-            if (action == MotionEvent.ACTION_DOWN) stroke.clear()
+            if (action == MotionEvent.ACTION_DOWN) {
+                stroke.clear()
+                lastBrushCell = null
+                lastBrushPosition = null
+            }
             if (action != MotionEvent.ACTION_CANCEL) {
                 for (index in 0 until event.historySize) {
-                    cellAt(event.getHistoricalX(index), event.getHistoricalY(index))?.let {
-                        stroke += moduleFootprint(it, brushSize, dimension)
-                    }
+                    appendBrushSample(event.getHistoricalX(index), event.getHistoricalY(index), brushSize, dimension, cellAt)
                 }
-                cell?.let { stroke += moduleFootprint(it, brushSize, dimension) }
+                appendBrushSample(event.x, event.y, brushSize, dimension, cellAt)
             }
         } else if (stampSize != null) {
             if (action != MotionEvent.ACTION_MOVE || cell != null || !keepStampPreviewOutsideGrid) {
@@ -146,6 +198,8 @@ internal class CellEditGesture(
                 asRectangle = stampSize != null || tool == EditorTool.RECT_SELECT)
         } else null
         if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            lastBrushCell = null
+            lastBrushPosition = null
             if (tool == EditorTool.RECT_SELECT) { rangeStart = null; rangeEnd = null }
             else stroke.clear()
         }

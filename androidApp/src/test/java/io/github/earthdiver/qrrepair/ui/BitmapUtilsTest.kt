@@ -145,8 +145,10 @@ class BitmapUtilsTest {
                 assertEquals("module ($x, $y)", modules[x, y].toInt(), if (luma < 128) 1 else 0)
             }
             val reset = BitmapUtils.gridAfterRotation(source, rectified.qrQuad,
-                PreprocessSettings(rotationDegrees = 45f, perspectiveCorrectionQuad = quad), 0f)
-            original.asList().zip(reset.asList()).forEach { (expected, actual) ->
+                PreprocessSettings(rotationDegrees = 45f, perspectiveCorrectionQuad = quad,
+                    legacyImageRotationDegrees = 45f), 0f)
+            val rectifiedRotation = BitmapUtils.imageTransform(rectified.prepared.bitmap, PreprocessSettings(rotationDegrees = -45f))
+            rectified.qrQuad.asList().map(rectifiedRotation.sourceToImage::map).zip(reset.asList()).forEach { (expected, actual) ->
                 assertTrue(expected.distanceTo(actual) < .001)
             }
         } finally {

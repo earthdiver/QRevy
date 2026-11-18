@@ -296,6 +296,9 @@ class PreprocessDialogLayoutTest {
             shadowOf(Looper.getMainLooper()).idle()
             val dialog = preprocessDialog(activity)
             findText(dialog.window!!.decorView, "選択範囲を正方形に射影補正")!!.performClick()
+            (MainActivity::class.java.getDeclaredField("executor").apply { isAccessible = true }
+                .get(activity) as ExecutorService).submit {}.get(30, TimeUnit.SECONDS)
+            shadowOf(Looper.getMainLooper()).idle()
             findExactText(dialog.window!!.decorView, "保存")!!.performClick()
             val saved = settingsField.get(activity) as PreprocessSettings
             assertTrue(saved.mirroredInput)
@@ -1368,20 +1371,21 @@ class PreprocessDialogLayoutTest {
             View.MeasureSpec.makeMeasureSpec(640, View.MeasureSpec.EXACTLY),
         )
         decor.layout(0, 0, 360, 640)
+        val cellPage = requireNotNull(findAncestor(findText(decor, "大きな編集画面を開く")!!, ScrollView::class.java))
         listOf("0", "1", "?", "Undo", "Redo").forEach { label ->
-            val control = findExactText(decor, label)
+            val control = findExactText(cellPage, label)
             assertNotNull("1セル編集の$label ボタンがありません", control)
         }
         listOf("←", "↑", "↓", "→").forEach { label ->
-            val control = findExactText(decor, label)
+            val control = findExactText(cellPage, label)
             assertNotNull("1セル編集の$label キーがありません", control)
             assertTrue("1セル編集の$label キーが見切れています", isInside(decor, control!!))
         }
-        val arrow = findExactText(decor, "←")!!
-        val value = findExactText(decor, "0")!!
-        val undo = findExactText(decor, "Undo")!!
-        val mode = findExactText(decor, "1セル")!!
-        val large = findText(decor, "大きな編集画面を開く")!!
+        val arrow = findExactText(cellPage, "←")!!
+        val value = findExactText(cellPage, "0")!!
+        val undo = findExactText(cellPage, "Undo")!!
+        val mode = findExactText(cellPage, "1セル")!!
+        val large = findText(cellPage, "大きな編集画面を開く")!!
         assertTrue("セル編集ボタンの順序が指定どおりではありません",
             screenTop(arrow) < screenTop(value) && screenTop(value) < screenTop(mode) &&
                 screenTop(mode) < screenTop(undo) && screenTop(undo) < screenTop(large))
