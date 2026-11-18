@@ -116,9 +116,19 @@ class QuickAutoResultUiTest {
         }
     }
 
+    @Test fun binaryResultDoesNotOfferTextCopyOrReplaceTheClipboard() = withResult(textAvailable = false) { activity, dialog, _ ->
+        val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("control", "Keep existing content"))
+        val copy = dialog.getButton(AlertDialog.BUTTON_NEUTRAL)
+        assertTrue(copy == null || copy.visibility != android.view.View.VISIBLE)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("Keep existing content", clipboard.primaryClip!!.getItemAt(0).text.toString())
+    }
+
     private fun withResult(assumption: AutomaticScanAssumption = AutomaticScanAssumption.UTF8,
         listExtension: Int = 1,
         priorDiagnostic: RecoverySearchDiagnostic? = null,
+        textAvailable: Boolean = true,
         check: (MainActivity, AlertDialog, PreprocessSettings) -> Unit) {
         AppLanguageManager.save(RuntimeEnvironment.getApplication(), AppLanguage.ENGLISH)
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
@@ -144,7 +154,7 @@ class QuickAutoResultUiTest {
                 listDecodingAdditionalErrors = actual.listDecodingAdditionalErrors,
                 maxKnownDataEccMismatches = if (exact) 0 else ErrorLimitPolicy.automaticScanData(saved.version),
                 executionPolicy = if (exact) RecoveryExecutionPolicy.AUTOMATIC_EXACT else RecoveryExecutionPolicy.AUTOMATIC_BASIC)
-            val candidate = outcome.candidates.single { it.isSelectableRecovery }
+            val candidate = outcome.candidates.single { it.isSelectableRecovery }.let { if (textAvailable) it else it.copy(text = null) }
             val profile = SamplingProfile(actual, false)
             val attempt = GeometryAttempt(GeometryHypothesis(emptyList(), geometry, 0.0), matrix,
                 MatrixSampler.SamplingStats(128.0, 64.0, 32.0), outcome.candidates, searchDiagnostic = outcome.searchDiagnostic)

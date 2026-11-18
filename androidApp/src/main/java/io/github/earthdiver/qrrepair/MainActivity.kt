@@ -2406,9 +2406,13 @@ class MainActivity : Activity() {
                 if (prepared === inputSource && generation == workGeneration.get()) showPreprocessDialog()
             }
             .setNegativeButton(ui("完了", "Done"), null)
-            .setNeutralButton(ui("内容をコピー", "Copy content")) { _, _ ->
-                (getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
-                    .setPrimaryClip(android.content.ClipData.newPlainText("QRevy", candidate.text.orEmpty()))
+            .apply {
+                candidate.text?.let { content ->
+                    setNeutralButton(ui("内容をコピー", "Copy content")) { _, _ ->
+                        (getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                            .setPrimaryClip(android.content.ClipData.newPlainText("QRevy", content))
+                    }
+                }
             }.show()
     }
 
