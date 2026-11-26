@@ -18,6 +18,36 @@ class MirroredInputOverlayTest {
         setImageQuad(quad)
     }
 
+    @Test fun firstDetectedFinderAlignsThePreviouslyUnassignedGrid() {
+        for (role in FinderRole.entries) {
+            val overlay = overlay()
+            overlay.setVersion(1)
+            overlay.setPhysicalImageQuad(quad)
+            val point = PointD(182.0, 57.0)
+            val candidate = FinderCandidate(point.x, point.y, 10.0, 0.0, 1.0, 5, polarity = FinderPolarity.NORMAL)
+            assertTrue(overlay.placeFinder(role, point, candidate))
+            assertTrue(overlay.isLogicalGridAssigned())
+            val aligned = overlay.imageQuad()
+            val geometry = GridGeometry(1, FinderRole.TOP_LEFT, aligned.topLeft.x, aligned.topLeft.y, 10.0, 0.0, aligned)
+            val module = geometry.finderModulePoint(role)
+            assertTrue(geometry.moduleToImage(module.x, module.y).distanceTo(point) < .02)
+            assertEquals(mapOf(role to point), overlay.finderPoints())
+        }
+    }
+
+    @Test fun removingTheLastMeasuredFinderRetainsAnUnmeasuredRole() {
+        val overlay = overlay()
+        overlay.setVersion(1)
+        assertEquals(PreprocessOverlayView.RoleAssignment.ASSIGNED,
+            overlay.assignFinderRole(FinderRole.TOP_LEFT, PointD(50.0, 50.0)))
+        assertTrue(overlay.setVerifiedFinder(FinderRole.TOP_RIGHT,
+            FinderCandidate(185.0, 50.0, 10.0, 0.0, 1.0, 5, polarity = FinderPolarity.NORMAL)))
+        assertTrue(overlay.removeConfirmedFinder(FinderRole.TOP_RIGHT))
+        assertTrue(overlay.isLogicalGridAssigned())
+        assertEquals(FinderRole.TOP_LEFT, overlay.visibleFinderRole)
+        assertTrue(overlay.finderPoints().isEmpty())
+    }
+
     @Test fun selectedProjectivePreviewDoesNotReplaceEditableCorners() {
         val overlay = overlay()
         overlay.setVersion(1)

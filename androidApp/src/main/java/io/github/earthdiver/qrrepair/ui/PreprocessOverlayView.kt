@@ -40,6 +40,8 @@ class PreprocessOverlayView(context: Context) : View(context) {
     private var version = 1
     /** A periodicity estimate is sufficient for threshold preview, even before QR corner roles are confirmed. */
     var gridPreviewAvailable = false
+    /** The user moved a corner, so the corners describe the symbol even without an estimated grid. */
+    private var cornersEdited = false
         private set
     private var logicalGridAssigned = false
     private var mirroredInput = false
@@ -62,7 +64,18 @@ class PreprocessOverlayView(context: Context) : View(context) {
     private var dragStartCorner: PointD? = null
     private var cornerDragStarted = false
     var finderPlacementRole: FinderRole? = null
-    var onFinderHintPlaced: ((FinderRole, PointD) -> Unit)? = null
+        set(value) {
+            field = value
+            if (value != null) finderRemovalEnabled = false
+            invalidate()
+        }
+    /**
+     * Receives a Finder tap before anything is committed, with the assigned grid at that time (null
+     * when no logical grid is assigned yet) or else the displayed grid without orientation (null when
+     * none is shown). The receiver commits the result with [placeFinder]; a cancelled placement leaves
+     * the grid and Finders unchanged.
+     */
+    var onFinderHintPlaced: ((role: FinderRole, hint: PointD, grid: ImageQuad?, physicalGrid: ImageQuad?) -> Unit)? = null
     var onFinderPlacementRejected: ((FinderRole) -> Unit)? = null
     var onLogicalGridAssigned: ((quarterTurns: Int) -> Unit)? = null
     var onFinderRemoved: ((FinderRole) -> Unit)? = null
@@ -135,6 +148,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
         }
         gridPreviewAvailable = false
         logicalGridAssigned = false
+        cornersEdited = false
         invalidate()
     }
 
@@ -237,10 +251,10 @@ class PreprocessOverlayView(context: Context) : View(context) {
         invalidate()
     }
     fun beginFinderRemoval(): Boolean {
-        if (confirmedFinderRoles.isEmpty()) return false
-        finderRemovalEnabled = true
+        finderPlacementRole = null
+        finderRemovalEnabled = confirmedFinderRoles.isNotEmpty()
         invalidate()
-        return true
+        return finderRemovalEnabled
     }
     fun cancelFinderRemoval() { finderRemovalEnabled = false; invalidate() }
 
@@ -271,34 +285,85 @@ class PreprocessOverlayView(context: Context) : View(context) {
         invalidate()
         return ProvisionalFinderAdjustment(role)
     }
-    fun setFinderPoint(role: FinderRole, point: PointD): Boolean {
+    fun setFinderPoint(role: FinderRole, point: PointD, alignUnassigned: Boolean = false): Boolean {
         // Once orientation is known, the assigned position must also constrain the sampled grid.
-        if (logicalGridAssigned) {
-            val aligned = runCatching { alignQuadToFinders(imageQuad(), version, finderPoints() + (role to point)) }
+        val aligned = if (logicalGridAssigned || alignUnassigned) {
+            val oriented = if (logicalGridAssigned) imageQuad() else imageQuad().assignedFromFinder(point, role)
+            runCatching { alignQuadToFinders(oriented, version, finderPoints() + (role to point)) }
                 .getOrNull() ?: return false
-            aligned.asList().forEachIndexed { index, corner -> corners[index] = corner }
-        }
+        } else null
         assignLogicalGrid(point, role)
+        aligned?.asList()?.forEachIndexed { index, corner -> corners[index] = corner }
         if (visibleFinderRole == role) visibleFinderRole = null
         confirmedFinderEvidence.remove(role)
         finders[role] = point; autoDetectedFinders.remove(role); confirmedFinderRoles += role; invalidate()
         return true
     }
     fun setVerifiedFinder(role: FinderRole, candidate: FinderCandidate): Boolean {
-        if (!setFinderPoint(role, PointD(candidate.centerX, candidate.centerY))) return false
+        if (!setFinderPoint(role, PointD(candidate.centerX, candidate.centerY), alignUnassigned = true)) return false
         confirmedFinderEvidence[role] = candidate
         return true
+    }
+    /**
+     * Commits a tapped Finder: the refined [candidate] when given, otherwise [point] as the user's hint.
+     * Reports a placement that would fold the grid as rejected.
+     */
+    fun placeFinder(role: FinderRole, point: PointD, candidate: FinderCandidate? = null): Boolean {
+        val placed = if (candidate != null) setVerifiedFinder(role, candidate) else setFinderPoint(role, point)
+        if (!placed) {
+            onFinderPlacementRejected?.invoke(role)
+            return false
+        }
+        invalidate()
+        onFinderGeometryEdited?.invoke()
+        onGeometryEditFinished?.invoke()
+        return true
+    }
+    enum class RoleAssignment { ASSIGNED, KEPT_CONFIRMED, ORIENTED_BY_CONFIRMED, NO_GRID, TOO_FAR }
+
+    /**
+     * Assigns [role] for a tap where no Finder was detected. The grid is not moved and no Finder
+     * constraint is added: without an estimated or adjusted grid the tap is refused, and otherwise it
+     * only names the grid corner whose Finder position is nearest to [point].
+     */
+    fun assignFinderRole(role: FinderRole, point: PointD): RoleAssignment {
+        if (role in confirmedFinderRoles) return RoleAssignment.KEPT_CONFIRMED
+        if (confirmedFinderRoles.isNotEmpty()) return RoleAssignment.ORIENTED_BY_CONFIRMED
+        if (!logicalGridAssigned) {
+            if (!gridPreviewAvailable && !cornersEdited) return RoleAssignment.NO_GRID
+            val last = 16.0 + 4 * version - 3
+            val spots = listOf(3.0 to 3.0, last to 3.0, last to last, 3.0 to last).map { (mx, my) -> gridPoint(mx, my) }
+            val nearest = spots.indices.minBy { spots[it].distanceTo(point) }
+            if (spots[nearest].distanceTo(point) > finderTapTolerance()) return RoleAssignment.TOO_FAR
+            assignLogicalGrid(corners[nearest], role)
+        }
+        visibleFinderRole = role
+        invalidate()
+        onFinderGeometryEdited?.invoke()
+        onGeometryEditFinished?.invoke()
+        return RoleAssignment.ASSIGNED
     }
     var visibleFinderRole: FinderRole? = null
     var showCornerRoles = false
         set(value) { field = value; invalidate() }
 
     fun imageQuad(): ImageQuad = ImageQuad(corners[0], corners[1], corners[2], corners[3])
+    /** How far from a grid's Finder position a tap may land: four modules, or a fingertip on small grids. */
+    private fun finderTapTolerance(): Double {
+        val q = imageQuad()
+        val modulePitch = ((q.topLeft.distanceTo(q.topRight) + q.topLeft.distanceTo(q.bottomLeft)) /
+            (2.0 * (16 + 4 * version))).coerceAtLeast(.25)
+        val source = bitmap ?: return modulePitch * 4.0
+        val scale = min(width.toDouble() / source.width, height.toDouble() / source.height)
+        return if (scale > 0) max(modulePitch * 4.0, dp(36f) / scale) else modulePitch * 4.0
+    }
     internal fun expectedFinderCenter(role: FinderRole): PointD {
         val dimension = 17 + 4 * version
-        val d = (dimension - 1).toDouble()
-        val mx = if (role == FinderRole.TOP_RIGHT) dimension - 4.0 else 3.0
-        val my = if (role == FinderRole.BOTTOM_LEFT) dimension - 4.0 else 3.0
+        return gridPoint(if (role == FinderRole.TOP_RIGHT) dimension - 4.0 else 3.0, if (role == FinderRole.BOTTOM_LEFT) dimension - 4.0 else 3.0)
+    }
+    /** Image position of module center ([mx], [my]) on the bilinear grid through the current corners. */
+    private fun gridPoint(mx: Double, my: Double): PointD {
+        val d = (16 + 4 * version).toDouble()
         val u = mx / d
         val v = my / d
         val top = PointD(corners[0].x + (corners[1].x - corners[0].x) * u, corners[0].y + (corners[1].y - corners[0].y) * u)
@@ -414,6 +479,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
             (p.x + moduleDx * pitch).coerceIn(0.0, source.width.toDouble()),
             (p.y + moduleDy * pitch).coerceIn(0.0, source.height.toDouble()),
         )
+        cornersEdited = true
         dragPoint = corners[index]
         onGeometryEdited?.invoke()
         onGeometryEditFinished?.invoke()
@@ -853,27 +919,19 @@ class PreprocessOverlayView(context: Context) : View(context) {
                 finderPlacementRole?.let { role ->
                     parent?.requestDisallowInterceptTouchEvent(true)
                     if (logicalGridAssigned && role !in confirmedFinderRoles) {
-                        val q = imageQuad()
-                        val dimension = 17 + 4 * version
-                        val modulePitch = ((q.topLeft.distanceTo(q.topRight) + q.topLeft.distanceTo(q.bottomLeft)) /
-                            (2.0 * (dimension - 1))).coerceAtLeast(.25)
-                        val tolerance = max(modulePitch * 4.0, dp(36f) / scale)
-                        if (p.distanceTo(expectedFinderCenter(role)) > tolerance) {
+                        if (p.distanceTo(expectedFinderCenter(role)) > finderTapTolerance()) {
                             finderPlacementRole = null
                             onFinderPlacementRejected?.invoke(role)
                             invalidate()
                             return true
                         }
                     }
-                    if (!setFinderPoint(role, p)) {
-                        finderPlacementRole = null
-                        onFinderPlacementRejected?.invoke(role)
-                        return true
-                    }
                     finderPlacementRole = null; invalidate()
-                    onFinderGeometryEdited?.invoke()
-                    onGeometryEditFinished?.invoke()
-                    onFinderHintPlaced?.invoke(role, p)
+                    // The tap is only a hint until refinement decides where the Finder is.
+                    val receiver = onFinderHintPlaced
+                    if (receiver == null) placeFinder(role, p)
+                    else receiver(role, p, imageQuad().takeIf { logicalGridAssigned },
+                        imageQuad().takeIf { !logicalGridAssigned && gridPreviewAvailable })
                     return true
                 }
                 if (finderRemovalEnabled) {
@@ -929,6 +987,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
                             (startCorner.x + p.x - startTouch.x).coerceIn(0.0, source.width.toDouble()),
                             (startCorner.y + p.y - startTouch.y).coerceIn(0.0, source.height.toDouble()),
                         )
+                        cornersEdited = true
                         onGeometryEdited?.invoke()
                     }
                     // The magnifier and its crosshair follow the actual corner handle, not the

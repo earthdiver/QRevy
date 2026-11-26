@@ -18,17 +18,85 @@ object InitialGridEstimator {
         cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
         trace: GridEstimationTrace? = null): InitialGridEstimate? {
         cancellation.check()
+        // External boundaries are validated in source coordinates; they do not depend on the crop margin.
+        if (detectedBoundaries.isNotEmpty()) nativeEstimate(image, detectedBoundaries, cancellation, trace)?.let { return it }
+        // Several external symbols remain ambiguous; a single symbol window cannot decide between them.
+        if (detectedBoundaries.size <= 1) trace.measure("SYMBOL_WINDOW") {
+            estimateInSymbolWindow(image, cancellation, trace)
+        }?.let { return it }
+        return estimateInImage(image, detectedBoundaries, cancellation, trace)
+    }
+
+    private fun nativeEstimate(image: LumaImage, detectedBoundaries: List<ImageQuad>,
+        cancellation: RecoveryCancellation, trace: GridEstimationTrace?): InitialGridEstimate? {
         // Validate every boundary before coalescing: an unverified extra symbol must not
         // disappear merely because another candidate is strong enough to assign roles.
         val inverse by lazy { LumaImage(image.width, image.height, IntArray(image.pixels.size) { 255 - image.pixels[it] }) }
         val estimates = trace.measure("NATIVE_BOUNDARIES") {
             detectedBoundaries.map { fromBoundary(image, inverse, it, cancellation) }
         }
-        val native = if (estimates.all { it != null }) mergeNativeEstimates(estimates.filterNotNull()) else null
-        if (native != null) return native
+        return if (estimates.all { it != null }) mergeNativeEstimates(estimates.filterNotNull()) else null
+    }
+
+    /**
+     * Estimates in a window derived from the symbol content ([SymbolExtent]) rather than from the crop.
+     * The window adds a fixed proportional margin, filled with the surround tone where the crop is
+     * tighter, so a tight crop and a crop with a wide clean margin present the same pixels to the
+     * estimator. When that finds nothing, the content bounds alone are tried: a symbol whose outer
+     * modules are unknown has no edge of its own, and only the content extent can delimit it.
+     * Pixels inside the image are copied unchanged; the result is mapped back to source coordinates.
+     */
+    internal fun estimateInSymbolWindow(image: LumaImage,
+        cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
+        trace: GridEstimationTrace? = null): InitialGridEstimate? {
+        cancellation.check()
+        val bounds = SymbolExtent.bounds(image) ?: return null
+        // A light surround is the usual quiet zone; a dark one may belong to a light-on-dark symbol, and
+        // content reaching the image edge leaves either possible.
+        val surround = SymbolExtent.surroundTone(image)
+        val fills = when {
+            surround == null -> listOf(255, 0)
+            surround >= SymbolExtent.LIGHT_BORDER -> listOf(255)
+            else -> listOf(0, 255)
+        }
+        val side = maxOf(bounds[2] - bounds[0] + 1, bounds[3] - bounds[1] + 1)
+        for (margin in listOf(maxOf(8, (side * SYMBOL_WINDOW_MARGIN).toInt()), 0)) for (fill in fills) {
+            estimateInWindow(image, bounds, margin, fill, cancellation, trace)?.let { return it }
+        }
+        return null
+    }
+
+    private fun estimateInWindow(image: LumaImage, bounds: IntArray, margin: Int, fill: Int,
+        cancellation: RecoveryCancellation, trace: GridEstimationTrace?): InitialGridEstimate? {
+        cancellation.check()
+        val left = bounds[0] - margin; val top = bounds[1] - margin
+        val width = bounds[2] - bounds[0] + 1 + 2 * margin; val height = bounds[3] - bounds[1] + 1 + 2 * margin
+        val pixels = IntArray(width * height) { fill }
+        val x0 = maxOf(0, left); val x1 = minOf(image.width, left + width)
+        for (y in maxOf(0, top) until minOf(image.height, top + height))
+            image.pixels.copyInto(pixels, (y - top) * width + (x0 - left), y * image.width + x0, y * image.width + x1)
+        val windowed = estimateInImage(LumaImage(width, height, pixels), emptyList(), cancellation, trace) ?: return null
+        fun back(p: PointD) = PointD(p.x + left, p.y + top)
+        val quad = windowed.moduleCenterQuad.asList().map(::back)
+        val dimension = 17 + 4 * windowed.version
+        val pitch = (quad[0].distanceTo(quad[1]) + quad[0].distanceTo(quad[3])) / (2.0 * (dimension - 1))
+        // The symbol must come from the original pixels, not from the added uniform border.
+        if (quad.any { it.x < -1.5 * pitch || it.y < -1.5 * pitch ||
+                it.x > image.width - 1 + 1.5 * pitch || it.y > image.height - 1 + 1.5 * pitch }) return null
+        return windowed.copy(moduleCenterQuad = ImageQuad(quad[0], quad[1], quad[2], quad[3]),
+            autoAssignedFinders = windowed.autoAssignedFinders.mapValues { back(it.value) })
+    }
+
+    private const val SYMBOL_WINDOW_MARGIN = 0.15
+
+    /** Periodicity and two-Finder fallbacks after external boundaries, if any, did not validate. */
+    private fun estimateInImage(image: LumaImage, detectedBoundaries: List<ImageQuad>,
+        cancellation: RecoveryCancellation, trace: GridEstimationTrace?): InitialGridEstimate? {
+        cancellation.check()
+        val inverse by lazy { LumaImage(image.width, image.height, IntArray(image.pixels.size) { 255 - image.pixels[it] }) }
         fun periodicity(input: LumaImage) = GridPeriodicityEstimator.estimate(input, cancellation, trace)?.let {
             InitialGridEstimate(it.version, it.moduleCenterQuad, InitialGridSource.PERIODICITY)
-        }
+        }?.takeUnless { hasUniformPerimeter(input, it) }
         val normalPeriodicity = trace.measure("NORMAL_PERIODICITY") { periodicity(image) }
         val invertedPeriodicity = trace.measure("INVERTED_PERIODICITY") { periodicity(inverse) }
         if (normalPeriodicity != null || invertedPeriodicity != null) {
@@ -46,6 +114,38 @@ object InitialGridEstimator {
             trace.measure("NORMAL_TWO_FINDERS") { TwoFinderGridEstimator.estimate(image, cancellation) },
             trace.measure("INVERTED_TWO_FINDERS") { TwoFinderGridEstimator.estimate(inverse, cancellation) })
     }
+
+    /**
+     * A QR symbol's outermost modules always mix both colors: Finder edges are dark and separators
+     * are light. A periodic grid whose perimeter is almost one color, or mostly outside the image,
+     * extends into a uniform surround; in the opposite polarity a crop's light margin becomes such a
+     * surround and yields a larger grid that grows with the margin. Rejecting it keeps the estimate
+     * independent of how much margin the crop retained.
+     */
+    internal fun hasUniformPerimeter(image: LumaImage, estimate: InitialGridEstimate): Boolean {
+        val n = 17 + 4 * estimate.version
+        val last = (n - 1).toDouble()
+        val map = runCatching {
+            Homography.fromCorrespondences(
+                listOf(PointD(0.0, 0.0), PointD(last, 0.0), PointD(last, last), PointD(0.0, last)),
+                estimate.moduleCenterQuad.asList())
+        }.getOrNull() ?: return true
+        var dark = 0
+        var light = 0
+        var total = 0
+        for (i in 0 until n - 1) for ((x, y) in listOf(i to 0, n - 1 to i, n - 1 - i to n - 1, 0 to n - 1 - i)) {
+            total++
+            val p = map.map(x.toDouble(), y.toDouble())
+            val xi = kotlin.math.floor(p.x).toInt(); val yi = kotlin.math.floor(p.y).toInt()
+            if (xi !in 0 until image.width || yi !in 0 until image.height) continue
+            if (image.luma(xi, yi) <= image.threshold) dark++ else light++
+        }
+        val known = dark + light
+        return known * 2 < total || minOf(dark, light) < maxOf(3.0, known * UNIFORM_PERIMETER_FRACTION)
+    }
+
+    /** Separators alone keep at least six light perimeter modules in any genuine symbol. */
+    private const val UNIFORM_PERIMETER_FRACTION = 0.02
 
     /** Preserve periodicity geometry and role assignment; this only adjudicates conflicting grids. */
     internal fun resolvePeriodicityConflict(image: LumaImage, inverse: LumaImage,

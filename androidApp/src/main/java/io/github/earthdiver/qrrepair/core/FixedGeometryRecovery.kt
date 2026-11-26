@@ -413,14 +413,108 @@ internal fun prepareFinderDetection(image: LumaImage, profile: SamplingProfile?)
 }
 
 /** Search every permitted polarity; return evidence in original image coordinates. */
-internal fun refineFinder(image: LumaImage, settings: PreprocessSettings, hint: PointD): FinderCandidate? {
+internal fun refineFinder(image: LumaImage, settings: PreprocessSettings, hint: PointD): FinderCandidate? =
+    refineFinderPlacement(image, settings, hint).candidate
+
+internal enum class FinderRefinementOutcome {
+    /** A detected center is consistent with the tap and the current grid. */
+    REFINED,
+    /** No finder-like pattern was found near the tap. */
+    NOT_FOUND,
+    /** Patterns were found, but none fitted the tap and grid better than the tapped point itself. */
+    REJECTED,
+}
+
+/**
+ * Result of refining one tapped Finder. A rejected or missing refinement keeps the tapped point; the
+ * caller must not move an assigned Finder to an unrelated pattern.
+ */
+internal data class FinderRefinement(
+    val outcome: FinderRefinementOutcome,
+    val candidate: FinderCandidate? = null,
+    /** Distance between the tapped point and the accepted center, in reference module widths. */
+    val displacementModules: Double? = null,
+    /** Whether the tapped point lies on the accepted Finder's 7x7 modules. */
+    val tapOnFinder: Boolean = false,
+) {
+    /**
+     * A center found from a tap outside the Finder, or from a pattern that matches a Finder only in
+     * part, is shown to the user before it is used.
+     */
+    val needsConfirmation: Boolean
+        get() = outcome == FinderRefinementOutcome.REFINED && !tapOnFinder
+}
+
+/** A tap anywhere on a 7x7 Finder, including its corners, lies within this many modules of the center. */
+internal const val FINDER_SEARCH_RADIUS_MODULES = 5.0
+/** Half the side of a Finder: a tap within this many modules of the center along both Finder axes is on it. */
+internal const val FINDER_HALF_SIDE_MODULES = 3.5
+
+/** A partial inverted Finder must have at least this fraction of the grid's module width, and at most its inverse. */
+private const val INVERTED_PARTIAL_PITCH_MIN = 0.85
+/** A Finder recognized only by its core must be tapped within this many modules of that core. */
+internal const val FINDER_PARTIAL_TAP_MODULES = 1.5
+/** An assigned grid places a Finder within this many modules of where the user may tap for it. */
+internal const val FINDER_EXPECTED_TOLERANCE_MODULES = 4.0
+
+/** Whether [point] lies on the 7x7 modules of [finder], measured along the Finder's own axes. */
+internal fun FinderCandidate.contains(point: PointD, pitch: Double = moduleSize): Boolean {
+    val dx = point.x - centerX; val dy = point.y - centerY
+    val c = kotlin.math.cos(angleRad); val s = kotlin.math.sin(angleRad)
+    val u = (dx * c + dy * s) / pitch; val v = (-dx * s + dy * c) / pitch
+    return maxOf(kotlin.math.abs(u), kotlin.math.abs(v)) <= FINDER_HALF_SIDE_MODULES
+}
+/** A detected center must fit the Finder template clearly better than the tapped point to replace it. */
+private const val FINDER_TEMPLATE_MARGIN = 0.08
+private const val FINDER_SMALL_CORRECTION_MODULES = 0.5
+/** A sub-module correction may fit marginally worse at the sampled positions than a tap near the center. */
+private const val FINDER_SMALL_CORRECTION_TOLERANCE = 0.03
+
+/** Module width implied by the current corners, whether or not their logical roles are assigned yet. */
+internal fun finderReferencePitch(settings: PreprocessSettings): Double? {
+    val quad = settings.manualQuad ?: return null
+    val pitch = (quad.topLeft.distanceTo(quad.topRight) + quad.topLeft.distanceTo(quad.bottomLeft)) /
+        (2.0 * (16 + 4 * settings.version))
+    return pitch.takeIf { it.isFinite() && it >= .25 }
+}
+
+/**
+ * Refines a tapped Finder only within a Finder-sized neighborhood. Candidates are compared with the
+ * tapped point using the same template, so a damaged Finder that the detector cannot recognize keeps
+ * the user's point instead of moving to a nearby data pattern.
+ */
+internal fun refineFinderPlacement(image: LumaImage, settings: PreprocessSettings, hint: PointD,
+    role: FinderRole? = null, physicalGrid: ImageQuad? = null): FinderRefinement {
     val geometry = if (settings.automaticThresholds) settings.logicalQuad?.let { quad ->
         val pitch = (quad.topLeft.distanceTo(quad.topRight) + quad.topLeft.distanceTo(quad.bottomLeft)) /
             (2.0 * (16 + 4 * settings.version))
         runCatching { GridGeometry(settings.version, FinderRole.TOP_LEFT, quad.topLeft.x, quad.topLeft.y,
             pitch.coerceAtLeast(.25), 0.0, quad, GeometryModel.MANUAL_PROJECTIVE).reanchored() }.getOrNull()
     } else null
-    return settings.variants().flatMap { profile ->
+    // Unassigned corners may be a coarse default; only an assigned grid constrains the module width.
+    val referencePitch = finderReferencePitch(settings)?.takeIf { settings.logicalGridAssigned }
+    val searchRadius = referencePitch?.let { max(it * FINDER_SEARCH_RADIUS_MODULES, 8.0) }
+    // Where a grid places Finders; a pattern far from them is another pattern. An assigned grid knows the
+    // tapped role. An estimated grid without orientation allows a Finder at any of its four corners.
+    val physicalPitch = if (referencePitch == null && physicalGrid != null)
+        finderReferencePitch(settings.copy(manualQuad = physicalGrid)) else null
+    val checkPitch = referencePitch ?: physicalPitch
+    val expectedCenters: List<PointD>? = run {
+        val quad = (if (referencePitch != null) settings.logicalQuad else physicalGrid) ?: return@run null
+        val pitch = checkPitch ?: return@run null
+        val roles = if (referencePitch != null) listOfNotNull(role) else null
+        if (referencePitch != null && roles.isNullOrEmpty()) return@run null
+        runCatching {
+            val grid = GridGeometry(settings.version, FinderRole.TOP_LEFT, quad.topLeft.x, quad.topLeft.y,
+                pitch, 0.0, quad, GeometryModel.MANUAL_PROJECTIVE).reanchored()
+            val last = (grid.dimension - 4).toDouble()
+            val modules = roles?.map { grid.finderModulePoint(it) }
+                ?: listOf(PointD(3.0, 3.0), PointD(last, 3.0), PointD(3.0, last), PointD(last, last))
+            modules.map { grid.moduleToImage(it.x, it.y) }
+        }.getOrNull()
+    }
+    class Found(val candidate: FinderCandidate, val scorer: FinderDetector)
+    val found = settings.variants().flatMap { profile ->
         // A misaligned grid can hide the real finder while still producing a false candidate.
         // Compare both automatic threshold sources, even when grid-based detection succeeds.
         val thresholds = if (settings.automaticThresholds) listOfNotNull(
@@ -428,14 +522,52 @@ internal fun refineFinder(image: LumaImage, settings: PreprocessSettings, hint: 
             profile.provisionalThresholds,
         ).distinct() else listOf(ThresholdPair(settings.blackMax, settings.whiteMin))
         val input = prepareFinderDetection(image, profile)
+        // Score the tap and the candidate on the unmasked image in the same polarity.
+        val unmasked = if (!profile.inverted) image else
+            LumaImage(image.width, image.height, IntArray(image.pixels.size) { 255 - image.pixels[it] })
         thresholds.mapNotNull { pair ->
-            FinderDetector(input.image, pair.blackMax, pair.whiteMin)
-                .detectNear(input.toDetection(hint))?.let(input::toSource)?.copy(
+            val detector = FinderDetector(input.image, pair.blackMax, pair.whiteMin)
+            val point = input.toDetection(hint)
+            val detected = (if (searchRadius != null) detector.detectNear(point, searchRadius) else detector.detectNear(point))
+                ?.let(input::toSource)?.copy(
                     polarity = if (profile.inverted) FinderPolarity.INVERTED else FinderPolarity.NORMAL,
                     detectionSource = FinderDetectionSource.RAW,
-                )
+                ) ?: return@mapNotNull null
+            Found(detected, FinderDetector(unmasked, pair.blackMax, pair.whiteMin))
         }
-    }.maxByOrNull { it.score }
+    }
+    if (found.isEmpty()) return FinderRefinement(FinderRefinementOutcome.NOT_FOUND)
+    fun displacement(c: FinderCandidate) = hypot(c.centerX - hint.x, c.centerY - hint.y) / (checkPitch ?: c.moduleSize)
+    fun plausible(f: Found): Boolean {
+        val c = f.candidate
+        if (checkPitch != null && c.moduleSize !in checkPitch * .75..checkPitch * 1.33) return false
+        val moved = displacement(c)
+        if (moved > FINDER_SEARCH_RADIUS_MODULES) return false
+        if (expectedCenters != null && expectedCenters.none { hypot(c.centerX - it.x, c.centerY - it.y) <=
+                FINDER_EXPECTED_TOLERANCE_MODULES * checkPitch!! }) return false
+        // A partial pattern is accepted only around the core the user tapped; from elsewhere, including
+        // outside a Finder, only a complete Finder is offered.
+        if (c.evidence != FinderEvidence.COMPLETE_CROSS && moved > FINDER_PARTIAL_TAP_MODULES) return false
+        // Cells are read in normal polarity until reversal is known. The light ring around a normal
+        // Finder's core can match an inverted core in part, at a narrower module, so a partial inverted
+        // match must also agree with the grid's module width before it may establish reversal.
+        if (c.evidence != FinderEvidence.COMPLETE_CROSS && c.polarity == FinderPolarity.INVERTED &&
+            settings.confirmedFinderPolarity != FinderPolarity.INVERTED && settings.polarity != PolarityMode.INVERTED &&
+            checkPitch != null && c.moduleSize !in checkPitch * INVERTED_PARTIAL_PITCH_MIN..checkPitch / INVERTED_PARTIAL_PITCH_MIN) return false
+        // Both centers get the same pitch and angle search, so neither inherits the candidate's fit.
+        val pitches = listOfNotNull(c.moduleSize, referencePitch)
+        val tapFit = pitches.maxOf { f.scorer.bestTemplateFitAt(hint.x, hint.y, it) }
+        val candidateFit = pitches.maxOf { f.scorer.bestTemplateFitAt(c.centerX, c.centerY, it) }
+        return candidateFit >= tapFit + FINDER_TEMPLATE_MARGIN ||
+            (moved <= FINDER_SMALL_CORRECTION_MODULES && candidateFit >= tapFit - FINDER_SMALL_CORRECTION_TOLERANCE)
+    }
+    val accepted = found.filter(::plausible).maxByOrNull { f ->
+        f.candidate.score - 0.18 * displacement(f.candidate) / FINDER_SEARCH_RADIUS_MODULES
+    } ?: return FinderRefinement(FinderRefinementOutcome.REJECTED)
+    val candidate = accepted.candidate
+    return FinderRefinement(FinderRefinementOutcome.REFINED, candidate, displacement(candidate),
+        tapOnFinder = candidate.evidence == FinderEvidence.COMPLETE_CROSS &&
+            candidate.contains(hint))
 }
 
 internal fun manualGeometrySeeds(settings: PreprocessSettings): List<Pair<Int, ImageQuad>> {

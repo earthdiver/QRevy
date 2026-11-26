@@ -72,7 +72,10 @@ object BitmapUtils {
         }
     }
 
-    private const val MAX_PREPARED_DIMENSION = 1_800
+    /** Longest side of the analysis image. */
+    const val MAX_PREPARED_DIMENSION = 1_800
+    /** Longest side of the reduced copy used to locate symbol content for the initial crop. */
+    private const val EXTENT_DIMENSION = 1_024
     private const val MAX_TRANSFORM_DIMENSION = 2_600
     data class Prepared(val bitmap: Bitmap, val luma: LumaImage)
     data class Rectified(val prepared: Prepared, val qrQuad: io.github.earthdiver.qrrepair.core.ImageQuad)
@@ -117,6 +120,27 @@ object BitmapUtils {
             setPixels(pixels, 0, size, 0, 0, size, size)
         }
     }
+
+    /** Initial crop around the symbol content, located on a reduced copy; null keeps the whole image. */
+    fun symbolInitialCrop(source: Bitmap): RectF? {
+        val reduced = prepare(source, EXTENT_DIMENSION)
+        try {
+            val f = io.github.earthdiver.qrrepair.core.SymbolExtent.initialCrop(reduced.luma) ?: return null
+            return RectF((f[0] * source.width).toFloat(), (f[1] * source.height).toFloat(),
+                (f[2] * source.width).toFloat(), (f[3] * source.height).toFloat())
+        } finally {
+            if (reduced.bitmap !== source && !reduced.bitmap.isRecycled) reduced.bitmap.recycle()
+        }
+    }
+
+    /**
+     * Scale applied to a crop before analysis. The basis is the larger of the crop and the initial
+     * crop, so adding margin beyond the symbol never lowers the resolution below that of the initial
+     * crop, and narrowing the crop does not raise it either.
+     */
+    fun analysisCropScale(cropWidth: Float, cropHeight: Float, basisWidth: Float, basisHeight: Float,
+                          maxDimension: Int = MAX_PREPARED_DIMENSION): Double =
+        minOf(1.0, maxDimension / maxOf(cropWidth, cropHeight, basisWidth, basisHeight).toDouble())
 
     fun prepare(source: Bitmap, maxDimension: Int = MAX_PREPARED_DIMENSION): Prepared {
         val (width, height) = preparedSize(source.width, source.height, maxDimension)

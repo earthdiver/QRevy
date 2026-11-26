@@ -317,7 +317,9 @@ class PostTerminatorDialogTest {
             MainActivity::class.java.getDeclaredMethod("showCodewordHex").apply { isAccessible = true }.invoke(activity)
             val dialog = ShadowDialog.getLatestDialog() as AlertDialog
             val toggles = descendants(dialog.window!!.decorView).filterIsInstance<android.widget.ToggleButton>()
-            toggles.single { it.textOff == activity.getString(R.string.raw_data_view) }.isChecked = true
+            assertFalse(toggles.single { it.textOff == "制約・RS修復前" }.isChecked)
+            assertTrue(toggles.single { it.textOff == activity.getString(R.string.mask_before) }.isChecked)
+            assertTrue(toggles.single { it.textOff == activity.getString(R.string.raw_data_view) }.isChecked)
             fun content() = descendants(dialog.window!!.decorView).filterIsInstance<TextView>()
                 .map { it.text.toString() }.first { it.contains("未検証の診断情報") || it.contains("修復後候補はありません") }
             assertTrue(content().contains("Text: 人間"))

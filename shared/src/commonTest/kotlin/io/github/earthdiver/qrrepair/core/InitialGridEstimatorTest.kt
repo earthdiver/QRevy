@@ -227,7 +227,7 @@ class InitialGridEstimatorTest {
         }
     }
 
-    @Test fun oppositePolarityBackgroundGridPreventsAutomaticSelectionInEitherPolarity() {
+    @Test fun oppositePolarityBackgroundGridOnAUniformSurroundIsNotASymbol() {
         val q = ImageQuad(PointD(28.0, 28.0), PointD(259.0, 28.0), PointD(259.0, 259.0), PointD(28.0, 259.0))
         val image = render(4, q, finders = false)
         val inverse = LumaImage(image.width, image.height, IntArray(image.pixels.size) { 255 - image.pixels[it] })
@@ -235,9 +235,14 @@ class InitialGridEstimatorTest {
         val inverted = assertNotNull(GridPeriodicityEstimator.estimate(inverse))
         assertEquals(4, normal.version)
         assertEquals(10, inverted.version)
-        for (boundaries in listOf(emptyList(), listOf(q))) {
-            assertNull(InitialGridEstimator.estimate(image, boundaries))
-            assertNull(InitialGridEstimator.estimate(inverse, boundaries))
+        assertTrue(InitialGridEstimator.hasUniformPerimeter(inverse,
+            InitialGridEstimate(inverted.version, inverted.moduleCenterQuad, InitialGridSource.PERIODICITY)))
+        for (boundaries in listOf(emptyList(), listOf(q))) for (input in listOf(image, inverse)) {
+            val result = assertNotNull(InitialGridEstimator.estimate(input, boundaries))
+            assertEquals(4, result.version)
+            // Without Finder evidence the grid is offered for review, never as confirmed roles or polarity.
+            assertTrue(result.autoAssignedFinders.isEmpty())
+            assertEquals(FinderPolarity.UNKNOWN, result.confirmedPolarity)
         }
     }
 
@@ -402,6 +407,46 @@ class InitialGridEstimatorTest {
             ImageQuad(shifted[0], shifted[1], shifted[2], shifted[3])))
         assertEquals(4, result.version)
         assertTrue(result.autoAssignedFinders.isEmpty())
+    }
+
+    @Test fun cropMarginDoesNotChangeTheEstimatedGrid() {
+        val unit = 6
+        for (version in listOf(2, 3, 5)) {
+            val span = (17 + 4 * version) * unit
+            // From a crop that removed the quiet zone to one with a wide clean margin.
+            for (modules in listOf(0, 1, 2, 4, 8, 16, 32)) {
+                val margin = modules * unit
+                val size = span + 2 * margin
+                val a = margin.toDouble(); val b = a + span
+                val image = render(version, ImageQuad(PointD(a, a), PointD(b, a), PointD(b, b), PointD(a, b)), size = size)
+                val result = assertNotNull(InitialGridEstimator.estimate(image, emptyList()), "V$version margin=$modules")
+                assertEquals(version, result.version, "V$version margin=$modules")
+                val expected = listOf(PointD(a + unit / 2.0, a + unit / 2.0), PointD(b - unit / 2.0, a + unit / 2.0),
+                    PointD(b - unit / 2.0, b - unit / 2.0), PointD(a + unit / 2.0, b - unit / 2.0))
+                for ((actual, center) in result.moduleCenterQuad.asList().zip(expected))
+                    assertTrue(actual.distanceTo(center) < unit * .5, "V$version margin=$modules $actual $center")
+            }
+        }
+    }
+
+    @Test fun lightCropMarginIsNotReadAsAnInvertedGrid() {
+        val unit = 6
+        val span = 29 * unit
+        for (modules in listOf(4, 12, 40)) {
+            val margin = modules * unit
+            val size = span + 2 * margin
+            val a = margin.toDouble(); val b = a + span
+            val image = render(3, ImageQuad(PointD(a, a), PointD(b, a), PointD(b, b), PointD(a, b)), size = size)
+            val inverse = LumaImage(size, size, IntArray(size * size) { 255 - image.pixels[it] })
+            // In the opposite polarity the light margin is a uniform dark surround, not a larger symbol.
+            GridPeriodicityEstimator.estimate(inverse)?.let { alias ->
+                assertTrue(InitialGridEstimator.hasUniformPerimeter(inverse,
+                    InitialGridEstimate(alias.version, alias.moduleCenterQuad, InitialGridSource.PERIODICITY)), "margin=$modules")
+            }
+            val genuine = assertNotNull(GridPeriodicityEstimator.estimate(image))
+            assertTrue(!InitialGridEstimator.hasUniformPerimeter(image,
+                InitialGridEstimate(genuine.version, genuine.moduleCenterQuad, InitialGridSource.PERIODICITY)))
+        }
     }
 
 }

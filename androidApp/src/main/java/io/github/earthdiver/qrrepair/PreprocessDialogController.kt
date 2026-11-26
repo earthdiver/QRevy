@@ -344,26 +344,65 @@ internal class PreprocessDialogController(
                 Toast.LENGTH_LONG,
             ).show()
         }
-        overlay.onFinderHintPlaced = finderHint@{ role, hint ->
-            val profile = activePreviewProfile ?: return@finderHint
+        overlay.onFinderHintPlaced = finderHint@{ role, hint, grid, physicalGrid ->
+            // Without a detected Finder the tap only names a corner of the grid; it never moves the grid.
+            fun assignRoleOnly() {
+                val label = when (role) {
+                    FinderRole.TOP_LEFT -> getString(R.string.top_left)
+                    FinderRole.TOP_RIGHT -> getString(R.string.top_right)
+                    FinderRole.BOTTOM_LEFT -> getString(R.string.bottom_left)
+                }
+                val message = when (overlay.assignFinderRole(role, hint)) {
+                    PreprocessOverlayView.RoleAssignment.ASSIGNED -> {
+                        refreshCornerControls()
+                        noteDraftChange("corner-orientation", ui("Finder役割を指定", "Assigned Finder role"), label)
+                        ui("Finderを検出できなかったため、格子は動かさずに$label の役割だけを指定しました。位置は四隅で調整してください。",
+                            "No Finder was detected, so only the $label role was assigned and the grid was not moved. Adjust the corners to place it.")
+                    }
+                    PreprocessOverlayView.RoleAssignment.KEPT_CONFIRMED ->
+                        ui("Finderを検出できませんでした。確定済みの$label Finderは変更していません。", "No Finder was detected. The confirmed $label Finder is unchanged.")
+                    PreprocessOverlayView.RoleAssignment.ORIENTED_BY_CONFIRMED ->
+                        ui("Finderを検出できませんでした。格子の向きは確定済みのFinderで決まっているため、変更していません。", "No Finder was detected. The grid orientation is set by the confirmed Finder and is unchanged.")
+                    PreprocessOverlayView.RoleAssignment.NO_GRID ->
+                        ui("Finderを検出できませんでした。四隅を調整してから役割を指定してください。", "No Finder was detected. Adjust the corners, then assign the role.")
+                    PreprocessOverlayView.RoleAssignment.TOO_FAR ->
+                        ui("Finderを検出できませんでした。格子の角にあるFinderの位置をタップしてください。", "No Finder was detected. Tap the Finder position at a corner of the grid.")
+                }
+                Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+            }
+            val profile = activePreviewProfile ?: return@finderHint assignRoleOnly()
             val finderToken = finderSearchGeneration.incrementAndGet()
             val finderWorking = editor.working
+            // Search around the tap with the grid as it was before the tap: nothing is committed yet, so
+            // the tap cannot shift the grid and mask the parts of the Finder that it misses.
             val finderProfile = profile.copy(settings = profile.settings.copy(
-                manualQuad = overlay.imageQuad().takeIf { overlay.isLogicalGridAssigned() },
+                manualQuad = grid,
+                logicalGridAssigned = grid != null,
                 confirmedFinderPolarity = overlay.confirmedFinderPolarity(),
             ))
             Toast.makeText(this, ui("指定位置の周辺からFinderを精密探索中…", "Refining the Finder near the selected position…"), Toast.LENGTH_SHORT).show()
             executor.execute {
-                val refined = io.github.earthdiver.qrrepair.core.refineFinder(finderWorking.luma, finderProfile.settings, hint)
+                val refinement = io.github.earthdiver.qrrepair.core.refineFinderPlacement(finderWorking.luma, finderProfile.settings, hint, role, physicalGrid)
                 runOnUiThread {
-                    if (finderToken != finderSearchGeneration.get() || editor.working !== finderWorking) return@runOnUiThread
-                    if (refined == null || !overlay.setVerifiedFinder(role, refined)) {
-                        Toast.makeText(this, ui("周辺でFinderを確定できませんでした。指定点をヒントとして解析します。", "The Finder could not be confirmed nearby. The selected point will be used as a hint."), Toast.LENGTH_LONG).show()
-                    } else {
+                    fun current() = finderToken == finderSearchGeneration.get() && editor.working === finderWorking
+                    if (!current()) return@runOnUiThread
+                    fun applyRefined(refined: io.github.earthdiver.qrrepair.core.FinderCandidate) {
+                        if (!overlay.placeFinder(role, hint, refined)) return
                         editor.invalidateCorrections()
                         refreshCornerControls()
                         refreshClassificationMatrix()
                         Toast.makeText(this, ui("Finder位置を自動補正しました（モジュール幅 ${"%.1f".format(refined.moduleSize)}px）", "Finder position refined (module width ${"%.1f".format(refined.moduleSize)} px)"), Toast.LENGTH_SHORT).show()
+                    }
+                    val refined = refinement.candidate
+                    when {
+                        refined == null -> assignRoleOnly()
+                        // A tap outside the Finder is not used as its center; cancelling leaves everything as before the tap.
+                        refinement.needsConfirmation -> AlertDialog.Builder(activity)
+                            .setMessage(ui("タップ位置はFinderの外側です。近くで検出したFinderの中心を使いますか？", "The tapped point is outside the Finder. Use the Finder center detected nearby?"))
+                            .setPositiveButton(ui("検出位置を使う", "Use detected position")) { _, _ -> if (current()) applyRefined(refined) }
+                            .setNegativeButton(R.string.cancel, null)
+                            .show()
+                        else -> applyRefined(refined)
                     }
                 }
             }

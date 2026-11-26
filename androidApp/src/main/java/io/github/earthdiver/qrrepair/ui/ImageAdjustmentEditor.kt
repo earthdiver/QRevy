@@ -19,6 +19,7 @@ import io.github.earthdiver.qrrepair.R
 import io.github.earthdiver.qrrepair.PrecisionStyle
 import io.github.earthdiver.qrrepair.core.ImageAdjustment
 import io.github.earthdiver.qrrepair.createIndependentCrop
+import kotlin.math.roundToInt
 
 /** One shared crop/tone editor for camera imports, file imports, and later tone changes.
  * The caller owns [original]; this view owns composites and temporary rotations. */
@@ -33,7 +34,7 @@ class ImageAdjustmentEditor(
     private val onApply: (ImageAdjustment) -> Unit,
 ) : LinearLayout(context) {
     private val whiteSource = BitmapUtils.onWhiteBackground(original)
-    val preview = CropOverlayView(context).apply { cropEnabled = allowCrop; setBitmap(whiteSource) }
+    val preview = CropOverlayView(context).apply { cropEnabled = allowCrop; setBitmap(whiteSource, initialCrop(whiteSource)) }
     var adjustment: ImageAdjustment = initial
         private set
     var showingBefore: Boolean = false
@@ -274,7 +275,7 @@ class ImageAdjustmentEditor(
         if (rotated !== whiteSource && rotated !== next) rotated.recycle()
         rotated = next
         rotation = normalized
-        preview.setBitmap(next)
+        preview.setBitmap(next, initialCrop(next))
         refreshPreview()
     }
 
@@ -287,7 +288,23 @@ class ImageAdjustmentEditor(
         applyButton.contentDescription = applyButton.text
     }
 
-    fun createCrop(): Bitmap = createIndependentCrop(rotated, preview.cropRect()).getOrThrow()
+    private fun initialCrop(source: Bitmap): RectF? = if (allowCrop) BitmapUtils.symbolInitialCrop(source) else null
+
+    /** The selected pixels, reduced so the larger of the selection and the initial crop fits the analysis size. */
+    fun createCrop(): Bitmap {
+        val selection = preview.cropRect()
+        val basis = preview.initialCropRect()
+        val cropped = createIndependentCrop(rotated, selection).getOrThrow()
+        val scale = BitmapUtils.analysisCropScale(cropped.width.toFloat(), cropped.height.toFloat(), basis.width(), basis.height())
+        if (scale >= 1.0) return cropped
+        return try {
+            Bitmap.createScaledBitmap(cropped, (cropped.width * scale).roundToInt().coerceAtLeast(1),
+                (cropped.height * scale).roundToInt().coerceAtLeast(1), true).also { if (it !== cropped) cropped.recycle() }
+        } catch (error: Throwable) {
+            cropped.recycle()
+            throw error
+        }
+    }
 
     fun setBusy(value: Boolean) {
         busy = value

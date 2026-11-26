@@ -87,6 +87,148 @@ class PreprocessDialogControllerTest {
         }
     }
 
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun externalImagesRetainRecoveryAcrossDetailedEditorOperations() {
+        val directory = System.getenv("QREVY_DIAGNOSTIC_IMAGES")
+        val manifest = System.getenv("QREVY_DIAGNOSTIC_MANIFEST")
+        org.junit.Assume.assumeTrue(directory != null && manifest != null)
+        val reports = org.json.JSONArray(java.io.File(requireNotNull(manifest)).readText())
+        val failures = mutableListOf<String>()
+        for (index in 0 until reports.length()) {
+            val report = reports.getJSONObject(index)
+            val expected = report.optString("quickText")
+            if (expected.isEmpty() || !report.has("initialSettings")) continue
+            val name = report.getString("name")
+            require(java.io.File(name).name == name)
+            val json = report.getJSONObject("initialSettings")
+            val coordinates = json.getJSONArray("quad")
+            val points = (0..3).map { PointD(coordinates.getDouble(it * 2), coordinates.getDouble(it * 2 + 1)) }
+            val clusters = json.optJSONArray("colorClusters")
+            val finders = json.optJSONArray("finders")
+            val warp = json.optJSONArray("warp")
+            val preview = if (warp == null) null else {
+                val previewCoordinates = json.optJSONArray("previewQuad") ?: coordinates
+                val previewPoints = (0..3).map { PointD(previewCoordinates.getDouble(it * 2), previewCoordinates.getDouble(it * 2 + 1)) }
+                val quad = ImageQuad(previewPoints[0], previewPoints[1], previewPoints[2], previewPoints[3])
+                val version = json.getInt("version")
+                val pitch = (quad.topLeft.distanceTo(quad.topRight) + quad.topLeft.distanceTo(quad.bottomLeft)) / (2 * (16 + 4 * version))
+                GridGeometry(version, FinderRole.TOP_LEFT, quad.topLeft.x, quad.topLeft.y, pitch, 0.0, quad,
+                    GeometryModel.THIN_PLATE_SPLINE, ThinPlateWarp((0 until warp.length() / 5).map {
+                        WarpLandmark(PointD(warp.getDouble(it * 5), warp.getDouble(it * 5 + 1)),
+                            PointD(warp.getDouble(it * 5 + 2), warp.getDouble(it * 5 + 3)), warp.getDouble(it * 5 + 4))
+                    })).reanchored()
+            }
+            val settings = PreprocessSettings(version = json.getInt("version"),
+                manualQuad = ImageQuad(points[0], points[1], points[2], points[3]), logicalGridAssigned = true,
+                distortionCorrection = json.optBoolean("curved"), previewGeometry = preview,
+                photographicSource = json.optBoolean("photographicSource", true),
+                formatMismatchLimitMode = ErrorLimitMode.valueOf(json.optString("formatLimitMode", "AUTOMATIC")),
+                dataEccMismatchLimitMode = ErrorLimitMode.valueOf(json.optString("dataLimitMode", "AUTOMATIC")),
+                formatMismatchLimit = json.optInt("formatLimit", 6), dataEccMismatchLimit = json.optInt("dataLimit", 20),
+                partialBitSearchLimit = json.optInt("partial", 12), listDecodingAdditionalErrors = json.optInt("list", 1),
+                knownBitErrorLimit = json.optInt("known"), prioritySearchLimit = json.optInt("priorityLimit", 4),
+                manualFinders = if (finders == null) emptyMap() else (0 until finders.length() / 3).associate {
+                    val role = when (finders.getInt(it * 3)) {
+                        0 -> FinderRole.TOP_LEFT
+                        1 -> FinderRole.TOP_RIGHT
+                        3 -> FinderRole.BOTTOM_LEFT
+                        else -> error("Invalid Finder role")
+                    }
+                    role to PointD(finders.getDouble(it * 3 + 1), finders.getDouble(it * 3 + 2))
+                },
+                lmCorrectionEnabled = json.optBoolean("lmEnabled", true), automaticThresholds = json.optBoolean("automatic", true),
+                blackMax = json.optInt("black", 96), whiteMin = json.optInt("white", 160),
+                provisionalBlackMax = json.optInt("provisionalBlack", 96), provisionalWhiteMin = json.optInt("provisionalWhite", 160),
+                confirmedFinderPolarity = FinderPolarity.valueOf(json.optString("confirmedPolarity", "UNKNOWN")),
+                polarity = PolarityMode.valueOf(json.optString("polarity", "AUTO")),
+                trustKnownPayloadCount = json.optBoolean("single"), assumeUtf8ByteSegments = json.optBoolean("utf8"),
+                useUnknownColorClusters = json.optBoolean("colorUnknown"),
+                unknownColorClusters = if (clusters == null) emptyList() else (0 until clusters.length() / 4).map {
+                    UnknownColorCluster(clusters.getInt(it * 4), clusters.getInt(it * 4 + 1), clusters.getInt(it * 4 + 2), clusters.getInt(it * 4 + 3))
+                })
+            try {
+                val original = requireNotNull(android.graphics.BitmapFactory.decodeFile(java.io.File(directory, name).path))
+                val padded = Bitmap.createBitmap(original.width + 64, original.height + 64, Bitmap.Config.ARGB_8888)
+                padded.eraseColor(Color.WHITE)
+                Canvas(padded).drawBitmap(original, 32f, 32f, null)
+                val cropEditor = io.github.earthdiver.qrrepair.ui.ImageAdjustmentEditor(
+                    org.robolectric.RuntimeEnvironment.getApplication(), padded, onCancel = {}, onApply = {})
+                cropEditor.preview.restoreCrop(android.graphics.RectF(32f, 32f, original.width + 32f, original.height + 32f))
+                val cropped = cropEditor.createCrop()
+                println("EXTERNAL_CROP $name source=${original.width}x${original.height} cropped=${cropped.width}x${cropped.height}")
+                cropEditor.dispose(); padded.recycle(); original.recycle()
+                withDialog(settings, sourceBitmap = cropped) { dialog, host, source, _ ->
+                    val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
+                    overlay.layout(0, 0, cropped.width, cropped.height)
+                    var foundExpected = false
+                    fun verify(stage: String, requireExpected: Boolean = false): Boolean {
+                        shadowOf(Looper.getMainLooper()).idle()
+                        val current = requireNotNull(host.session).captureDraft().settings
+                        val accumulator = RecoveryResultAccumulator()
+                        for (profile in current.variants()) AutoRecoveryEngine().run(source.luma,
+                            profile = profile, resultAccumulator = accumulator)
+                        val entries = accumulator.result().entries
+                        val texts = entries.mapNotNull { it.candidate.text }.distinct()
+                        println("EXTERNAL_EDITOR $name $stage candidates=${entries.size} matches=${expected in texts}")
+                        println("EXTERNAL_PAYLOADS ${org.json.JSONObject().put("name", name).put("stage", stage).put("texts", org.json.JSONArray(texts))}")
+                        foundExpected = foundExpected || expected in texts
+                        if (requireExpected && expected !in texts) failures += "$name $stage: expected payload absent"
+                        return expected in texts
+                    }
+                    fun touch(action: Int, point: PointD) {
+                        val event = MotionEvent.obtain(0, 0, action, point.x.toFloat(), point.y.toFloat(), 0)
+                        try { overlay.onTouchEvent(event) } finally { event.recycle() }
+                        shadowOf(Looper.getMainLooper()).idle()
+                    }
+                    fun assign() {
+                        for (role in FinderRole.entries) {
+                            val point = overlay.expectedFinderCenter(role)
+                            overlay.finderPlacementRole = role
+                            touch(MotionEvent.ACTION_DOWN, point)
+                            val confirmation = ShadowDialog.getLatestDialog()
+                            if (confirmation !== dialog && confirmation is AlertDialog && confirmation.isShowing) {
+                                confirmation.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+                                shadowOf(Looper.getMainLooper()).idle()
+                            }
+                        }
+                    }
+                    val baselineMatched = verify("cropped-detailed")
+                    overlay.clearFinders(); overlay.setPhysicalImageQuad(overlay.imageQuad())
+                    for (corner in 0..3) {
+                        val point = overlay.imageQuad().asList()[corner]
+                        touch(MotionEvent.ACTION_DOWN, point); touch(MotionEvent.ACTION_UP, point)
+                        assertTrue(overlay.nudgeSelectedCorner(.25, 0.0))
+                        assertTrue(overlay.nudgeSelectedCorner(-.25, 0.0))
+                    }
+                    assign(); verify("corners-and-finders", requireExpected = baselineMatched)
+                    for ((_, point) in overlay.finderPoints()) {
+                        overlay.beginFinderRemoval(); touch(MotionEvent.ACTION_DOWN, point)
+                    }
+                    if (overlay.visibleFinderRole != null) click(dialog, "位置未測定の役割指定を解除")
+                    assertFalse(overlay.isLogicalGridAssigned())
+                    assign(); verify("removed-and-reassigned", requireExpected = baselineMatched)
+                    val boxes = views(dialog.window!!.decorView).filterIsInstance<CheckBox>()
+                    val single = boxes.single { it.text.toString() == "単一セグメントの終端後構造を強制する" }
+                    val utf8 = boxes.single { it.text.toString() == dialog.context.getString(R.string.assume_utf8_byte_segments) }
+                    for ((singleEnabled, utf8Enabled) in listOf(false to false, true to false, false to true, true to true)) {
+                        if (singleEnabled && !single.isEnabled) {
+                            println("EXTERNAL_EDITOR $name single=$singleEnabled utf8=$utf8Enabled unavailable")
+                            continue
+                        }
+                        single.isChecked = singleEnabled; utf8.isChecked = utf8Enabled
+                        verify("single=$singleEnabled utf8=$utf8Enabled", requireExpected = false)
+                    }
+                    assertTrue("$name: expected payload absent under all supported assumptions", foundExpected)
+                }
+            } catch (error: Throwable) {
+                failures += "$name: ${error.message}"
+                error.printStackTrace()
+            }
+        }
+        assertTrue(failures.joinToString("\n"), failures.isEmpty())
+    }
+
     @Test fun finderPlacementKeepsLmEnabledAndSavesItEvenWhenFittingFails() {
         withDialog(PreprocessSettings(version = 1, lmCorrectionEnabled = true)) { dialog, host, _, _ ->
             val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
@@ -96,9 +238,8 @@ class PreprocessDialogControllerTest {
             click(dialog, "左上")
             assertTrue(lm.isChecked)
             overlay.layout(0, 0, 240, 240)
-            val point = overlay.expectedFinderCenter(FinderRole.TOP_LEFT)
-            val event = MotionEvent.obtain(0L, 0L, MotionEvent.ACTION_DOWN, point.x.toFloat(), point.y.toFloat(), 0)
-            try { assertTrue(overlay.onTouchEvent(event)) } finally { event.recycle() }
+            // The blank image has no Finder to detect, so commit the placement a detection would make.
+            assertTrue(overlay.placeFinder(FinderRole.TOP_LEFT, overlay.expectedFinderCenter(FinderRole.TOP_LEFT)))
             assertTrue(overlay.finderPoints().containsKey(FinderRole.TOP_LEFT))
             shadowOf(Looper.getMainLooper()).idle()
             assertTrue(lm.isChecked)
@@ -129,9 +270,8 @@ class PreprocessDialogControllerTest {
             withDialog(initial) { dialog, host, _, _ ->
                 val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
                 overlay.layout(0, 0, 240, 240)
-                overlay.finderPlacementRole = role
-                val event = MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, target.x.toFloat(), target.y.toFloat(), 0)
-                try { assertTrue(overlay.onTouchEvent(event)) } finally { event.recycle() }
+                // The blank image has no Finder to detect, so commit the moved Finder a detection would report.
+                assertTrue(overlay.placeFinder(role, target))
                 shadowOf(Looper.getMainLooper()).idle()
                 val sampled = requireNotNull(overlay.previewGeometry())
                 assertTrue(sampled.moduleToImage(module.x, module.y).distanceTo(target) < .02)
@@ -156,6 +296,150 @@ class PreprocessDialogControllerTest {
                 assertEquals(edits, saved.fixedPreRecoveryEdits)
                 assertTrue(saved.manualFinders.getValue(role).distanceTo(target) < .001)
                 finders.filterKeys { it != role }.forEach { (r, point) -> assertEquals(point, saved.manualFinders[r]) }
+            }
+        }
+    }
+
+    /** A version 2 symbol filling the image without a quiet zone, with unknown gray data regions. */
+    private fun edgeFinderSymbol(unit: Int): Bitmap {
+        val n = 25
+        fun black(x: Int, y: Int): Boolean {
+            for ((sx, sy) in listOf(0 to 0, n - 7 to 0, 0 to n - 7)) {
+                val dx = x - sx; val dy = y - sy
+                if (dx in -1..7 && dy in -1..7) {
+                    if (dx !in 0..6 || dy !in 0..6) return false
+                    return dx == 0 || dy == 0 || dx == 6 || dy == 6 || (dx in 2..4 && dy in 2..4)
+                }
+            }
+            if (x == 6 && y in 8..n - 9) return y % 2 == 0
+            if (y == 6 && x in 8..n - 9) return x % 2 == 0
+            return (x * 17 + y * 11 + x * y) % 7 < 3
+        }
+        val size = n * unit
+        val pixels = IntArray(size * size) { i ->
+            val x = (i % size) / unit; val y = (i / size) / unit
+            when {
+                (x in 9..16 && y in 9..20) || (x in 13..16 && y < 6) -> Color.rgb(128, 128, 128)
+                black(x, y) -> Color.BLACK
+                else -> Color.WHITE
+            }
+        }
+        return Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888).apply { setPixels(pixels, 0, size, 0, 0, size, size) }
+    }
+
+    @Test fun finderTapOnTheFinderMovesToItsCenterWithoutConfirmation() {
+        val unit = 8
+        fun center(mx: Double, my: Double) = PointD((mx + .5) * unit, (my + .5) * unit)
+        val truth = ImageQuad(center(0.0, 0.0), center(24.0, 0.0), center(24.0, 24.0), center(0.0, 24.0))
+        val others = mapOf(FinderRole.TOP_RIGHT to center(21.0, 3.0), FinderRole.BOTTOM_LEFT to center(3.0, 21.0))
+        // Taps anywhere on the top-left Finder of a symbol without a quiet zone, away from its center.
+        for ((dx, dy) in listOf(1.0 to 0.0, 1.5 to 1.5, 2.5 to 0.0, 0.0 to 2.5, 3.0 to 3.0)) {
+            val bitmap = edgeFinderSymbol(unit)
+            val initial = PreprocessSettings(version = 2, manualQuad = truth, manualFinders = others, lmCorrectionEnabled = false)
+            withDialog(initial, sourceBitmap = bitmap) { dialog, _, _, _ ->
+                val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
+                overlay.layout(0, 0, bitmap.width, bitmap.height)
+                overlay.finderPlacementRole = FinderRole.TOP_LEFT
+                val tap = center(3.0 + dx, 3.0 + dy)
+                val event = MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, tap.x.toFloat(), tap.y.toFloat(), 0)
+                try { assertTrue(overlay.onTouchEvent(event)) } finally { event.recycle() }
+                shadowOf(Looper.getMainLooper()).idle()
+                val label = "tap offset ($dx, $dy)"
+                assertSame(label, dialog, ShadowDialog.getLatestDialog())
+                assertTrue(label, overlay.finderPoints().getValue(FinderRole.TOP_LEFT).distanceTo(center(3.0, 3.0)) < unit * .15)
+                truth.asList().zip(overlay.imageQuad().asList()).forEach { (expected, actual) ->
+                    assertTrue("$label: $actual vs $expected", actual.distanceTo(expected) < unit * .15)
+                }
+            }
+        }
+    }
+
+    @Test fun finderTapWithoutADetectedFinderOnlyAssignsTheRoleAndKeepsTheGrid() {
+        val unit = 8
+        val size = 25 * unit
+        fun center(mx: Double, my: Double) = PointD((mx + .5) * unit, (my + .5) * unit)
+        val physical = ImageQuad(center(0.0, 0.0), center(24.0, 0.0), center(24.0, 24.0), center(0.0, 24.0))
+        fun tap(overlay: PreprocessOverlayView, point: PointD) {
+            overlay.finderPlacementRole = FinderRole.TOP_LEFT
+            val event = MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, point.x.toFloat(), point.y.toFloat(), 0)
+            try { assertTrue(overlay.onTouchEvent(event)) } finally { event.recycle() }
+            shadowOf(Looper.getMainLooper()).idle()
+        }
+        // A blank image has no Finder anywhere, so every tap below is undetected.
+        fun blank() = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.WHITE) }
+
+        // On an unoriented grid, the tap names the grid corner whose Finder position is nearest.
+        val bitmap = blank()
+        withDialog(PreprocessSettings(version = 2, manualQuad = physical, logicalGridAssigned = false, lmCorrectionEnabled = false),
+            sourceBitmap = bitmap) { dialog, host, _, _ ->
+            val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
+            overlay.layout(0, 0, size, size)
+            tap(overlay, center(20.5, 21.5))
+            assertTrue(overlay.isLogicalGridAssigned())
+            assertEquals(FinderRole.TOP_LEFT, overlay.visibleFinderRole)
+            assertTrue(overlay.finderPoints().isEmpty())
+            // The corners keep their positions; only their roles turn to put the tapped corner at the top left.
+            assertEquals(physical.bottomRight, overlay.imageQuad().topLeft)
+            assertEquals(physical.asList().toSet(), overlay.imageQuad().asList().toSet())
+            // No Finder constraint is added, so every corner stays adjustable, and the role is saved.
+            click(dialog, "保存")
+            val saved = host.saves.last().settings
+            assertTrue(saved.logicalGridAssigned)
+            assertEquals(FinderRole.TOP_LEFT, saved.visibleFinderRole)
+            assertTrue(saved.manualFinders.isEmpty())
+        }
+
+        // A tap away from every grid corner, or without any grid to name, assigns nothing.
+        for ((settings, point) in listOf(
+            PreprocessSettings(version = 2, manualQuad = physical, logicalGridAssigned = false, lmCorrectionEnabled = false) to center(12.0, 12.0),
+            PreprocessSettings(version = 2, logicalGridAssigned = false, lmCorrectionEnabled = false) to center(3.0, 3.0),
+        )) {
+            val image = blank()
+            withDialog(settings, sourceBitmap = image) { dialog, _, _, _ ->
+                val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
+                overlay.layout(0, 0, size, size)
+                val before = overlay.imageQuad()
+                tap(overlay, point)
+                assertFalse("$point", overlay.isLogicalGridAssigned())
+                assertNull(overlay.visibleFinderRole)
+                assertTrue(overlay.finderPoints().isEmpty())
+                assertEquals(before, overlay.imageQuad())
+            }
+        }
+    }
+
+    @Test fun finderTapOutsideTheFinderIsConfirmedAndCancellingRestoresTheGrid() {
+        val unit = 8
+        fun center(mx: Double, my: Double) = PointD((mx + .5) * unit, (my + .5) * unit)
+        val truth = ImageQuad(center(0.0, 0.0), center(24.0, 0.0), center(24.0, 24.0), center(0.0, 24.0))
+        val others = mapOf(FinderRole.TOP_RIGHT to center(21.0, 3.0), FinderRole.BOTTOM_LEFT to center(3.0, 21.0))
+        for (accept in listOf(false, true)) {
+            val bitmap = edgeFinderSymbol(unit)
+            val initial = PreprocessSettings(version = 2, manualQuad = truth, manualFinders = others, lmCorrectionEnabled = false)
+            withDialog(initial, sourceBitmap = bitmap) { dialog, _, _, _ ->
+                val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
+                overlay.layout(0, 0, bitmap.width, bitmap.height)
+                val finders = overlay.finderPoints()
+                overlay.finderPlacementRole = FinderRole.TOP_LEFT
+                // The separator and the data next to it, outside the Finder's 7x7 modules.
+                val tap = center(7.5, 3.0)
+                val event = MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, tap.x.toFloat(), tap.y.toFloat(), 0)
+                try { assertTrue(overlay.onTouchEvent(event)) } finally { event.recycle() }
+                shadowOf(Looper.getMainLooper()).idle()
+                val confirmation = ShadowDialog.getLatestDialog() as AlertDialog
+                assertNotSame(dialog, confirmation)
+                // Until the user decides, the tapped point is not a Finder center.
+                assertEquals(truth, overlay.imageQuad())
+                assertEquals(finders, overlay.finderPoints())
+                confirmation.getButton(if (accept) AlertDialog.BUTTON_POSITIVE else AlertDialog.BUTTON_NEGATIVE).performClick()
+                shadowOf(Looper.getMainLooper()).idle()
+                if (accept) {
+                    assertTrue(overlay.finderPoints().getValue(FinderRole.TOP_LEFT).distanceTo(center(3.0, 3.0)) < unit * .15)
+                    truth.asList().zip(overlay.imageQuad().asList()).forEach { (expected, actual) -> assertTrue(actual.distanceTo(expected) < unit * .15) }
+                } else {
+                    assertEquals(truth, overlay.imageQuad())
+                    assertEquals(finders, overlay.finderPoints())
+                }
             }
         }
     }

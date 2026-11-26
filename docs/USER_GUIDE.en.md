@@ -49,7 +49,7 @@ The result screen shows the conditions used for automatic repair. Changing detai
 
 In Classic, choose **Repair** to open the settings. In Modern, use **01 Repair settings**.
 
-1. Rotate and crop the image as needed. Drag a crop corner or edge to resize it, or drag inside it to move it.
+1. Rotate and crop the image as needed. The initial crop surrounds the detected code with a margin, or covers the whole image if detection fails. Drag a corner or edge to resize it, or drag inside to move it. Analysis resolution uses the larger of the initial and selected crop sizes, limiting resolution changes when you narrow the selection.
 2. Use **Image adjustment** for **Contrast** and **Brightness**, or **Invert** to reverse black and white. The item menu provides numeric entry and resets. **Before** compares the adjusted and original tones without changing the crop or rotation; analysis still uses the adjustments. **Done** closes the slider.
 3. Check **QR Version** and align the orange corner handles with the centers of the outermost cells. Version 1 has 21 cells per side; each subsequent version adds four. Changing Version clears cell edits after confirmation.
 4. Review the cell values in the preview. Adjust the white/unknown/black thresholds if damaged areas are being read as definite `0` or `1` values.
@@ -69,8 +69,8 @@ The three large square patterns near a QR code’s corners are **Finder patterns
 Image and text imports may assign roles automatically. Check the green Finder markers. **At least one Finder role must be assigned before repair.**
 
 - In basic settings, enable **Treat input image as mirrored** for a mirror image. Once orientation is assigned, the image shows the role of each corner.
-- To assign a role, choose **Top left**, **Top right**, or **Bottom left**, then tap the center of the corresponding visible pattern. The app refines the position when it detects a nearby pattern.
-- To remove an incorrect role, choose **Clear** and tap its green marker. Clearing all roles also clears orientation, while keeping corners and cell edits. Assign a role again before repair.
+- To assign a role, choose **Top left**, **Top right**, or **Bottom left**, then tap the corresponding Finder. The app locates its center and asks for confirmation when the tap is outside the pattern or detection is partial. Cancel keeps the previous state. If detection fails, an estimated or manually adjusted grid lets you assign the role to the nearest corner without moving the grid or locking the corners.
+- To remove a measured Finder, choose **Clear** and tap its green marker. Use **Clear role without a center** for a role-only assignment. Removing all assignments clears orientation while keeping corners and cell edits; assign a role again before repair.
 - A hidden Finder does not need an assignment. An incorrect role can prevent recovery, so use only roles you can identify.
 
 When Finder patterns establish whether black and white are reversed, that interpretation takes precedence over **Auto**, **Normal**, and **Inverted**. Otherwise, those controls determine how image values are interpreted. Manually entered cell values stay unchanged.
@@ -143,6 +143,8 @@ The progress dialog shows elapsed time and the number of candidates found. **Int
 1. Review the recovered content. If several candidates remain, open **Candidate contents** to compare their full text and tap one to select it.
 2. Check the selected trial's conditions and termination, along with omitted-candidate notices, in the result summary. Open **Show diagnostics** to check input disagreements and records including other trial conditions and grids. Normal endings at search boundaries are distinguished from timeouts and user interruption, with the unchecked work explained. One candidate or a completed search does not prove the result is correct.
 3. Open **Show detailed results** and tap cells to inspect their values and reasons. **Show same codeword** highlights the cells in the same codeword (a group of eight bits). **Data** shows bits and hexadecimal (**HEX**) values.
+
+**Data** initially shows **After constraints/RS / After unmasking / Hex / Binary** for a successful recovery, or **Before constraints/RS / After unmasking / Partial information** for a failed recovery. Partial information is unvalidated diagnostic data.
 
 See [Understanding repair results](RECOVERY_RESULT_FIELDS.en.md) for result statuses, field meanings, cell colors, and comparison examples. [QRevy recovery strategy](RECOVERY_STRATEGY.en.md) explains the search order and when each method applies.
 

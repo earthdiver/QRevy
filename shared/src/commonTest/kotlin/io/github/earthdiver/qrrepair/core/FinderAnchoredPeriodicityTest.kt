@@ -82,14 +82,19 @@ class FinderAnchoredPeriodicityTest {
         assertEquals(3, assertNotNull(InitialGridEstimator.estimate(image, emptyList())).version)
     }
 
-    @Test fun aSurvivingFinderDoesNotOverrideAnUnresolvedPolarityConflict() {
+    @Test fun quietZoneAliasInTheOppositePolarityDoesNotBlockTheSymbolGrid() {
         val image = render(margin = 40)
         val inverse = LumaImage(image.width, image.height, IntArray(image.pixels.size) { 255 - image.pixels[it] })
         val normal = assertNotNull(GridPeriodicityEstimator.estimate(image))
         val inverted = assertNotNull(GridPeriodicityEstimator.estimate(inverse))
         assertEquals(3, normal.version)
         assertTrue(normal.version != inverted.version)
-        assertNull(InitialGridEstimator.estimate(image, emptyList()))
-        assertNull(InitialGridEstimator.estimate(inverse, emptyList()))
+        // The larger grid lies on the uniform quiet zone, so it is not a competing symbol in either polarity.
+        for (input in listOf(image, inverse)) {
+            val result = assertNotNull(InitialGridEstimator.estimate(input, emptyList()))
+            assertEquals(3, result.version)
+            for ((actual, expected) in result.moduleCenterQuad.asList().zip(normal.moduleCenterQuad.asList()))
+                assertTrue(actual.distanceTo(expected) < 1.0)
+        }
     }
 }

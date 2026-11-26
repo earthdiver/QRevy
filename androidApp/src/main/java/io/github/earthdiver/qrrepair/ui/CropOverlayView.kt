@@ -30,11 +30,20 @@ class CropOverlayView(context: Context) : View(context) {
     private var touchDownX = 0f
     private var touchDownY = 0f
 
-    fun setBitmap(value: Bitmap) {
+    private val initial = RectF()
+
+    /** Shows [value] with [initialCrop] selected, or the whole image when no symbol extent is known. */
+    fun setBitmap(value: Bitmap, initialCrop: RectF? = null) {
         bitmap = value
-        crop.set(value.width * .08f, value.height * .08f, value.width * .92f, value.height * .92f)
+        initial.set(initialCrop ?: RectF(0f, 0f, value.width.toFloat(), value.height.toFloat()))
+        initial.intersect(0f, 0f, value.width.toFloat(), value.height.toFloat())
+        if (initial.width() <= 0f || initial.height() <= 0f) initial.set(0f, 0f, value.width.toFloat(), value.height.toFloat())
+        crop.set(initial)
         invalidate()
     }
+
+    /** The selection offered when the image was shown; it also bounds the analysis scale. */
+    fun initialCropRect(): RectF = RectF(initial)
 
     var cropEnabled: Boolean = true
         set(value) { field = value; invalidate() }

@@ -1270,7 +1270,8 @@ class MainActivity : Activity() {
             setTextIsSelectable(true)
             setPadding(dp(10), dp(8), dp(10), dp(8))
         }
-        val displayState = RecoveryDataDisplayState(repairedStage = recoveryState.selectedRecovery?.isSelectableRecovery == true)
+        val displayState = if (preRecoveryData != null) RecoveryDataDisplayState(repairedStage = false)
+            else RecoveryDataDisplayState.forRecovery(attemptedCandidate?.isSelectableRecovery == true)
         fun render() {
             if (preRecoveryData != null) {
                 text.text = if (displayState.repairedStage) {

@@ -375,6 +375,34 @@ class FinderDetector(
         )
     }
 
+    /**
+     * Fraction of the 7x7 finder template and its separator that matches the image at a fixed
+     * center, pitch and angle. It lets callers compare a detected center with another point,
+     * such as a user's tap, under identical conditions.
+     */
+    fun templateFit(cx: Double, cy: Double, pitch: Double, angle: Double): Double = templateScore(cx, cy, pitch, angle)
+
+    /**
+     * Best template fit at a fixed center over the 90-degree angle domain and 0.68–1.36 times
+     * [pitchHint]. Comparing two centers with this search keeps the comparison independent of
+     * the pitch and angle that either center was found with.
+     */
+    fun bestTemplateFitAt(cx: Double, cy: Double, pitchHint: Double): Double {
+        var best = 0.0
+        var angleDeg = 0
+        while (angleDeg < 90) {
+            cancellation.check()
+            val angle = angleDeg * PI / 180.0
+            var scale = 0.68
+            while (scale <= 1.36 + 1e-9) {
+                best = max(best, templateScore(cx, cy, pitchHint * scale, angle))
+                scale += 0.04
+            }
+            angleDeg += 3
+        }
+        return best
+    }
+
     private fun templateScore(cx: Double, cy: Double, pitch: Double, angle: Double): Double {
         if (pitch < 0.8) return 0.0
         val c = cos(angle)
