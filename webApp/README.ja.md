@@ -32,9 +32,15 @@ npm run dev
 npx playwright install --with-deps webkit chromium firefox
 ```
 
-リポジトリのルートで`./scripts/check-web.sh`を実行すると、ロックされたnpm依存関係の取得、JVMテスト、エンジン生成、静的アプリのビルド、Node・ブラウザーテストを行います。Playwrightは開発サーバーとは別に、ポート4175でサーバーを起動・終了します。別のポートは`QREVY_TEST_PORT`、ブラウザーテストの並列数は`QREVY_BROWSER_WORKERS`（既定値1）で指定できます。ブラウザーを選ぶ場合は`--project=desktop-chromium`などのPlaywrightオプションを渡します。
+リポジトリのルートで`./scripts/check-web.sh`を実行すると、ロックされたnpm依存関係の取得、1回のGradle起動でのJVMテストとエンジン生成、静的アプリのビルド、Node・ブラウザーテストを行います。Playwrightは開発サーバーとは別に、ポート4175でサーバーを起動・終了します。別のポートは`QREVY_TEST_PORT`で指定できます。ブラウザーテストの既定の並列数は利用可能なCPU数の半分（切り捨て、最小1・最大4）で、各テストのブラウザーコンテキストとストレージは独立しています。全5種類のブラウザー設定での検証を維持します。この既定値は`npm run test:browser`にも適用されます。直列実行には`QREVY_BROWSER_WORKERS=1`、並列数の調整には別の正の整数またはパーセント値を指定します。Playwrightの`--workers`オプションを明示した場合はそちらが優先されます。ブラウザーを選ぶ場合は`--project=desktop-chromium`などのオプションを渡します。
 
-リポジトリ全体の検証は`python3 -B scripts/check-changes.py --dry-run`で内容を確認し、`python3 -B scripts/check-changes.py`で実行します。完全検証にはPWAも含まれます。
+リポジトリの検証は`python3 -B scripts/check-changes.py --dry-run`で内容を確認し、`python3 -B scripts/check-changes.py`で実行します。文書のみの変更は空白の検査を行います。PWA固有の変更はAndroid検証を省略し、Android固有の変更はブラウザー検証を省略します。Android固有の復元処理・設定の変更ではAndroidの全単体テストを維持し、UI・セッションの変更では網羅的な幾何検証2種類のみ省略します。共用ファイルやリポジトリ全体のビルド・検証方針の変更は、両方を完全検証します。共用対象にはブラウザーのソース・テスト一覧、ブラウザー版4ファイルのAndroid側の元ソース、共用するJavaデコーダーのディレクトリが含まれ、`androidApp/`内のファイルも該当します。複数の範囲にまたがる変更は必要な検証を組み合わせます。各コマンドの所要時間と検証全体の所要時間も表示されます。
+
+失敗時のトレースには操作履歴とDOMスナップショットを残し、連続スクリーンショットは記録しません。各テストで明示的に撮影するスクリーンショットは引き続き保存します。
+
+Debian系Linuxでは、ビルド済みアプリ、テスト、ツール、インストール済みブラウザーのファイル、ホストのパッケージ、起動状態、実行環境が変わらない場合、完全なブラウザー検証の成功結果を12時間再利用できます。記録はローカルの`build/browser-validation/`に保存し、それより前の検証工程は毎回実行します。CI、対象を絞ったコマンド、ブラウザー・フォント・ライブラリーの独自指定、`check-changes.py --full`では必ずブラウザーテストを実行します。強制的に実行して記録を更新するには`QREVY_BROWSER_CACHE=refresh ./scripts/check-web.sh`、キャッシュを無効にするには`QREVY_BROWSER_CACHE=off`を指定します。直接の`npm run test:browser`も毎回テストを実行します。ブラウザーのREADME 2ファイルだけの変更は文書の検証対象とし、PWAに同梱するプライバシー・ライセンス文書はブラウザー検証の対象です。同梱されるルートの`NOTICE.md`は完全検証の対象です。
+
+強制終了後にキャッシュを初期化する場合は、すべての検証プロセスが停止した後で`build/browser-validation/`を削除します。
 
 ## ソース構成
 

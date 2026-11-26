@@ -26,7 +26,8 @@ class CheckSelectionTest(unittest.TestCase):
         return checks.commands_for(paths, "base-commit", full, platform, quick=quick)
 
     def test_documentation_does_not_start_a_build(self):
-        scope, commands = self.plan(["README.md", "README.ja.md", "docs/USER_GUIDE.en.md"])
+        scope, commands = self.plan(["README.md", "README.ja.md", "docs/USER_GUIDE.en.md",
+                                     "webApp/README.md", "webApp/README.ja.md"])
         self.assertEqual(scope, "docs")
         self.assertTrue(commands)
         self.assertTrue(all(command[:3] == ["git", "diff", "--check"] or
@@ -55,13 +56,11 @@ class CheckSelectionTest(unittest.TestCase):
         self.assertIn(":shared:jvmTest", commands[-1])
         self.assertIn("-Pqr.testScope=app", commands[-1])
 
-    def test_recovery_fixtures_build_privacy_configuration_and_unknown_paths_require_full_checks(self):
-        paths = [CORE, SHARED, TEST + "core/GeometryRecoveryCache.kt",
-                 TEST + "core/GeometryNeighborhoodExpandedRegressionTest.kt",
-                 "androidApp/src/test/resources/new-fixture.txt", "androidApp/src/main/AndroidManifest.xml",
-                 "androidApp/src/main/res/xml/backup_rules.xml", "androidApp/build.gradle.kts",
+    def test_shared_build_policy_and_unknown_paths_require_full_checks(self):
+        paths = [CORE, SHARED,
                  "gradle/libs.versions.toml", "scripts/check-changes.py", "AGENTS.md",
                  ".github/workflows/android.yml", "docs/examples/new-fixture.png",
+                 "NOTICE.md", "webApp/new.md", "webApp/newArea/input.txt",
                  APP + "newArea/Unknown.kt", "unknown-file", "shared/src/iosMain/New.kt"]
         for path in paths:
             with self.subTest(path=path):
@@ -81,7 +80,8 @@ class CheckSelectionTest(unittest.TestCase):
         self.assertNotIn(":shared:assembleXCFramework", self.plan([], full=True)[1][-1])
 
     def test_quick_feedback_keeps_all_full_checks_except_the_android_geometry_scope(self):
-        for paths in ([], ["README.md"], [APP + "AppStyle.kt"], [SHARED_TEST], [CORE], ["unknown-file"]):
+        for paths in ([], ["README.md"], [APP + "AppStyle.kt"], [SHARED_TEST], [CORE],
+                      ["webApp/web/app.js"], ["androidApp/src/main/AndroidManifest.xml"], ["unknown-file"]):
             for platform in ("linux", "darwin"):
                 with self.subTest(paths=paths, platform=platform):
                     scope, commands = self.plan(paths, platform=platform, quick=True)
@@ -93,13 +93,14 @@ class CheckSelectionTest(unittest.TestCase):
                         self.plan(paths, full=True, platform=platform)[1],
                     )
 
-    def test_browser_sources_and_shared_callers_require_browser_and_android_checks(self):
-        paths = ["webApp/web/app.js", "webApp/src/main/kotlin/Bridge.kt",
-                 "webApp/shared-sources.txt", "webApp/shared-tests.txt",
+    def test_shared_callers_and_implicit_browser_inputs_require_both_platforms(self):
+        paths = ["webApp/shared-sources.txt", "webApp/shared-tests.txt",
+                 "androidApp/src/main/java/com/google/zxing/qrcode/decoder/NewDecoder.java",
                  APP + "session/RecoverySessionCodec.kt",
                  APP + "PreRecoveryCellEditState.kt",
                  "shared/src/commonTest/kotlin/io/github/earthdiver/qrrepair/core/SharedCoreSmokeTest.kt",
-                 TEST + "session/RecoverySessionCodecTest.kt"]
+                 TEST + "session/RecoverySessionCodecTest.kt", *checks.WEB_OVERRIDE_ORIGINALS,
+                 *checks.WEB_SHARED_PATHS]
         for path in paths:
             with self.subTest(path=path):
                 scope, commands = self.plan([path])
@@ -108,6 +109,48 @@ class CheckSelectionTest(unittest.TestCase):
                 self.assertIn("-Pqr.testScope=full", commands[-1])
         self.assertIn(["./scripts/check-web.sh"], self.plan([], full=True)[1])
         self.assertNotIn(["./scripts/check-web.sh"], self.plan([APP + "MainActivity.kt"])[1])
+
+    def test_browser_only_changes_run_all_browser_checks_without_android_or_root_gradle(self):
+        paths = ["webApp/web/app.js", "webApp/src/main/kotlin/Bridge.kt",
+                 "webApp/src/main/kotlin/overrides/BrowserRecoveryMemoryPolicy.kt",
+                 "webApp/src/test/kotlin/BrowserTest.kt", "webApp/tests/browser/workflow.spec.js",
+                 "webApp/scripts/build.mjs", "webApp/vendor/zxing/NewDecoder.java", *checks.WEB_ONLY_FILES]
+        for path in paths:
+            for platform in ("linux", "darwin"):
+                with self.subTest(path=path, platform=platform):
+                    scope, commands = self.plan(["README.md", path], platform=platform)
+                    self.assertEqual(scope, "web")
+                    self.assertEqual(commands[-1], ["./scripts/check-web.sh"])
+                    self.assertFalse(any(command[0] == "./gradlew" for command in commands))
+
+    def test_android_only_core_and_configuration_keep_exhaustive_tests_without_browser(self):
+        paths = [APP + "core/ZxingCppGridDetector.kt", TEST + "core/GeometryRecoveryCache.kt",
+                 TEST + "core/GeometryNeighborhoodExpandedRegressionTest.kt",
+                 "androidApp/src/test/resources/new-fixture.txt",
+                 "androidApp/src/main/res/xml/backup_rules.xml", *checks.ANDROID_ONLY_FILES]
+        for path in paths:
+            with self.subTest(path=path):
+                scope, commands = self.plan([path, APP + "MainActivity.kt"])
+                self.assertEqual(scope, "android")
+                self.assertEqual(commands[-1], ["./gradlew", ":androidApp:testDebugUnitTest",
+                    "-Pqr.testScope=full", ":androidApp:lint", ":androidApp:assembleDebug"])
+                self.assertNotIn(["./scripts/check-web.sh"], commands)
+
+    def test_mixed_platform_changes_combine_checks_without_reducing_android_coverage(self):
+        for android_path, expected_scope, test_scope in (
+            (APP + "MainActivity.kt", "app", "app"),
+            ("androidApp/src/main/AndroidManifest.xml", "android", "full"),
+        ):
+            scope, commands = self.plan(["webApp/web/app.js", android_path, SHARED_TEST])
+            self.assertEqual(scope, expected_scope + "+shared-tests+web")
+            self.assertEqual(commands.count(["./scripts/check-web.sh"]), 1)
+            self.assertIn(":shared:jvmTest", commands[-1])
+            self.assertIn("-Pqr.testScope=" + test_scope, commands[-1])
+        scope, commands = self.plan(["webApp/web/app.js", SHARED_TEST])
+        self.assertEqual(scope, "shared-tests+web")
+        self.assertEqual(commands[-1], ["./gradlew", ":shared:jvmTest"])
+        for path in ("webApp/web/app.js", "androidApp/src/main/AndroidManifest.xml"):
+            self.assertEqual(self.plan([path], full=True), self.plan([], full=True))
 
     def test_full_validation_cannot_be_combined_with_quick_feedback(self):
         with self.assertRaises(ValueError):
@@ -215,6 +258,8 @@ class GitChangeSelectionTest(unittest.TestCase):
         self.assertIn("-Pqr.testScope=full", output)
         self.assertIn("Plan only; no checks executed.", output)
         self.assertFalse((self.root / "build").exists())
+        self.assertNotIn("Elapsed:", output)
+        self.assertNotIn("Total validation time:", output)
 
     def test_quick_dry_run_distinguishes_feedback_from_required_full_validation(self):
         self.write(CORE, "changed core\n")
@@ -256,6 +301,15 @@ class GitChangeSelectionTest(unittest.TestCase):
         self.assertIn("Quick feedback passed. Final validation is still required.", output)
         self.assertNotIn("Selected checks passed", output)
 
+        self.write("scripts/check-web.sh", "#!/bin/sh\n[ \"$QREVY_BROWSER_CACHE\" = refresh ]\n")
+        result, output = self.run_main("--full")
+        self.assertEqual(result, 0, output)
+        self.assertIn("Explicit full validation: rerun all browser tests.", output)
+        self.write("scripts/check-web.sh", "#!/bin/sh\n[ \"$QREVY_BROWSER_CACHE\" = off ]\n")
+        with patch.dict(checks.os.environ, {"QREVY_BROWSER_CACHE": "off"}):
+            result, output = self.run_main("--full")
+        self.assertEqual(result, 0, output)
+
     def test_failed_whitespace_check_stops_before_bootstrapping_or_running_tests(self):
         self.write(APP + "AppStyle.kt", "trailing whitespace  \n")
         result, output = self.run_main()
@@ -270,6 +324,8 @@ class GitChangeSelectionTest(unittest.TestCase):
         self.assertIn("Selected scope: docs", output)
         self.assertIn("Selected checks passed", output)
         self.assertNotIn("$ ./gradlew", output)
+        self.assertEqual(output.count("Elapsed:"), 3)
+        self.assertIn("Total validation time:", output)
 
     def test_failed_bootstrap_stops_before_verification_and_gradle(self):
         self.write("bootstrap-wrapper.sh", "#!/bin/sh\nexit 7\n")
@@ -281,6 +337,8 @@ class GitChangeSelectionTest(unittest.TestCase):
         self.assertIn("$ ./bootstrap-wrapper.sh", output)
         self.assertNotIn("$ ./scripts/verify-wrapper.sh", output)
         self.assertNotIn("$ ./gradlew", output)
+        self.assertIn("(./bootstrap-wrapper.sh)", output)
+        self.assertNotIn("Selected checks passed", output)
 
     def test_deleted_files_remain_in_the_plan(self):
         (self.root / CORE).unlink()

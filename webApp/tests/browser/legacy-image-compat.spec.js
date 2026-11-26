@@ -2,6 +2,11 @@ import {test,expect} from '@playwright/test';
 test.use({serviceWorkers:'block'});
 test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('qrevy-automatic-repair','false'));await page.goto('/');await expect(page.locator('#demo')).toBeEnabled();});
 const latest=page=>page.evaluate(async()=>{const s=(await(await import('/storage.js')).listSessions())[0];return s.history[s.cursor];});
+async function historyStep(page,direction){
+ await page.locator('.steps [data-tab="edit"]').click();
+ await expect(page.locator('#progress')).toBeHidden();
+ await page.locator('#'+direction).click();
+}
 // Independent reference for Android's bounds translation and prepared-size cap.
 function nativeRotation(w,h,angle,x,y){const a=angle*Math.PI/180,c=Math.cos(a),s=Math.sin(a),left=Math.min(0,w*c,-h*s,w*c-h*s),top=Math.min(0,w*s,h*c,w*s+h*c),rw=Math.ceil(Math.abs(w*c)+Math.abs(h*s)),rh=Math.ceil(Math.abs(w*s)+Math.abs(h*c)),scale=Math.min(1,1800/Math.max(rw,rh)),ow=Math.round(rw*scale),oh=Math.round(rh*scale);return {size:[ow,oh],point:[((x+.5)*c-(y+.5)*s-left)*ow/rw-.5,((x+.5)*s+(y+.5)*c-top)*oh/rh-.5]};}
 async function installFixtureHelpers(page){await page.evaluate(async()=>{
@@ -120,10 +125,10 @@ for(const representation of ['source','operations'])for(const [importedAngle,ret
  }
  if(importedAngle)expect(s.history[0].settings.imageOps[0].legacyRaster).toBe('android');expect(s.history[0].settings.quad).toEqual(expected.originalQuad);
  // Undo, reopening, and QRPWA backup restoration must preserve both bases.
- await page.locator('#undo').evaluate(el=>el.onclick());await page.locator('#undo').evaluate(el=>el.onclick());
+ await historyStep(page,'undo');await historyStep(page,'undo');
  await expect.poll(async()=>(await latest(page)).settings.quad).toEqual(expected.originalQuad);
  if(importedAngle)expect((await latest(page)).settings.imageOps[0].legacyRaster).toBe('android');
- await page.locator('#redo').evaluate(el=>el.onclick());await page.locator('#redo').evaluate(el=>el.onclick());
+ await historyStep(page,'redo');await historyStep(page,'redo');
  await expect.poll(async()=>(await latest(page)).settings.quad).toEqual(expected.quad);
  expect((await latest(page)).settings.imageOps[0].legacyRaster).toBe('pwa');
  const backup=await page.evaluate(async()=>{const store=await import('/storage.js'),s=(await store.listSessions())[0];const file=await store.exportWorkspace(s);return [...new Uint8Array(await file.arrayBuffer())];});
@@ -140,7 +145,7 @@ for(const representation of ['source','operations'])for(const [importedAngle,ret
    await expect.poll(async()=>(await latest(page)).settings.lmBaseQuad).toBeNull();
    const h=await latest(page);expect(h.matrix.text).toBe(expected.text);expect(h.matrix.sources.at(-1)).toBe('1');expect(h.settings.lmEnabled).toBe(false);expect(h.settings.lmAppliedQuad).toBeNull();
    if(action==='brightness')expect(h.settings.quad).toEqual(expected.quad);
-   await page.locator('#undo').evaluate(el=>el.onclick());
+   await historyStep(page,'undo');
    await expect.poll(async()=>(await latest(page)).settings.lmBaseQuad).toEqual(expected.lmBaseQuad);
    expect((await latest(page)).settings.quad).toEqual(expected.quad);
   });
@@ -172,7 +177,7 @@ for(const lmEnabled of [true,false])test(`saved QRR retains Android LM geometry 
   await page.locator('#refine').evaluate(async el=>{el.checked=false;await el.onchange();});
   await expect.poll(async()=>(await latest(page)).settings.lmEnabled).toBe(false);
   const off=await latest(page);expect(off.settings.quad).toEqual(expected.base);expect(off.matrix.text).toBe(expected.withoutLm);expect(off.settings.lmBaseQuad).toBeNull();expect(off.settings.lmAppliedQuad).toBeNull();
-  await page.locator('#undo').evaluate(el=>el.onclick());await expect.poll(async()=>(await latest(page)).settings.lmEnabled).toBe(true);
+  await historyStep(page,'undo');await expect.poll(async()=>(await latest(page)).settings.lmEnabled).toBe(true);
   // Tone changes rerun LM from its manual grid, not from the previous result.
   await page.locator('#brightness').evaluate(async el=>{el.value='1';await el.onchange();});
   await expect.poll(async()=>(await latest(page)).settings.brightness).toBe(1);

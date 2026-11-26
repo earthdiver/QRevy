@@ -45,7 +45,7 @@ ZXing-backed QR version/format/block interleave and final payload decode remain 
 - Compile shared recovery sources in place; avoid introducing additional copies.
 - The four browser variants in `webApp/src/main/kotlin/overrides` are checked against their originals before compilation. Preserve their charset and memory-budget adaptations when synchronizing changes.
 - After changing reused Android UI text, regenerate browser labels with `cd webApp && python3 -B scripts/extract-ui-strings.py` and review the generated file.
-- Files listed in the browser source/test allowlists require full validation, including otherwise app-scoped presenters and session codecs.
+- Files listed in the browser source/test allowlists, the four browser-variant originals, and the shared Java decoder directory require full validation, including otherwise app-scoped presenters and session codecs.
 - Install Playwright browsers once with `cd webApp && npm ci --ignore-scripts && npx playwright install --with-deps webkit chromium firefox`. Browser tests manage their own server on port 4175 (`QREVY_TEST_PORT` overrides it).
 - PWA sessions use browser storage. Android backup restrictions remain enforced in the Android app; browser privacy documentation describes its separate storage guarantees.
 
@@ -61,12 +61,16 @@ By default, this includes staged, unstaged, and untracked changes relative to `H
 
 | Changed area | Required local checks |
 | --- | --- |
-| Root/docs/iOS/template Markdown only, excluding this file | Whitespace checks; review content, links, and paired translations |
+| Root/docs/iOS/template Markdown or `webApp/README.md` / `webApp/README.ja.md` only, excluding this file and the bundled root `NOTICE.md` | Whitespace checks; review content, links, and paired translations |
 | Android application/UI/session Kotlin or display resources, including their UI/session tests, excluding browser-shared paths | All Android unit tests except the two exhaustive geometry studies, lint, and debug build |
+| Android-only recovery Kotlin, core tests, test resources, manifest/XML rules, or app build/ProGuard configuration | All Android unit tests including both exhaustive geometry studies, lint, and debug build; no browser checks |
+| PWA-only sources, assets, tests, scripts, vendored ZXing, app build/npm/Playwright configuration, or bundled PWA documents | `scripts/check-web.sh`: browser JVM tests, engine generation, static build, Node tests, and all Playwright projects; no Android checks |
 | Shared test sources or fixtures only, excluding browser-shared paths | Shared JVM tests |
-| Shared production code, Android recovery core or core tests/fixtures, browser code/shared paths, build/dependency/CI/check configuration, manifest/backup rules, or unclassified files | Full checks |
+| Shared production code, browser-shared paths, browser source/test allowlists, repository-wide build/dependency/CI/check policy, bundled root `NOTICE.md`, or unclassified files | Full checks |
 
 Mixed changes combine the required checks; any full-check path makes the entire run full. The app scope retains session compatibility, source-image integrity, manual-edit, and ordinary geometry tests, including 48 default-width recovery cases. It excludes only the exhaustive displacement sweep and expanded width/rotation study. Use `--full` whenever the semantic impact exceeds the path classification. New source areas require full checks until their dependencies are reviewed.
+
+Platform ownership follows dependencies, not just directory names. Browser-shared inputs include `webApp/shared-sources.txt` and `webApp/shared-tests.txt` entries, the Android originals checked by `webApp/scripts/check-source-overrides.mjs`, and `androidApp/src/main/java/com/google/zxing/qrcode/decoder/`. Changes to these inputs validate both platforms. Android-only changes that regenerate browser labels also require browser checks through the generated file. PWA-only build settings belong to the independent `webApp` Gradle build; root build settings and validation selectors still require full checks.
 
 For intermediate feedback, `python3 -B scripts/check-changes.py --quick` runs the development checks even on a clean tree, omitting only the expanded width/rotation study. It keeps the displacement sweep, the 48 default-width cases, and all other checks. It cannot be combined with `--full` and does not satisfy final validation: before handing off a change, run without `--quick` using the appropriate base, or use `--full`.
 
@@ -77,6 +81,8 @@ python3 -B scripts/check-changes.py --full
 ```
 
 This runs wrapper/bootstrap verification, the shared boundary check, script regression tests, `scripts/check-web.sh` (browser JVM tests, TeaVM generation, static build, Node tests, and all Playwright projects), `:shared:jvmTest`, all `:androidApp:testDebugUnitTest` tests, `:androidApp:lint`, and `:androidApp:assembleDebug`. Full runs on macOS also build `:shared:assembleXCFramework`. Existing Android CI and extended recovery fuzz runs always use full test coverage.
+
+Local browser validation on Debian-family Linux can reuse a complete successful run for 12 hours when built assets, tests, tooling, installed browsers, host package state, boot, and execution environment match. Other checks still run. `--full`, CI, filtered browser commands, and custom browser/font/library overrides always execute browser tests. Set `QREVY_BROWSER_CACHE=refresh` to rerun and refresh the receipt, or `QREVY_BROWSER_CACHE=off` to disable reuse. Direct `npm run test:browser` always executes tests. Bundled PWA privacy and license documents require browser checks rather than documentation-only checks.
 
 For release-affecting changes, run full development validation and also:
 
