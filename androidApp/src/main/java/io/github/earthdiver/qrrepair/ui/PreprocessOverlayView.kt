@@ -27,6 +27,7 @@ import io.github.earthdiver.qrrepair.core.PointD
 import io.github.earthdiver.qrrepair.core.alignQuadCornerToFinder
 import io.github.earthdiver.qrrepair.core.alignQuadToFinders
 import io.github.earthdiver.qrrepair.core.assignedFromFinder
+import io.github.earthdiver.qrrepair.core.finderCenters
 import io.github.earthdiver.qrrepair.core.provisionalFinderRole
 import io.github.earthdiver.qrrepair.core.reliabilityScore
 import kotlin.math.hypot
@@ -40,9 +41,9 @@ class PreprocessOverlayView(context: Context) : View(context) {
     private var version = 1
     /** A periodicity estimate is sufficient for threshold preview, even before QR corner roles are confirmed. */
     var gridPreviewAvailable = false
+        private set
     /** The user moved a corner, so the corners describe the symbol even without an estimated grid. */
     private var cornersEdited = false
-        private set
     private var logicalGridAssigned = false
     private var mirroredInput = false
     private val corners = MutableList(4) { PointD(0.0, 0.0) }
@@ -226,7 +227,7 @@ class PreprocessOverlayView(context: Context) : View(context) {
     private fun assignLogicalGrid(point: PointD, role: FinderRole) {
         if (logicalGridAssigned) return
         val physical = imageQuad().asList()
-        val assigned = imageQuad().assignedFromFinder(point, role).asList()
+        val assigned = imageQuad().assignedFromFinder(point, role, version).asList()
         val quarterTurns = physical.indices.minBy { physical[it].distanceTo(assigned[0]) }
         assigned.forEachIndexed { index, corner -> corners[index] = corner }
         gridPreviewAvailable = true
@@ -288,8 +289,10 @@ class PreprocessOverlayView(context: Context) : View(context) {
     fun setFinderPoint(role: FinderRole, point: PointD, alignUnassigned: Boolean = false): Boolean {
         // Once orientation is known, the assigned position must also constrain the sampled grid.
         val aligned = if (logicalGridAssigned || alignUnassigned) {
-            val oriented = if (logicalGridAssigned) imageQuad() else imageQuad().assignedFromFinder(point, role)
-            runCatching { alignQuadToFinders(oriented, version, finderPoints() + (role to point)) }
+            runCatching {
+                val oriented = if (logicalGridAssigned) imageQuad() else imageQuad().assignedFromFinder(point, role, version)
+                alignQuadToFinders(oriented, version, finderPoints() + (role to point))
+            }
                 .getOrNull() ?: return false
         } else null
         assignLogicalGrid(point, role)
@@ -331,11 +334,10 @@ class PreprocessOverlayView(context: Context) : View(context) {
         if (confirmedFinderRoles.isNotEmpty()) return RoleAssignment.ORIENTED_BY_CONFIRMED
         if (!logicalGridAssigned) {
             if (!gridPreviewAvailable && !cornersEdited) return RoleAssignment.NO_GRID
-            val last = 16.0 + 4 * version - 3
-            val spots = listOf(3.0 to 3.0, last to 3.0, last to last, 3.0 to last).map { (mx, my) -> gridPoint(mx, my) }
+            val spots = runCatching { imageQuad().finderCenters(version) }.getOrNull() ?: return RoleAssignment.NO_GRID
             val nearest = spots.indices.minBy { spots[it].distanceTo(point) }
             if (spots[nearest].distanceTo(point) > finderTapTolerance()) return RoleAssignment.TOO_FAR
-            assignLogicalGrid(corners[nearest], role)
+            assignLogicalGrid(spots[nearest], role)
         }
         visibleFinderRole = role
         invalidate()
@@ -358,17 +360,12 @@ class PreprocessOverlayView(context: Context) : View(context) {
         return if (scale > 0) max(modulePitch * 4.0, dp(36f) / scale) else modulePitch * 4.0
     }
     internal fun expectedFinderCenter(role: FinderRole): PointD {
-        val dimension = 17 + 4 * version
-        return gridPoint(if (role == FinderRole.TOP_RIGHT) dimension - 4.0 else 3.0, if (role == FinderRole.BOTTOM_LEFT) dimension - 4.0 else 3.0)
-    }
-    /** Image position of module center ([mx], [my]) on the bilinear grid through the current corners. */
-    private fun gridPoint(mx: Double, my: Double): PointD {
-        val d = (16 + 4 * version).toDouble()
-        val u = mx / d
-        val v = my / d
-        val top = PointD(corners[0].x + (corners[1].x - corners[0].x) * u, corners[0].y + (corners[1].y - corners[0].y) * u)
-        val bottom = PointD(corners[3].x + (corners[2].x - corners[3].x) * u, corners[3].y + (corners[2].y - corners[3].y) * u)
-        return PointD(top.x + (bottom.x - top.x) * v, top.y + (bottom.y - top.y) * v)
+        val index = when (role) {
+            FinderRole.TOP_LEFT -> 0
+            FinderRole.TOP_RIGHT -> 1
+            FinderRole.BOTTOM_LEFT -> 3
+        }
+        return imageQuad().finderCenters(version)[index]
     }
     /** Assigned Finders are constraints for recovery; each can be released in the Finder UI. */
     fun finderPoints(): Map<FinderRole, PointD> = confirmedFinderPoints(finders, confirmedFinderRoles)
@@ -919,7 +916,8 @@ class PreprocessOverlayView(context: Context) : View(context) {
                 finderPlacementRole?.let { role ->
                     parent?.requestDisallowInterceptTouchEvent(true)
                     if (logicalGridAssigned && role !in confirmedFinderRoles) {
-                        if (p.distanceTo(expectedFinderCenter(role)) > finderTapTolerance()) {
+                        val expected = runCatching { expectedFinderCenter(role) }.getOrNull()
+                        if (expected == null || p.distanceTo(expected) > finderTapTolerance()) {
                             finderPlacementRole = null
                             onFinderPlacementRejected?.invoke(role)
                             invalidate()

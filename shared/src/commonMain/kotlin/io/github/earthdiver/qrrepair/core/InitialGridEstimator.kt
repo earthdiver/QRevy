@@ -20,11 +20,12 @@ object InitialGridEstimator {
         cancellation.check()
         // External boundaries are validated in source coordinates; they do not depend on the crop margin.
         if (detectedBoundaries.isNotEmpty()) nativeEstimate(image, detectedBoundaries, cancellation, trace)?.let { return it }
+        val originalEstimate by lazy { estimateInImage(image, detectedBoundaries, cancellation, trace) }
         // Several external symbols remain ambiguous; a single symbol window cannot decide between them.
         if (detectedBoundaries.size <= 1) trace.measure("SYMBOL_WINDOW") {
-            estimateInSymbolWindow(image, cancellation, trace)
+            estimateInSymbolWindow(image, cancellation, trace) { originalEstimate }
         }?.let { return it }
-        return estimateInImage(image, detectedBoundaries, cancellation, trace)
+        return originalEstimate
     }
 
     private fun nativeEstimate(image: LumaImage, detectedBoundaries: List<ImageQuad>,
@@ -46,9 +47,9 @@ object InitialGridEstimator {
      * modules are unknown has no edge of its own, and only the content extent can delimit it.
      * Pixels inside the image are copied unchanged; the result is mapped back to source coordinates.
      */
-    internal fun estimateInSymbolWindow(image: LumaImage,
-        cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
-        trace: GridEstimationTrace? = null): InitialGridEstimate? {
+    private fun estimateInSymbolWindow(image: LumaImage,
+        cancellation: RecoveryCancellation, trace: GridEstimationTrace?,
+        originalEstimate: () -> InitialGridEstimate?): InitialGridEstimate? {
         cancellation.check()
         val bounds = SymbolExtent.bounds(image) ?: return null
         // A light surround is the usual quiet zone; a dark one may belong to a light-on-dark symbol, and
@@ -60,8 +61,17 @@ object InitialGridEstimator {
             else -> listOf(0, 255)
         }
         val side = maxOf(bounds[2] - bounds[0] + 1, bounds[3] - bounds[1] + 1)
-        for (margin in listOf(maxOf(8, (side * SYMBOL_WINDOW_MARGIN).toInt()), 0)) for (fill in fills) {
-            estimateInWindow(image, bounds, margin, fill, cancellation, trace)?.let { return it }
+        for (margin in listOf(maxOf(8, (side * SYMBOL_WINDOW_MARGIN).toInt()), 0)) {
+            cancellation.check()
+            if (margin == 0 && bounds.contentEquals(intArrayOf(0, 0, image.width - 1, image.height - 1))) {
+                originalEstimate()?.let { return it }
+                continue
+            }
+            val inside = bounds[0] >= margin && bounds[1] >= margin &&
+                bounds[2] + margin < image.width && bounds[3] + margin < image.height
+            for (fill in if (inside) fills.take(1) else fills) {
+                estimateInWindow(image, bounds, margin, fill, cancellation, trace)?.let { return it }
+            }
         }
         return null
     }
@@ -94,11 +104,13 @@ object InitialGridEstimator {
         cancellation: RecoveryCancellation, trace: GridEstimationTrace?): InitialGridEstimate? {
         cancellation.check()
         val inverse by lazy { LumaImage(image.width, image.height, IntArray(image.pixels.size) { 255 - image.pixels[it] }) }
-        fun periodicity(input: LumaImage) = GridPeriodicityEstimator.estimate(input, cancellation, trace)?.let {
+        fun periodicity(input: LumaImage, estimate: GridPeriodicityEstimate?) = estimate?.let {
             InitialGridEstimate(it.version, it.moduleCenterQuad, InitialGridSource.PERIODICITY)
-        }?.takeUnless { hasUniformPerimeter(input, it) }
-        val normalPeriodicity = trace.measure("NORMAL_PERIODICITY") { periodicity(image) }
-        val invertedPeriodicity = trace.measure("INVERTED_PERIODICITY") { periodicity(inverse) }
+        }?.takeUnless { hasUniformPerimeter(input, it) && !PeriodicityStructure.hasTimingSupport(input, it) }
+        val normal = trace.measure("NORMAL_PERIODICITY") { GridPeriodicityEstimator.estimate(image, cancellation, trace) }
+        val inverted = trace.measure("INVERTED_PERIODICITY") { GridPeriodicityEstimator.estimate(inverse, cancellation, trace) }
+        val normalPeriodicity = periodicity(image, normal)
+        val invertedPeriodicity = periodicity(inverse, inverted)
         if (normalPeriodicity != null || invertedPeriodicity != null) {
             val merged = mergePolarityEstimates(normalPeriodicity, invertedPeriodicity)
             if (merged != null || normalPeriodicity == null || invertedPeriodicity == null || detectedBoundaries.size > 1)
@@ -107,20 +119,22 @@ object InitialGridEstimator {
             // independently verified QR structure; unresolved conflicts still stop the fallback.
             return trace.measure("POLARITY_CHECK") {
                 resolvePeriodicityConflict(image, inverse, normalPeriodicity, invertedPeriodicity, cancellation)
+                    ?: PeriodicityStructure.resolveQuietZoneAlias(image, inverse,
+                        requireNotNull(normal), requireNotNull(inverted), cancellation)
             }
         }
         if (detectedBoundaries.size > 1) return null
         return mergePolarityEstimates(
             trace.measure("NORMAL_TWO_FINDERS") { TwoFinderGridEstimator.estimate(image, cancellation) },
             trace.measure("INVERTED_TWO_FINDERS") { TwoFinderGridEstimator.estimate(inverse, cancellation) })
+            ?: if (normal != null && inverted != null) trace.measure("QUIET_ZONE_ALIAS") {
+                PeriodicityStructure.resolveQuietZoneAlias(image, inverse, normal, inverted, cancellation)
+            } else null
     }
 
     /**
-     * A QR symbol's outermost modules always mix both colors: Finder edges are dark and separators
-     * are light. A periodic grid whose perimeter is almost one color, or mostly outside the image,
-     * extends into a uniform surround; in the opposite polarity a crop's light margin becomes such a
-     * surround and yields a larger grid that grows with the margin. Rejecting it keeps the estimate
-     * independent of how much margin the crop retained.
+     * Flags a potentially uniform surround or insufficient perimeter evidence. Damaged symbols can
+     * also meet this condition, so independent timing support is checked before rejecting a grid.
      */
     internal fun hasUniformPerimeter(image: LumaImage, estimate: InitialGridEstimate): Boolean {
         val n = 17 + 4 * estimate.version
@@ -144,7 +158,7 @@ object InitialGridEstimator {
         return known * 2 < total || minOf(dark, light) < maxOf(3.0, known * UNIFORM_PERIMETER_FRACTION)
     }
 
-    /** Separators alone keep at least six light perimeter modules in any genuine symbol. */
+    /** Minimum minority-color fraction before independent structural support is required. */
     private const val UNIFORM_PERIMETER_FRACTION = 0.02
 
     /** Preserve periodicity geometry and role assignment; this only adjudicates conflicting grids. */

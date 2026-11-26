@@ -32,7 +32,7 @@ class BrowserInitialGridEstimatorTest {
             val label = "rotation=$rotation inverted=$inverted"
             // Exercise the competing periodic grids directly, as well as the complete browser estimate.
             val inverse = LumaImage(image.width, image.height, IntArray(image.pixels.size) { 255 - image.pixels[it] })
-            val resolved = BrowserInitialGridEstimator.resolveQuietZoneAlias(image,
+            val resolved = PeriodicityStructure.resolveQuietZoneAlias(image, inverse,
                 assertNotNull(GridPeriodicityEstimator.estimate(image), label),
                 assertNotNull(GridPeriodicityEstimator.estimate(inverse), label))
             for (estimate in listOf(resolved, BrowserInitialGridEstimator.estimate(image, emptyList()))) {
@@ -45,6 +45,8 @@ class BrowserInitialGridEstimatorTest {
                 assertTrue(estimate.autoAssignedFinders.isEmpty())
                 assertEquals(FinderPolarity.UNKNOWN, estimate.confirmedPolarity)
             }
+            assertEquals(InitialGridEstimator.estimate(image, emptyList()),
+                BrowserInitialGridEstimator.estimate(image, emptyList()), label)
         }
     }
 
@@ -53,10 +55,13 @@ class BrowserInitialGridEstimatorTest {
         val normal = assertNotNull(GridPeriodicityEstimator.estimate(image))
         val inverse = LumaImage(image.width, image.height, IntArray(image.pixels.size) { 255 - image.pixels[it] })
         val inverted = assertNotNull(GridPeriodicityEstimator.estimate(inverse))
-        assertNull(BrowserInitialGridEstimator.resolveQuietZoneAlias(damaged(finder = false), normal, inverted))
-        assertNull(BrowserInitialGridEstimator.resolveQuietZoneAlias(damaged(timing = false), normal, inverted))
-        assertNull(BrowserInitialGridEstimator.resolveQuietZoneAlias(image, normal, inverted.copy(version = 5)))
-        assertNull(BrowserInitialGridEstimator.resolveQuietZoneAlias(image, normal, inverted.copy(modulePitch = 12.0)))
+        for (damagedImage in listOf(damaged(finder = false), damaged(timing = false))) {
+            val damagedInverse = LumaImage(damagedImage.width, damagedImage.height,
+                IntArray(damagedImage.pixels.size) { 255 - damagedImage.pixels[it] })
+            assertNull(PeriodicityStructure.resolveQuietZoneAlias(damagedImage, damagedInverse, normal, inverted))
+        }
+        assertNull(PeriodicityStructure.resolveQuietZoneAlias(image, inverse, normal, inverted.copy(version = 5)))
+        assertNull(PeriodicityStructure.resolveQuietZoneAlias(image, inverse, normal, inverted.copy(modulePitch = 12.0)))
         assertNull(BrowserInitialGridEstimator.estimate(LumaImage(264, 264, IntArray(264 * 264) { 128 }), emptyList()))
     }
 

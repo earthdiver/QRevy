@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.view.MotionEvent
 import io.github.earthdiver.qrrepair.core.FinderRole
 import io.github.earthdiver.qrrepair.core.ImageQuad
+import io.github.earthdiver.qrrepair.core.Homography
 import io.github.earthdiver.qrrepair.core.PointD
 import org.junit.Assert.*
 import org.junit.Test
@@ -15,6 +16,66 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "mdpi")
 class FinderInteractionTest {
+    @Test fun projectiveFinderCentersReachRefinement() {
+        val bitmap = Bitmap.createBitmap(640, 640, Bitmap.Config.ARGB_8888)
+        try {
+            val quad = ImageQuad(PointD(220.0, 20.0), PointD(420.0, 20.0), PointD(620.0, 620.0), PointD(20.0, 620.0))
+            val view = PreprocessOverlayView(RuntimeEnvironment.getApplication()).apply {
+                setBitmap(bitmap); setVersion(7); setImageQuad(quad); layout(0, 0, 640, 640)
+            }
+            val mapping = Homography.fromCorrespondences(
+                listOf(PointD(0.0, 0.0), PointD(44.0, 0.0), PointD(44.0, 44.0), PointD(0.0, 44.0)), quad.asList())
+            val hints = mutableListOf<FinderRole>()
+            view.onFinderHintPlaced = { role, _, _, _ -> hints += role }
+            view.onFinderPlacementRejected = { fail("A projective Finder center must not be rejected") }
+            for ((role, module) in listOf(FinderRole.TOP_LEFT to PointD(3.0, 3.0),
+                FinderRole.TOP_RIGHT to PointD(41.0, 3.0), FinderRole.BOTTOM_LEFT to PointD(3.0, 41.0))) {
+                view.finderPlacementRole = role
+                tap(view, mapping.map(module))
+            }
+            assertEquals(FinderRole.entries.toSet(), hints.toSet())
+            assertEquals(quad, view.imageQuad())
+        } finally { bitmap.recycle() }
+    }
+
+    @Test fun unmeasuredRolesUseProjectiveFinderCentersWithoutRotatingTheGrid() {
+        val bitmap = Bitmap.createBitmap(640, 640, Bitmap.Config.ARGB_8888)
+        try {
+            val quad = ImageQuad(PointD(20.0, 20.0), PointD(620.0, 20.0), PointD(120.0, 620.0), PointD(20.0, 620.0))
+            val view = PreprocessOverlayView(RuntimeEnvironment.getApplication()).apply {
+                setBitmap(bitmap); setVersion(1); layout(0, 0, 640, 640)
+            }
+            val mapping = Homography.fromCorrespondences(
+                listOf(PointD(0.0, 0.0), PointD(20.0, 0.0), PointD(20.0, 20.0), PointD(0.0, 20.0)), quad.asList())
+            repeat(3) {
+                for ((role, module) in listOf(FinderRole.TOP_LEFT to PointD(3.0, 3.0),
+                    FinderRole.TOP_RIGHT to PointD(17.0, 3.0), FinderRole.BOTTOM_LEFT to PointD(3.0, 17.0))) {
+                    view.clearFinders(); view.setPhysicalImageQuad(quad)
+                    assertEquals(PreprocessOverlayView.RoleAssignment.ASSIGNED, view.assignFinderRole(role, mapping.map(module)))
+                    assertEquals(quad, view.imageQuad())
+                    assertEquals(role, view.visibleFinderRole)
+                    assertTrue(view.finderPoints().isEmpty())
+                }
+            }
+        } finally { bitmap.recycle() }
+    }
+
+    @Test fun degenerateGridRejectsFinderPlacementWithoutCrashing() = withOverlay { view ->
+        val line = ImageQuad(PointD(20.0, 20.0), PointD(60.0, 20.0), PointD(100.0, 20.0), PointD(140.0, 20.0))
+        view.clearFinders(); view.setImageQuad(line)
+        var rejections = 0
+        view.onFinderPlacementRejected = { rejections++ }
+        view.finderPlacementRole = FinderRole.TOP_RIGHT
+        tap(view, PointD(60.0, 20.0))
+        assertEquals(1, rejections)
+        view.setPhysicalImageQuad(line)
+        assertEquals(PreprocessOverlayView.RoleAssignment.NO_GRID, view.assignFinderRole(FinderRole.TOP_LEFT, PointD(20.0, 20.0)))
+    }
+
+    @Test fun gridPreviewAvailabilityCannotBeSetExternally() {
+        assertFalse(PreprocessOverlayView::class.java.methods.any { it.name == "setGridPreviewAvailable" })
+    }
+
     private fun withOverlay(block: (PreprocessOverlayView) -> Unit) {
         val bitmap = Bitmap.createBitmap(240, 240, Bitmap.Config.ARGB_8888)
         try {

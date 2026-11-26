@@ -2375,240 +2375,255 @@ export const nativeStrings = {
     "en": "Changed nearby geometry search",
     "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:327"
   },
+  "inline:指定済みFinderから推定される位置と離れすぎています。格子またはFinder役割を確認してください。": {
+    "ja": "指定済みFinderから推定される位置と離れすぎています。格子またはFinder役割を確認してください。",
+    "en": "This point is too far from the position implied by the confirmed Finder. Check the grid or Finder roles.",
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:340"
+  },
+  "inline:Finder候補は見つかりましたが、位置や模様の条件を満たさないため採用しませんでした。": {
+    "ja": "Finder候補は見つかりましたが、位置や模様の条件を満たさないため採用しませんでした。",
+    "en": "Finder candidates were found, but none met the position or pattern requirements.",
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:352"
+  },
+  "inline:Finderを検出できませんでした。": {
+    "ja": "Finderを検出できませんでした。",
+    "en": "No Finder was detected.",
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:354"
+  },
   "inline:Finder役割を指定": {
     "ja": "Finder役割を指定",
     "en": "Assigned Finder role",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:358"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:363"
   },
-  "inline:Finderを検出できませんでした。格子の向きは確定済みのFinderで決まっているため、変更していません。": {
-    "ja": "Finderを検出できませんでした。格子の向きは確定済みのFinderで決まっているため、変更していません。",
-    "en": "No Finder was detected. The grid orientation is set by the confirmed Finder and is unchanged.",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:365"
+  "inline:格子の向きは確定済みのFinderで決まっているため、変更していません。": {
+    "ja": "格子の向きは確定済みのFinderで決まっているため、変更していません。",
+    "en": "The grid orientation is set by the confirmed Finder and is unchanged.",
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:370"
   },
-  "inline:Finderを検出できませんでした。四隅を調整してから役割を指定してください。": {
-    "ja": "Finderを検出できませんでした。四隅を調整してから役割を指定してください。",
-    "en": "No Finder was detected. Adjust the corners, then assign the role.",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:367"
+  "inline:四隅を調整してから役割を指定してください。": {
+    "ja": "四隅を調整してから役割を指定してください。",
+    "en": "Adjust the corners, then assign the role.",
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:372"
   },
-  "inline:Finderを検出できませんでした。格子の角にあるFinderの位置をタップしてください。": {
-    "ja": "Finderを検出できませんでした。格子の角にあるFinderの位置をタップしてください。",
-    "en": "No Finder was detected. Tap the Finder position at a corner of the grid.",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:369"
+  "inline:格子の角にあるFinderの位置をタップしてください。": {
+    "ja": "格子の角にあるFinderの位置をタップしてください。",
+    "en": "Tap the Finder position at a corner of the grid.",
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:374"
   },
   "inline:指定位置の周辺からFinderを精密探索中…": {
     "ja": "指定位置の周辺からFinderを精密探索中…",
     "en": "Refining the Finder near the selected position…",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:383"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:388"
   },
   "inline:タップ位置はFinderの外側です。近くで検出したFinderの中心を使いますか？": {
     "ja": "タップ位置はFinderの外側です。近くで検出したFinderの中心を使いますか？",
     "en": "The tapped point is outside the Finder. Use the Finder center detected nearby?",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:401"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:406"
   },
   "inline:検出位置を使う": {
     "ja": "検出位置を使う",
     "en": "Use detected position",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:402"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:407"
   },
   "inline:画像を回転": {
     "ja": "画像を回転",
     "en": "Rotated image",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:432"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:437"
   },
   "inline:画像回転をリセット": {
     "ja": "画像回転をリセット",
     "en": "Reset image rotation",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:444"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:449"
   },
   "inline:表示・修復に使う補正候補": {
     "ja": "表示・修復に使う補正候補",
     "en": "Correction for preview and repair",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:547"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:552"
   },
   "inline:補正候補を選択": {
     "ja": "補正候補を選択",
     "en": "Selected correction candidate",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:553"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:558"
   },
   "inline:曲面補正: QRの向きを指定してください": {
     "ja": "曲面補正: QRの向きを指定してください",
     "en": "Distortion: assign the QR orientation",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:564"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:569"
   },
   "inline:曲面補正: 指を離すと再計算": {
     "ja": "曲面補正: 指を離すと再計算",
     "en": "Distortion: release to recalculate",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:565"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:570"
   },
   "inline:曲面補正: 計算中…": {
     "ja": "曲面補正: 計算中…",
     "en": "Distortion: calculating…",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:566"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:571"
   },
   "inline:格子の読み取りに失敗: タップして再試行": {
     "ja": "格子の読み取りに失敗: タップして再試行",
     "en": "Grid sampling failed: tap to retry",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:569"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:574"
   },
   "inline:曲面補正: セルを読み取り中…": {
     "ja": "曲面補正: セルを読み取り中…",
     "en": "Distortion: reading cells…",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:570"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:575"
   },
   "inline:再計算に失敗: 保存した補正を使用": {
     "ja": "再計算に失敗: 保存した補正を使用",
     "en": "Recalculation failed: using the saved correction",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:571"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:576"
   },
   "inline:補正計算に失敗: 直線格子を使用": {
     "ja": "補正計算に失敗: 直線格子を使用",
     "en": "Correction failed: using the straight grid",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:572"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:577"
   },
   "inline:補正点を検出できません: 直線格子を使用": {
     "ja": "補正点を検出できません: 直線格子を使用",
     "en": "No correction landmarks: using the straight grid",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:573"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:578"
   },
   "inline:\nメモリ上限により補正探索の一部を省略しました": {
     "ja": "\nメモリ上限により補正探索の一部を省略しました",
     "en": "\nSome correction searches were omitted due to the memory limit",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:576"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:581"
   },
   "inline:曲面格子補正": {
     "ja": "曲面格子補正",
     "en": "Curved grid correction",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:582"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:587"
   },
   "inline:LM格子補正": {
     "ja": "LM格子補正",
     "en": "LM grid correction",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:589"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:594"
   },
   "inline:四隅とFinderの役割を指定してください": {
     "ja": "四隅とFinderの役割を指定してください",
     "en": "Assign the corners and Finder roles",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:597"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:602"
   },
   "inline:曲面格子の補正計算が完了": {
     "ja": "曲面格子の補正計算が完了",
     "en": "Curved grid refinement completed",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:599"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:604"
   },
   "inline:曲面格子を補正中…": {
     "ja": "曲面格子を補正中…",
     "en": "Refining curved grid…",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:600"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:605"
   },
   "inline:補正を適用できませんでした": {
     "ja": "補正を適用できませんでした",
     "en": "Correction could not be applied",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:601"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:606"
   },
   "inline:補正中…": {
     "ja": "補正中…",
     "en": "Correcting…",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:602"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:607"
   },
   "inline:補正済み": {
     "ja": "補正済み",
     "en": "Correction applied",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:603"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:608"
   },
   "inline:補正はOFFです": {
     "ja": "補正はOFFです",
     "en": "Correction is off",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:604"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:609"
   },
   "inline:格子の読み取りに失敗しました": {
     "ja": "格子の読み取りに失敗しました",
     "en": "Grid sampling failed",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:616"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:621"
   },
   "inline:セルを読み取り中…": {
     "ja": "セルを読み取り中…",
     "en": "Reading cells…",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:617"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:622"
   },
   "inline:ブラシでなぞるか、矩形選択後に0/1/?を押して一括変更します。": {
     "ja": "ブラシでなぞるか、矩形選択後に0/1/?を押して一括変更します。",
     "en": "Paint with a brush, or select a rectangle and use 0/1/? to edit it.",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:732"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:737"
   },
   "inline:位置未測定の役割指定を解除": {
     "ja": "位置未測定の役割指定を解除",
     "en": "Clear role without a center",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:822"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:827"
   },
   "inline:役割指定を解除": {
     "ja": "役割指定を解除",
     "en": "Cleared Finder role",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:828"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:833"
   },
   "inline:台形補正を適用できませんでした。四隅を確認してください。": {
     "ja": "台形補正を適用できませんでした。四隅を確認してください。",
     "en": "Could not rectify the image. Check the four corners.",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:867"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:872"
   },
   "inline:台形補正を適用": {
     "ja": "台形補正を適用",
     "en": "Applied perspective correction",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:873"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:878"
   },
   "inline:射影補正を解除": {
     "ja": "射影補正を解除",
     "en": "Removed perspective correction",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:884"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:889"
   },
   "inline:保存": {
     "ja": "保存",
     "en": "Save",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:909"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:914"
   },
   "inline:設定を保存して修復": {
     "ja": "設定を保存して修復",
     "en": "Save & repair",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:914"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:919"
   },
   "inline:未保存の変更があります": {
     "ja": "未保存の変更があります",
     "en": "Unsaved changes",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:1019"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:1024"
   },
   "inline:変更を保存せずに修復前設定を閉じますか？": {
     "ja": "変更を保存せずに修復前設定を閉じますか？",
     "en": "Close the pre-repair settings without saving changes?",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:1020"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:1025"
   },
   "inline:保存せず閉じる": {
     "ja": "保存せず閉じる",
     "en": "Close without saving",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:1021"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:1026"
   },
   "inline:四隅を調整": {
     "ja": "四隅を調整",
     "en": "Adjusted corners",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:1033"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:1038"
   },
   "inline:ドラッグまたは矢印で調整": {
     "ja": "ドラッグまたは矢印で調整",
     "en": "Adjusted by drag or arrow keys",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:1033"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:1038"
   },
   "inline:格子の読み取りを再試行してください。": {
     "ja": "格子の読み取りを再試行してください。",
     "en": "Retry grid sampling.",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:1039"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:1044"
   },
   "inline:セルの読み取り完了後にもう一度操作してください。": {
     "ja": "セルの読み取り完了後にもう一度操作してください。",
     "en": "Wait for cell sampling to finish, then try again.",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:1040"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:1045"
   },
   "inline:曲面補正の計算完了後にもう一度操作してください。": {
     "ja": "曲面補正の計算完了後にもう一度操作してください。",
     "en": "Wait for distortion correction to finish, then try again.",
-    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:1045"
+    "source": "java/io/github/earthdiver/qrrepair/PreprocessDialogController.kt:1050"
   },
   "inline:修復設定を確定": {
     "ja": "修復設定を確定",
@@ -4953,26 +4968,26 @@ export const nativeStrings = {
   "inline:左上": {
     "ja": "左上",
     "en": "Top left",
-    "source": "java/io/github/earthdiver/qrrepair/ui/PreprocessOverlayView.kt:258"
+    "source": "java/io/github/earthdiver/qrrepair/ui/PreprocessOverlayView.kt:263"
   },
   "inline:右上": {
     "ja": "右上",
     "en": "Top right",
-    "source": "java/io/github/earthdiver/qrrepair/ui/PreprocessOverlayView.kt:259"
+    "source": "java/io/github/earthdiver/qrrepair/ui/PreprocessOverlayView.kt:264"
   },
   "inline:左下": {
     "ja": "左下",
     "en": "Bottom left",
-    "source": "java/io/github/earthdiver/qrrepair/ui/PreprocessOverlayView.kt:260"
+    "source": "java/io/github/earthdiver/qrrepair/ui/PreprocessOverlayView.kt:265"
   },
   "inline:右下": {
     "ja": "右下",
     "en": "BR",
-    "source": "java/io/github/earthdiver/qrrepair/ui/PreprocessOverlayView.kt:546"
+    "source": "java/io/github/earthdiver/qrrepair/ui/PreprocessOverlayView.kt:554"
   },
   "inline:（間引き表示）": {
     "ja": "（間引き表示）",
     "en": " (sampled view)",
-    "source": "java/io/github/earthdiver/qrrepair/ui/PreprocessOverlayView.kt:686"
+    "source": "java/io/github/earthdiver/qrrepair/ui/PreprocessOverlayView.kt:694"
   }
 };

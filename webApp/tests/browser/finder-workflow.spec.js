@@ -21,6 +21,27 @@ async function detailed(page){
  await expect(page.locator('body')).toHaveAttribute('data-active-tab','input');
 }
 
+test.describe('Finder placement rejection',()=>{
+ test.use({serviceWorkers:'block'});
+ for(const outcome of ['FOLDED','REJECTED','NOT_FOUND'])test(`${outcome} preserves the workspace and gives localized guidance`,async({page})=>{
+  await page.route('**/worker.js',route=>route.fulfill({contentType:'text/javascript',headers:{'Cross-Origin-Embedder-Policy':'require-corp'},body:`import {execute} from './engine/js/engine.js';self.onmessage=({data})=>{const result=data.request.action==='finder'?${JSON.stringify({confirmed:false,quad:null,outcome,placementRejected:outcome==='FOLDED'})}:JSON.parse(execute(data.request));self.postMessage({id:data.id,result});};self.postMessage({ready:true});`}));
+  await ready(page);await image(page,'tests/fixtures/clean.png');await expect(page.locator('#recover')).toBeEnabled();
+  await page.locator('#imageView').click();await page.locator('#fitView').click();
+  const before=await settings(page);
+  for(const language of ['ja','en']){
+   if(language==='en')await page.locator('#languageButton').click();
+   await page.locator('#finderRole').selectOption('0');
+   const canvas=page.locator('#canvas'),bounds=await canvas.boundingBox();
+   await canvas.click({position:{x:bounds.width*5.5/25,y:bounds.height*5.5/25}});
+   const expected=outcome==='FOLDED'?(language==='ja'?'格子またはFinder役割を確認':'Check the grid or Finder roles'):outcome==='REJECTED'?(language==='ja'?'Finder候補は見つかりましたが':'Finder candidates were found'):(language==='ja'?'Finderを検出できませんでした':'No Finder was detected');
+   await expect(page.locator('#toast')).toContainText(expected);
+   await expect(page.locator('#toast')).not.toContainText('Failed requirement');
+   await expect(page.locator('#recover')).toBeEnabled();
+   expect(await settings(page)).toEqual(before);
+  }
+ });
+});
+
 test('a single Finder role selector controls assignment and selective removal',async({page})=>{
  await ready(page);await image(page,'tests/fixtures/clean.png');await expect(page.locator('#recover')).toBeEnabled();
  await expect(page.locator('#finderRole')).toHaveCount(1);await expect(page.locator('#removeFinderRole')).toHaveCount(0);

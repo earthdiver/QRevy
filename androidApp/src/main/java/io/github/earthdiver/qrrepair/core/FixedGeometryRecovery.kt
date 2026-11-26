@@ -421,13 +421,13 @@ internal enum class FinderRefinementOutcome {
     REFINED,
     /** No finder-like pattern was found near the tap. */
     NOT_FOUND,
-    /** Patterns were found, but none fitted the tap and grid better than the tapped point itself. */
+    /** Patterns were found, but none passed the position, scale, and template checks. */
     REJECTED,
 }
 
 /**
- * Result of refining one tapped Finder. A rejected or missing refinement keeps the tapped point; the
- * caller must not move an assigned Finder to an unrelated pattern.
+ * Result of refining one tapped Finder. A rejected or missing refinement supplies no center.
+ * The caller may assign an unmeasured role but must not add a position constraint or move the grid.
  */
 internal data class FinderRefinement(
     val outcome: FinderRefinementOutcome,
@@ -480,8 +480,8 @@ internal fun finderReferencePitch(settings: PreprocessSettings): Double? {
 
 /**
  * Refines a tapped Finder only within a Finder-sized neighborhood. Candidates are compared with the
- * tapped point using the same template, so a damaged Finder that the detector cannot recognize keeps
- * the user's point instead of moving to a nearby data pattern.
+ * tapped point using the same template. Missing or rejected detections supply no center, so the
+ * caller can assign an unmeasured role without moving the grid to a nearby data pattern.
  */
 internal fun refineFinderPlacement(image: LumaImage, settings: PreprocessSettings, hint: PointD,
     role: FinderRole? = null, physicalGrid: ImageQuad? = null): FinderRefinement {

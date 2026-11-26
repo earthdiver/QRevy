@@ -9,6 +9,56 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class InitialGridEstimatorTest {
+    @Test fun damagedPerimeterPreservesAnInternallySupportedGrid() {
+        val unit = 6
+        for (margin in listOf(0, unit)) for (inverted in listOf(false, true)) {
+            val size = 21 * unit + 2 * margin
+            val edge = margin.toDouble()
+            val end = edge + 21 * unit
+            val original = render(1, ImageQuad(PointD(edge, edge), PointD(end, edge),
+                PointD(end, end), PointD(edge, end)), size = size)
+            val pixels = original.pixels.copyOf()
+            for (row in 0 until size) for (column in 0 until size) {
+                val moduleColumn = (column - margin).toDouble() / unit
+                val moduleRow = (row - margin).toDouble() / unit
+                if (moduleColumn >= 0 && moduleColumn < 21 && moduleRow >= 0 && moduleRow < 21 &&
+                    (moduleColumn < 1 || moduleColumn >= 20 || moduleRow < 1 || moduleRow >= 20))
+                    pixels[row * size + column] = 12
+                if (inverted) pixels[row * size + column] = 255 - pixels[row * size + column]
+            }
+            val result = assertNotNull(InitialGridEstimator.estimate(LumaImage(size, size, pixels), emptyList()),
+                "margin=$margin inverted=$inverted")
+            assertEquals(1, result.version)
+            assertTrue(result.autoAssignedFinders.isEmpty())
+            assertEquals(FinderPolarity.UNKNOWN, result.confirmedPolarity)
+            assertTrue(result.moduleCenterQuad.topLeft.distanceTo(PointD(edge + 2.5, edge + 2.5)) < 1)
+        }
+    }
+
+    @Test fun identicalFullImageWindowsAreEstimatedOnlyOnce() {
+        val random = kotlin.random.Random(42)
+        val image = LumaImage(64, 64, IntArray(64 * 64) { random.nextInt(256) })
+        val stages = mutableMapOf<String, Int>()
+        assertNull(InitialGridEstimator.estimate(image, emptyList(), trace = GridEstimationTrace { stage, detail ->
+            if (detail == "START") stages[stage] = (stages[stage] ?: 0) + 1
+        }))
+        for (stage in listOf("NORMAL_PERIODICITY", "INVERTED_PERIODICITY", "NORMAL_TWO_FINDERS", "INVERTED_TWO_FINDERS"))
+            assertEquals(3, stages[stage], stage)
+    }
+
+    @Test fun clippedPerimeterCanRetainIndependentTimingEvidence() {
+        val image = render(4, ImageQuad(PointD(-30.0, -30.0), PointD(168.0, -30.0),
+            PointD(168.0, 168.0), PointD(-30.0, 168.0)), size = 138)
+        val estimate = InitialGridEstimate(4, ImageQuad(PointD(-27.0, -27.0), PointD(165.0, -27.0),
+            PointD(165.0, 165.0), PointD(-27.0, 165.0)), InitialGridSource.PERIODICITY)
+        assertTrue(InitialGridEstimator.hasUniformPerimeter(image, estimate))
+        assertTrue(PeriodicityStructure.hasTimingSupport(image, estimate))
+        val unknown = LumaImage(138, 138, IntArray(138 * 138) { 128 })
+        assertTrue(!PeriodicityStructure.hasTimingSupport(unknown, estimate))
+        val uniform = LumaImage(138, 138, IntArray(138 * 138) { 12 })
+        assertTrue(!PeriodicityStructure.hasTimingSupport(uniform, estimate))
+    }
+
     private fun render(version: Int, quad: ImageQuad, finders: Boolean = true, size: Int = 400): LumaImage {
         val n = 17 + 4 * version
         val h = Homography.fromCorrespondences(listOf(PointD(0.0, 0.0), PointD(n.toDouble(), 0.0),
@@ -441,6 +491,8 @@ class InitialGridEstimatorTest {
             // In the opposite polarity the light margin is a uniform dark surround, not a larger symbol.
             GridPeriodicityEstimator.estimate(inverse)?.let { alias ->
                 assertTrue(InitialGridEstimator.hasUniformPerimeter(inverse,
+                    InitialGridEstimate(alias.version, alias.moduleCenterQuad, InitialGridSource.PERIODICITY)), "margin=$modules")
+                assertTrue(!PeriodicityStructure.hasTimingSupport(inverse,
                     InitialGridEstimate(alias.version, alias.moduleCenterQuad, InitialGridSource.PERIODICITY)), "margin=$modules")
             }
             val genuine = assertNotNull(GridPeriodicityEstimator.estimate(image))

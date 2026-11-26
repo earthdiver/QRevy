@@ -69,7 +69,7 @@ The three large square patterns near a QR code’s corners are **Finder patterns
 Image and text imports may assign roles automatically. Check the green Finder markers. **At least one Finder role must be assigned before repair.**
 
 - In basic settings, enable **Treat input image as mirrored** for a mirror image. Once orientation is assigned, the image shows the role of each corner.
-- To assign a role, choose **Top left**, **Top right**, or **Bottom left**, then tap the corresponding Finder. The app locates its center and asks for confirmation when the tap is outside the pattern or detection is partial. Cancel keeps the previous state. If detection fails, an estimated or manually adjusted grid lets you assign the role to the nearest corner without moving the grid or locking the corners.
+- To assign a role, choose **Top left**, **Top right**, or **Bottom left**, then tap the corresponding Finder. The app locates its center and asks for confirmation when the tap is outside the pattern or detection is partial. Cancel keeps the previous state. If detection fails, an estimated or manually adjusted grid lets you assign the role to the Finder guide outline nearest your tap without moving the grid or locking the corners.
 - To remove a measured Finder, choose **Clear** and tap its green marker. Use **Clear role without a center** for a role-only assignment. Removing all assignments clears orientation while keeping corners and cell edits; assign a role again before repair.
 - A hidden Finder does not need an assignment. An incorrect role can prevent recovery, so use only roles you can identify.
 

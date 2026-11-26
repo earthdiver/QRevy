@@ -1,8 +1,30 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';
 import {execute} from '../web/engine/js/engine.js';
 import {packQrr,unpackQrr} from '../web/qrr.js';
+import {CURRENT_QRR_VERSION} from '../web/qrr-format.js';
+import {currentQrrVersion} from '../scripts/qrr-format.mjs';
 const run=r=>{const result=JSON.parse(execute(r));if(result.error)throw new Error(result.error);return result;};
 const recover=(m,settings={})=>run({action:'recover',matrix:m,settings:{version:(m.text.split('\n').length-17)/4,list:0,...settings}});
+test('QRR version limits match the codec and reject unsupported headers',async()=>{
+ assert.equal(CURRENT_QRR_VERSION,await currentQrrVersion());
+ const matrix=run({action:'demo',damage:false});
+ const encoded=run({action:'qrrEncode',id:'version-boundary',history:JSON.stringify([{label:'Input',matrix,source:matrix,settings:{version:(matrix.text.split('\n').length-17)/4}}]),cursor:0});
+ assert.equal(encoded.version,CURRENT_QRR_VERSION);
+ for(const version of [23,CURRENT_QRR_VERSION])assert.equal((await unpackQrr(await packQrr({...encoded,version}))).version,version);
+ for(const version of [22,CURRENT_QRR_VERSION+1])await assert.rejects(unpackQrr(await packQrr({...encoded,version})),/QRR/);
+});
+test('folded Finder placement is a rejected operation rather than an engine error',()=>{
+ const width=280,pixels=Array(width*width).fill(0xffffff);
+ for(let row=0;row<70;row++)for(let column=0;column<70;column++){
+  const moduleRow=Math.floor(row/10),moduleColumn=Math.floor(column/10);
+  if(moduleRow===0||moduleRow===6||moduleColumn===0||moduleColumn===6||(moduleRow>=2&&moduleRow<=4&&moduleColumn>=2&&moduleColumn<=4))pixels[(8+row)*width+10+column]=0;
+ }
+ for(const finders of [[1,30,40,3,40,180],[1,180,40,3,40,30]]){
+  const settings={version:1,lmEnabled:false,quad:[10,10,210,10,210,210,10,210],finders};
+  const result=run({action:'finder',width,height:width,pixels,settings,alignGrid:true,gridAssigned:true,role:0,x:45,y:43});
+  assert.equal(result.placementRejected,true);assert.equal(result.confirmed,false);assert.equal(result.quad,null);
+ }
+});
 test('first Finder search ignores the provisional grid pitch until orientation is assigned',()=>{
  const width=300,pixels=new Uint32Array(width*width).fill(0xffffff);
  for(let row=0;row<42;row++)for(let column=0;column<42;column++){

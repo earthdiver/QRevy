@@ -98,6 +98,7 @@ shared/src/commonMain/kotlin/io/github/earthdiver/qrrepair/core/GridPeriodicityE
 shared/src/commonMain/kotlin/io/github/earthdiver/qrrepair/core/GuruswamiSudanDecoder.kt
 shared/src/commonMain/kotlin/io/github/earthdiver/qrrepair/core/Homography.kt
 shared/src/commonMain/kotlin/io/github/earthdiver/qrrepair/core/InitialGridEstimator.kt
+shared/src/commonMain/kotlin/io/github/earthdiver/qrrepair/core/PeriodicityStructure.kt
 shared/src/commonMain/kotlin/io/github/earthdiver/qrrepair/core/JointPatternRefiner.kt
 shared/src/commonMain/kotlin/io/github/earthdiver/qrrepair/core/KnownBitErrorSearch.kt
 shared/src/commonMain/kotlin/io/github/earthdiver/qrrepair/core/KoetterVardyDecoder.kt

@@ -1,83 +1,12 @@
 package qrevy.web
 
 import io.github.earthdiver.qrrepair.core.*
-import kotlin.math.abs
 
-/** Resolve a periodic quiet-zone alias using surviving image structure, without decoding. */
 internal object BrowserInitialGridEstimator {
     fun estimate(
         image: LumaImage,
         boundaries: List<ImageQuad>,
         cancellation: RecoveryCancellation = RecoveryCancellation.NONE,
-        trace: GridEstimationTrace? = null
-    ): InitialGridEstimate? {
-        InitialGridEstimator.estimate(image, boundaries, cancellation, trace)?.let { return it }
-        if (boundaries.size > 1) return null
-        val inverse = LumaImage(image.width, image.height, IntArray(image.pixels.size) { 255 - image.pixels[it] })
-        val normal = GridPeriodicityEstimator.estimate(image, cancellation) ?: return null
-        val inverted = GridPeriodicityEstimator.estimate(inverse, cancellation) ?: return null
-        return resolveQuietZoneAlias(image, normal, inverted, cancellation)
-    }
-
-    internal fun resolveQuietZoneAlias(
-        image: LumaImage, normal: GridPeriodicityEstimate, inverted: GridPeriodicityEstimate,
-        cancellation: RecoveryCancellation = RecoveryCancellation.NONE
-    ): InitialGridEstimate? {
-        // A four-module quiet zone adds eight modules: exactly two QR versions.
-        if (abs(normal.version - inverted.version) != 2 ||
-            abs(normal.modulePitch - inverted.modulePitch) > normal.modulePitch * .05) return null
-        val small = if (normal.version < inverted.version) normal else inverted
-        val large = if (normal.version < inverted.version) inverted else normal
-        val last = (16 + 4 * small.version).toDouble()
-        val map = Homography.fromCorrespondences(
-            listOf(PointD(0.0, 0.0), PointD(last, 0.0), PointD(last, last), PointD(0.0, last)),
-            small.moduleCenterQuad.asList())
-        val expanded = listOf(map.map(-4.0, -4.0), map.map(last + 4, -4.0),
-            map.map(last + 4, last + 4), map.map(-4.0, last + 4))
-        if (expanded.zip(large.moduleCenterQuad.asList()).any { (a, b) ->
-            a.distanceTo(b) > small.modulePitch * .25 }) return null
-        val normalSupported = supported(image, normal, cancellation)
-        val inverse = LumaImage(image.width, image.height, IntArray(image.pixels.size) { 255 - image.pixels[it] })
-        val invertedSupported = supported(inverse, inverted, cancellation)
-        if (normalSupported == invertedSupported) return null
-        val selected = if (normalSupported) normal else inverted
-        // One surviving Finder does not establish the logical orientation.
-        return InitialGridEstimate(selected.version, selected.moduleCenterQuad, InitialGridSource.PERIODICITY)
-    }
-
-    private fun supported(image: LumaImage, estimate: GridPeriodicityEstimate, cancellation: RecoveryCancellation): Boolean {
-        val n = 17 + 4 * estimate.version
-        val last = (n - 1).toDouble()
-        val map = Homography.fromCorrespondences(
-            listOf(PointD(0.0, 0.0), PointD(last, 0.0), PointD(last, last), PointD(0.0, last)),
-            estimate.moduleCenterQuad.asList())
-        fun value(x: Int, y: Int): Boolean? {
-            val p = map.map(x.toDouble(), y.toDouble())
-            val v = image.sampleMean(p.x, p.y, 0.0) ?: return null
-            return when { v <= 64 -> true; v >= 192 -> false; else -> null }
-        }
-        for (right in listOf(false, true)) for (bottom in listOf(false, true)) {
-            cancellation.check()
-            fun read(x: Int, y: Int) = value(if (right) n - 1 - x else x, if (bottom) n - 1 - y else y)
-            var finderKnown = 0
-            var finderCorrect = 0
-            for (y in 0..6) for (x in 0..6) {
-                val v = read(x, y) ?: continue
-                finderKnown++
-                if (v == (x == 0 || x == 6 || y == 0 || y == 6 || (x in 2..4 && y in 2..4))) finderCorrect++
-            }
-            // Allow occluded modules, while requiring most of the Finder and its separator.
-            if (finderKnown < 40 || finderCorrect < finderKnown - 1) continue
-            val separator = (0..7).map { read(7, it) } + (0..6).map { read(it, 7) }
-            if (separator.count { it == false } < 9 || separator.any { it == true }) continue
-            var known = 0
-            var matches = 0
-            for (i in 8..n - 9) for (v in listOf(read(i, 6), read(6, i))) if (v != null) {
-                known++
-                if (v == (i % 2 == 0)) matches++
-            }
-            if (known >= 4 && matches.toDouble() / known >= .9) return true
-        }
-        return false
-    }
+        trace: GridEstimationTrace? = null,
+    ): InitialGridEstimate? = InitialGridEstimator.estimate(image, boundaries, cancellation, trace)
 }

@@ -135,8 +135,8 @@ object BitmapUtils {
 
     /**
      * Scale applied to a crop before analysis. The basis is the larger of the crop and the initial
-     * crop, so adding margin beyond the symbol never lowers the resolution below that of the initial
-     * crop, and narrowing the crop does not raise it either.
+     * crop. Narrowing the crop does not increase the scale; wider crops reduce it when needed to
+     * keep the analysis image within the maximum dimension.
      */
     fun analysisCropScale(cropWidth: Float, cropHeight: Float, basisWidth: Float, basisHeight: Float,
                           maxDimension: Int = MAX_PREPARED_DIMENSION): Double =

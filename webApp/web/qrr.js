@@ -1,4 +1,5 @@
 import {digest} from './storage.js';
+import {CURRENT_QRR_VERSION} from './qrr-format.js';
 const MAX_FILE=20*1024*1024,MAX_RAW=16*1024*1024;
 export function base64(bytes){let s='';for(let i=0;i<bytes.length;i+=16384)s+=String.fromCharCode(...bytes.subarray(i,i+16384));return btoa(s);}
 export function unbase64(text){return Uint8Array.from(atob(text),c=>c.charCodeAt(0));}
@@ -6,7 +7,7 @@ async function transform(bytes,stream,max){const reader=new Blob([bytes]).stream
 export async function unpackQrr(file){
  if(file.size<48||file.size>MAX_FILE)throw new Error('QRRファイルのサイズが不正です');
  const bytes=new Uint8Array(await file.arrayBuffer()),v=new DataView(bytes.buffer),version=v.getInt32(4),rawSize=v.getInt32(8),compressedSize=v.getInt32(12);
- if(v.getInt32(0)!==0x5152523a||version<23||version>42||rawSize<1||rawSize>MAX_RAW||compressedSize<1||compressedSize+48!==bytes.length)throw new Error('QRRヘッダーが不正か、未対応の版です（対応: 23～42）');
+ if(v.getInt32(0)!==0x5152523a||version<23||version>CURRENT_QRR_VERSION||rawSize<1||rawSize>MAX_RAW||compressedSize<1||compressedSize+48!==bytes.length)throw new Error(`QRRヘッダーが不正か、未対応の版です（対応: 23～${CURRENT_QRR_VERSION}）`);
  const raw=await transform(bytes.subarray(48),new DecompressionStream('gzip'),rawSize);
  if(raw.length!==rawSize||await digest(raw)!==[...bytes.subarray(16,48)].map(x=>x.toString(16).padStart(2,'0')).join(''))throw new Error('QRRのSHA-256整合性チェックに失敗しました');
  return {raw:base64(raw),version};

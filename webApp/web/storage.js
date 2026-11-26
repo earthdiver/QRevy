@@ -90,6 +90,7 @@ export function validateSession(s) {
   }
 }
 function validateSettings(p,n=null){
+    if(p?.gridReference!=null&&typeof p.gridReference!=='boolean')throw new Error('設定が不正です');
     if(p?.visibleFinderRole!=null&&(![0,1,3].includes(p.visibleFinderRole)||p.assigned!==true||!p.quad))throw new Error('位置未測定のFinder役割が不正です');
     for(const key of ['brightness','contrast'])if(p?.[key]!=null&&(!Number.isFinite(p[key])||p[key]<-100||p[key]>100))throw new Error('画像調整値が不正です');
     if(!p)throw new Error('設定が不正です');if(p.priorityLimit==null)p.priorityLimit=4;if(!Number.isInteger(p.priorityLimit)||p.priorityLimit<4||p.priorityLimit>14)throw new Error('優先セル上限が不正です');if(!Number.isInteger(p.version)||p.version<1||p.version>40||(n!=null&&p.version!==(n-17)/4))throw new Error('設定と行列のバージョンが一致しません');

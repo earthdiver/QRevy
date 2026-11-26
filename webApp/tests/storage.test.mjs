@@ -28,6 +28,18 @@ test('pre-automatic workspaces remain readable',()=>{
  assert.doesNotThrow(()=>validateSession(value));
 });
 
+test('workspace backups preserve grid reference state in history and checkpoints',async()=>{
+ for(const gridReference of [false,true]){
+  const value=workspace();value.history[0].settings.gridReference=gridReference;
+  value.checkpoint=structuredClone(value.history[0]);
+  assert.deepEqual(await importWorkspace(await exportWorkspace(value)),value);
+ }
+ for(const invalid of [0,1,'false',{},[]]){
+  const value=workspace();value.history[0].settings.gridReference=invalid;
+  assert.throws(()=>validateSession(value));
+ }
+});
+
 test('workspace rejects HTML and invalid tone values while allowing legacy defaults',async()=>{
  for(const key of ['brightness','contrast'])for(const value of ['"><img src=x onerror=alert(1)>',NaN,Infinity,-101,101,{},[]]){
   const s=workspace();s.history[0].settings[key]=value;assert.throws(()=>validateSession(s));

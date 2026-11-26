@@ -128,10 +128,19 @@ data class ImageQuad(val topLeft: PointD, val topRight: PointD, val bottomRight:
     }
 }
 
+fun ImageQuad.finderCenters(version: Int): List<PointD> {
+    val last = (16 + 4 * version).toDouble()
+    val mapping = Homography.fromCorrespondences(
+        listOf(PointD(0.0, 0.0), PointD(last, 0.0), PointD(last, last), PointD(0.0, last)), asList())
+    return listOf(PointD(3.0, 3.0), PointD(last - 3, 3.0), PointD(last - 3, last - 3), PointD(3.0, last - 3))
+        .map(mapping::map)
+}
+
 /** Assigns logical QR corner names while preserving the boundary winding, including mirrored grids. */
-fun ImageQuad.assignedFromFinder(point: PointD, role: FinderRole): ImageQuad {
+fun ImageQuad.assignedFromFinder(point: PointD, role: FinderRole, version: Int): ImageQuad {
     val physical = asList()
-    val physicalIndex = physical.indices.minBy { physical[it].distanceTo(point) }
+    val centers = finderCenters(version)
+    val physicalIndex = centers.indices.minBy { centers[it].distanceTo(point) }
     val logicalIndex = when (role) {
         FinderRole.TOP_LEFT -> 0
         FinderRole.TOP_RIGHT -> 1

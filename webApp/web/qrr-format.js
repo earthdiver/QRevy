@@ -1,0 +1,1 @@
+export const CURRENT_QRR_VERSION=42;

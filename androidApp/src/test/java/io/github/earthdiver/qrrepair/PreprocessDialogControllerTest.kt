@@ -354,6 +354,27 @@ class PreprocessDialogControllerTest {
         }
     }
 
+    @Test fun rejectedFinderAndMissingFinderHaveDistinctMessagesWithoutMovingTheGrid() {
+        val wide = ImageQuad(PointD(0.0, 0.0), PointD(384.0, 0.0),
+            PointD(384.0, 384.0), PointD(0.0, 384.0))
+        for (detected in listOf(false, true)) {
+            val bitmap = edgeFinderSymbol(8)
+            if (!detected) bitmap.eraseColor(Color.WHITE)
+            withDialog(PreprocessSettings(version = 2, manualQuad = wide,
+                automaticThresholds = false, blackMax = 96, whiteMin = 160,
+                lmCorrectionEnabled = false), sourceBitmap = bitmap) { dialog, _, _, _ ->
+                val overlay = views(dialog.window!!.decorView).filterIsInstance<PreprocessOverlayView>().single()
+                val before = overlay.imageQuad()
+                overlay.onFinderHintPlaced!!.invoke(FinderRole.TOP_LEFT, PointD(28.0, 28.0), wide, null)
+                shadowOf(Looper.getMainLooper()).idle()
+                val message = org.robolectric.shadows.ShadowToast.getTextOfLatestToast()
+                assertTrue(message, message.startsWith(if (detected) "Finder候補は見つかりましたが" else "Finderを検出できませんでした。"))
+                assertEquals(before, overlay.imageQuad())
+                assertTrue(overlay.finderPoints().isEmpty())
+            }
+        }
+    }
+
     @Test fun finderTapWithoutADetectedFinderOnlyAssignsTheRoleAndKeepsTheGrid() {
         val unit = 8
         val size = 25 * unit

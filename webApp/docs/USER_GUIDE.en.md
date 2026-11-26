@@ -79,7 +79,7 @@ The overlaid **Finder and timing-pattern guides** help you choose the version ma
 
 Select **Assign Finder centers and logical roles**, choose top left, top right, or bottom left, then tap the corresponding Finder's center. Roles refer to the upright QR code, which may differ from the photo's orientation.
 
-Corners with a confirmed Finder center are green and protected from movement; orange corners can move. Green does not indicate reading confidence. If the center cannot be detected, an existing grid lets you assign only the role, leaving the corners movable. Review any confirmation prompt before applying the assignment; cancel keeps the previous state.
+Corners with a confirmed Finder center are green and protected from movement; orange corners can move. Green does not indicate reading confidence. If the center cannot be detected, an estimated or manually adjusted grid lets you assign only the role, leaving the corners movable. Review any confirmation prompt before applying the assignment; cancel keeps the previous state.
 
 Choose a role and use **Clear selected Finder** to remove its measured center, or **Clear role without a center** to remove a role-only assignment. **Clear all Finder assignments**, under **Finder assignment**, removes all assignments.
 

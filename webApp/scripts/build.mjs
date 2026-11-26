@@ -1,8 +1,10 @@
 import { mkdir, cp, readFile, writeFile, readdir, stat, rm } from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {join} from 'node:path';
+import {generateQrrFormat} from './qrr-format.mjs';
 const engine=await stat('web/engine/js/engine.js').catch(()=>{throw new Error('Run npm run build:engine first.');});
 if(!engine.size)throw new Error('Engine generation is incomplete. Wait for build:engine to finish before building the site.');
+await generateQrrFormat();
 await rm('dist',{recursive:true,force:true});await mkdir('dist',{recursive:true});await cp('web','dist',{recursive:true});
 await mkdir('dist/licenses',{recursive:true});
 await cp('../LICENSE','dist/licenses/LICENSE');

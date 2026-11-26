@@ -339,14 +339,19 @@ internal class PreprocessDialogController(
                 this,
                 ui(
                     "指定済みFinderから推定される位置と離れすぎています。格子またはFinder役割を確認してください。",
-                    "This point is too far from the position implied by the confirmed Finder. Check the grid or Finder roles.",
+                    "This point is too far from the position implied by the confirmed Finder. Check the grid or Finder roles."
                 ),
                 Toast.LENGTH_LONG,
             ).show()
         }
         overlay.onFinderHintPlaced = finderHint@{ role, hint, grid, physicalGrid ->
             // Without a detected Finder the tap only names a corner of the grid; it never moves the grid.
-            fun assignRoleOnly() {
+            fun assignRoleOnly(outcome: io.github.earthdiver.qrrepair.core.FinderRefinementOutcome =
+                io.github.earthdiver.qrrepair.core.FinderRefinementOutcome.NOT_FOUND) {
+                val failure = if (outcome == io.github.earthdiver.qrrepair.core.FinderRefinementOutcome.REJECTED)
+                    ui("Finder候補は見つかりましたが、位置や模様の条件を満たさないため採用しませんでした。",
+                        "Finder candidates were found, but none met the position or pattern requirements.")
+                else ui("Finderを検出できませんでした。", "No Finder was detected.")
                 val label = when (role) {
                     FinderRole.TOP_LEFT -> getString(R.string.top_left)
                     FinderRole.TOP_RIGHT -> getString(R.string.top_right)
@@ -356,19 +361,19 @@ internal class PreprocessDialogController(
                     PreprocessOverlayView.RoleAssignment.ASSIGNED -> {
                         refreshCornerControls()
                         noteDraftChange("corner-orientation", ui("Finder役割を指定", "Assigned Finder role"), label)
-                        ui("Finderを検出できなかったため、格子は動かさずに$label の役割だけを指定しました。位置は四隅で調整してください。",
-                            "No Finder was detected, so only the $label role was assigned and the grid was not moved. Adjust the corners to place it.")
+                        ui("格子は動かさずに$label の役割だけを指定しました。位置は四隅で調整してください。",
+                            "Only the $label role was assigned and the grid was not moved. Adjust the corners to place it.")
                     }
                     PreprocessOverlayView.RoleAssignment.KEPT_CONFIRMED ->
-                        ui("Finderを検出できませんでした。確定済みの$label Finderは変更していません。", "No Finder was detected. The confirmed $label Finder is unchanged.")
+                        ui("確定済みの$label Finderは変更していません。", "The confirmed $label Finder is unchanged.")
                     PreprocessOverlayView.RoleAssignment.ORIENTED_BY_CONFIRMED ->
-                        ui("Finderを検出できませんでした。格子の向きは確定済みのFinderで決まっているため、変更していません。", "No Finder was detected. The grid orientation is set by the confirmed Finder and is unchanged.")
+                        ui("格子の向きは確定済みのFinderで決まっているため、変更していません。", "The grid orientation is set by the confirmed Finder and is unchanged.")
                     PreprocessOverlayView.RoleAssignment.NO_GRID ->
-                        ui("Finderを検出できませんでした。四隅を調整してから役割を指定してください。", "No Finder was detected. Adjust the corners, then assign the role.")
+                        ui("四隅を調整してから役割を指定してください。", "Adjust the corners, then assign the role.")
                     PreprocessOverlayView.RoleAssignment.TOO_FAR ->
-                        ui("Finderを検出できませんでした。格子の角にあるFinderの位置をタップしてください。", "No Finder was detected. Tap the Finder position at a corner of the grid.")
+                        ui("格子の角にあるFinderの位置をタップしてください。", "Tap the Finder position at a corner of the grid.")
                 }
-                Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "$failure $message", Toast.LENGTH_LONG).show()
             }
             val profile = activePreviewProfile ?: return@finderHint assignRoleOnly()
             val finderToken = finderSearchGeneration.incrementAndGet()
@@ -395,7 +400,7 @@ internal class PreprocessDialogController(
                     }
                     val refined = refinement.candidate
                     when {
-                        refined == null -> assignRoleOnly()
+                        refined == null -> assignRoleOnly(refinement.outcome)
                         // A tap outside the Finder is not used as its center; cancelling leaves everything as before the tap.
                         refinement.needsConfirmation -> AlertDialog.Builder(activity)
                             .setMessage(ui("タップ位置はFinderの外側です。近くで検出したFinderの中心を使いますか？", "The tapped point is outside the Finder. Use the Finder center detected nearby?"))

@@ -156,17 +156,23 @@ object Bridge {
                 "autoAssignedFinders" to e?.autoAssignedFinders.orEmpty().flatMap { (role,point) -> listOf(when(role){FinderRole.TOP_LEFT->0;FinderRole.TOP_RIGHT->1;FinderRole.BOTTOM_LEFT->3},point.x,point.y) },
                 "confirmedPolarity" to (e?.confirmedPolarity?.name?:"UNKNOWN"),"finders" to f.map { listOf(it.centerX,it.centerY,it.moduleSize,it.angleRad) },"polarity" to when(e?.confirmedPolarity){FinderPolarity.INVERTED->"INVERTED";FinderPolarity.NORMAL->"NORMAL";else->"AUTO"})
         }
-        "finder" -> {
+        "finder" -> run finder@{
             val s=settings(o.obj("settings"));val img=image(o);val hint=PointD(o.num("x"),o.num("y"))
             val role=if(o.bool("alignGrid")) when(o.int("role",-1)){0->FinderRole.TOP_LEFT;1->FinderRole.TOP_RIGHT;3->FinderRole.BOTTOM_LEFT;else->error("Invalid Finder role")} else null
             // Only a grid assigned before this tap places the role's Finder; a provisional one does not.
             val physical=quad(o.obj("physicalGrid"))
             val refinement=refineFinderPlacement(img,s.copy(logicalGridAssigned=o.bool("gridAssigned")),hint,role?.takeIf { o.bool("gridAssigned") },physical.takeIf { !o.bool("gridAssigned") });val f=refinement.candidate
             val point=PointD(f?.centerX?:hint.x,f?.centerY?:hint.y)
-            fun aligned(p: PointD)=role?.let { quadJson(alignQuadToFinders(requireNotNull(s.manualQuad),s.version,s.manualFinders+(it to p))) }
+            val aligned = if (f != null && role != null) {
+                try {
+                    quadJson(alignQuadToFinders(requireNotNull(s.manualQuad), s.version, s.manualFinders + (role to point)))
+                } catch (_: IllegalArgumentException) {
+                    return@finder mapOf("confirmed" to false, "quad" to null, "placementRejected" to true)
+                }
+            } else null
             // A detection from a tap outside the Finder is confirmed in the UI before it is used. Without
             // a detection the tap only names the role, so no grid is aligned to it.
-            mapOf("x" to point.x,"y" to point.y,"confirmed" to (f!=null),"confirmedPolarity" to (f?.polarity?.name?:"UNKNOWN"),"quad" to f?.let { aligned(point) },
+            mapOf("x" to point.x,"y" to point.y,"confirmed" to (f!=null),"confirmedPolarity" to (f?.polarity?.name?:"UNKNOWN"),"quad" to aligned,
                 "outcome" to refinement.outcome.name,"needsConfirmation" to refinement.needsConfirmation)
         }
         "sample", "refine" -> {
