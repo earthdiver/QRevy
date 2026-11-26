@@ -1,0 +1,20 @@
+{
+  "name": "qrevy-pwa",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:engine": "../gradlew -p . generateJavaScript --console=plain",
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/engine.test.mjs tests/inspection.test.mjs tests/storage.test.mjs tests/server.test.mjs tests/codeword-overlay.test.mjs",
+    "dev": "node scripts/serve.mjs",
+    "test:browser": "playwright test",
+    "test:jvm": "../gradlew -p . test --console=plain"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

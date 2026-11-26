@@ -1,0 +1,32 @@
+package qrevy.web
+
+import com.google.zxing.EncodeHintType
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
+import com.google.zxing.qrcode.encoder.Encoder
+import io.github.earthdiver.qrrepair.core.*
+import kotlin.test.*
+
+class BrowserBoundaryEstimatorTest {
+    @Test fun damagedAlignmentPreservesVersionAndCorners() {
+        for (payload in listOf("BOUNDARY 42", "FINDER GEOMETRY", "ALIGNMENT OCCLUSION")) {
+            val qr = Encoder.encode(payload, ErrorCorrectionLevel.M, mapOf(EncodeHintType.QR_VERSION to 5)).matrix
+            val n = qr.width
+            val pitch = 8
+            val size = (n + 8) * pitch
+            for (inverted in listOf(false, true)) {
+                val image = LumaImage(size, size, IntArray(size * size) { i ->
+                    val x = i % size / pitch - 4
+                    val y = i / size / pitch - 4
+                    val black = x in 0 until n && y in 0 until n &&
+                        ((x >= n - 12 && y >= n - 12) || qr.get(x, y).toInt() == 1)
+                    if (black != inverted) 0 else 255
+                })
+                val estimate = assertNotNull(InitialGridEstimator.estimate(image, ImageRecovery.boundaries(image)), payload)
+                assertEquals(5, estimate.version)
+                assertEquals(3, estimate.autoAssignedFinders.size)
+                val expected = listOf(PointD(35.5, 35.5), PointD(323.5, 35.5), PointD(323.5, 323.5), PointD(35.5, 323.5))
+                for ((actual, target) in estimate.moduleCenterQuad.asList().zip(expected)) assertTrue(actual.distanceTo(target) < 1.0)
+            }
+        }
+    }
+}

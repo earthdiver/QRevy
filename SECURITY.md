@@ -2,6 +2,8 @@
 
 English | [Japanese](SECURITY.ja.md)
 
+This policy describes the Android app. See [PWA security](webApp/SECURITY.md) for browser-specific guidance.
+
 A recovered QR code is not proof that its content matches the original. Independently verify important information before using it.
 
 ## Saved files

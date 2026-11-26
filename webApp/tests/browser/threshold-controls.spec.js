@@ -1,0 +1,61 @@
+import {openImageAdjustments} from './input-helpers.js';
+import {test,expect} from '@playwright/test';
+test.use({hasTouch:true});
+const sample='tests/fixtures/clean.png';
+test('threshold range and numeric controls stay paired through manual and automatic sampling',async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('qrevy-automatic-repair','false'));
+ await page.goto('/');await expect(page.locator('#imageImport')).toBeEnabled();
+ await page.locator('#imageFile').setInputFiles(sample);
+ await page.locator('#cropApply').click();await expect(page.locator('#recover')).toBeEnabled();
+ await page.locator('#imageSettings > summary').click();
+ await expect(page.locator('#blackRange')).toHaveValue(await page.locator('#black').inputValue());
+ await expect(page.locator('#whiteRange')).toHaveValue(await page.locator('#white').inputValue());
+ await page.locator('#blackRange').scrollIntoViewIfNeeded();
+ const rangeBox=await page.locator('#blackRange').boundingBox();
+ await page.locator('#blackRange').tap({position:{x:Math.round(rangeBox.width*.75),y:rangeBox.height/2}});
+ await expect(page.locator('#recover')).toBeEnabled();
+ await expect(page.locator('#black')).toHaveValue(await page.locator('#blackRange').inputValue());
+ expect(Number(await page.locator('#black').inputValue())).toBeGreaterThan(100);
+ await expect(page.locator('#automatic')).not.toBeChecked();
+ await page.locator('#black').fill('80');await page.locator('#black').blur();await expect(page.locator('#recover')).toBeEnabled();
+ await expect(page.locator('#blackRange')).toHaveValue('80');await expect(page.locator('#automatic')).not.toBeChecked();
+ await page.locator('#white').fill('81');await page.locator('#white').blur();await expect(page.locator('#recover')).toBeEnabled();
+ // Native keyboard interaction exercises the range input's input/change sequence.
+ await page.locator('#blackRange').focus();await page.keyboard.press('End');await expect(page.locator('#recover')).toBeEnabled();
+ await expect(page.locator('#black')).toHaveValue('254');await expect(page.locator('#white')).toHaveValue('255');await expect(page.locator('#whiteRange')).toHaveValue('255');
+ await page.locator('#whiteRange').focus();await page.keyboard.press('Home');await expect(page.locator('#recover')).toBeEnabled();
+ await expect(page.locator('#white')).toHaveValue('1');await expect(page.locator('#black')).toHaveValue('0');await expect(page.locator('#blackRange')).toHaveValue('0');
+ await page.locator('#black').fill('96');await page.locator('#black').blur();await expect(page.locator('#recover')).toBeEnabled();
+ await expect(page.locator('#whiteRange')).toHaveValue('97');
+ await page.locator('#white').fill('160');await page.locator('#white').blur();await expect(page.locator('#recover')).toBeEnabled();
+ await page.locator('#automatic').check();await expect(page.locator('#recover')).toBeEnabled();
+ await expect(page.locator('#automatic')).toBeChecked();
+ await expect(page.locator('#blackRange')).toHaveValue(await page.locator('#black').inputValue());
+ await expect(page.locator('#whiteRange')).toHaveValue(await page.locator('#white').inputValue());
+ await page.locator('#black').fill('255');await page.locator('#black').blur();
+ await expect(page.locator('#toast')).toContainText('濃度閾値');
+ expect(Number(await page.locator('#black').inputValue())).toBeLessThan(Number(await page.locator('#white').inputValue()));
+ await expect(page.locator('#blackRange')).toHaveValue(await page.locator('#black').inputValue());
+});
+
+test('threshold labels honor Finder polarity and inverted numeric input uses image intensities',async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('qrevy-automatic-repair','false'));
+ await page.goto('/');await expect(page.locator('#imageImport')).toBeEnabled();
+ await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await expect(page.locator('#recover')).toBeEnabled();await page.locator('#imageSettings > summary').click();
+ await openImageAdjustments(page);await page.locator('#polarity').selectOption('INVERTED');await expect(page.locator('#recover')).toBeEnabled();
+ await expect(page.locator('#blackLabel')).toContainText('画像の暗部');
+ await expect(page.locator('#black')).toHaveValue(await page.locator('#blackRange').inputValue());
+ // Invert the imported image before Finder detection, without copying the source file.
+ await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropInvert').check();await page.locator('#cropApply').click();await expect(page.locator('#recover')).toBeEnabled();
+ if(!await page.locator('#imageSettings').evaluate(e=>e.open))await page.locator('#imageSettings > summary').click();
+ await expect(page.locator('#blackLabel')).toContainText('画像の明部');
+ await expect.poll(async()=>Number(await page.locator('#black').inputValue())+Number(await page.locator('#blackRange').inputValue())).toBe(255);
+ await page.locator('#black').fill('180');await page.locator('#black').blur();await expect(page.locator('#recover')).toBeEnabled();
+ await expect(page.locator('#blackRange')).toHaveValue('75');await expect(page.locator('#blackRange')).toHaveAttribute('aria-valuetext','180');await expect(page.locator('#blackLabel')).toContainText('180以上');
+ await page.locator('#white').fill('80');await page.locator('#white').blur();await expect(page.locator('#recover')).toBeEnabled();
+ await expect(page.locator('#whiteRange')).toHaveValue('175');await expect(page.locator('#whiteRange')).toHaveAttribute('aria-valuetext','80');await expect(page.locator('#whiteLabel')).toContainText('80以下');
+ await openImageAdjustments(page);await page.locator('#polarity').selectOption('NORMAL');await expect(page.locator('#recover')).toBeEnabled();
+ await expect(page.locator('#blackLabel')).toContainText('画像の明部');await expect(page.locator('#black')).toHaveValue('180');
+ await page.locator('#black').fill('0');await page.locator('#black').blur();
+ await expect(page.locator('#toast')).toContainText('QRの黒 > QRの白');await expect(page.locator('#black')).toHaveValue('180');
+});

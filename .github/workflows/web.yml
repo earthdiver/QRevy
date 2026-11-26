@@ -1,0 +1,65 @@
+name: Browser PWA CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: webApp/package-lock.json
+      - name: Bootstrap and verify Gradle Wrapper
+        run: |
+          ./bootstrap-wrapper.sh
+          ./scripts/verify-wrapper.sh
+          ./scripts/check-shared-boundary.sh
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-provider: basic
+      - name: Install browser test dependencies
+        working-directory: webApp
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npx playwright install --with-deps webkit chromium firefox
+      - name: Validate browser app
+        run: ./scripts/check-web.sh
+      - name: Upload static app
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: QRevy-pwa-${{ github.run_number }}
+          retention-days: 7
+          if-no-files-found: error
+          path: webApp/dist/**
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: QRevy-pwa-reports-${{ github.run_number }}
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            build/webApp/reports/**
+            webApp/test-results/**

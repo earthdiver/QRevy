@@ -2,6 +2,8 @@
 
 English | [Japanese](PRIVACY.ja.md)
 
+This policy describes the Android app. See [PWA privacy](webApp/PRIVACY.md) for browser storage and network behavior.
+
 QRevy processes QR codes locally on your Android device. The app does not request the Internet permission.
 
 ## Saved work

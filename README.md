@@ -6,6 +6,8 @@ QRevy is an offline Android app for recovering damaged QR codes that ordinary re
 
 Supports Android 8.0 or later and QR Code Model 2, versions 1–40. Model 1, Micro QR, and rMQR are unsupported. This repository does not include a complete iOS app.
 
+The [browser app](webApp/README.md) runs on iPhone, Android, and desktop browsers, with offline use after its initial download.
+
 Recovery does not guarantee that the result matches the original content. Independently verify important information.
 
 ## Recovery example

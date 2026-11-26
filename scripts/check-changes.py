@@ -12,6 +12,13 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_PACKAGE = "androidApp/src/main/java/io/github/earthdiver/qrrepair/"
 APP_TEST_PACKAGE = "androidApp/src/test/java/io/github/earthdiver/qrrepair/"
 SHARED_TESTS = "shared/src/commonTest/"
+# Browser compilation uses these repository sources and tests directly.
+WEB_SHARED_PATHS = frozenset(
+    line.strip()
+    for name in ("shared-sources.txt", "shared-tests.txt")
+    for line in (ROOT / "webApp" / name).read_text().splitlines()
+    if line.strip() and not line.startswith("#")
+)
 SCOPE_REASONS = {
     "docs": "documentation; review content, links, and paired translations",
     "app": "Android UI/session coverage, lint, and debug build",
@@ -24,7 +31,7 @@ SCOPE_REASONS = {
 def scope_for(path: str) -> str:
     # Check policy files before the documentation rule. New source areas and
     # test fixtures default to full validation until their dependencies are reviewed.
-    if path == "AGENTS.md":
+    if path == "AGENTS.md" or path in WEB_SHARED_PATHS:
         return "full"
     parts = PurePosixPath(path).parts
     if path.endswith(".md") and (len(parts) == 1 or parts[0] in {"docs", "iosApp", "templates"}):
@@ -101,6 +108,8 @@ def commands_for(paths: list[str], base: str, full: bool, platform: str, *, quic
                    ":androidApp:lint", ":androidApp:assembleDebug"]
     if is_full and platform == "darwin":
         gradle.append(":shared:assembleXCFramework")
+    if is_full:
+        commands.append(["./scripts/check-web.sh"])
     commands.append(gradle)
     return "quick" if quick else "full" if is_full else "+".join(sorted(scopes - {"docs"})), commands
 

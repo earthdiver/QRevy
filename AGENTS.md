@@ -1,11 +1,12 @@
 # AGENTS.md — QRevy
 
 ## Mission
-Maintain and extend QRevy, an offline Android/iOS-oriented tool for recovering damaged QR codes while preserving explainability, reproducibility, and user control.
+Maintain and extend QRevy, an offline Android/browser/iOS-oriented tool for recovering damaged QR codes while preserving explainability, reproducibility, and user control.
 
 ## Repository layout
 - `androidApp/`: Android application, CameraX UI, ZXing adapter, session persistence, Android-specific tests.
 - `shared/`: Kotlin Multiplatform recovery primitives. `commonMain` must stay free of Android APIs, JVM-only APIs, and ZXing.
+- `webApp/`: Independent TeaVM browser app, browser adapters, static assets, and browser tests. Uses the repository Gradle Wrapper and the source/test allowlists in `webApp/shared-sources.txt` and `webApp/shared-tests.txt`.
 - `iosApp/`: iOS handoff/bootstrap material. A real SwiftUI Xcode project is intentionally a later milestone.
 - `.github/workflows/`: pinned-SHA CI for Android and KMP artifacts.
 - `scripts/`: publication, wrapper, and dependency-audit checks.
@@ -39,6 +40,15 @@ Current shared components include:
 
 ZXing-backed QR version/format/block interleave and final payload decode remain in `androidApp` until replaced with common implementations.
 
+## Browser integration
+- Keep Sites settings, deployment helpers, and preview-site documents out of this repository.
+- Compile shared recovery sources in place; avoid introducing additional copies.
+- The four browser variants in `webApp/src/main/kotlin/overrides` are checked against their originals before compilation. Preserve their charset and memory-budget adaptations when synchronizing changes.
+- After changing reused Android UI text, regenerate browser labels with `cd webApp && python3 -B scripts/extract-ui-strings.py` and review the generated file.
+- Files listed in the browser source/test allowlists require full validation, including otherwise app-scoped presenters and session codecs.
+- Install Playwright browsers once with `cd webApp && npm ci --ignore-scripts && npx playwright install --with-deps webkit chromium firefox`. Browser tests manage their own server on port 4175 (`QREVY_TEST_PORT` overrides it).
+- PWA sessions use browser storage. Android backup restrictions remain enforced in the Android app; browser privacy documentation describes its separate storage guarantees.
+
 ## Required checks before completing a code change
 Choose checks by the complete change set, including callers and shared test fixtures. Use the change-check script for local validation (Python 3.10+):
 
@@ -52,9 +62,9 @@ By default, this includes staged, unstaged, and untracked changes relative to `H
 | Changed area | Required local checks |
 | --- | --- |
 | Root/docs/iOS/template Markdown only, excluding this file | Whitespace checks; review content, links, and paired translations |
-| Android application/UI/session Kotlin or display resources, including their UI/session tests | All Android unit tests except the two exhaustive geometry studies, lint, and debug build |
-| Shared test sources or fixtures only | Shared JVM tests |
-| Shared production code, Android recovery core or core tests/fixtures, build/dependency/CI/check configuration, manifest/backup rules, or unclassified files | Full checks |
+| Android application/UI/session Kotlin or display resources, including their UI/session tests, excluding browser-shared paths | All Android unit tests except the two exhaustive geometry studies, lint, and debug build |
+| Shared test sources or fixtures only, excluding browser-shared paths | Shared JVM tests |
+| Shared production code, Android recovery core or core tests/fixtures, browser code/shared paths, build/dependency/CI/check configuration, manifest/backup rules, or unclassified files | Full checks |
 
 Mixed changes combine the required checks; any full-check path makes the entire run full. The app scope retains session compatibility, source-image integrity, manual-edit, and ordinary geometry tests, including 48 default-width recovery cases. It excludes only the exhaustive displacement sweep and expanded width/rotation study. Use `--full` whenever the semantic impact exceeds the path classification. New source areas require full checks until their dependencies are reviewed.
 
@@ -66,7 +76,7 @@ Full development validation is:
 python3 -B scripts/check-changes.py --full
 ```
 
-This runs wrapper/bootstrap verification, the shared boundary check, script regression tests, `:shared:jvmTest`, all `:androidApp:testDebugUnitTest` tests, `:androidApp:lint`, and `:androidApp:assembleDebug`. Full runs on macOS also build `:shared:assembleXCFramework`. Existing Android CI and extended recovery fuzz runs always use full test coverage.
+This runs wrapper/bootstrap verification, the shared boundary check, script regression tests, `scripts/check-web.sh` (browser JVM tests, TeaVM generation, static build, Node tests, and all Playwright projects), `:shared:jvmTest`, all `:androidApp:testDebugUnitTest` tests, `:androidApp:lint`, and `:androidApp:assembleDebug`. Full runs on macOS also build `:shared:assembleXCFramework`. Existing Android CI and extended recovery fuzz runs always use full test coverage.
 
 For release-affecting changes, run full development validation and also:
 

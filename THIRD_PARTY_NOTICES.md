@@ -1,5 +1,7 @@
 # Third-party notices
 
+Browser distribution dependencies are listed in [PWA third-party notices](webApp/THIRD_PARTY_NOTICES.md).
+
 This project uses the following third-party components.
 
 > **Release-audit note:** The entries below cover direct runtime dependencies and known test dependencies in this source tree. Android/Gradle may resolve additional transitive runtime artifacts. Before distributing an APK/AAB, generate the actual `releaseRuntimeClasspath` and reconcile every resolved artifact and required NOTICE/license text. `scripts/release-audit.sh` and CI produce that dependency report; this hand-maintained file must not be treated as exhaustive until that gate has passed.

@@ -18,7 +18,7 @@ APP = "androidApp/src/main/java/io/github/earthdiver/qrrepair/"
 TEST = "androidApp/src/test/java/io/github/earthdiver/qrrepair/"
 CORE = APP + "core/RecoveryEngine.kt"
 SHARED = "shared/src/commonMain/kotlin/io/github/earthdiver/qrrepair/core/QrTypes.kt"
-SHARED_TEST = "shared/src/commonTest/kotlin/io/github/earthdiver/qrrepair/core/SharedCoreSmokeTest.kt"
+SHARED_TEST = "shared/src/commonTest/kotlin/io/github/earthdiver/qrrepair/core/NewSharedOnlyTest.kt"
 
 
 class CheckSelectionTest(unittest.TestCase):
@@ -34,7 +34,7 @@ class CheckSelectionTest(unittest.TestCase):
 
     def test_ui_sessions_and_localized_resources_keep_android_checks(self):
         paths = [APP + "AppStyle.kt", APP + "MainActivity.kt", APP + "ui/QrEditorView.kt",
-                 APP + "session/RecoverySessionCodec.kt", TEST + "session/RecoverySessionStorageTest.kt",
+                 APP + "session/RecoverySessionStore.kt", TEST + "session/RecoverySessionStorageTest.kt",
                  "androidApp/src/main/res/values-ja/strings.xml", "androidApp/src/main/res/raw/privacy.txt"]
         for path in paths:
             with self.subTest(path=path):
@@ -92,6 +92,22 @@ class CheckSelectionTest(unittest.TestCase):
                          for command in commands],
                         self.plan(paths, full=True, platform=platform)[1],
                     )
+
+    def test_browser_sources_and_shared_callers_require_browser_and_android_checks(self):
+        paths = ["webApp/web/app.js", "webApp/src/main/kotlin/Bridge.kt",
+                 "webApp/shared-sources.txt", "webApp/shared-tests.txt",
+                 APP + "session/RecoverySessionCodec.kt",
+                 APP + "PreRecoveryCellEditState.kt",
+                 "shared/src/commonTest/kotlin/io/github/earthdiver/qrrepair/core/SharedCoreSmokeTest.kt",
+                 TEST + "session/RecoverySessionCodecTest.kt"]
+        for path in paths:
+            with self.subTest(path=path):
+                scope, commands = self.plan([path])
+                self.assertEqual(scope, "full")
+                self.assertIn(["./scripts/check-web.sh"], commands)
+                self.assertIn("-Pqr.testScope=full", commands[-1])
+        self.assertIn(["./scripts/check-web.sh"], self.plan([], full=True)[1])
+        self.assertNotIn(["./scripts/check-web.sh"], self.plan([APP + "MainActivity.kt"])[1])
 
     def test_full_validation_cannot_be_combined_with_quick_feedback(self):
         with self.assertRaises(ValueError):
@@ -227,7 +243,7 @@ class GitChangeSelectionTest(unittest.TestCase):
 
     def test_successful_quick_feedback_still_requires_final_validation(self):
         for name in ("bootstrap-wrapper.sh", "scripts/verify-wrapper.sh",
-                     "scripts/check-shared-boundary.sh", "gradlew"):
+                     "scripts/check-shared-boundary.sh", "scripts/check-web.sh", "gradlew"):
             self.write(name, "#!/bin/sh\nexit 0\n")
             (self.root / name).chmod(0o755)
         self.write("scripts/test_fixture.py", "import unittest\nfrom pathlib import Path\n\n"

@@ -1,0 +1,14 @@
+import { mkdir, cp, readFile, writeFile, readdir, stat, rm } from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+import {join} from 'node:path';
+const engine=await stat('web/engine/js/engine.js').catch(()=>{throw new Error('Run npm run build:engine first.');});
+if(!engine.size)throw new Error('Engine generation is incomplete. Wait for build:engine to finish before building the site.');
+await rm('dist',{recursive:true,force:true});await mkdir('dist',{recursive:true});await cp('web','dist',{recursive:true});
+await mkdir('dist/licenses',{recursive:true});
+await cp('../LICENSE','dist/licenses/LICENSE');
+await cp('../NOTICE.md','dist/licenses/QREVY_NOTICE.md');
+for(const file of ['NOTICE.md','THIRD_PARTY_NOTICES.md','PRIVACY.md','PRIVACY.ja.md'])await cp(file,'dist/licenses/'+file);
+const files=[];async function scan(dir=''){for(const name of await readdir(join('dist',dir))){const rel=join(dir,name);if((await stat(join('dist',rel))).isDirectory())await scan(rel);else if(!['sw.js','_headers'].includes(rel))files.push('./'+rel);}}await scan();
+files.sort();const hash=createHash('sha256');for(const file of files)hash.update(await readFile(join('dist',file)));const version=hash.digest('hex').slice(0,16);
+const template=await readFile('scripts/sw-template.js','utf8');await writeFile('dist/sw.js',template.replace('__VERSION__',version).replace('__ASSETS__',JSON.stringify(['./',...files])));
+console.log(`Built dist: ${files.length} assets; offline cache ${version}`);

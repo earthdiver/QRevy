@@ -2,6 +2,8 @@
 
 [English](PRIVACY.md) | 日本語
 
+この方針はAndroidアプリを対象とします。ブラウザーの保存領域と通信については[PWAのプライバシー](webApp/PRIVACY.ja.md)を参照してください。
+
 QRevyは、Android端末内でQRコードを処理します。インターネット権限は要求しません。
 
 ## 保存した作業
