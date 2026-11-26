@@ -17,7 +17,7 @@ async function imageFromDemo(page){await demo(page);await click(page,'matrixToIm
 test.beforeEach(async({page})=>{
  await page.addInitScript(()=>{localStorage.setItem('qrevy-language','en');localStorage.setItem('qrevy-automatic-repair','false');});
  // Read-only probes: all inputs and mutations still use the product UI.
- await page.route('**/app.js',async route=>{const response=await route.fetch();await route.fulfill({response,body:(await response.text())+'\nwindow.review={get state(){return state},get result(){return result},get curves(){return curve.candidates},get busy(){return !!pending}};'});});
+ await page.route('**/app.js',async route=>{const response=await route.fetch();await route.fulfill({response,body:(await response.text())+'\nwindow.review={get state(){return state},get result(){return result},get curves(){return curve.candidates},get busy(){return !!recoveryWorker.pending}};'});});
  await page.goto('/');await idle(page);
 });
 

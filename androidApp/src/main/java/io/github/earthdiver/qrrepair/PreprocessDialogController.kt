@@ -344,6 +344,8 @@ internal class PreprocessDialogController(
                 Toast.LENGTH_LONG,
             ).show()
         }
+        val finderRefinements = FinderRefinementCoordinator(executor, { runOnUiThread(it) },
+            finderSearchGeneration, { editor.working })
         overlay.onFinderHintPlaced = finderHint@{ role, hint, grid, physicalGrid ->
             // Without a detected Finder the tap only names a corner of the grid; it never moves the grid.
             fun assignRoleOnly(outcome: io.github.earthdiver.qrrepair.core.FinderRefinementOutcome =
@@ -376,8 +378,6 @@ internal class PreprocessDialogController(
                 Toast.makeText(this, "$failure $message", Toast.LENGTH_LONG).show()
             }
             val profile = activePreviewProfile ?: return@finderHint assignRoleOnly()
-            val finderToken = finderSearchGeneration.incrementAndGet()
-            val finderWorking = editor.working
             // Search around the tap with the grid as it was before the tap: nothing is committed yet, so
             // the tap cannot shift the grid and mask the parts of the Finder that it misses.
             val finderProfile = profile.copy(settings = profile.settings.copy(
@@ -386,31 +386,25 @@ internal class PreprocessDialogController(
                 confirmedFinderPolarity = overlay.confirmedFinderPolarity(),
             ))
             Toast.makeText(this, ui("指定位置の周辺からFinderを精密探索中…", "Refining the Finder near the selected position…"), Toast.LENGTH_SHORT).show()
-            executor.execute {
-                val refinement = io.github.earthdiver.qrrepair.core.refineFinderPlacement(finderWorking.luma, finderProfile.settings, hint, role, physicalGrid)
-                runOnUiThread {
-                    fun current() = finderToken == finderSearchGeneration.get() && editor.working === finderWorking
-                    if (!current()) return@runOnUiThread
-                    fun applyRefined(refined: io.github.earthdiver.qrrepair.core.FinderCandidate) {
-                        if (!overlay.placeFinder(role, hint, refined)) return
+            finderRefinements.request(finderProfile.settings, hint, role, physicalGrid,
+                onNotFound = ::assignRoleOnly,
+                onRefined = { refined ->
+                    if (overlay.placeFinder(role, hint, refined)) {
                         editor.invalidateCorrections()
                         refreshCornerControls()
                         refreshClassificationMatrix()
                         Toast.makeText(this, ui("Finder位置を自動補正しました（モジュール幅 ${"%.1f".format(refined.moduleSize)}px）", "Finder position refined (module width ${"%.1f".format(refined.moduleSize)} px)"), Toast.LENGTH_SHORT).show()
                     }
-                    val refined = refinement.candidate
-                    when {
-                        refined == null -> assignRoleOnly(refinement.outcome)
-                        // A tap outside the Finder is not used as its center; cancelling leaves everything as before the tap.
-                        refinement.needsConfirmation -> AlertDialog.Builder(activity)
-                            .setMessage(ui("タップ位置はFinderの外側です。近くで検出したFinderの中心を使いますか？", "The tapped point is outside the Finder. Use the Finder center detected nearby?"))
-                            .setPositiveButton(ui("検出位置を使う", "Use detected position")) { _, _ -> if (current()) applyRefined(refined) }
-                            .setNegativeButton(R.string.cancel, null)
-                            .show()
-                        else -> applyRefined(refined)
-                    }
-                }
-            }
+                },
+                // A tap outside the Finder is not used as its center; cancelling leaves everything as before the tap.
+                confirm = { accept ->
+                    AlertDialog.Builder(activity)
+                        .setMessage(ui("タップ位置はFinderの外側です。近くで検出したFinderの中心を使いますか？", "The tapped point is outside the Finder. Use the Finder center detected nearby?"))
+                        .setPositiveButton(ui("検出位置を使う", "Use detected position")) { _, _ -> accept() }
+                        .setNegativeButton(R.string.cancel, null)
+                        .show()
+                },
+            )
         }
         overlay.onFinderRemoved = { role ->
             editor.invalidateCorrections()

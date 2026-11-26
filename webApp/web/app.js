@@ -1,3 +1,5 @@
+import {recordHistory,restoreHistoryEntry,historyChangedCells,saveHistoryCheckpoint,checkpointHistoryIndex,readAutomaticTrial} from './workspace-history.js';
+import {createRecoveryWorker} from './recovery-worker.js';
 import {drawCodewordOverlay,codewordCellLabel} from './codeword-overlay.js';
 import {needsLegacyImageMigration,migrateLegacyImages} from './session-migration.js';
 import {setupWorkflow} from './workflow.js';
@@ -11,7 +13,7 @@ import { listSessions, saveSession, removeSession, removeAllSessions, exportWork
 const $=id=>document.getElementById(id), clone=x=>structuredClone(x);
 const defaults={gridReference:false,visibleFinderRole:null,photographicSource:true,provisionalBlack:96,provisionalWhite:160,previewQuad:null,lmEnabled:true,confirmedPolarity:'UNKNOWN',finders:[],imageOps:[],toneInvert:false,priorityLimit:4,quietZone:true,version:1,quad:null,assigned:true,orientation:0,black:96,white:160,automatic:true,brightness:0,contrast:0,polarity:'AUTO',ecc:'',mask:-1,lockManual:true,single:false,utf8:false,formatLimitMode:'AUTOMATIC',dataLimitMode:'AUTOMATIC',formatLimit:6,dataLimit:20,partial:12,list:1,known:0,curved:false,neighborhood:false,warp:null,colorUnknown:false,colorClusters:[]};
 let state={id:crypto.randomUUID(),name:'新しい作業',matrix:null,source:null,settings:{...defaults},history:[],cursor:-1,image:null,imageHash:null};
-let tab='input',mode='matrix',zoom=1,pan=false,selected=null,result=null,candidateIndex=0,imageElement=null,worker=null,workerReady=false,pending=null,seq=0,timer=null,busySince=0,workerProgress='',drag=null,dragStart=null,stopBuffer=null,saveChain=Promise.resolve();
+let tab='input',mode='matrix',zoom=1,pan=false,selected=null,result=null,candidateIndex=0,imageElement=null,timer=null,busySince=0,workerProgress='',drag=null,dragStart=null,saveChain=Promise.resolve();
 let imagePixelsCache=null,imagePreview=null,tailData=null;
 let dataDisplayResult=null,dataDisplaySuccess=null;
 function syncResultDataDisplay(){
@@ -34,8 +36,6 @@ $('automaticRepair').checked=appPreference('qrevy-automatic-repair',true);
 $('automaticDiagnostics').checked=appPreference('qrevy-automatic-diagnostics',false);
 for(const [id,key] of [['automaticRepair','qrevy-automatic-repair'],['automaticDiagnostics','qrevy-automatic-diagnostics']])$(id).onchange=()=>{try{localStorage.setItem(key,String($(id).checked));}catch{}};
 $('openCellEditor').onclick=()=>setTab('edit');
-function readAutomaticTrial(value){return value?.automaticScanAssumption==null?null:{automaticScanAssumption:value.automaticScanAssumption,automaticScanListExtension:value.automaticScanListExtension??1,samplingInverted:!!value.samplingInverted};}
-function automaticTrialFields(){return state.automaticTrial?clone(state.automaticTrial):{};}
 function automaticFailureText(reason){const messages={
  TIME_LIMIT:['制限時間に達した処理があり、修復結果を確定できませんでした。','Some processing reached its time limit before a repair result could be confirmed.'],
  NO_INITIAL_GRID:['QRコードの四隅・バージョンを推定できませんでした。詳細解析で指定できます。','The QR corners and version could not be estimated. You can specify them in detailed analysis.'],
@@ -50,7 +50,7 @@ function renderAutomaticStatus(){const text=automaticStatusText();$('automaticSt
 function observedSource(matrix){const source=clone(matrix);source.text=source.text.replace(/\*/g,'?');const symbols=matrix.text.replace(/\n/g,'');source.sources=[...source.sources].map((v,i)=>symbols[i]==='*'?'0':v).join('');return source;}
 function adoptAutomaticCandidate(candidate){if(!candidate)return;const before=state.settings;state.matrix=clone(candidate.input||state.matrix);state.source=observedSource(candidate.source||candidate.input||state.source);state.settings={...before,...clone(candidate.settings||{}),version:candidate.version};state.automaticTrial=readAutomaticTrial(candidate);if(candidate.quad){state.settings.quad=clone(candidate.quad);if(state.image)state.settings.gridReference=true;}if(candidate.grid)state.settings.grid=clone(candidate.grid);state.imageOnly=false;restoreCurveChoices();syncSettings();if(result){result.input=clone(state.matrix);result.settings=clone(state.settings);result.fingerprint=JSON.stringify([state.matrix,state.settings,false]);}}
 async function runAutomatic(mode='initial'){
- if(pending)await pending.promise.catch(()=>{});
+ if(recoveryWorker.pending)await recoveryWorker.pending.promise.catch(()=>{});
  const session=mode==='initial'?{mode,firstRun:!automaticStarted,input:{matrix:clone(state.matrix),settings:clone(state.settings)},reports:[]}:state.automatic;
  if(!session)return;automaticDetailsRequested=false;automaticStarted=true;session.mode=mode;state.automatic=session;state.automaticTrial=null;state.oneTimeSingleSegment=false;
  const settings=clone(session.retrySettings||session.input.settings);if(state.image&&!settings.assigned)settings.quad=null;
@@ -100,40 +100,35 @@ function renderNativeHelp(){for(const el of document.querySelectorAll('[data-nat
 renderNativeHelp();
 function toast(text){$('toast').textContent=translate(text);$('toast').hidden=false;clearTimeout(toast.timeout);toast.timeout=setTimeout(()=>$('toast').hidden=true,6000);}
 function report(error){console.error(error);toast(error?.message||String(error));}
-function startWorker(){
-  workerReady=false;worker=new Worker(new URL('./worker.js',import.meta.url),{type:'module'});
-  worker.onmessage=({data})=>{
-    if(data.ready){workerReady=true;return;}
-    if(data.progress){workerProgress=data.progress;$('progressText').textContent=workerProgress;return;}
-    if(!pending || data.id!==pending.id)return;
-    const p=pending;pending=null;setBusy(false);if(data.error||data.result?.error)p.reject(new Error(data.error||data.result.error));else p.resolve(data.result);
-  };
-  worker.onerror=event=>{event.preventDefault();const e=new Error('修復エンジンの読み込みに失敗しました。再読み込みしてください。');if(pending){pending.reject(e);pending=null;}setBusy(false);report(e);};
-}
-startWorker();
-function call(request,label='処理中'){
-  if(pending){if(pending.action==='uiState'||request.action==='uiState')return pending.promise.catch(()=>{}).then(()=>call(request,label));return Promise.reject(new Error('現在の処理が終わるまでお待ちください'));}
-  const promise=new Promise((resolve,reject)=>{const id=++seq;pending={id,resolve,reject,action:request.action};stopBuffer=typeof SharedArrayBuffer!=='undefined'&&crossOriginIsolated?new Int32Array(new SharedArrayBuffer(4)):null;setBusy(true,label);worker.postMessage({id,request:{...request,stop:stopBuffer,language:getLanguage()}});});pending.promise=promise;return promise;
-}
-function setBusy(busy,label){$('cancel').textContent=translate(busy&&['quickRecover','quickRecoverImage'].includes(pending?.action)?'詳細解析':'修復を中断');label=busy&&['recover','recoverImage','quickRecover','quickRecoverImage'].includes(pending?.action)?translate('復元を準備中'):label?translate(label):label;
-  $('progress').hidden=!busy;$('forceStopHelp').hidden=true;$('progressTitle').hidden=!busy||!['recover','recoverImage','quickRecover','quickRecoverImage'].includes(pending?.action);$('recover').disabled=busy||!state.matrix||!state.settings.assigned;
+const recoveryWorker=createRecoveryWorker({
+  createWorker:()=>new Worker(new URL('./worker.js',import.meta.url),{type:'module'}),
+  getLanguage,
+  messages:{
+    busy:'現在の処理が終わるまでお待ちください',
+    loadFailed:'修復エンジンの読み込みに失敗しました。再読み込みしてください。',
+    stopped:'処理を中断しました。この実行の未確定候補は保存されません。前回の結果と編集内容は保持しています。',
+  },
+  onBusy:setBusy,
+  onProgress:text=>{workerProgress=text;$('progressText').textContent=text;},
+  onError:report,
+  onTerminated:()=>{if(result)result.needsInspectionRestore=true;},
+});
+recoveryWorker.start();
+function call(request,label='処理中'){return recoveryWorker.call(request,label);}
+function setBusy(busy,label){$('cancel').textContent=translate(busy&&['quickRecover','quickRecoverImage'].includes(recoveryWorker.pending?.action)?'詳細解析':'修復を中断');label=busy&&['recover','recoverImage','quickRecover','quickRecoverImage'].includes(recoveryWorker.pending?.action)?translate('復元を準備中'):label?translate(label):label;
+  $('progress').hidden=!busy;$('forceStopHelp').hidden=true;$('progressTitle').hidden=!busy||!['recover','recoverImage','quickRecover','quickRecoverImage'].includes(recoveryWorker.pending?.action);$('recover').disabled=busy||!state.matrix||!state.settings.assigned;
   for(const el of document.querySelectorAll('.viewer-context button,.viewer-context input,.viewer-context select,.panel button,.panel input,.panel select,.import-grid button,#demo,#emptyImport,#sessionsButton,#save,#exportSession,#exportQrr,#exportText,#resultStage,#unmask,#languageButton,#helpButton,#homeButton,#exitButton,#appMenuButton,#workMenuButton'))el.disabled=busy;
   if(busy){workerProgress='';busySince=Date.now();$('progressText').textContent=label;timer=setInterval(()=>{$('progressText').textContent=`${workerProgress||label}\n${getLanguage()==='ja'?'経過時間: ':'Elapsed: '}${Math.floor((Date.now()-busySince)/1000)}${getLanguage()==='ja'?'秒':'s'}`;},1000);}else{clearInterval(timer);timer=null;$('copyPayload').disabled=result?.candidates[candidateIndex]?.text==null||resultIsStale();$('exportPng').disabled=!result?.candidates[candidateIndex]||resultIsStale();$('undo').disabled=state.cursor<=0;$('redo').disabled=state.cursor>=state.history.length-1;$('imageView').disabled=!imageElement;$('candidatePicker').closest('.candidate-picker').hidden=(result?.candidates.length||0)<2;$('browseCandidates').hidden=(result?.candidates.length||0)<2;$('candidatePicker').disabled=!result?.candidates.length||resultIsStale();$('browseCandidates').disabled=!result?.candidates.length||resultIsStale();$('sameCodeword').disabled=!result?.candidates[candidateIndex];renderNextResultAction();applyEligibility();}
 }
-$('cancel').onclick=()=>{if(!pending)return;if(['quickRecover','quickRecoverImage'].includes(pending.action))automaticDetailsRequested=true;if(stopBuffer&&Atomics.load(stopBuffer,0)===0){Atomics.store(stopBuffer,0,1);$('progressText').textContent=translate('中断処理中…見つかった候補を保持します');$('forceStopHelp').textContent=getLanguage()==='ja'?'PWA: もう一度押すと処理を強制終了します。':'PWA: Press again to terminate the operation.';$('forceStopHelp').hidden=false;clearInterval(timer);return;}worker.terminate();if(result)result.needsInspectionRestore=true;const p=pending;pending=null;setBusy(false);startWorker();p.reject(new Error('処理を中断しました。この実行の未確定候補は保存されません。前回の結果と編集内容は保持しています。'));};
-function snapshot(label){
-  const previous=state.history[state.cursor],settings=clone(state.settings),matrix=clone(state.matrix);
-  const changes=previous?Object.keys(defaults).filter(key=>!['gridReference','grid','previewQuad','provisionalBlack','provisionalWhite'].includes(key)&&JSON.stringify(previous.settings[key])!==JSON.stringify(settings[key])).map(key=>({key,before:previous.settings[key],after:settings[key]})):[];
-  const before=previous?.matrix?.text.replace(/\n/g,''),after=matrix?.text.replace(/\n/g,'');
-  const changedCells=before&&after&&before.length===after.length?[...after].reduce((count,value,i)=>count+(value!==before[i]||matrix.sources[i]!==previous.matrix.sources[i]?1:0),0):0;
-  const kind=label==='簡易自動修復'?'AUTO_RECOVERY':!previous?'IMPORT':label==='設定を変更'?'SETTINGS':label.includes('セル')?'USER_EDIT':label.includes('候補')?'CANDIDATE':label==='修復結果'?'AUTO_RECOVERY':changes.some(c=>['quad','finders','orientation','version','imageOps'].includes(c.key))?'GEOMETRY':'SYSTEM';
-  return {timestamp:Date.now(),kind,changes,changedCells,imageOnly:!!state.imageOnly,automatic:clone(state.automatic||null),...automaticTrialFields(),selection:currentSelection(),oneTimeSingleSegment:!!state.oneTimeSingleSegment,qrrIndex:previous?.qrrIndex??-1,label,matrix,source:clone(state.source),settings};
-}
-function historyChangedCells(h,previous){
-  if(Number.isInteger(h.changedCells))return h.changedCells;
-  const before=previous?.matrix?.text.replace(/\n/g,''),after=h.matrix?.text.replace(/\n/g,'');
-  return before&&after&&before.length===after.length?[...after].reduce((count,value,i)=>count+(value!==before[i]||h.matrix.sources[i]!==previous.matrix.sources[i]?1:0),0):0;
-}
+$('cancel').onclick=()=>{
+  if(!recoveryWorker.pending)return;
+  if(['quickRecover','quickRecoverImage'].includes(recoveryWorker.pending.action))automaticDetailsRequested=true;
+  if(recoveryWorker.stop()==='stopping'){
+    $('progressText').textContent=translate('中断処理中…見つかった候補を保持します');
+    $('forceStopHelp').textContent=getLanguage()==='ja'?'PWA: もう一度押すと処理を強制終了します。':'PWA: Press again to terminate the operation.';
+    $('forceStopHelp').hidden=false;clearInterval(timer);
+  }
+};
 function historyDetail(h){
   if(h.detail)return h.detail;
   const names={black:['黒の上限','Black maximum'],white:['白の下限','White minimum'],lmEnabled:['LM格子補正','LM grid refinement'],warp:['曲面補正の格子','Curved grid'],colorClusters:['色クラスタ','Color clusters'],quad:['四隅','Corners'],finders:['Finder指定','Finder assignments'],imageOps:['画像変換','Image transform'],confirmedPolarity:['Finderの白黒','Finder polarity']},ja=getLanguage()==='ja';
@@ -152,12 +147,10 @@ function clearTailAnalysis(){
 }
 function record(label){
   clearAnalysis();
-  if(!state.matrix)return;const prior=state.history[state.cursor];if(!['簡易自動修復','候補を選択'].includes(label)&&prior&&(JSON.stringify(prior.matrix)!==JSON.stringify(state.matrix)||JSON.stringify(prior.settings)!==JSON.stringify(state.settings))){state.automaticTrial=null;state.automatic=null;}if(label==='設定を変更')state.oneTimeSingleSegment=false;
-  if(!state.checkpoint&&state.checkpointCursor!=null&&state.history[state.checkpointCursor])state.checkpoint=clone(state.history[state.checkpointCursor]);state.history=state.history.slice(0,state.cursor+1);state.history.push(snapshot(label));
-  if(state.history.length>40){state.history.shift();state.checkpointCursor=Math.max(0,(state.checkpointCursor??0)-1);}state.cursor=state.history.length-1;
+  if(!recordHistory(state,label,defaults,currentSelection))return;
   renderHistory();autoSave();
 }
-function restoreHistory(index){if(pending)return;const h=state.history[index];if(!h)return;if(!state.matrix||rowsOf(state.matrix).length!==rowsOf(h.matrix).length){selected=null;selectedCells=[];}clearAnalysis();overlayFingerprint=0;state.cursor=index;state.imageOnly=!!h.imageOnly;state.automatic=clone(h.automatic||null);state.automaticTrial=readAutomaticTrial(h);state.oneTimeSingleSegment=!!h.oneTimeSingleSegment;state.matrix=clone(h.matrix);state.source=clone(h.source);state.settings={...defaults,photographicSource:!!state.image,gridReference:!!h.settings.quad,...clone(h.settings)};restoreCurveChoices();result=null;renderResult();syncSettings();render();renderHistory();autoSave();restoreSelection(h.selection,false).catch(report);}
+function restoreHistory(index){if(recoveryWorker.pending)return;const h=state.history[index];if(!h)return;if(!state.matrix||rowsOf(state.matrix).length!==rowsOf(h.matrix).length){selected=null;selectedCells=[];}clearAnalysis();overlayFingerprint=0;restoreHistoryEntry(state,index,defaults);restoreCurveChoices();result=null;renderResult();syncSettings();render();renderHistory();autoSave();restoreSelection(h.selection,false).catch(report);}
 function renderHistory(){
   $('undo').disabled=state.cursor<=0;$('redo').disabled=state.cursor>=state.history.length-1;
   $('history').replaceChildren(...state.history.map((h,i)=>{const b=document.createElement('button');const time=Number.isFinite(h.timestamp)?new Date(h.timestamp).toLocaleTimeString(getLanguage()==='ja'?'ja-JP':'en-GB',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'}):'',kinds={IMPORT:['取込','Import'],AUTO_RECOVERY:['修復','Repair'],USER_EDIT:['編集','Edit'],APPLY_RECOVERY:['反映','Apply'],GEOMETRY:['格子','Geometry'],CANDIDATE:['候補','Candidate'],SYSTEM:['操作','Action'],SETTINGS:['設定','Settings']},detail=historyDetail(h);b.textContent=`${i===state.cursor?'● ':' '}${i+1}. ${time} ${kinds[h.kind]?.[getLanguage()==='ja'?0:1]||''} ${translate(['フルオート解析','Automatic scan'].includes(h.label)?'簡易自動修復':h.label)}${` Δ ${historyChangedCells(h,state.history[i-1])}${getLanguage()==='ja'?'セル':' cells'}`}${detail?'\n'+detail:''}`;b.style.whiteSpace='pre-line';b.onclick=()=>restoreHistory(i);return b;}));
@@ -166,7 +159,7 @@ $('undo').onclick=()=>restoreHistory(state.cursor-1);$('redo').onclick=()=>resto
 function workspaceName(s){return s.nameKey===s.name&&['TXT行列','損傷サンプル','画像からの修復','TXT行列 · 画像調整','損傷サンプル · 画像調整'].includes(s.nameKey)?s.nameKey.split(' · ').map(translate).join(' · '):s.name;}
 function serializable(){return {id:state.id,name:state.name,nameKey:state.nameKey,updated:Date.now(),history:clone(state.history),cursor:state.cursor,checkpointCursor:state.checkpointCursor??0,checkpoint:clone(state.checkpoint||null),image:state.image,imageHash:state.imageHash,qrrRaw:state.qrrRaw,qrrVersion:state.qrrVersion};}
 function autoSave(){if(!state.matrix||deletingSessions)return;const session=serializable();saveChain=saveChain.catch(()=>{}).then(()=>saveSession(session)).then(()=>{$('saveStatus').textContent=`端末内に保存済み · ${new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}`;}).catch(e=>{$('saveStatus').textContent='自動保存できません。作業をファイルに書き出してください。';console.error(e);});}
-$('save').onclick=()=>{if(pending||!state.history[state.cursor])return;state.checkpointCursor=state.cursor;state.checkpoint=clone(state.history[state.cursor]);autoSave();toast('端末内への保存を開始しました');navigator.storage?.persist?.().catch(()=>{});};
+$('save').onclick=()=>{if(recoveryWorker.pending||!saveHistoryCheckpoint(state))return;autoSave();toast('端末内への保存を開始しました');navigator.storage?.persist?.().catch(()=>{});};
 function syncSettings(){$('formatSearchCount').textContent=getLanguage()==='ja'?`探索対象: ${(state.settings.ecc?1:4)*(state.settings.mask<0?8:1)}形式`:`Formats to search: ${(state.settings.ecc?1:4)*(state.settings.mask<0?8:1)}`;$('curveChoice').hidden=!state.settings.curved||!curve.candidates?.length;$('curveStatus').hidden=!state.settings.curved;$('refine').checked=!!state.settings.lmEnabled;for(const [key,value] of Object.entries(state.settings)){const el=$(key);if(!el)continue;if(el.type==='checkbox')el.checked=key==='lockManual'?!value:!!value;else if(value!==null && typeof value!=='object')el.value=String(value);}for(const id of ['formatLimit','dataLimit'])$(id).hidden=state.settings[id+'Mode']!=='MANUAL';$('brightnessValue').textContent=state.settings.brightness;$('contrastValue').textContent=state.settings.contrast;syncThresholdControls();renderThresholdLabels();renderLimitLabels();$('editKind').querySelector('[value="1"]').textContent=t(state.settings.lockManual?'cell_source_fixed':'cell_source_fixed_correctable');}
 function readSettings(changedKey=null){const s={...state.settings};for(const key of Object.keys(defaults)){const el=$(key);if(!el)continue;if(el.type==='checkbox')s[key]=key==='lockManual'?!el.checked:el.checked;else if(typeof defaults[key]==='number'){if(el.value.trim()==='')throw new Error(getLanguage()==='ja'?'数値を入力してください。':'Enter a number.');s[key]=['black','white'].includes(key)&&thresholdsInverted()?255-Number(el.value):Number(el.value);}else s[key]=el.value;}if(!Number.isInteger(s.black)||!Number.isInteger(s.white)||s.black<0||s.white>255||s.black>=s.white)throw new Error(getLanguage()==='ja'?`濃度閾値は0〜255の整数とし、QRの黒 ${thresholdsInverted()?'>':'<'} QRの白にしてください。`:`Enter integer density thresholds from 0 to 255, with QR black ${thresholdsInverted()?'>':'<'} QR white.`);for(const key of ['formatLimit','dataLimit']){const maximum=key==='formatLimit'?30:changedKey==='dataLimit'?(regionCache.get(s.version)?.size??29648):29648;if(!Number.isInteger(s[key])||s[key]<0||s[key]>maximum)throw new Error(getLanguage()==='ja'?`誤り上限は0〜${maximum}の整数を入力してください。`:`Enter an integer error limit from 0 to ${maximum}.`);}return s;}
 for(const key of Object.keys(defaults)){
@@ -269,12 +262,12 @@ function render(){
   scheduleEligibility();
   if(tab==='edit'&&$('inputDataPanel').open)queueMicrotask(updateInputData);
   canvas.style.touchAction='none';$('panView').classList.toggle('selected',pan);$('panView').setAttribute('aria-pressed',String(pan));
-  if(tab==='edit'&&state.matrix&&$('codewordOverlay').checked&&overlayFingerprint!==state.matrix?.text&&!overlayUpdating&&(!pending||pending.action==='uiState'))queueMicrotask(()=>{if(!overlayUpdating&&(!pending||pending.action==='uiState')&&$('codewordOverlay').checked&&overlayFingerprint!==state.matrix?.text)$('codewordOverlay').onchange();});const m=matrixNow(),has=!!m||!!imageElement;document.body.classList.toggle('has-work',has);$('imageQuickActions').hidden=!imageElement;$('editorTools').hidden=tab!=='edit'||!m;$('editorActions').hidden=tab!=='edit'||!m;$('resultViewTools').hidden=tab!=='results'||!result;$('resultInspection').hidden=tab!=='results'||!result?.candidates[candidateIndex];$('candidatePicker').closest('.candidate-picker').hidden=(result?.candidates.length||0)<2;$('browseCandidates').hidden=(result?.candidates.length||0)<2;$('candidatePicker').disabled=!result?.candidates.length||resultIsStale();$('browseCandidates').disabled=!result?.candidates.length||resultIsStale();$('sameCodeword').disabled=!result?.candidates[candidateIndex];
+  if(tab==='edit'&&state.matrix&&$('codewordOverlay').checked&&overlayFingerprint!==state.matrix?.text&&!overlayUpdating&&(!recoveryWorker.pending||recoveryWorker.pending.action==='uiState'))queueMicrotask(()=>{if(!overlayUpdating&&(!recoveryWorker.pending||recoveryWorker.pending.action==='uiState')&&$('codewordOverlay').checked&&overlayFingerprint!==state.matrix?.text)$('codewordOverlay').onchange();});const m=matrixNow(),has=!!m||!!imageElement;document.body.classList.toggle('has-work',has);$('imageQuickActions').hidden=!imageElement;$('editorTools').hidden=tab!=='edit'||!m;$('editorActions').hidden=tab!=='edit'||!m;$('resultViewTools').hidden=tab!=='results'||!result;$('resultInspection').hidden=tab!=='results'||!result?.candidates[candidateIndex];$('candidatePicker').closest('.candidate-picker').hidden=(result?.candidates.length||0)<2;$('browseCandidates').hidden=(result?.candidates.length||0)<2;$('candidatePicker').disabled=!result?.candidates.length||resultIsStale();$('browseCandidates').disabled=!result?.candidates.length||resultIsStale();$('sameCodeword').disabled=!result?.candidates[candidateIndex];
   $('cellSummary').hidden=!m||tab==='results';$('reasonLegend').hidden=tab!=='results'||!result;
   $('emptyState').hidden=has;canvas.hidden=!has;$('viewTools').hidden=!has;$('imageSettings').hidden=!imageElement;
   $('matrixImageTools').hidden=!state.matrix||!!state.image||!!state.imageOnly||!!state.qrrRaw;
   const priorityCount=(state.matrix?.text.match(/\*/g)||[]).length,manualCount=(state.matrix?.sources.match(/[156]/g)||[]).length,undoCount=Math.max(0,state.cursor),redoCount=Math.max(0,state.history.length-1-state.cursor);$('priorityCount').textContent=getLanguage()==='ja'?`優先探索 ${priorityCount} / ${state.settings.priorityLimit} · ${2**priorityCount}通り`:`Priority search ${priorityCount} / ${state.settings.priorityLimit} · ${2**priorityCount} combinations`;$('editCounts').textContent=getLanguage()==='ja'?`変更セル: ${manualCount}セル · Undo可能: ${undoCount} · Redo可能: ${redoCount}`:`Changed cells: ${manualCount} · Undo available: ${undoCount} · Redo available: ${redoCount}`;
-  $('recover').disabled=!!pending||!state.matrix||!!state.imageOnly||!state.settings.assigned;$('attachImage').hidden=!state.qrrRaw||!!state.image;$('imageOnlyNotice').hidden=!state.imageOnly;$('viewTitle').toggleAttribute('data-user-content',has);$('viewTitle').textContent=has?workspaceName(state):'修復するQRを読み込む';
+  $('recover').disabled=!!recoveryWorker.pending||!state.matrix||!!state.imageOnly||!state.settings.assigned;$('attachImage').hidden=!state.qrrRaw||!!state.image;$('imageOnlyNotice').hidden=!state.imageOnly;$('viewTitle').toggleAttribute('data-user-content',has);$('viewTitle').textContent=has?workspaceName(state):'修復するQRを読み込む';
   $('dimensions').textContent=m?`V${(rowsOf(m).length-17)/4} · ${rowsOf(m).length}×${rowsOf(m).length}`:'未読み込み';
   $('imageView').disabled=!imageElement;$('imageView').classList.toggle('selected',mode==='image');$('matrixView').classList.toggle('selected',mode==='matrix');
   $('zoomLabel').textContent=`${Math.round(zoom*100)}%`;
@@ -327,7 +320,7 @@ function imageCellAt(p,grid,n){
 }
 function cellAt(p){if(mode!=='image')return {x:Math.floor(p.x/12)-2,y:Math.floor(p.y/12)-2};return imageCellAt(p,imageDisplaySettings().grid,rowsOf(matrixNow()).length);}
 let cornerSelection=null;canvas.tabIndex=0;
-canvas.onpointerdown=e=>{if(e.button!==0||pending||pan)return;cornerSelection=null;if(cellGesture){cellGesture=null;selectedCells=[];render();return;}const p=position(e);if(mode==='image'&&tab==='input'&&state.settings.quad){const role=$('finderRole').value;if(role!==''){assignFinder(p,Number(role)).catch(report);return;}const q=state.settings.quad;const locked=new Set((state.settings.finders||[]).filter((_,i)=>i%3===0)),distances=[0,1,2,3].map(i=>locked.has(i)?Infinity:Math.hypot(q[2*i]-p.x,q[2*i+1]-p.y));const i=distances.indexOf(Math.min(...distances));if(distances[i]<canvasCoordinates.width/canvas.getBoundingClientRect().width*32){cornerSelection=i;canvas.focus({preventScroll:true});drag=i;dragStart={point:p,corner:[q[2*i],q[2*i+1]],changed:false,slop:(e.pointerType==='touch'?8:3)*canvasCoordinates.width/canvas.getBoundingClientRect().width};canvas.setPointerCapture(e.pointerId);}}else{const m=matrixNow();if(!m)return;const n=rowsOf(m).length,{x,y}=cellAt(p);if(x>=0&&y>=0&&x<n&&y<n){selected={x,y};selectedCells=[y*n+x];revealCellEvidence();if(tab==='input')setTab('edit');if(tab==='edit'&&$('cellTool').value!=='select'){cellGesture={start:{x,y},tool:$('cellTool').value,cells:new Set()};canvas.setPointerCapture(e.pointerId);updateGesture(x,y);}render();}}};
+canvas.onpointerdown=e=>{if(e.button!==0||recoveryWorker.pending||pan)return;cornerSelection=null;if(cellGesture){cellGesture=null;selectedCells=[];render();return;}const p=position(e);if(mode==='image'&&tab==='input'&&state.settings.quad){const role=$('finderRole').value;if(role!==''){assignFinder(p,Number(role)).catch(report);return;}const q=state.settings.quad;const locked=new Set((state.settings.finders||[]).filter((_,i)=>i%3===0)),distances=[0,1,2,3].map(i=>locked.has(i)?Infinity:Math.hypot(q[2*i]-p.x,q[2*i+1]-p.y));const i=distances.indexOf(Math.min(...distances));if(distances[i]<canvasCoordinates.width/canvas.getBoundingClientRect().width*32){cornerSelection=i;canvas.focus({preventScroll:true});drag=i;dragStart={point:p,corner:[q[2*i],q[2*i+1]],changed:false,slop:(e.pointerType==='touch'?8:3)*canvasCoordinates.width/canvas.getBoundingClientRect().width};canvas.setPointerCapture(e.pointerId);}}else{const m=matrixNow();if(!m)return;const n=rowsOf(m).length,{x,y}=cellAt(p);if(x>=0&&y>=0&&x<n&&y<n){selected={x,y};selectedCells=[y*n+x];revealCellEvidence();if(tab==='input')setTab('edit');if(tab==='edit'&&$('cellTool').value!=='select'){cellGesture={start:{x,y},tool:$('cellTool').value,cells:new Set()};canvas.setPointerCapture(e.pointerId);updateGesture(x,y);}render();}}};
 canvas.onpointermove=e=>{
   if(cellGesture){const p=position(e),{x,y}=cellAt(p);updateGesture(x,y);render();return;}
   if(drag===null||!dragStart)return;
@@ -344,7 +337,7 @@ canvas.onpointercancel=()=>{cellGesture=null;selectedCells=[];if(drag!==null)fin
 canvas.addEventListener('keydown',e=>{
  const delta={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[e.key];
  if(!delta||e.altKey||e.ctrlKey||e.metaKey||cornerSelection==null||mode!=='image'||tab!=='input'||!state.settings.quad)return;
- e.preventDefault();if(pending||pan)return;
+ e.preventDefault();if(recoveryWorker.pending||pan)return;
  if((state.settings.finders||[]).some((v,i)=>i%3===0&&v===cornerSelection))return;
  const q=state.settings.quad,n=17+4*state.settings.version;
  const distance=(a,b)=>Math.hypot(q[a*2]-q[b*2],q[a*2+1]-q[b*2+1]);
@@ -404,7 +397,7 @@ async function assignRoleOnly(p,role,savedSettings,restore,outcome){
 $('clearFinders').onclick=async()=>{invalidateLm(true);state.settings.warp=null;state.settings.previewQuad=null;curve.candidates=[];state.settings.finders=[];state.settings.visibleFinderRole=null;state.settings.confirmedPolarity='UNKNOWN';state.settings.assigned=false;syncSettings();if(state.image)await sample(false,{recordHistory:false}).catch(report);record('Finder指定を解除');render();};
 function revealCellEvidence(){if(tab==='results'&&result?.candidates[candidateIndex]){$('resultEvidencePanel').open=true;$('resultInspection').querySelector('details').open=true;}}
 function showCell(){if(!selected||!matrixNow()){ $('selectedCell').textContent='セルを選択してください';$('sourceSummary').textContent='';$('cellDetail').textContent='';$('resultCellDetail').textContent=t('inline:セルをタップ：セルの修復理由を表示');return;}const m=matrixNow(),rows=rowsOf(m),v=rows[selected.y]?.[selected.x];if(tab==='edit'&&!cellGesture){const cells=selectedCells.length?selectedCells:[selected.y*rows.length+selected.x],kinds=cells.map(i=>['1','6'].includes(m.sources[i])?'1':m.sources[i]==='5'?'5':'0'),unique=[...new Set(kinds)];$('editKind').value=unique.length===1?unique[0]:'mixed';$('editKind').querySelector('[value="1"]').disabled=cells.some(i=>['?','*'].includes(rows[Math.floor(i/rows.length)]?.[i%rows.length]));$('sourceSummary').textContent=cells.length===1?t('cell_source_preview',v,rowsOf(state.source)[selected.y]?.[selected.x]):t('cell_source_selection',cells.length,kinds.filter(k=>k==='0').length,kinds.filter(k=>k==='5').length,kinds.filter(k=>k==='1').length);}const overlay=tab==='edit'&&$('codewordOverlay').checked&&overlayFingerprint===state.matrix?.text?overlayCells?.[`${selected.x},${selected.y}`]:null;const kind=overlay?codewordCellLabel(overlay,getLanguage()==='ja'):t(regionKindsCache.get(state.settings.version)?.[selected.y*rows.length+selected.x]||'cell_region_codeword');$('selectedCell').textContent=getLanguage()==='ja'?`選択: (${selected.x},${selected.y}) / ${kind} / 値=${v}`:`Selected: (${selected.x},${selected.y}) / ${kind} / value=${v}`;const trace=tab==='results'?resultTrace(result?.candidates[candidateIndex],selected.x,selected.y):null;$('cellDetail').textContent=trace?`${trace.title}\n${trace.detail}`:'';if(tab==='results'){const role=trace?.formatRole,label=translate(role==='ECC'?'ECCレベルのセルを表示':role==='MASK'?'マスク番号のセルを表示':role==='PARITY'?'形式情報の訂正ビットを表示':'同じコード語を表示');const text=[...$('sameCodeword').parentElement.childNodes].find(n=>n.nodeType===Node.TEXT_NODE);if(text)text.nodeValue=label;}$('resultCellDetail').textContent=tab==='results'&&result?.candidates[candidateIndex]?resultBasicCellText(result.candidates[candidateIndex],selected.x,selected.y,trace)+($('calculationDetails').checked?'\n'+technicalCellText(result.candidates[candidateIndex],selected.x,selected.y,trace):''):t('inline:セルをタップ：セルの修復理由を表示');}
-async function editCell(value,restore=false){if(!selected||!state.matrix||pending)return;const n=rowsOf(state.matrix).length,cells=selectedCells.length?selectedCells:[selected.y*n+selected.x];const m=await call({action:'edit',matrix:state.matrix,source:state.source,settings:state.settings,cells,value:restore?'source':value,kind:restore?'0':$('editKind').value},'セル編集');if(m.text===state.matrix.text&&m.sources===state.matrix.sources){render();return;}state.matrix=m;record(restore?'セルの読み取りを復元':`${cells.length}セル → ${value}`);render();}
+async function editCell(value,restore=false){if(!selected||!state.matrix||recoveryWorker.pending)return;const n=rowsOf(state.matrix).length,cells=selectedCells.length?selectedCells:[selected.y*n+selected.x];const m=await call({action:'edit',matrix:state.matrix,source:state.source,settings:state.settings,cells,value:restore?'source':value,kind:restore?'0':$('editKind').value},'セル編集');if(m.text===state.matrix.text&&m.sources===state.matrix.sources){render();return;}state.matrix=m;record(restore?'セルの読み取りを復元':`${cells.length}セル → ${value}`);render();}
 document.querySelectorAll('[data-value]').forEach(b=>b.onclick=()=>editCell(b.dataset.value).catch(report));$('restoreCell').onclick=()=>editCell(null,true).catch(report);
 $('editKind').onchange=()=>editCell('source').catch(report);
 document.querySelectorAll('[data-move]').forEach(b=>b.onclick=()=>{if(!selected||!state.matrix)return;const [dx,dy]=b.dataset.move.split(',').map(Number),n=rowsOf(state.matrix).length;selected={x:Math.max(0,Math.min(n-1,selected.x+dx)),y:Math.max(0,Math.min(n-1,selected.y+dy))};selectedCells=[selected.y*n+selected.x];render();});
@@ -419,7 +412,7 @@ $('pasteImport').onclick=async()=>{try{await newMatrix(await call({action:'parse
 $('textFile').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{if(f.size>65536)throw new Error('テキスト行列は64KB以下にしてください');await newMatrix(await call({action:'parse',text:await f.text(),enforcePriorityLimit:!$('automaticRepair').checked},'行列を確認'),'TXT行列',$('automaticRepair').checked);}catch(e){report(e);}};
 async function loadImageElement(blob){const url=URL.createObjectURL(blob);try{const img=new Image();img.src=url;await img.decode();return img;}finally{URL.revokeObjectURL(url);}}
 $('matrixToImage').onclick=async()=>{
-  if(pending||!state.matrix||state.image||state.imageOnly)return;
+  if(recoveryWorker.pending||!state.matrix||state.image||state.imageOnly)return;
   const previous=state,previousCursor=state.cursor,source=clone(state.source||state.matrix),matrix=clone(state.matrix);
   try{
     const geometry=await call({action:'textImageGeometry',matrix:source},'行列を画像として準備');
@@ -454,7 +447,7 @@ $('matrixToImage').onclick=async()=>{
 // Decode like the Android app: halve until the longest side is at most 2600 pixels.
 function boundedSource(img){const w=img.naturalWidth,h=img.naturalHeight;let sample=1;while(Math.max(w,h)/sample>2600)sample*=2;if(sample===1)return img;const c=document.createElement('canvas');c.width=Math.max(1,Math.floor(w/sample));c.height=Math.max(1,Math.floor(h/sample));c.getContext('2d').drawImage(img,0,0,c.width,c.height);return c;}
 // Wait for a preceding engine task, such as grid detection for the previous image, before locating.
-async function locateSymbol(canvas){while(pending)await pending.promise.catch(()=>{});const rgba=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data,pixels=new Uint32Array(canvas.width*canvas.height);for(let i=0;i<pixels.length;i++)pixels[i]=(rgba[i*4]<<16)|(rgba[i*4+1]<<8)|rgba[i*4+2];return call({action:'symbolExtent',width:canvas.width,height:canvas.height,pixels});}
+async function locateSymbol(canvas){while(recoveryWorker.pending)await recoveryWorker.pending.promise.catch(()=>{});const rgba=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data,pixels=new Uint32Array(canvas.width*canvas.height);for(let i=0;i<pixels.length;i++)pixels[i]=(rgba[i*4]<<16)|(rgba[i*4+1]<<8)|rgba[i*4+2];return call({action:'symbolExtent',width:canvas.width,height:canvas.height,pixels});}
 async function importImage(file,initial={}){
   if(!file)return;if(file.size>32*1024*1024)throw new Error('画像は32MB以下にしてください');
   const original=await boundedSource(await loadImageElement(file));const cropped=await cropImage(original,{...initial,locate:locateSymbol});if(!cropped)return;const blob=cropped.blob;if(!blob)throw new Error('画像の変換に失敗しました');const img=await loadImageElement(blob),c={width:img.naturalWidth,height:img.naturalHeight};
@@ -525,7 +518,7 @@ async function openSession(s){
   const original=await call({action:'qrrDecode',raw:s.qrrRaw,version:s.qrrVersion},'QRRを検証').catch(()=>null);
   migrateLegacyImages(s,original?.history);
  }
- overlayFingerprint=0;curve.candidates=[];curve.failed=false;curve.memoryLimited=false;if(s.image&&await digest(await s.image.arrayBuffer())!==s.imageHash)throw new Error('保存した画像の整合性チェックに失敗しました');const img=s.image?await loadImageElement(s.image):null;const h=s.history[s.cursor];clearAnalysis();state={...s,imageOnly:!!h.imageOnly,automatic:clone(h.automatic||null),automaticTrial:readAutomaticTrial(h),oneTimeSingleSegment:!!h.oneTimeSingleSegment,matrix:clone(h.matrix),source:clone(h.source),settings:{...defaults,photographicSource:!!s.image,gridReference:!!h.settings.quad,...clone(h.settings)}};restoreCurveChoices();imageElement=img;imagePixelsCache=null;result=null;selected=null;selectedCells=[];zoom=1;mode='matrix';await regions();syncSettings();renderResult();renderHistory();setTab('input');$('sessionsDialog').close();toast(h.imageOnly?'画像のみの履歴です。QRRの元画像を追加してください。':'作業を再開しました。');if(state.settings.curved&&imageElement&&!curve.candidates.length)await curve({restore:true});await restoreSelection(h.selection);$('fitView').onclick();}
+ overlayFingerprint=0;curve.candidates=[];curve.failed=false;curve.memoryLimited=false;if(s.image&&await digest(await s.image.arrayBuffer())!==s.imageHash)throw new Error('保存した画像の整合性チェックに失敗しました');const img=s.image?await loadImageElement(s.image):null;const h=s.history[s.cursor];clearAnalysis();state={...s};restoreHistoryEntry(state,s.cursor,defaults);restoreCurveChoices();imageElement=img;imagePixelsCache=null;result=null;selected=null;selectedCells=[];zoom=1;mode='matrix';await regions();syncSettings();renderResult();renderHistory();setTab('input');$('sessionsDialog').close();toast(h.imageOnly?'画像のみの履歴です。QRRの元画像を追加してください。':'作業を再開しました。');if(state.settings.curved&&imageElement&&!curve.candidates.length)await curve({restore:true});await restoreSelection(h.selection);$('fitView').onclick();}
 $('sessionFile').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{const s=f.name.toLowerCase().endsWith('.qrr')?await call({action:'qrrDecode',...await unpackQrr(f)},'QRRを検証'):await importWorkspace(f);await saveChain;await openSession({...s,id:crypto.randomUUID()});autoSave();}catch(e){report(e);}};
 async function showSessions(){try{await saveChain;const sessions=await listSessions();$('sessionList').replaceChildren(...sessions.map(s=>{const div=document.createElement('div');div.className='session-item';const open=document.createElement('button');const name=document.createElement('span');name.dataset.userContent='';name.textContent=workspaceName(s);open.append(name);const small=document.createElement('small');small.textContent=new Date(s.updated).toLocaleString(getLanguage()==='ja'?'ja-JP':'en-GB');open.append(small);open.onclick=()=>openSession(s).catch(report);const del=document.createElement('button');del.textContent='削除';del.onclick=async()=>{try{if(confirm(t('delete_recent_work_message'))){await deleteSavedSessions(s.id);await showSessions();}}catch(e){report(e);}};div.append(open,del);return div;}));if(!sessions.length)$('sessionList').textContent='保存した作業はまだありません。';if(!$('sessionsDialog').open)$('sessionsDialog').showModal();}catch(e){report(e);}}
 $('sessionsButton').onclick=showSessions;$('helpButton').onclick=()=>$('helpDialog').showModal();document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
@@ -538,7 +531,7 @@ window.addEventListener('pagehide',()=>{if(state.matrix)autoSave();});
 
 $('exportQrr').onclick=async()=>{try{if(!state.matrix)throw new Error('作業を読み込んでください');const raw=await call({action:'qrrEncode',id:state.id,cursor:state.cursor,history:JSON.stringify(state.history.map(h=>({...h,settings:settingsForQrr(imageElement,h.settings),detail:historyDetail(h)}))),qrrRaw:state.qrrRaw,qrrVersion:state.qrrVersion},'QRRを書き出し');await download(await packQrr(raw),'qrevy-session.qrr',true);}catch(e){report(e);}};
 
-function updateCurveStatus(){const i=Number($('curveChoice').value)||0,total=curve.candidates?.length||0;const text=!state.settings.assigned?translate('曲面補正: QRの向きを指定してください'):curve.failed?translate(state.settings.warp?'再計算に失敗: 保存した補正を使用':'補正計算に失敗: 直線格子を使用'):total?(getLanguage()==='ja'?`曲面補正: 候補 ${i+1}/${total}`:`Distortion: candidate ${i+1}/${total}`):translate('補正点を検出できません: 直線格子を使用');$('curveStatus').textContent=text+(curve.memoryLimited?t('inline:\nメモリ上限により補正探索の一部を省略しました'):'');$('curveStatus').hidden=!state.settings.curved;$('curveChoice').hidden=!state.settings.curved||!total;$('curveChoice').disabled=!!pending||!state.settings.assigned||total<2;}
+function updateCurveStatus(){const i=Number($('curveChoice').value)||0,total=curve.candidates?.length||0;const text=!state.settings.assigned?translate('曲面補正: QRの向きを指定してください'):curve.failed?translate(state.settings.warp?'再計算に失敗: 保存した補正を使用':'補正計算に失敗: 直線格子を使用'):total?(getLanguage()==='ja'?`曲面補正: 候補 ${i+1}/${total}`:`Distortion: candidate ${i+1}/${total}`):translate('補正点を検出できません: 直線格子を使用');$('curveStatus').textContent=text+(curve.memoryLimited?t('inline:\nメモリ上限により補正探索の一部を省略しました'):'');$('curveStatus').hidden=!state.settings.curved;$('curveChoice').hidden=!state.settings.curved||!total;$('curveChoice').disabled=!!recoveryWorker.pending||!state.settings.assigned||total<2;}
 async function curve({restore=false,recordHistory=true}={}){if(curve.inProgress)return;if(!state.settings.assigned){updateCurveStatus();return;}curve.inProgress=true;try{const retained=state.settings.warp?{quad:clone(state.settings.previewQuad||state.settings.quad),warp:clone(state.settings.warp),grid:clone(state.settings.grid)}:null;const r=await call({action:'curve',settings:state.settings,...imageRequest()},'曲面の補正点を探索');curve.failed=false;curve.memoryLimited=r.memoryLimited;if(retained&&!r.candidates.some(c=>JSON.stringify([c.quad,c.warp])===JSON.stringify([retained.quad,retained.warp])))r.candidates.push(retained);curve.candidates=r.candidates;$('curveChoice').replaceChildren(...r.candidates.map((c,i)=>new Option(getLanguage()==='ja'?`補正候補 ${i+1}`:`Correction candidate ${i+1}`,String(i))));if(!r.candidates.length){state.settings.warp=null;updateCurveStatus();await sample(false,{recordHistory});return;}const index=retained?Math.max(0,r.candidates.findIndex(c=>JSON.stringify([c.quad,c.warp])===JSON.stringify([retained.quad,retained.warp]))):0;$('curveChoice').value=String(index);const c=r.candidates[index];Object.assign(state.settings,{previewQuad:c.quad,warp:c.warp,grid:c.grid});if(!restore)await sample(false,{recordHistory});saveCurveCache();updateCurveStatus();}catch(e){curve.failed=true;updateCurveStatus();if(!recordHistory)throw e;}finally{curve.inProgress=false;}}
 $('curveChoice').onchange=async()=>{if(!state.settings.curved)return;const i=Number($('curveChoice').value),c=curve.candidates?.[i];if(!c)return;Object.assign(state.settings,{previewQuad:c.quad,warp:c.warp,grid:c.grid});try{if(state.settings.lmEnabled&&!c.refined){const refined=await call({action:'refineCurve',settings:state.settings,...imageRequest()},'曲面格子を補正');curve.candidates[i]={...c,...refined};Object.assign(state.settings,{previewQuad:refined.quad,warp:refined.warp,grid:refined.grid});}await sample();saveCurveCache();updateCurveStatus();}catch(e){report(e);}};
 
@@ -547,7 +540,7 @@ let tailInspectionRevision=0;
 async function updateTailAnalysis(){
  const revision=++tailInspectionRevision;
  try{
-  while(pending)await pending.promise.catch(()=>{});
+  while(recoveryWorker.pending)await recoveryWorker.pending.promise.catch(()=>{});
   if(revision!==tailInspectionRevision||tailData||tab!=='results'||!result?.tailAvailable||!$('tailAnalysis').open||!$('resultDiagnosticSection').open)return;
   const saved=result,index=candidateIndex,c=saved.candidates[index];
   const data=await inspectCall({action:'tail',matrix:resultInput(),candidate:c,ecc:c?.ecc||saved.settings.ecc,mask:c?.mask??saved.settings.mask},'終端後の追加セグメントを解析');
@@ -570,7 +563,7 @@ $('companionImageFile').onchange=async e=>{const f=e.target.files[0];e.target.va
 window.addEventListener('qrevy-language',async()=>{try{renderNativeHelp();syncSettings();for(let i=0;i<$('curveChoice').options.length;i++)$('curveChoice').options[i].textContent=getLanguage()==='ja'?`補正候補 ${i+1}`:`Correction candidate ${i+1}`;updateCurveStatus();renderThresholdLabels();renderHistory();render();const hadInput=!!$('inputDataReport').textContent,hadTail=!!$('tailReport').textContent,hadData=!!$('hex').textContent;if(result){const saved=result,selectedCandidate=saved.candidates[candidateIndex];const refreshed=await inspectCall({action:'localizeResult'},'保存した候補を再計算');if(saved.automatic)for(const c of refreshed.candidates){const prior=saved.candidates.find(p=>p.version===c.version&&p.ecc===c.ecc&&p.mask===c.mask&&JSON.stringify(p.codewords)===JSON.stringify(c.codewords));if(prior?.automaticScanAssumption!=null)Object.assign(c,{...readAutomaticTrial(prior),settings:clone(prior.settings),input:clone(prior.input)});}result={...refreshed,input:saved.input,settings:saved.settings,fingerprint:saved.fingerprint,automatic:saved.automatic};if(dataDisplayResult===saved)dataDisplayResult=result;candidateIndex=selectedCandidate?result.candidates.findIndex(c=>c.version===selectedCandidate.version&&c.ecc===selectedCandidate.ecc&&c.mask===selectedCandidate.mask&&JSON.stringify(c.codewords)===JSON.stringify(selectedCandidate.codewords)):-1;comparisonKey='';renderResult();render();await comparisonPromise;await refreshCandidateDiagnostic();if(hadData&&(result.candidates[candidateIndex]||result.failureFormat))await updateResultData();if(hadTail)await updateTailAnalysis();}if(hadInput)await updateInputData();}catch(e){report(e);}});
 
 
-$('fineCorners').onclick=async()=>{if(!imageElement||pending)return;imageRequest();const quad=await fineCorners(imagePreview,state.settings);if(!quad)return;disableLm();state.settings.gridReference=true;state.settings.quad=quad;state.settings.warp=null;state.settings.grid=null;await sample().catch(report);mode='image';render();};
+$('fineCorners').onclick=async()=>{if(!imageElement||recoveryWorker.pending)return;imageRequest();const quad=await fineCorners(imagePreview,state.settings);if(!quad)return;disableLm();state.settings.gridReference=true;state.settings.quad=quad;state.settings.warp=null;state.settings.grid=null;await sample().catch(report);mode='image';render();};
 
 // Remap image observations through the immutable source, preserving logical edits.
 function remappedImageSettings(nextOps){
@@ -588,7 +581,7 @@ function rectifiedVersionSettings(version){
   return remappedImageSettings([{...info,version}]);
 }
 async function transformImage(op){
-  if(!imageElement||pending)return;
+  if(!imageElement||recoveryWorker.pending)return;
   const info=sourceTransform(state.settings.imageOps,state.settings.version),next={...info};
   if(op.type==='rotate'){
     if(!Number.isFinite(op.angle))throw new Error('Invalid rotation angle');
@@ -622,7 +615,7 @@ function inputDataFingerprint(){return JSON.stringify([state.id,state.matrix,sta
 async function updateInputData(){
  const revision=++inputDataRevision;
  try{
-  while(pending)await pending.promise.catch(()=>{});
+  while(recoveryWorker.pending)await recoveryWorker.pending.promise.catch(()=>{});
   if(revision!==inputDataRevision||tab!=='edit'||!$('inputDataPanel').open||!state.matrix)return;
   const key=inputDataFingerprint();if(key===inputDataKey)return;
   inputDataKey=key;$('inputDataReport').textContent='';
@@ -634,13 +627,8 @@ async function updateInputData(){
 $('openInputData').onclick=()=>{$('inputDataPanel').showModal();updateInputData();};
 
 $('discardDraft').onclick=()=>{
-  if(pending||!confirm(translate('最後に保存した状態へ戻しますか？')))return;
-  if(!state.checkpoint){restoreHistory(state.checkpointCursor??0);return;}
-  const key=JSON.stringify(state.checkpoint),index=state.history.findIndex(h=>JSON.stringify(h)===key);
-  if(index>=0){restoreHistory(index);return;}
-  state.history=state.history.slice(0,state.cursor+1);state.history.push(clone(state.checkpoint));
-  if(state.history.length>40)state.history.shift();state.checkpointCursor=state.history.length-1;
-  restoreHistory(state.checkpointCursor);
+  if(recoveryWorker.pending||!confirm(translate('最後に保存した状態へ戻しますか？')))return;
+  restoreHistory(checkpointHistoryIndex(state));
 };
 
 $('candidatePicker').onchange=()=>selectCandidate(Number($('candidatePicker').value));
@@ -652,7 +640,7 @@ function updatePreviewInset(){const headerHeight=document.querySelector('body>he
 new ResizeObserver(updatePreviewInset).observe($('previewDock'));new ResizeObserver(updatePreviewInset).observe(document.querySelector('body>header'));window.addEventListener('resize',updatePreviewInset);
 
 let candidatePage=0;const candidatePageSize=20;
-function selectCandidate(index){if(pending||resultIsStale()||!result?.candidates[index])return;candidateIndex=index;if(result?.automatic)adoptAutomaticCandidate(result.candidates[index]);record('候補を選択');renderResult();render();refreshCandidateDiagnostic().then(()=>{if($('resultDataPanel').open)return updateResultData();}).catch(report);}
+function selectCandidate(index){if(recoveryWorker.pending||resultIsStale()||!result?.candidates[index])return;candidateIndex=index;if(result?.automatic)adoptAutomaticCandidate(result.candidates[index]);record('候補を選択');renderResult();render();refreshCandidateDiagnostic().then(()=>{if($('resultDataPanel').open)return updateResultData();}).catch(report);}
 function renderCandidatePage(){const query=$('candidateSearch').value.toLocaleLowerCase(),all=result?.candidates||[],matches=[];all.forEach((c,i)=>{if(!query||(c.text??'').toLocaleLowerCase().includes(query))matches.push(i);});const pages=Math.max(1,Math.ceil(matches.length/candidatePageSize));candidatePage=Math.min(candidatePage,pages-1);const from=candidatePage*candidatePageSize;
  $('candidates').replaceChildren(...matches.slice(from,from+candidatePageSize).map(i=>{const c=all[i],b=document.createElement('button');b.className='candidate'+(i===candidateIndex?' selected':'');b.setAttribute('aria-pressed',String(i===candidateIndex));const info=document.createElement('small');info.textContent=getLanguage()==='ja'?`候補${i+1}  ―  データ・ECCの不一致: ${c.mismatches}bit`:`Candidate ${i+1}  ―  Data/ECC mismatches: ${c.mismatches}bit`;b.append(info,document.createTextNode(c.content&&c.content.includes(c.text??'')?c.content:c.text??translate('内容の復号には至っていません')));b.onclick=()=>{selectCandidate(i);$('candidateDialog').close();$('candidatePicker').focus({preventScroll:true});};return b;}));
  $('candidatePageStatus').textContent=`${matches.length?from+1:0}–${Math.min(from+candidatePageSize,matches.length)} / ${matches.length}`;$('candidatePrevious').disabled=candidatePage===0;$('candidateNext').disabled=candidatePage>=pages-1;$('candidates').scrollTop=0;
@@ -672,13 +660,13 @@ function renderComparison(){const all=result?.candidates||[],old=$('compareCandi
 function predictedComparisonOpen(){return $('candidateComparison').open;}
 $('candidateComparison').ontoggle=renderComparison;$('compareCandidate').onchange=renderComparison;
 let dataInspectionRevision=0;
-async function updateResultData(){const revision=++dataInspectionRevision;try{while(pending)await pending.promise.catch(()=>{});if(revision!==dataInspectionRevision||!$('resultDataPanel').open||tab!=='results')return;const c=result?.candidates[candidateIndex];if(!c&&!result?.failureFormat){$('hex').textContent=getLanguage()==='ja'?'表示できるデータがありません。':'No data is available.';return;}const saved=result,index=candidateIndex;const r=await inspectCall({action:'resultData',matrix:resultInput(),candidate:c,after:$('dataStage').value==='after',unmasked:$('dataUnmask').checked,partial:$('dataPartial').checked},'データを解析');if(revision===dataInspectionRevision&&saved===result&&index===candidateIndex)$('hex').textContent=r.text;}catch(e){report(e);}};
+async function updateResultData(){const revision=++dataInspectionRevision;try{while(recoveryWorker.pending)await recoveryWorker.pending.promise.catch(()=>{});if(revision!==dataInspectionRevision||!$('resultDataPanel').open||tab!=='results')return;const c=result?.candidates[candidateIndex];if(!c&&!result?.failureFormat){$('hex').textContent=getLanguage()==='ja'?'表示できるデータがありません。':'No data is available.';return;}const saved=result,index=candidateIndex;const r=await inspectCall({action:'resultData',matrix:resultInput(),candidate:c,after:$('dataStage').value==='after',unmasked:$('dataUnmask').checked,partial:$('dataPartial').checked},'データを解析');if(revision===dataInspectionRevision&&saved===result&&index===candidateIndex)$('hex').textContent=r.text;}catch(e){report(e);}};
 
 function resultTrace(c,x,y){const trace=c?.trace?.[`${x},${y}`]||c?.formatCells?.[`${x},${y}`];if(trace)return trace;const n=c?.version?17+4*c.version:0,code=c?.codewordMap?.[y*n+x];return code>=0?{codeword:Math.floor(code/8),bit:code%8,title:translate('この候補では値を変更していません。'),detail:`raw ${Math.floor(code/8)} / bit ${code%8}`}:null;}
 function relatedResultCell(c,x,y){const a=resultTrace(c,selected.x,selected.y),b=resultTrace(c,x,y);return !!a&&!!b&&(a.codeword!=null&&a.codeword===b.codeword||a.formatRole!=null&&a.formatRole===b.formatRole);}
 
 function renderBeforeComparison(){const before=$('beforeCanvas'),compare=tab==='results'&&$('resultStage').value==='compare'&&!!result?.candidates[candidateIndex];before.hidden=!compare;$('beforePane').hidden=!compare;for(const pane of [$('beforePane'),$('afterPane')])pane.style.height=compare?`${Math.max(80,$('canvasScroll').clientHeight-20)}px`:'';$('canvasScroll').classList.toggle('comparison-view',compare);if(!compare)return;const m=resultInput(),rows=rowsOf(m),n=rows.length,c=result.candidates[candidateIndex],cx=before.getContext('2d');before.width=canvas.width;before.height=canvas.height;before.style.width=canvas.style.width;before.style.height=canvas.style.height;if(mode==='image'&&imageElement){const settings=imageDisplaySettings(),request=imageRequest(settings);drawImageLayer(before,m,settings,request,parseFloat(canvas.style.width));return;}cx.fillStyle='#fff';cx.fillRect(0,0,before.width,before.height);for(let y=0;y<n;y++)for(let x=0;x<n;x++){let value=rows[y][x];if($('unmask').checked&&!isFunction(c.version,x,y)&&maskBit(c.mask,x,y)&&['0','1'].includes(value))value=value==='1'?'0':'1';cx.fillStyle=value==='1'?'#000':value==='0'?'#fff':'#b9b9b9';cx.fillRect((x+2)*12,(y+2)*12,12,12);if(value==='?'||value==='*'){cx.strokeStyle='#787878';cx.lineWidth=.7;cx.beginPath();cx.moveTo((x+2)*12+3,(y+2)*12+3);cx.lineTo((x+2)*12+9,(y+2)*12+9);cx.moveTo((x+2)*12+9,(y+2)*12+3);cx.lineTo((x+2)*12+3,(y+2)*12+9);cx.stroke();}}}
-$('beforeCanvas').onpointerdown=e=>{if(e.button!==0||pan||pending)return;const p=position(e),n=rowsOf(resultInput()).length,cell=mode==='image'?imageCellAt(p,imageDisplaySettings().grid,n):null,x=cell?.x??(mode==='image'?-1:Math.floor(p.x/12)-2),y=cell?.y??(mode==='image'?-1:Math.floor(p.y/12)-2);if(x>=0&&y>=0&&x<n&&y<n){selected={x,y};selectedCells=[y*n+x];revealCellEvidence();render();}};
+$('beforeCanvas').onpointerdown=e=>{if(e.button!==0||pan||recoveryWorker.pending)return;const p=position(e),n=rowsOf(resultInput()).length,cell=mode==='image'?imageCellAt(p,imageDisplaySettings().grid,n):null,x=cell?.x??(mode==='image'?-1:Math.floor(p.x/12)-2),y=cell?.y??(mode==='image'?-1:Math.floor(p.y/12)-2);if(x>=0&&y>=0&&x<n&&y<n){selected={x,y};selectedCells=[y*n+x];revealCellEvidence();render();}};
 $('calculationDetails').onchange=showCell;
 function clearWorkspace(){
  state={id:crypto.randomUUID(),name:'新しい作業',matrix:null,source:null,settings:clone(defaults),history:[],cursor:-1,image:null,imageHash:null};
@@ -687,7 +675,7 @@ function clearWorkspace(){
  clearAnalysis();syncSettings();renderResult();renderHistory();$('saveStatus').textContent='';setTab('input');
 }
 async function deleteSavedSessions(id=null){
- if(deletingSessions||pending)return;
+ if(deletingSessions||recoveryWorker.pending)return;
  deletingSessions=true;
  const deletion=saveChain.catch(()=>{}).then(async()=>{
   if(id===null)await removeAllSessions();else await removeSession(id);
@@ -716,7 +704,7 @@ function renderFinderHint(){
  $('finderHint').hidden=!imageElement;
  if($('finderHint').textContent!==hint)$('finderHint').textContent=hint;
 }
-$('finderRole').onchange=()=>{$('removeFinder').disabled=!!pending||$('finderRole').value==='';renderFinderHint();};
+$('finderRole').onchange=()=>{$('removeFinder').disabled=!!recoveryWorker.pending||$('finderRole').value==='';renderFinderHint();};
 $('removeFinder').onclick=async()=>{if($('finderRole').value==='')return;const role=Number($('finderRole').value);invalidateLm(true);state.settings.warp=null;state.settings.previewQuad=null;curve.candidates=[];state.settings.finders=(state.settings.finders||[]).filter((_,i,a)=>a[Math.floor(i/3)*3]!==role);if(!state.settings.finders.length){state.settings.confirmedPolarity='UNKNOWN';state.settings.assigned=state.settings.visibleFinderRole!=null;}syncSettings();if(state.image)await sample(false,{recordHistory:false}).catch(report);record('Finder指定を解除');render();};
 document.querySelectorAll('[data-reset]').forEach(button=>button.onclick=async()=>{const key=button.dataset.reset;state.settings[key]=0;invalidateLm(true);state.settings.warp=null;state.settings.previewQuad=null;curve.candidates=[];syncSettings();await sample().catch(report);});
 $('resetImageAdjustments').onclick=async()=>{Object.assign(state.settings,{brightness:0,contrast:0,toneInvert:false});invalidateLm(true);state.settings.warp=null;state.settings.previewQuad=null;curve.candidates=[];syncSettings();await sample().catch(report);};
@@ -726,13 +714,13 @@ $('resetImageRotation').onclick=()=>{const angle=sourceTransform(state.settings.
 // An already moved corner is finalized before zooming, just as on pointer up/cancel.
 for(const surface of [canvas,$('beforeCanvas')]){
 const touchPoints=new Map();let pinchGesture=null,panGesture=null;
-surface.addEventListener('pointerdown',e=>{if(e.button!==0||pending)return;if(e.pointerType==='mouse'&&!pan)return;touchPoints.set(e.pointerId,{x:e.clientX,y:e.clientY});if(touchPoints.size===2){const [a,b]=[...touchPoints.values()],box=viewScroll(),r=surface.getBoundingClientRect();pinchGesture={distance:Math.hypot(a.x-b.x,a.y-b.y),zoom,cx:((a.x+b.x)/2-r.left)/r.width,cy:((a.y+b.y)/2-r.top)/r.height};cellGesture=null;selectedCells=[];if(drag!==null)finishCornerDrag();panGesture=null;surface.setPointerCapture(e.pointerId);e.preventDefault();e.stopImmediatePropagation();}else if(pan){panGesture={x:e.clientX,y:e.clientY,left:viewScroll().scrollLeft,top:viewScroll().scrollTop};surface.setPointerCapture(e.pointerId);e.preventDefault();e.stopImmediatePropagation();}},true);
+surface.addEventListener('pointerdown',e=>{if(e.button!==0||recoveryWorker.pending)return;if(e.pointerType==='mouse'&&!pan)return;touchPoints.set(e.pointerId,{x:e.clientX,y:e.clientY});if(touchPoints.size===2){const [a,b]=[...touchPoints.values()],box=viewScroll(),r=surface.getBoundingClientRect();pinchGesture={distance:Math.hypot(a.x-b.x,a.y-b.y),zoom,cx:((a.x+b.x)/2-r.left)/r.width,cy:((a.y+b.y)/2-r.top)/r.height};cellGesture=null;selectedCells=[];if(drag!==null)finishCornerDrag();panGesture=null;surface.setPointerCapture(e.pointerId);e.preventDefault();e.stopImmediatePropagation();}else if(pan){panGesture={x:e.clientX,y:e.clientY,left:viewScroll().scrollLeft,top:viewScroll().scrollTop};surface.setPointerCapture(e.pointerId);e.preventDefault();e.stopImmediatePropagation();}},true);
 surface.addEventListener('pointermove',e=>{if(touchPoints.has(e.pointerId))touchPoints.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pinchGesture&&touchPoints.size>=2){const [a,b]=[...touchPoints.values()],g=pinchGesture,box=viewScroll();zoom=Math.max(.25,Math.min(8,g.zoom*Math.hypot(a.x-b.x,a.y-b.y)/Math.max(1,g.distance)));render();const r=surface.getBoundingClientRect();box.scrollLeft+=r.left+g.cx*r.width-(a.x+b.x)/2;box.scrollTop+=r.top+g.cy*r.height-(a.y+b.y)/2;e.preventDefault();e.stopImmediatePropagation();}else if(panGesture){viewScroll().scrollLeft=panGesture.left+panGesture.x-e.clientX;viewScroll().scrollTop=panGesture.top+panGesture.y-e.clientY;e.preventDefault();e.stopImmediatePropagation();}},true);
 for(const type of ['pointerup','pointercancel'])surface.addEventListener(type,e=>{touchPoints.delete(e.pointerId);if(pinchGesture||panGesture){if(touchPoints.size===0){pinchGesture=null;panGesture=null;}e.preventDefault();e.stopImmediatePropagation();}},true);
 }
 
 async function inspectCall(request,label){
-  while(pending)await pending.promise.catch(()=>{});
+  while(recoveryWorker.pending)await recoveryWorker.pending.promise.catch(()=>{});
   if(result?.needsInspectionRestore){
     const saved=result,oneTime=JSON.parse(saved.fingerprint)[2],trial=readAutomaticTrial(saved.candidates[candidateIndex])||state.automaticTrial,imageSearch=!!imageElement&&!trial,pixels=imageSearch?imageRequest(saved.settings):{};
     if(imageSearch)imageRequest();
@@ -760,10 +748,10 @@ function renderNextResultAction(){
   const action=result?.nextAction,visible=!!action&&!result?.candidates.length&&!resultIsStale();
   $('nextResultGuide').hidden=$('nextResultAction').hidden=!visible;
   $('nextResultDetails').hidden=!visible||!action.detail;
-  if(visible){$('nextResultGuide').textContent=action.text;$('nextResultAction').textContent=action.label;$('nextResultAction').disabled=!!pending;$('nextResultDetail').textContent=action.detail||'';}
+  if(visible){$('nextResultGuide').textContent=action.text;$('nextResultAction').textContent=action.label;$('nextResultAction').disabled=!!recoveryWorker.pending;$('nextResultDetail').textContent=action.detail||'';}
 }
 $('nextResultAction').onclick=()=>{
-  if(pending||!result?.nextAction||resultIsStale())return;
+  if(recoveryWorker.pending||!result?.nextAction||resultIsStale())return;
   const settings=result.nextAction.target==='settings';setTab(settings?'input':'edit');
   const target=settings?$('ecc'):$('canvas');if(settings)for(let parent=target.parentElement;parent;parent=parent.parentElement)if(parent.tagName==='DETAILS')parent.open=true;target.scrollIntoView({block:'center'});if(settings)target.focus();
 };
@@ -777,7 +765,7 @@ function technicalCellText(c,x,y,trace){
   if(cache.has(key))return cache.get(key);
   if(!requests.has(key)){
     requests.add(key);
-    queueMicrotask(async()=>{try{while(pending)await pending.promise.catch(()=>{});const response=await inspectCall({action:'cellTechnical',candidate:c,x,y},'計算の補足');cache.set(key,response.text);showCell();}catch(e){report(e);}finally{requests.delete(key);}});
+    queueMicrotask(async()=>{try{while(recoveryWorker.pending)await recoveryWorker.pending.promise.catch(()=>{});const response=await inspectCall({action:'cellTechnical',candidate:c,x,y},'計算の補足');cache.set(key,response.text);showCell();}catch(e){report(e);}finally{requests.delete(key);}});
   }
   return trace.detail;
 }
@@ -788,17 +776,17 @@ function codewordText(c,x,y){
   if(cache.has(key))return '\n'+cache.get(key);
   if(!requests.has(key)){
     requests.add(key);
-    queueMicrotask(async()=>{try{while(pending)await pending.promise.catch(()=>{});const response=await inspectCall({action:'codewordData',candidate:c,raw:Math.floor(value/8),bit:value%8},'コード語の詳細を表示');cache.set(key,response.text);showCell();}catch(e){report(e);}finally{requests.delete(key);}});
+    queueMicrotask(async()=>{try{while(recoveryWorker.pending)await recoveryWorker.pending.promise.catch(()=>{});const response=await inspectCall({action:'codewordData',candidate:c,raw:Math.floor(value/8),bit:value%8},'コード語の詳細を表示');cache.set(key,response.text);showCell();}catch(e){report(e);}finally{requests.delete(key);}});
   }
   return '';
 }
 function resultBasicCellText(c,x,y,trace){const ja=getLanguage()==='ja',n=17+4*c.version,original=resultInput(),before=rowsOf(original)[y][x],after=rowsOf(c.matrix)[y][x],source=c.matrix.sources[y*n+x],inputSource=original.sources[y*n+x],mask=$('unmask').checked&&!isFunction(c.version,x,y)&&maskBit(c.mask,x,y),display=v=>mask&&['0','1'].includes(v)?(v==='1'?'0':'1'):v,value=v=>translate(v==='0'?'白（0）':v==='1'?'黒（1）':'不明（?）');const a=display(before),b=display(after);let reason=source==='6'?'固定指定した値です。修正可の設定により復元時の訂正を許可しています。':source==='5'?'仮指定した値です。復元時に訂正されることがあります。':source==='1'?'手動で指定した値です。':before===after?'この候補では値を変更していません。':trace?.bitConstraintSolved&&['RS_ERASURE_RECOVERY','RS_ERROR_CORRECTION'].includes(trace.reason)?'部分bit制約で補いました。':trace?.reason==='RS_ERASURE_RECOVERY'?'RS誤り訂正で不明な値を補いました。':trace?.reason==='RS_ERROR_CORRECTION'?'RS誤り訂正で白黒を変更しました。':trace?.title||'この候補の値を表示しています。';let text=(ja?`セル (${x},${y})（座標は0から）`:`Cell (${x},${y}) (zero-based coordinates)`)+`\n${a===b?(ja?`${value(b)}のまま`:`Unchanged: ${value(b)}`):`${value(a)} → ${value(b)}`}`;if($('unmask').checked&&!isFunction(c.version,x,y))text+=t('inline:\nマスク解除後の表示値です。');if(c.formatCells?.[`${x},${y}`])text+='\n'+c.formatCells[`${x},${y}`].title;text+='\n'+translate(reason);const input={0:'入力：画像から判別した結果',6:'入力：手動で指定した値（固定あり、訂正可）',5:'入力：手動で仮指定した値（固定なし、訂正可）',1:'入力：手動で指定した値（固定あり、訂正不可）'}[inputSource];if(input)text+=t('inline:\n'+input);const agreement=candidateAgreement(c,x,y);if(agreement)text+=ja?`\n比較した${agreement.total}候補中${agreement.same}候補で、このセルの白黒が一致しています。`:`\nThis cell agrees in ${agreement.same} of ${agreement.total} compared candidates.`;if(after==='?'||after==='*')text+=t('inline:\nこのセルの白黒はまだ決まっていません。');if($('sameCodeword').checked)text+=codewordText(c,x,y);return text;}
 
-(async()=>{if(state.matrix||pending)return;try{const n=21,r=await call({action:'regions',matrix:{text:Array(n).fill('?'.repeat(n)).join('\n'),sources:'0'.repeat(n*n)},settings:{...defaults}});regionCache.set(1,new Set(r.allowed));regionKindsCache.set(1,r.kinds);regionLimitsCache.set(1,r.limits);renderLimitLabels();}catch(e){report(e);}})();
+(async()=>{if(state.matrix||recoveryWorker.pending)return;try{const n=21,r=await call({action:'regions',matrix:{text:Array(n).fill('?'.repeat(n)).join('\n'),sources:'0'.repeat(n*n)},settings:{...defaults}});regionCache.set(1,new Set(r.allowed));regionKindsCache.set(1,r.kinds);regionLimitsCache.set(1,r.limits);renderLimitLabels();}catch(e){report(e);}})();
 
 let eligibilityFingerprint='',singleEligible=false;
-function applyEligibility(){$('clearVisibleFinder').hidden=state.settings.visibleFinderRole==null;$('clearVisibleFinder').disabled=!!pending;renderFinderHint();$('removeFinder').disabled=!!pending||$('finderRole').value==='';updateCurveStatus();$('refine').disabled=!!pending||!imageElement||!state.settings.assigned;$('lmStatus').textContent=!state.settings.assigned?translate('四隅とFinderの役割を指定してください'):state.settings.lmFailed?translate('補正を適用できませんでした'):state.settings.lmEnabled&&state.settings.lmAppliedQuad?translate('補正済み'):state.settings.lmBaseQuad?translate('補正はOFFです'):'';$('single').disabled=!!pending||!state.matrix||(!singleEligible&&!$('single').checked);$('colorUnknown').disabled=!!pending||!(state.settings.colorClusters||[]).length;}
-function scheduleEligibility(){if(!state.matrix){$('single').disabled=true;$('colorUnknown').disabled=true;return;}const key=JSON.stringify([state.matrix,state.settings]);if(key===eligibilityFingerprint){applyEligibility();return;}queueMicrotask(async()=>{if(pending||!state.matrix)return;const current=JSON.stringify([state.matrix,state.settings]);if(current===eligibilityFingerprint)return;eligibilityFingerprint=current;try{const status=await call({action:'uiState',matrix:state.matrix,settings:state.settings});if(current===JSON.stringify([state.matrix,state.settings]))singleEligible=status.single;else eligibilityFingerprint='';applyEligibility();}catch(e){eligibilityFingerprint='';report(e);}});}
+function applyEligibility(){$('clearVisibleFinder').hidden=state.settings.visibleFinderRole==null;$('clearVisibleFinder').disabled=!!recoveryWorker.pending;renderFinderHint();$('removeFinder').disabled=!!recoveryWorker.pending||$('finderRole').value==='';updateCurveStatus();$('refine').disabled=!!recoveryWorker.pending||!imageElement||!state.settings.assigned;$('lmStatus').textContent=!state.settings.assigned?translate('四隅とFinderの役割を指定してください'):state.settings.lmFailed?translate('補正を適用できませんでした'):state.settings.lmEnabled&&state.settings.lmAppliedQuad?translate('補正済み'):state.settings.lmBaseQuad?translate('補正はOFFです'):'';$('single').disabled=!!recoveryWorker.pending||!state.matrix||(!singleEligible&&!$('single').checked);$('colorUnknown').disabled=!!recoveryWorker.pending||!(state.settings.colorClusters||[]).length;}
+function scheduleEligibility(){if(!state.matrix){$('single').disabled=true;$('colorUnknown').disabled=true;return;}const key=JSON.stringify([state.matrix,state.settings]);if(key===eligibilityFingerprint){applyEligibility();return;}queueMicrotask(async()=>{if(recoveryWorker.pending||!state.matrix)return;const current=JSON.stringify([state.matrix,state.settings]);if(current===eligibilityFingerprint)return;eligibilityFingerprint=current;try{const status=await call({action:'uiState',matrix:state.matrix,settings:state.settings});if(current===JSON.stringify([state.matrix,state.settings]))singleEligible=status.single;else eligibilityFingerprint='';applyEligibility();}catch(e){eligibilityFingerprint='';report(e);}});}
 
 function reasonColor(reason){return reason==='FORMAT_INFORMATION'?'#be8700':reason==='USER_OVERRIDE'?'#0091c8':['RS_ERASURE_RECOVERY','RS_ERROR_CORRECTION'].includes(reason)?'#e67300':reason?.startsWith('PAYLOAD_')?'#8b5cf6':reason==='PARTIAL_BIT_SEARCH'?'#d21469':['FINDER_PATTERN','SEPARATOR','TIMING_PATTERN','ALIGNMENT_PATTERN','VERSION_INFORMATION','FIXED_DARK_MODULE','REMAINDER_BITS'].includes(reason)?'#009b50':'#505050';}
 function candidateAgreement(c,x,y){if(c.formatCells?.[`${x},${y}`])return null;const seen=new Set(),all=(result?.candidates||[]).filter(candidate=>{if(candidate.text==null)return false;const key=JSON.stringify([candidate.version,candidate.ecc,candidate.mask,candidate.codewords]);if(seen.has(key))return false;seen.add(key);return true;}),sample=all.slice(0,16);if(!sample.includes(c)&&all.includes(c)&&sample.length)sample[sample.length-1]=c;const final=rowsOf(c.matrix)[y]?.[x],values=sample.map(candidate=>rowsOf(candidate.matrix)[y]?.[x]).filter(value=>value==='0'||value==='1');return values.length>=2?{same:values.filter(value=>value===final).length,total:values.length}:null;}
@@ -835,10 +823,10 @@ async function finishWorkspace(){
  const saved=!!state.matrix;
  if(saved)await saveSession(serializable());
  if(result)result.needsInspectionRestore=true;
- worker.terminate();workerReady=false;
+ recoveryWorker.suspend();
  return saved;
 }
-updateWorkflow=setupWorkflow({navigate:setTab,showResult:setResultView,defaults,finish:finishWorkspace,resume:startWorker});
+updateWorkflow=setupWorkflow({navigate:setTab,showResult:setResultView,defaults,finish:finishWorkspace,resume:recoveryWorker.start});
 $('resultDiagnosticSection').ontoggle=()=>{if($('resultDiagnosticSection').open)updateTailAnalysis();};
 // Progress belongs to the running operation, independent of the selected pane or viewport.
 document.body.append($('progress'));
