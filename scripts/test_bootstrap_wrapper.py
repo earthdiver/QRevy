@@ -24,6 +24,8 @@ class BootstrapWrapperTest(unittest.TestCase):
         shutil.copy2(ROOT / "gradle/wrapper/gradle-wrapper.properties", self.properties)
         shutil.copy2(ROOT / "gradle/wrapper/gradle-wrapper.jar", wrapper)
         (self.root / "gradlew").touch()
+        (self.root / "scripts").mkdir()
+        shutil.copy2(ROOT / "scripts/verify-wrapper.sh", self.root / "scripts")
         script = (self.root / "bootstrap-wrapper.sh").read_text()
         self.version = re.search(r'^GRADLE_VERSION="([^"]+)"', script, re.MULTILINE)[1]
         self.cache = self.root / "cache"
@@ -55,6 +57,25 @@ class BootstrapWrapperTest(unittest.TestCase):
         result = self.bootstrap()
         self.assertEqual(0, result.returncode, result.stdout)
         self.assertTrue((self.root / "bootstrap-invoked").exists())
+
+    def verify_wrapper(self):
+        return subprocess.run(
+            ["sh", str(self.root / "scripts/verify-wrapper.sh")],
+            cwd=self.root, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        )
+
+    def test_bootstrapped_wrapper_passes_standalone_verification(self):
+        result = self.bootstrap()
+        self.assertEqual(0, result.returncode, result.stdout)
+        verified = self.verify_wrapper()
+        self.assertEqual(0, verified.returncode, verified.stdout)
+
+    def test_modified_wrapper_is_rejected_by_both_checks(self):
+        jar = self.root / "gradle/wrapper/gradle-wrapper.jar"
+        jar.write_bytes(jar.read_bytes() + b"corrupted")
+        for result in (self.bootstrap(), self.verify_wrapper()):
+            self.assertNotEqual(0, result.returncode, result.stdout)
+            self.assertIn("checksum mismatch", result.stdout)
 
     def test_partial_version_update_is_rejected_without_overwriting_it(self):
         self.properties.write_text(self.properties.read_text().replace(

@@ -127,7 +127,7 @@ Robolectric has transitive test dependencies with their own license obligations.
 
 ### Gradle Wrapper/bootstrap
 
-Gradle-generated wrapper scripts and wrapper components are licensed under Apache License 2.0. The repository pins Gradle 9.8.2 and verifies the official distribution SHA-256 before bootstrapping.
+Gradle-generated wrapper scripts and wrapper components are licensed under Apache License 2.0. The repository pins Gradle 9.9.2 and verifies the official distribution SHA-256 before bootstrapping.
 
 ### Synthetic example verifier
 

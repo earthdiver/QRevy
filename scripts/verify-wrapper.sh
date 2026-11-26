@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-EXPECTED="3b8a25775a69158b5ad2b1d17a80a88dc7b40a352a73eb27d06c612a7ce68e98"
+EXPECTED="621008afc4f5d59357fcf06ffa644dd5aade5e091bdc363742710445f73cdaf8"
 JAR="$ROOT/gradle/wrapper/gradle-wrapper.jar"
 [ -f "$JAR" ] || { echo "Gradle wrapper JAR is missing; run ./bootstrap-wrapper.sh" >&2; exit 1; }
 if command -v sha256sum >/dev/null 2>&1; then ACTUAL=$(sha256sum "$JAR" | awk '{print $1}')
