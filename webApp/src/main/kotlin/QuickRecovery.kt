@@ -45,9 +45,22 @@ internal object QuickRecovery {
             }
             initial=s.manualQuad?.let{MatrixSampler(img,SamplingProfile(s,samplingInverted(s))).sample(geometry(s)).first}?:QrMatrix(17+4*s.version)
         }
-        val repairBudget=if(!text&&!unlimited&&o.num("timeLimitMillis")<=0)budget.repairAfterPreparation()else budget
-        val result=if(text)QuickAutoRecovery().runTextMatrix(img,s,repairBudget)else QuickAutoRecovery().run(img,s,repairBudget)
+        val result=if(text)QuickAutoRecovery().runTextMatrix(img,s,budget)
+            else runPreparedImage(img,s,budget,separateRepairBudget=!unlimited&&o.num("timeLimitMillis")<=0)
         return ImageRecovery.formatResult(result.recovery,initial,s,o,result)
+    }
+
+    /** Preserve a missing grid's preparation timeout when repair receives a fresh allowance. */
+    internal fun runPreparedImage(image:LumaImage,settings:PreprocessSettings,
+        preparationBudget:AutomaticScanBudget,separateRepairBudget:Boolean):QuickAutoRecoveryResult {
+        val repairBudget=if(separateRepairBudget)preparationBudget.repairAfterPreparation()else preparationBudget
+        val result=QuickAutoRecovery().run(image,settings,repairBudget)
+        return if(result.selected==null&&settings.manualQuad==null&&preparationBudget.stopReason()=="TOTAL_TIME_LIMIT"&&
+            result.failureReason in setOf(null,QuickAutoFailureReason.NO_INITIAL_GRID,QuickAutoFailureReason.TIME_LIMIT)) {
+            val trace=preparationBudget.trace
+            trace?.event("IMPORT_FINISH","failure=TIME_LIMIT stage=INITIAL_GRID")
+            result.copy(failureReason=QuickAutoFailureReason.TIME_LIMIT,diagnosticReport=trace?.report())
+        }else result
     }
 
     fun historyState(saved:PreprocessSettings,attempt:GeometryAttempt,profile:SamplingProfile?):Map<String,Any?> {
