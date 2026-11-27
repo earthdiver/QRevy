@@ -10,6 +10,8 @@ val recoveryFuzzIterations = providers.systemProperty("qr.fuzz.iterations").orEl
 val changeCheckScope = providers.gradleProperty("qr.testScope").orElse("full")
 require(changeCheckScope.get() in setOf("full", "app", "quick")) { "qr.testScope must be full, app, or quick" }
 tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    // Use Maven Central's canonical endpoint for Robolectric runtime SDK downloads.
+    systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2")
     inputs.property("qr.fuzz.iterations", recoveryFuzzIterations)
     systemProperty("qr.fuzz.iterations", recoveryFuzzIterations.get())
     // Extended CI runs expose the completed-count message as well as retaining it in test reports.
@@ -79,10 +81,10 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.13.0")
     implementation("androidx.core:core:1.19.1")
     implementation("androidx.exifinterface:exifinterface:1.4.2")
-    implementation("androidx.camera:camera-core:1.6.1")
-    implementation("androidx.camera:camera-camera2:1.6.1")
-    implementation("androidx.camera:camera-lifecycle:1.6.1")
-    implementation("androidx.camera:camera-view:1.6.1")
+    implementation("androidx.camera:camera-core:1.7.0")
+    implementation("androidx.camera:camera-camera2:1.7.0")
+    implementation("androidx.camera:camera-lifecycle:1.7.0")
+    implementation("androidx.camera:camera-view:1.7.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.17")
 }

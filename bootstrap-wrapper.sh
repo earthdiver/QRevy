@@ -1,9 +1,9 @@
 #!/usr/bin/env sh
 set -eu
 
-GRADLE_VERSION="9.8.2"
-DIST_SHA256="21bd5da2de49b642904077f38c0efdc7778e92b3ed0889392dca61b97e389607"
-WRAPPER_JAR_SHA256="3b8a25775a69158b5ad2b1d17a80a88dc7b40a352a73eb27d06c612a7ce68e98"
+GRADLE_VERSION="9.9.2"
+DIST_SHA256="971fcd7150ca4ba04852c0b2ca0d2d0ab9468e14b03473eab19528809914c76b"
+WRAPPER_JAR_SHA256="621008afc4f5d59357fcf06ffa644dd5aade5e091bdc363742710445f73cdaf8"
 DIST_URL="https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
