@@ -1,3 +1,4 @@
+import {continueAfterOrdinaryReading} from './input-helpers.js';
 import {assignFinderOrientation,openResultData} from './input-helpers.js';
 import {changeEvidenceControl,changeRecoverySetting,clickInputAction,clickWorkspaceAction,openAppMenu,openWorkspaceMenu,runRecovery,showDiagnostics} from './input-helpers.js';
 import {test,expect} from '@playwright/test';
@@ -78,7 +79,7 @@ test('help closes without navigation and language survives restart without rewri
 
 test('image workspace is durably saved and can be reopened after reload',async({page})=>{
  const errors=[];page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
- await page.goto('/');await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await expect(page.locator('#recover')).toBeEnabled();await clickWorkspaceAction(page,'#save');
+ await page.goto('/');await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await continueAfterOrdinaryReading(page);await expect(page.locator('#recover')).toBeEnabled();await clickWorkspaceAction(page,'#save');
  await expect(page.locator('#saveStatus')).toContainText(/端末内に保存済み|Saved on this device/);await page.reload();await openAppMenu(page);await page.locator('#sessionsButton').click();await page.locator('#sessionList .session-item button').first().click();await expect(page.locator('#imageView')).toBeEnabled();await assignFinderOrientation(page);await runRecovery(page);await expect(page.locator('#payload')).toHaveValue('QRevy repaired.');expect(errors).toEqual([]);
 });
 

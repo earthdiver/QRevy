@@ -24,7 +24,7 @@ async function detailed(page){
 test.describe('Finder placement rejection',()=>{
  test.use({serviceWorkers:'block'});
  for(const outcome of ['FOLDED','REJECTED','NOT_FOUND'])test(`${outcome} preserves the workspace and gives localized guidance`,async({page})=>{
-  await page.route('**/worker.js',route=>route.fulfill({contentType:'text/javascript',headers:{'Cross-Origin-Embedder-Policy':'require-corp'},body:`import {execute} from './engine/js/engine.js';self.onmessage=({data})=>{const result=data.request.action==='finder'?${JSON.stringify({confirmed:false,quad:null,outcome,placementRejected:outcome==='FOLDED'})}:JSON.parse(execute(data.request));self.postMessage({id:data.id,result});};self.postMessage({ready:true});`}));
+  await page.route('**/worker.js',route=>route.fulfill({contentType:'text/javascript',headers:{'Cross-Origin-Embedder-Policy':'require-corp'},body:`import {execute} from './engine/js/engine.js';import {loadNativeScanner} from './native-boundaries.js';const nativeReady=loadNativeScanner().then(scan=>{globalThis.qrevyNativeScan=scan;});self.onmessage=async({data})=>{await nativeReady;const result=data.request.action==='finder'?${JSON.stringify({confirmed:false,quad:null,outcome,placementRejected:outcome==='FOLDED'})}:JSON.parse(execute(data.request));self.postMessage({id:data.id,result});};self.postMessage({ready:true});`}));
   await ready(page);await image(page,'tests/fixtures/clean.png');await expect(page.locator('#recover')).toBeEnabled();
   await page.locator('#imageView').click();await page.locator('#fitView').click();
   const before=await settings(page);
@@ -90,7 +90,7 @@ test('removing the last measured Finder retains the separately assigned role',as
 });
 
 test('detailed analysis opens the image after quick image repair',async({page})=>{
- await ready(page,true);await image(page,'tests/fixtures/clean.png');await detailed(page);
+ await ready(page,true);await image(page,'tests/fixtures/ordinary-failure.png');await detailed(page);
  await expect(page.locator('#imageView')).toHaveClass(/selected/);await expect(page.locator('#matrixView')).not.toHaveClass(/selected/);
  await page.locator('[data-tab="results"]').click();await expect(page.locator('#payload')).toHaveValue('QRevy repaired.');
 });
@@ -174,3 +174,6 @@ test('after clearing Finders on automatically estimated corners, an undetected F
   expect((await settings(page)).quad).toEqual(after.quad);
  }
 });
+
+// Reading is covered separately; these scenarios continue into the detailed editor.
+test.beforeEach(async({page})=>{await page.addLocatorHandler(page.locator('#ordinaryDialog'),async()=>{await page.locator('#ordinaryDetailed').click();});});

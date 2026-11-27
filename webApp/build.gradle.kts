@@ -27,7 +27,8 @@ sourceSets {
             val path = entry.file.relativeTo(repository).invariantSeparatorsPath
             !entry.isDirectory && !path.startsWith("webApp/") && path !in sharedSources
         }
-        java.srcDirs(repository.resolve("androidApp/src/main/java/com/google/zxing/qrcode/decoder"), "vendor/zxing")
+        java.srcDirs(repository.resolve("androidApp/src/main/java/com/google/zxing/qrcode/decoder"),
+            repository.resolve("androidApp/src/main/java/com/google/zxing/qrcode/detector"), "vendor/zxing")
     }
     test {
         kotlin.srcDirs(repository.resolve("shared/src/commonTest/kotlin"),

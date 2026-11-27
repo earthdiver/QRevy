@@ -1,3 +1,4 @@
+import {continueAfterOrdinaryReading} from './input-helpers.js';
 import {test,expect} from '@playwright/test';
 import {readFile} from 'node:fs/promises';
 import {changeRecoverySetting} from './input-helpers.js';
@@ -9,7 +10,7 @@ async function photo(page,gray=false){
   const png=await page.evaluate(async b=>{const image=new Image();image.src='data:image/png;base64,'+b;await image.decode();const c=document.createElement('canvas');c.width=image.width;c.height=image.height;const ctx=c.getContext('2d');ctx.drawImage(image,0,0);const pixels=ctx.getImageData(0,0,c.width,c.height);for(let i=0;i<pixels.data.length;i+=4)if(pixels.data[i]<128)for(let j=0;j<3;j++)pixels.data[i+j]=80;ctx.putImageData(pixels,0,0);return c.toDataURL().split(',')[1];},bytes.toString('base64'));
   await page.locator('#imageFile').setInputFiles({name:'synthetic-gray.png',mimeType:'image/png',buffer:Buffer.from(png,'base64')});
  }else await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');
- await page.locator('#cropApply').click();await expect(page.locator('#recover')).toBeEnabled();
+ await page.locator('#cropApply').click();await continueAfterOrdinaryReading(page);await expect(page.locator('#recover')).toBeEnabled();
 }
 const latest=page=>page.evaluate(async()=>{const s=(await(await import('/storage.js')).listSessions())[0];return s.history[s.cursor];});
 async function selectCell(page,x=20,y=20){const canvas=page.locator('#canvas'),box=await canvas.boundingBox();await canvas.click({position:{x:box.width*(x+2.5)/25,y:box.height*(y+2.5)/25}});}

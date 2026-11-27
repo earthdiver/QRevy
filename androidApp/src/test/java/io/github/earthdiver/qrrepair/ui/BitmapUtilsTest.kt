@@ -19,6 +19,21 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class BitmapUtilsTest {
+    @Test fun importedOddEdgesAndAnalysisInterpolationUseSharedPixels() {
+        val source = Bitmap.createBitmap(1, 2601, Bitmap.Config.ARGB_8888)
+        for (y in 0 until source.height) source.setPixel(0, y, Color.rgb(y % 256, y % 256, y % 256))
+        val bounded = BitmapUtils.boundImportedSource(source)
+        assertEquals(1, bounded.width)
+        assertEquals(1301, bounded.height)
+        assertEquals(Color.rgb(1, 1, 1), bounded.getPixel(0, 0))
+        assertEquals(Color.rgb(40, 40, 40), bounded.getPixel(0, 1300))
+        assertTrue(!source.isRecycled)
+        val pair = Bitmap.createBitmap(intArrayOf(Color.BLACK, Color.rgb(101,101,101)), 2, 1, Bitmap.Config.ARGB_8888)
+        val resized = BitmapUtils.resample(pair, 4, 1)
+        for ((x, value) in listOf(0, 25, 76, 101).withIndex()) assertEquals(Color.rgb(value,value,value), resized.getPixel(x,0))
+        source.recycle(); bounded.recycle(); pair.recycle(); resized.recycle()
+    }
+
     @Test fun rectifyMapsSelectedQuadToRectangle() {
         val source = Bitmap.createBitmap(140, 140, Bitmap.Config.ARGB_8888).apply {
             eraseColor(Color.WHITE)

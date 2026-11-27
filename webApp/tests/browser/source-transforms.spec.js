@@ -1,9 +1,10 @@
+import {continueAfterOrdinaryReading} from './input-helpers.js';
 import {test,expect} from '@playwright/test';
 import {openAppMenu} from './input-helpers.js';
 test.use({serviceWorkers:'block'});
 const latest=page=>page.evaluate(async()=>{const s=(await(await import('/storage.js')).listSessions())[0];return s.history[s.cursor];});
 const click=async(page,id)=>{await expect(page.locator('#'+id)).toBeEnabled();await page.locator('#'+id).evaluate(el=>el.onclick());};
-async function photo(page){await page.addInitScript(()=>localStorage.setItem('qrevy-automatic-repair','false'));await page.goto('/');await expect(page.locator('#demo')).toBeEnabled();await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await click(page,'cropApply');await expect(page.locator('#recover')).toBeEnabled();}
+async function photo(page){await page.addInitScript(()=>localStorage.setItem('qrevy-automatic-repair','false'));await page.goto('/');await expect(page.locator('#demo')).toBeEnabled();await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await click(page,'cropApply');await continueAfterOrdinaryReading(page);await expect(page.locator('#recover')).toBeEnabled();}
 async function angle(page,value){await page.locator('#imageAngle').evaluate((el,v)=>el.value=v,value);await click(page,'rotateImage');await expect(page.locator('#recover')).toBeEnabled();}
 test('source transformations preserve logical edits, Finder observations and correction preferences',async({page})=>{
  await photo(page);

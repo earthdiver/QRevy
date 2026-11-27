@@ -1,3 +1,4 @@
+import {continueAfterOrdinaryReading} from './input-helpers.js';
 import {test,expect} from '@playwright/test';
 import {readFile} from 'node:fs/promises';
 import {nativeStrings} from '../../web/native-strings.js';
@@ -7,7 +8,7 @@ test.beforeEach(async({page})=>{
  await page.goto('/');
  await expect(page.locator('#imageImport')).toBeEnabled();
  await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');
- await page.locator('#cropApply').click();
+ await page.locator('#cropApply').click();await continueAfterOrdinaryReading(page);
  await expect(page.locator('#recover')).toBeEnabled();
 });
 

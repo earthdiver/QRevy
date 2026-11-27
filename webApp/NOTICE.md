@@ -11,6 +11,10 @@ static distribution as licenses/QREVY_NOTICE.md.
 ZXing 3.5.4 source is retained in vendor/zxing and, for browser adaptations,
 src/main/java/com/google/zxing. Copyright ZXing authors. Apache License 2.0.
 
+ZXing-C++ 3.1.1: Copyright ZXing-C++ contributors. Apache License 2.0.
+The local WebAssembly reader provides ordinary reading and boundary detection.
+Bundled component and runtime license texts are included under native/.
+
 TeaVM 0.16.0 runtime: Copyright Alexey Andreev and contributors. Apache License 2.0.
 Kotlin 2.4.21 standard library: Copyright JetBrains and contributors. Apache License 2.0.
 Charset mapping tables are generated using OpenJDK charset conversion outputs;

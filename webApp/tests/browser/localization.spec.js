@@ -1,3 +1,4 @@
+import {continueAfterOrdinaryReading} from './input-helpers.js';
 import {openResultData} from './input-helpers.js';
 import {changeRecoverySetting,clickInputAction,openAppMenu,runRecovery} from './input-helpers.js';
 import {test,expect} from '@playwright/test';
@@ -53,8 +54,8 @@ test.describe(() => {
  test.use({serviceWorkers:'block'});
 test('memory-limited curved-grid notice uses the upstream text in both languages',async({page})=>{
  // Exercise the UI branch without forcing the browser to run out of memory.
- await page.route('**/worker.js',route=>route.fulfill({contentType:'text/javascript',headers:{'Cross-Origin-Embedder-Policy':'require-corp'},body:`import {execute} from './engine/js/engine.js';self.onmessage=({data})=>{const result=JSON.parse(execute(data.request));if(data.request.action==='curve')result.memoryLimited=true;self.postMessage({id:data.id,result});};self.postMessage({ready:true});`}));
- await page.goto('/');await expect(page.locator('#imageImport')).toBeEnabled();await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await expect(page.locator('#recover')).toBeEnabled();
+ await page.route('**/worker.js',route=>route.fulfill({contentType:'text/javascript',headers:{'Cross-Origin-Embedder-Policy':'require-corp'},body:`import {execute} from './engine/js/engine.js';import {loadNativeScanner} from './native-boundaries.js';const nativeReady=loadNativeScanner().then(scan=>{globalThis.qrevyNativeScan=scan;});self.onmessage=async({data})=>{await nativeReady;const result=JSON.parse(execute(data.request));if(data.request.action==='curve')result.memoryLimited=true;self.postMessage({id:data.id,result});};self.postMessage({ready:true});`}));
+ await page.goto('/');await expect(page.locator('#imageImport')).toBeEnabled();await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await continueAfterOrdinaryReading(page);await expect(page.locator('#recover')).toBeEnabled();
  await page.locator('#imageSettings > summary').click();await page.locator('.image-adjustment-body > details > summary').click();await page.locator('#curved').check();await expect(page.locator('#recover')).toBeEnabled();
  const notice=nativeStrings['inline:\nメモリ上限により補正探索の一部を省略しました'];await expect(page.locator('#curveStatus')).toContainText(notice.ja.trim());await page.locator('#languageButton').click();await expect(page.locator('#curveStatus')).toContainText(notice.en.trim());expect(await page.locator('#curveStatus').textContent()).not.toMatch(/[\u3040-\u30ff]/);
 });
@@ -80,7 +81,7 @@ test('English labels cover image adjustments, history, results, dialogs and acce
  await page.addInitScript(()=>localStorage.setItem('qrevy-language','en'));
  await page.goto('/');await expect(page.locator('#imageImport')).toBeEnabled();await expectEnglishUI(page);
  await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await expect(page.locator('#cropApply')).toBeVisible();await expectEnglishUI(page);
- await page.locator('#cropApply').click();await expect(page.locator('#recover')).toBeEnabled();await expect(page.locator('#viewTitle')).toHaveText('Image recovery');
+ await page.locator('#cropApply').click();await continueAfterOrdinaryReading(page);await expect(page.locator('#recover')).toBeEnabled();await expect(page.locator('#viewTitle')).toHaveText('Image recovery');
  await page.locator('#fineCorners').click();await expectEnglishUI(page);await page.locator('#cornerApply').click();await expect(page.locator('#recover')).toBeEnabled();
  await page.locator('[data-tab="edit"]').click();await expectEnglishUI(page);
  const canvas=page.locator('#canvas');await canvas.scrollIntoViewIfNeeded();const box=await canvas.boundingBox();await canvas.click({position:{x:box.width/2,y:box.height/2}});await page.locator('[data-value="?"]').click();await expectEnglishUI(page);await page.locator('#undo').click();
@@ -111,7 +112,7 @@ test('language changes preserve Japanese QR content and imported workspace names
 
 
 test('image adjustment labels address their inputs and corner step units follow the selected language',async({page})=>{
- await page.goto('/');await expect(page.locator('#imageImport')).toBeEnabled();await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await expect(page.locator('#recover')).toBeEnabled();
+ await page.goto('/');await expect(page.locator('#imageImport')).toBeEnabled();await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await continueAfterOrdinaryReading(page);await expect(page.locator('#recover')).toBeEnabled();
  for(const language of ['ja','en']){
   if(await page.locator('html').getAttribute('lang')!==language)await page.locator('#languageButton').click();
   for(const id of ['brightness','contrast'])expect(await page.locator('label[for="'+id+'"]').evaluate(el=>el.control.id)).toBe(id);

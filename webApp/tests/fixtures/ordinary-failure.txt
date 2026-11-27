@@ -1,0 +1,4 @@
+Synthetic regression fixture derived from the repository clean.png (QRevy repaired.).
+Copy its 232 x 232 RGB pixels and fill [160,200) x [160,200) with RGB (128,128,128).
+This erases a 5 x 5 data-module area without changing Finders or timing patterns.
+Both ordinary readers fail; erasure-aware quick repair recovers the original text.

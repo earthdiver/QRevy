@@ -1,3 +1,4 @@
+import {continueAfterOrdinaryReading} from './input-helpers.js';
 import {assignFinderOrientation} from './input-helpers.js';
 import {changeEvidenceControl,changeRecoverySetting,clickInputAction,clickWorkspaceAction,openAppMenu,releaseFinderConstraints,runRecovery} from './input-helpers.js';
 import {test,expect} from '@playwright/test';
@@ -90,7 +91,7 @@ test('view controls stay next to the image and edits remain within reach',async(
 
 test('phone preview remains pinned while scrolling settings and after zooming',async({page},testInfo)=>{
  test.skip(!testInfo.project.use.isMobile,'Phone workspace layout');
- await page.goto('/');await expect(page.locator('#imageImport')).toBeEnabled();await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await expect(page.locator('#recover')).toBeEnabled();
+ await page.goto('/');await expect(page.locator('#imageImport')).toBeEnabled();await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await continueAfterOrdinaryReading(page);await expect(page.locator('#recover')).toBeEnabled();
  await changeRecoverySetting(page,'#priorityLimit','selectOption','5');
  const dock=page.locator('#previewDock'),header=page.locator('body > header');
  const inset=async()=>{const d=await dock.boundingBox(),h=await header.boundingBox();return Math.abs(d.y-h.y-h.height);};await expect.poll(inset).toBeLessThan(2);
@@ -101,3 +102,6 @@ test('phone preview remains pinned while scrolling settings and after zooming',a
  const canvas=page.locator('#canvas'),b=await canvas.boundingBox();await canvas.click({position:{x:b.width*.5,y:b.height*.5}});await page.locator('[data-value="?"]').click();await expect(page.locator('#selectedCell')).toContainText(/値[=:]\s*\?/);
  await page.setViewportSize({width:320,height:568});await expect(dock).toHaveCSS('position','static');await page.locator('#cellSourceHelp').scrollIntoViewIfNeeded();await expect(page.locator('#cellSourceHelp')).toBeInViewport();await page.locator('#fitView').click();await expect(canvas).toBeInViewport();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
 });
+
+// Reading is covered separately; these scenarios continue into the detailed editor.
+test.beforeEach(async({page})=>{await page.addLocatorHandler(page.locator('#ordinaryDialog'),async()=>{await page.locator('#ordinaryDetailed').click();});});

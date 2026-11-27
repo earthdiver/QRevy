@@ -17,6 +17,24 @@ import kotlin.math.roundToInt
 import kotlin.math.hypot
 
 object BitmapUtils {
+    fun resample(source: Bitmap, width: Int, height: Int): Bitmap {
+        val pixels = io.github.earthdiver.qrrepair.core.ImageResampling.resize(
+            source.width, source.height, width, height) { y, row ->
+            source.getPixels(row, 0, source.width, 0, y, source.width, 1)
+        }
+        return Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
+    }
+
+    fun boundImportedSource(source: Bitmap): Bitmap {
+        val sampling = io.github.earthdiver.qrrepair.core.ImageResampling
+        val sample = sampling.importSample(source.width, source.height)
+        val pixels = sampling.downsample(source.width, source.height, sample) { y, row ->
+            source.getPixels(row, 0, source.width, 0, y, source.width, 1)
+        }
+        return Bitmap.createBitmap(pixels, sampling.sampledSize(source.width, sample),
+            sampling.sampledSize(source.height, sample), Bitmap.Config.ARGB_8888)
+    }
+
     /** Applies tones once to a geometrically prepared source; marker colors remain original. */
     fun adjust(source: Prepared, adjustment: io.github.earthdiver.qrrepair.core.ImageAdjustment): Prepared {
         if (adjustment.isIdentity) return source
@@ -145,7 +163,7 @@ object BitmapUtils {
     fun prepare(source: Bitmap, maxDimension: Int = MAX_PREPARED_DIMENSION): Prepared {
         val (width, height) = preparedSize(source.width, source.height, maxDimension)
         val scaled = if (width != source.width || height != source.height) {
-            Bitmap.createScaledBitmap(source, width, height, true)
+            resample(source, width, height)
         } else source
 
         val bitmap = try {

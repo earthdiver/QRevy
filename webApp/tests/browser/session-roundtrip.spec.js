@@ -12,7 +12,8 @@ async function start(page,automatic=false){
  await page.goto('/');await expect(page.locator('#imageImport')).toBeEnabled();
 }
 async function photo(page,automatic=false){
- await start(page,automatic);await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();
+ await start(page,automatic);await page.locator('#imageFile').setInputFiles(automatic?'tests/fixtures/ordinary-failure.png':'tests/fixtures/clean.png');await page.locator('#cropApply').click();
+ if(!automatic){await expect(page.locator('#ordinaryDialog')).toBeVisible();await page.locator('#ordinaryDetailed').click();}
  if(automatic){await expect(page.locator('#automaticDialog')).toBeVisible();await page.locator('#automaticDetailed').click();}
  await ready(page);await expect.poll(async()=>!!(await latest(page))?.image).toBe(true);
 }
@@ -76,7 +77,7 @@ for(const change of ['version','cell'])test(`automatic success is invalidated by
  if(change==='version'){
   page.once('dialog',d=>d.accept());await page.locator('#version').selectOption('5');await expect.poll(async()=>current(await latest(page)).settings.version).toBe(5);
  }else{
-  await selectCell(page,20,20);await page.locator('[data-value="?"]').click();await expect.poll(async()=>current(await latest(page)).matrix.text.at(-1)).toBe('?');
+  await selectCell(page,20,14);await page.locator('[data-value="?"]').click();await expect.poll(async()=>current(await latest(page)).matrix.text.replaceAll('\n','')[314]).toBe('?');
  }
  await page.locator('.steps [data-tab="results"]').click();await expect(page.locator('#automaticStatus')).toBeHidden();
  await reopen(page);await page.locator('.steps [data-tab="results"]').click();await expect(page.locator('#automaticStatus')).toBeHidden();await expect(page.locator('#resultCount')).toHaveText('0');
@@ -106,7 +107,7 @@ test('grid re-detection keeps a fixed edit on its physical module and remains un
 
 test('force-stopping the first automatic image repair produces reopenable history and backup',async({page})=>{
  // Hold only the initial automatic operation; fallback detection and sampling use the real engine.
- await page.route('**/worker.js',r=>r.fulfill({contentType:'text/javascript',headers:{'Cross-Origin-Embedder-Policy':'require-corp'},body:`import {execute} from './engine/js/engine.js';self.onmessage=({data})=>{if(data.request.action==='quickRecoverImage')return;self.postMessage({id:data.id,result:JSON.parse(execute(data.request))});};self.postMessage({ready:true});`}));
+ await page.route('**/worker.js',r=>r.fulfill({contentType:'text/javascript',headers:{'Cross-Origin-Embedder-Policy':'require-corp'},body:`import {execute} from './engine/js/engine.js';import {loadNativeScanner} from './native-boundaries.js';const nativeReady=loadNativeScanner().then(scan=>{globalThis.qrevyNativeScan=scan;});self.onmessage=async({data})=>{await nativeReady;if(data.request.action==='quickRecoverImage')return;self.postMessage({id:data.id,result:JSON.parse(execute(data.request))});};self.postMessage({ready:true});`}));
  await start(page,true);await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await expect(page.locator('#progress')).toBeVisible();await page.locator('#cancel').click();
  if(await page.evaluate(()=>typeof SharedArrayBuffer!=='undefined'&&crossOriginIsolated))await page.locator('#cancel').click();
  await expect.poll(async()=>(await latest(page))?.history.at(-1)?.label).toBe('簡易自動修復');await ready(page);

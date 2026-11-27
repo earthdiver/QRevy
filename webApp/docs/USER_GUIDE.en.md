@@ -45,7 +45,7 @@ To adjust a text matrix as an image, use **Adjust as an image (new workspace)**.
 
 ### Quick automatic repair
 
-**Quick automatic repair** in the input panel starts enabled. The preference is retained across launches and applies to subsequent image, camera, and TXT matrix imports. The app attempts a short automatic repair after import. When disabled, inputs open in the repair settings so you can review the grid and conditions before repairing.
+**Quick automatic repair** in the input panel starts enabled. The preference is retained across launches and applies to subsequent image, camera, and TXT matrix imports. For images and camera input, the app first attempts ordinary QR reading. A successful read opens a text result with Copy and Detailed analysis actions; it is not a repair candidate. The Ordinary reading result button reopens it while that workspace remains open. If ordinary reading fails, the app attempts a short automatic repair. When automatic repair is disabled, unreadable inputs open in the repair settings so you can review the grid and conditions before repairing.
 
 Choose **Detailed analysis** during processing to stop automatic repair and adjust the grid or modules. Image imports open in image view. If loading is still in progress, the app finishes the necessary loading first.
 

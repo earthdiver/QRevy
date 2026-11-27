@@ -13,7 +13,7 @@ This project uses the following third-party components.
 - Artifact: `io.github.zxing-cpp:android:3.1.1`
 - License: Apache License 2.0
 - Upstream: https://github.com/zxing-cpp/zxing-cpp/tree/v3.1.1
-- Used offline for candidate QR boundaries only; native decoded text is not accepted as a repair result.
+- Used offline for ordinary QR reading and candidate QR boundaries; native decoded text is not accepted as evidence for a repair candidate.
 - Android wrapper copyright: 2021 Axel Waggershauser; core contributors retain their upstream copyrights.
 - Packaged native ABIs: arm64-v8a, armeabi-v7a, x86, x86_64.
 - Published dependencies: CameraX core 1.5.2 and Kotlin stdlib 2.3.20, resolved to this app's existing newer versions.

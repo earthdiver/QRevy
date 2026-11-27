@@ -106,7 +106,7 @@ test('image rotation keeps the actual workspace grid aligned through a full turn
   return {png:c.toDataURL().split(',')[1],matrix};
  });
  await page.locator('#imageFile').setInputFiles({name:'small.png',mimeType:'image/png',buffer:Buffer.from(fixture.png,'base64')});
- await page.locator('#cropApply').click();await expect(page.locator('#cropCanvas')).not.toBeVisible();await expect(page.locator('#progress')).toBeHidden();await expect.poll(async()=>!!await latest(page)).toBe(true);
+ await page.locator('#cropApply').click();await expect(page.locator('#ordinaryDialog')).toBeVisible();await page.locator('#ordinaryDetailed').click();await expect.poll(async()=>!!await latest(page)).toBe(true);
  // Reopen a valid workspace with exact pixel-center corners to isolate rotation
  // from the automatic grid estimator's subpixel choices.
  await page.evaluate(async matrix=>{

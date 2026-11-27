@@ -1,3 +1,4 @@
+import {continueAfterOrdinaryReading} from './input-helpers.js';
 import {test,expect} from '@playwright/test';
 import {clickInputAction,openAppMenu,openWorkspaceMenu,changeRecoverySetting,runRecovery} from './input-helpers.js';
 
@@ -47,7 +48,7 @@ for(const language of ['ja','en']){
   }
   await page.locator('#appearanceButton').click();await headingIsClear(page.locator('#appearanceDialog'));await page.locator('[data-close="appearanceDialog"]').click();
   await page.locator('[data-close="helpDialog"]').click();
-  await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await headingIsClear(page.locator('dialog.image-dialog'));await page.locator('#cropApply').click();await expect(page.locator('#recover')).toBeEnabled();
+  await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await headingIsClear(page.locator('dialog.image-dialog'));await page.locator('#cropApply').click();await continueAfterOrdinaryReading(page);await expect(page.locator('#recover')).toBeEnabled();
   await page.locator('#fineCorners').click();await headingIsClear(page.locator('dialog.image-dialog'));await page.locator('#cornerCancel').click();
   await page.locator('#textFile').setInputFiles('tests/fixtures/two-candidates.txt');await expect(page.locator('#recover')).toBeEnabled();
   await changeRecoverySetting(page,'#ecc','selectOption','L');await changeRecoverySetting(page,'#mask','selectOption','0');await changeRecoverySetting(page,'#list','selectOption','0');await runRecovery(page);await expect(page.locator('#payload')).toHaveValue('A');

@@ -133,3 +133,5 @@ shared/src/commonMain/kotlin/io/github/earthdiver/qrrepair/core/ThinPlateWarp.kt
 shared/src/commonMain/kotlin/io/github/earthdiver/qrrepair/core/TwoFinderGridEstimator.kt
 shared/src/commonMain/kotlin/io/github/earthdiver/qrrepair/core/Utf8ByteGrammar.kt
 shared/src/commonMain/kotlin/io/github/earthdiver/qrrepair/core/WuDecoder.kt
+shared/src/commonMain/kotlin/io/github/earthdiver/qrrepair/core/ImageResampling.kt
+androidApp/src/main/java/io/github/earthdiver/qrrepair/core/ZxingJavaGridDetector.kt

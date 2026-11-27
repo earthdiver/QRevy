@@ -1,3 +1,4 @@
+import {resampleImage} from './image-resampling.js';
 import {recordHistory,restoreHistoryEntry,historyChangedCells,saveHistoryCheckpoint,checkpointHistoryIndex,readAutomaticTrial} from './workspace-history.js';
 import {createRecoveryWorker} from './recovery-worker.js';
 import {drawCodewordOverlay,codewordCellLabel} from './codeword-overlay.js';
@@ -49,15 +50,27 @@ function automaticStatusText(){const a=result?.automatic||state.automatic?.statu
 function renderAutomaticStatus(){const text=automaticStatusText();$('automaticStatus').hidden=!text;$('automaticStatus').textContent=text;const reports=state.automatic?.reports||[];$('automaticReportPanel').hidden=!reports.some(r=>r.report);$('automaticReport').textContent=reports.map(r=>`=== ${r.mode} ===\n${r.report}`).join('\n\n');}
 function observedSource(matrix){const source=clone(matrix);source.text=source.text.replace(/\*/g,'?');const symbols=matrix.text.replace(/\n/g,'');source.sources=[...source.sources].map((v,i)=>symbols[i]==='*'?'0':v).join('');return source;}
 function adoptAutomaticCandidate(candidate){if(!candidate)return;const before=state.settings;state.matrix=clone(candidate.input||state.matrix);state.source=observedSource(candidate.source||candidate.input||state.source);state.settings={...before,...clone(candidate.settings||{}),version:candidate.version};state.automaticTrial=readAutomaticTrial(candidate);if(candidate.quad){state.settings.quad=clone(candidate.quad);if(state.image)state.settings.gridReference=true;}if(candidate.grid)state.settings.grid=clone(candidate.grid);state.imageOnly=false;restoreCurveChoices();syncSettings();if(result){result.input=clone(state.matrix);result.settings=clone(state.settings);result.fingerprint=JSON.stringify([state.matrix,state.settings,false]);}}
+let ordinaryResult=null;
+function showOrdinaryResult(value){
+ ordinaryResult={...value,workspaceId:state.id};state.automatic=null;$('reopenOrdinary').hidden=false;
+ $('ordinaryTitle').textContent=getLanguage()==='ja'?'QRコードを読み取りました':'QR code read';
+ $('ordinaryText').textContent=value.text;
+ if(!$('ordinaryDialog').open)$('ordinaryDialog').showModal();
+}
+$('ordinaryCopy').onclick=()=>navigator.clipboard.writeText(ordinaryResult?.text??'').catch(report);
+$('ordinaryDetailed').onclick=async()=>{ $('ordinaryDialog').close();try{if(!state.matrix)await detect();}catch(error){report(error);} };
+$('reopenOrdinary').onclick=()=>{if(ordinaryResult?.workspaceId===state.id)showOrdinaryResult(ordinaryResult);};
+$('ordinaryClose').onclick=()=>{$('ordinaryDialog').close();};
 async function runAutomatic(mode='initial'){
  if(recoveryWorker.pending)await recoveryWorker.pending.promise.catch(()=>{});
  const session=mode==='initial'?{mode,firstRun:!automaticStarted,input:{matrix:clone(state.matrix),settings:clone(state.settings)},reports:[]}:state.automatic;
  if(!session)return;automaticDetailsRequested=false;automaticStarted=true;session.mode=mode;state.automatic=session;state.automaticTrial=null;state.oneTimeSingleSegment=false;
  const settings=clone(session.retrySettings||session.input.settings);if(state.image&&!settings.assigned)settings.quad=null;
- const request={action:state.image?'quickRecoverImage':'quickRecover',...(state.image?imageRequest(settings):{}),matrix:session.input.matrix,settings,firstRun:session.firstRun,diagnostics:$('automaticDiagnostics').checked,timeLimitMillis:mode==='extended'?10000:undefined,unlimited:mode==='unlimited'};
+ const request={action:state.image?'quickRecoverImage':'quickRecover',...(state.image?imageRequest(settings):{}),matrix:session.input.matrix,settings,firstRun:session.firstRun,diagnostics:$('automaticDiagnostics').checked,tryOrdinary:!!state.image&&mode==='initial'&&!session.input.matrix,timeLimitMillis:mode==='extended'?10000:undefined,unlimited:mode==='unlimited'};
  try{
   if(result)result.needsInspectionRestore=true;
   const res=await call(request,'簡易自動修復');
+  if(res.ordinary){showOrdinaryResult(res.ordinary);return;}
   if(res.input){state.matrix=clone(res.input);state.source=observedSource(res.source||res.input);}
   if(res.settings){
    const manualQuad=state.settings.quad;
@@ -256,6 +269,7 @@ function drawImageLayer(target,matrix,settings,request,displayWidth){
 }
 let updateWorkflow=()=>{};
 function render(){
+  $('reopenOrdinary').hidden=tab!=='input'||ordinaryResult?.workspaceId!==state.id;
   renderAutomaticStatus();
   updateWorkflow({state,tab,result,stale:resultIsStale()});
   renderNextResultAction();
@@ -445,7 +459,7 @@ $('matrixToImage').onclick=async()=>{
   }
 };
 // Decode like the Android app: halve until the longest side is at most 2600 pixels.
-function boundedSource(img){const w=img.naturalWidth,h=img.naturalHeight;let sample=1;while(Math.max(w,h)/sample>2600)sample*=2;if(sample===1)return img;const c=document.createElement('canvas');c.width=Math.max(1,Math.floor(w/sample));c.height=Math.max(1,Math.floor(h/sample));c.getContext('2d').drawImage(img,0,0,c.width,c.height);return c;}
+function boundedSource(img){return resampleImage(img);}
 // Wait for a preceding engine task, such as grid detection for the previous image, before locating.
 async function locateSymbol(canvas){while(recoveryWorker.pending)await recoveryWorker.pending.promise.catch(()=>{});const rgba=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data,pixels=new Uint32Array(canvas.width*canvas.height);for(let i=0;i<pixels.length;i++)pixels[i]=(rgba[i*4]<<16)|(rgba[i*4+1]<<8)|rgba[i*4+2];return call({action:'symbolExtent',width:canvas.width,height:canvas.height,pixels});}
 async function importImage(file,initial={}){
@@ -453,7 +467,7 @@ async function importImage(file,initial={}){
   const original=await boundedSource(await loadImageElement(file));const cropped=await cropImage(original,{...initial,locate:locateSymbol});if(!cropped)return;const blob=cropped.blob;if(!blob)throw new Error('画像の変換に失敗しました');const img=await loadImageElement(blob),c={width:img.naturalWidth,height:img.naturalHeight};
   await saveChain;overlayFingerprint=0;curve.candidates=[];curve.failed=false;curve.memoryLimited=false;state={id:crypto.randomUUID(),name:'画像からの修復',nameKey:'画像からの修復',matrix:null,source:null,settings:{...defaults,photographicSource:initial.photographicSource??true,brightness:cropped.brightness,contrast:cropped.contrast,toneInvert:cropped.toneInvert,curved:false,assigned:false,quad:[c.width*.1,c.height*.1,c.width*.9,c.height*.1,c.width*.9,c.height*.9,c.width*.1,c.height*.9]},history:[],cursor:-1,image:blob,imageHash:await digest(await blob.arrayBuffer())};
   imageElement=await loadImageElement(blob);result=null;selected=null;selectedCells=[];zoom=1;mode='image';syncSettings();renderResult();setTab('input');
-  imagePixelsCache=null;if($('automaticRepair').checked)await runAutomatic();else await detect();$('fitView').onclick();
+  imagePixelsCache=null;ordinaryResult=null;if($('automaticRepair').checked)await runAutomatic();else {const read=await call({action:'ordinaryRead',...imageRequest()},'QRコードを読み取り');if(read.ordinary)showOrdinaryResult(read.ordinary);else await detect();}$('fitView').onclick();
 }
 for(const id of ['imageFile','cameraFile'])$(id).onchange=e=>{const f=e.target.files[0];e.target.value='';importImage(f).catch(report);};
 function imageRequest(settings=state.settings){if(!imageElement)throw new Error('画像を読み込んでください');const cacheKey=state.id+':'+settings.brightness+':'+settings.contrast+':'+settings.toneInvert+':'+JSON.stringify(settings.imageOps);if(imagePixelsCache?.key===cacheKey)return imagePixelsCache.request;const c=document.createElement('canvas');const prepared=prepareImage(imageElement,settings.imageOps);c.width=prepared.naturalWidth||prepared.width;c.height=prepared.naturalHeight||prepared.height;const cx=c.getContext('2d');cx.drawImage(prepared,0,0);const rgba=cx.getImageData(0,0,c.width,c.height).data,pixels=new Uint32Array(c.width*c.height),originalPixels=new Uint32Array(c.width*c.height),s=settings;for(let i=0;i<pixels.length;i++){originalPixels[i]=(rgba[i*4]<<16)|(rgba[i*4+1]<<8)|rgba[i*4+2];const gain=2**(s.contrast/50),shift=127.5*(1-gain)+s.brightness*2.55,scale=Math.fround(s.toneInvert?-gain:gain),offset=Math.fround(s.toneInvert?255-shift:shift),channel=j=>Math.max(0,Math.min(255,Math.round(Math.fround(Math.fround(rgba[i*4+j]*scale)+offset))));const rgb=(channel(0)<<16)|(channel(1)<<8)|channel(2);pixels[i]=rgb;}for(let i=0;i<pixels.length;i++){rgba[i*4]=pixels[i]>>>16;rgba[i*4+1]=(pixels[i]>>>8)&255;rgba[i*4+2]=pixels[i]&255;rgba[i*4+3]=255;}cx.putImageData(new ImageData(rgba,c.width,c.height),0,0);imagePreview=c;const request={width:c.width,height:c.height,pixels,originalPixels};imagePixelsCache={key:cacheKey,request};return request;}

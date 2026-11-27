@@ -10,7 +10,17 @@ import zxingcpp.BarcodeReader
 object ZxingCppGridDetector {
     data class Scan(val boundaries: List<ImageQuad>, val decoded: Result? = null)
 
-    fun detect(bitmap: Bitmap): List<ImageQuad> = scan(bitmap).boundaries
+    fun detect(bitmap: Bitmap): List<ImageQuad> {
+        val native = scan(bitmap).boundaries
+        if (native.isNotEmpty()) return native
+        val pixels = IntArray(bitmap.width * bitmap.height)
+        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        val luma = IntArray(pixels.size) { i ->
+            val p = pixels[i]
+            (299 * ((p ushr 16) and 255) + 587 * ((p ushr 8) and 255) + 114 * (p and 255) + 500) / 1000
+        }
+        return ZxingJavaGridDetector.detect(LumaImage(bitmap.width, bitmap.height, luma, pixels))
+    }
 
     fun scan(bitmap: Bitmap): Scan = try {
         // Construct per import, on the existing worker; no shared mutable native reader.
@@ -40,10 +50,10 @@ object ZxingCppGridDetector {
         Scan(boundaries, decoded)
     } catch (_: LinkageError) {
         // Unsupported ABI/load failure: importing and finder-independent recovery still work.
-        Log.w("QrGridDetector", "Native detector unavailable; using periodicity estimation")
+        Log.w("QrGridDetector", "Native detector unavailable; using verified Java geometry and periodicity estimation")
         Scan(emptyList())
     } catch (_: RuntimeException) {
-        Log.w("QrGridDetector", "Native detection failed; using periodicity estimation")
+        Log.w("QrGridDetector", "Native detection failed; using verified Java geometry and periodicity estimation")
         Scan(emptyList())
     }
 }

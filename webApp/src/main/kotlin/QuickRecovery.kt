@@ -13,6 +13,10 @@ internal object QuickRecovery {
             else if(o.num("timeLimitMillis")>0)AutomaticScanBudget(o.num("timeLimitMillis").toLong().coerceIn(1,10_000),stopped,trace=trace,sliceMultiplier=3)
             else AutomaticScanBudget.forImport(o.bool("firstRun"),stopped,trace=trace)
         val text=o.str("action")=="quickRecover"
+        if(!text && o.bool("tryOrdinary")) {
+            val ordinary=ImageRecovery.ordinaryRead(o){!budget.stopped()}
+            if(ordinary!=null)return mapOf("ordinary" to ordinary)
+        }
         var s=settings(o.obj("settings"))
         val img:LumaImage
         val initial:QrMatrix
@@ -33,7 +37,8 @@ internal object QuickRecovery {
         }else{
             img=image(o)
             if(s.manualQuad==null){
-                val estimate=try{BrowserInitialGridEstimator.estimate(img,ImageRecovery.boundaries(img),RecoveryCancellation{budget.stopped()},trace?.gridObserver())}catch(_:RecoveryCancelledException){null}
+                val cancellation=RecoveryCancellation{budget.stopped()}
+                val estimate=try{cancellation.check();BrowserInitialGridEstimator.estimate(img,ImageRecovery.boundaries(o,img),cancellation,trace?.gridObserver())}catch(_:RecoveryCancelledException){null}
                 val tones=InitialThresholdEstimator.estimate(adjustedBitmap(o))
                 val colors=InitialThresholdEstimator.estimate(android.graphics.Bitmap(img.width,img.height,requireNotNull(img.rgbPixels)))
                 s=s.copy(version=estimate?.version?:s.version,manualQuad=estimate?.moduleCenterQuad,

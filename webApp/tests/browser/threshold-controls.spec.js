@@ -1,3 +1,4 @@
+import {continueAfterOrdinaryReading} from './input-helpers.js';
 import {openImageAdjustments} from './input-helpers.js';
 import {test,expect} from '@playwright/test';
 test.use({hasTouch:true});
@@ -6,7 +7,7 @@ test('threshold range and numeric controls stay paired through manual and automa
  await page.addInitScript(()=>localStorage.setItem('qrevy-automatic-repair','false'));
  await page.goto('/');await expect(page.locator('#imageImport')).toBeEnabled();
  await page.locator('#imageFile').setInputFiles(sample);
- await page.locator('#cropApply').click();await expect(page.locator('#recover')).toBeEnabled();
+ await page.locator('#cropApply').click();await continueAfterOrdinaryReading(page);await expect(page.locator('#recover')).toBeEnabled();
  await page.locator('#imageSettings > summary').click();
  await expect(page.locator('#blackRange')).toHaveValue(await page.locator('#black').inputValue());
  await expect(page.locator('#whiteRange')).toHaveValue(await page.locator('#white').inputValue());
@@ -41,12 +42,12 @@ test('threshold range and numeric controls stay paired through manual and automa
 test('threshold labels honor Finder polarity and inverted numeric input uses image intensities',async({page})=>{
  await page.addInitScript(()=>localStorage.setItem('qrevy-automatic-repair','false'));
  await page.goto('/');await expect(page.locator('#imageImport')).toBeEnabled();
- await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await expect(page.locator('#recover')).toBeEnabled();await page.locator('#imageSettings > summary').click();
+ await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await continueAfterOrdinaryReading(page);await expect(page.locator('#recover')).toBeEnabled();await page.locator('#imageSettings > summary').click();
  await openImageAdjustments(page);await page.locator('#polarity').selectOption('INVERTED');await expect(page.locator('#recover')).toBeEnabled();
  await expect(page.locator('#blackLabel')).toContainText('画像の暗部');
  await expect(page.locator('#black')).toHaveValue(await page.locator('#blackRange').inputValue());
  // Invert the imported image before Finder detection, without copying the source file.
- await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropInvert').check();await page.locator('#cropApply').click();await expect(page.locator('#recover')).toBeEnabled();
+ await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropInvert').check();await page.locator('#cropApply').click();await continueAfterOrdinaryReading(page);await expect(page.locator('#recover')).toBeEnabled();
  if(!await page.locator('#imageSettings').evaluate(e=>e.open))await page.locator('#imageSettings > summary').click();
  await expect(page.locator('#blackLabel')).toContainText('画像の明部');
  await expect.poll(async()=>Number(await page.locator('#black').inputValue())+Number(await page.locator('#blackRange').inputValue())).toBe(255);

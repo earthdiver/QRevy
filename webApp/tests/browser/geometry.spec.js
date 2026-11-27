@@ -1,3 +1,4 @@
+import {continueAfterOrdinaryReading} from './input-helpers.js';
 import {clickWorkspaceAction,openAppMenu,runRecovery} from './input-helpers.js';
 import {test,expect} from '@playwright/test';
 
@@ -19,7 +20,7 @@ test('changing a rectified version preserves observed Finder positions and undo 
   await page.goto('/');
   await expect(page.locator('#imageImport')).toBeEnabled();
   await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');
-  await page.locator('#cropApply').click();
+  await page.locator('#cropApply').click();await continueAfterOrdinaryReading(page);
   await expect(page.locator('#recover')).toBeEnabled();
   await page.locator('#imageSettings > summary').click();
   await page.locator('.image-adjustment-body > details').first().locator(':scope > summary').click();

@@ -14,10 +14,9 @@ for(const automatic of [false,true])test(`standalone startup and crop complete w
  await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');
  await page.locator('#cropApply').click();
  await expect(page.locator('#cropApply')).not.toBeVisible();
- if(automatic){
-  await expect(page.locator('#automaticDialog')).toBeVisible();
-  await page.locator('#automaticDetailed').click();
- }
+ await expect(page.locator('#ordinaryDialog')).toBeVisible();
+ await expect(page.locator('#ordinaryText')).toHaveText('QRevy repaired.');
+ await page.locator('#ordinaryDetailed').click();
  await expect(page.locator('#recover')).toBeEnabled();
  await expect(page.locator('#history button').first()).toBeAttached();
  await page.locator('.steps [data-tab="edit"]').click();

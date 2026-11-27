@@ -1,3 +1,4 @@
+import './check-native.mjs';
 import { mkdir, cp, readFile, writeFile, readdir, stat, rm } from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {join} from 'node:path';

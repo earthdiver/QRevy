@@ -298,8 +298,8 @@ class ImageAdjustmentEditor(
         val scale = BitmapUtils.analysisCropScale(cropped.width.toFloat(), cropped.height.toFloat(), basis.width(), basis.height())
         if (scale >= 1.0) return cropped
         return try {
-            Bitmap.createScaledBitmap(cropped, (cropped.width * scale).roundToInt().coerceAtLeast(1),
-                (cropped.height * scale).roundToInt().coerceAtLeast(1), true).also { if (it !== cropped) cropped.recycle() }
+            BitmapUtils.resample(cropped, (cropped.width * scale).roundToInt().coerceAtLeast(1),
+                (cropped.height * scale).roundToInt().coerceAtLeast(1)).also { if (it !== cropped) cropped.recycle() }
         } catch (error: Throwable) {
             cropped.recycle()
             throw error

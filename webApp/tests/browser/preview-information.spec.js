@@ -1,3 +1,4 @@
+import {continueAfterOrdinaryReading} from './input-helpers.js';
 import {test,expect} from '@playwright/test';
 import {readFile} from 'node:fs/promises';
 import {runRecovery} from './input-helpers.js';
@@ -6,7 +7,7 @@ async function photo(page){
  await page.addInitScript(()=>{window.clippedFinderLabels=[];const fill=CanvasRenderingContext2D.prototype.fillText;CanvasRenderingContext2D.prototype.fillText=function(text,x,y,...args){if(this.canvas.id==='canvas'&&['左上','右上','右下','左下','TL','TR','BR','BL'].includes(text)){const width=this.measureText(text).width,m=this.getTransform();if(m.a*x+m.e<0||m.a*(x+width)+m.e>this.canvas.width+.1)window.clippedFinderLabels.push(text);}return fill.call(this,text,x,y,...args);};});
  await page.goto('/');
  if(process.env.QREVY_QA_FONT){const bytes=await readFile(process.env.QREVY_QA_FONT);await page.evaluate(async b=>{const f=new FontFace('QRevyQA',`url(data:font/ttf;base64,${b})`);await f.load();document.fonts.add(f);const descriptor=Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype,'font');Object.defineProperty(CanvasRenderingContext2D.prototype,'font',{...descriptor,set(value){descriptor.set.call(this,value.replace(/sans-serif/g,'QRevyQA, sans-serif'));}});},bytes.toString('base64'));await page.addStyleTag({content:'body,button,input,select,textarea{font-family:QRevyQA,sans-serif}pre{font-family:monospace,QRevyQA,sans-serif}.cell-tools small{font-family:QRevyQA,sans-serif}'});}
- await expect(page.locator('#imageImport')).toBeEnabled();await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await expect(page.locator('#recover')).toBeEnabled();
+ await expect(page.locator('#imageImport')).toBeEnabled();await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await continueAfterOrdinaryReading(page);await expect(page.locator('#recover')).toBeEnabled();
 }
 async function capture(page,info,name){await page.locator('#toast').waitFor({state:'hidden'});await page.screenshot({path:info.outputPath(name+'.png')});}
 for(const viewport of [{width:320,height:568},{width:390,height:844},{width:844,height:390}])test(`preview information follows the displayed task at ${viewport.width}x${viewport.height}`,async({page},info)=>{

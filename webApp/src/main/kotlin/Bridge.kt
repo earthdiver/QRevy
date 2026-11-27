@@ -96,10 +96,32 @@ internal fun image(o: JSObject): LumaImage {
     return LumaImage(w,h,IntArray(w*h) { val p=rgb[it]; ((p shr 16 and 255)*299+(p shr 8 and 255)*587+(p and 255)*114+500)/1000 },colors)
 }
 object Bridge {
+    /** Shared raster arithmetic; native/browser image codecs only supply full-resolution RGBA. */
+    @JvmStatic @JSExport fun resample(o: JSObject): JSObject {
+        val w=o.int("width");val h=o.int("height");val rgba=o.obj("data")
+        require(w > 0 && h > 0 && w.toLong()*h*4 <= Int.MAX_VALUE && Interop.length(rgba)==w*h*4)
+        val row: (Int,IntArray)->Unit = { y, out ->
+            for(x in 0 until w) {
+                val i=(y*w+x)*4
+                out[x]=(Interop.item(rgba,i+3).toInt() shl 24) or
+                    (Interop.item(rgba,i).toInt() shl 16) or (Interop.item(rgba,i+1).toInt() shl 8) or Interop.item(rgba,i+2).toInt()
+            }
+        }
+        val sample=ImageResampling.importSample(w,h)
+        val bounded=o.str("method")=="import"
+        val ow=if(bounded)ImageResampling.sampledSize(w,sample)else o.int("outWidth")
+        val oh=if(bounded)ImageResampling.sampledSize(h,sample)else o.int("outHeight")
+        require(ow in 1..4096 && oh in 1..4096 && ow.toLong()*oh<=8_000_000)
+        val pixels=if(bounded)ImageResampling.downsample(w,h,sample,row) else ImageResampling.resize(w,h,ow,oh,row)
+        val bytes=Interop.bytes(pixels.size*4)
+        for(i in pixels.indices)Interop.putPixel(bytes,i*4,pixels[i])
+        return Interop.imageResult(ow,oh,bytes)
+    }
     private val engine=RecoveryEngine()
     internal var resultFormatter: (() -> Any?)? = null
     @JvmStatic @JSExport fun version(): String = "QRevy 0.21.1"
     @JvmStatic @JSExport fun execute(o: JSObject): String = try {
+        Interop.resetNativeScan(o)
         AppLanguageManager.current=if(o.str("language","ja")=="ja") AppLanguage.JAPANESE else AppLanguage.ENGLISH
         if(o.str("action") in listOf("recover","recoverImage","quickRecover","quickRecoverImage")) ResultInspection.clear()
         json(dispatch(o))
@@ -146,9 +168,10 @@ object Bridge {
             if(o.bool("damage",true)) for(y in 9..13) for(x in 9..16) m.set(x,y,ModuleValue.ERASED,0f,ModuleSource.IMAGE)
             matrixJson(m)
         }
+        "ordinaryRead" -> mapOf("ordinary" to ImageRecovery.ordinaryRead(o))
         "symbolExtent" -> SymbolExtent.initialCrop(image(o))?.toList()
         "detect" -> {
-            val img=image(o);val e=BrowserInitialGridEstimator.estimate(img,ImageRecovery.boundaries(img))
+            val img=image(o);val e=BrowserInitialGridEstimator.estimate(img,ImageRecovery.boundaries(o,img))
             val f=FinderDetector(img).detect()
             val thresholds=InitialThresholdEstimator.estimate(adjustedBitmap(o))
             val colorEstimate=InitialThresholdEstimator.estimate(android.graphics.Bitmap(img.width,img.height,requireNotNull(img.rgbPixels)))
@@ -179,7 +202,7 @@ object Bridge {
             val img=image(o);val raw=settings(o.obj("settings"));val estimate=if(o.bool("refreshPolarity"))InitialThresholdEstimator.estimate(adjustedBitmap(o))else null;val s=if(o.bool("refreshPolarity"))raw.copy(confirmedFinderPolarity=run {
                 val probe=raw.copy(confirmedFinderPolarity=FinderPolarity.UNKNOWN,polarity=PolarityMode.AUTO)
                 val local=raw.manualFinders.values.mapNotNull { refineFinder(img,probe,it)?.polarity }.filter { it!=FinderPolarity.UNKNOWN }.distinct()
-                local.singleOrNull()?:BrowserInitialGridEstimator.estimate(img,ImageRecovery.boundaries(img))?.confirmedPolarity?:FinderPolarity.UNKNOWN
+                local.singleOrNull()?:BrowserInitialGridEstimator.estimate(img,ImageRecovery.boundaries(o,img))?.confirmedPolarity?:FinderPolarity.UNKNOWN
             },provisionalBlackMax=estimate?.blackMax?:raw.provisionalBlackMax,provisionalWhiteMin=estimate?.whiteMin?:raw.provisionalWhiteMin)else raw; var g=ImageRecovery.geometryWithWarp(s,o.obj("settings"))
             var refined=false
             if(o.str("action")=="refine") {

@@ -1,3 +1,10 @@
+// Detailed-editor tests explicitly leave the ordinary reading result when a clean image is imported.
+export async function continueAfterOrdinaryReading(page){
+ await page.addLocatorHandler(page.locator('#ordinaryDialog'),async()=>{
+  await page.locator('#ordinaryDetailed').click();
+ });
+}
+
 // Confirmed Finder roles lock their corners. Release them through the UI before
 // scenarios that deliberately reposition every corner, then confirm orientation.
 export async function releaseFinderConstraints(page){

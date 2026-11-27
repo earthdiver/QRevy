@@ -76,3 +76,6 @@ test('fractional crop bounds and output dimensions match Android rounding',async
  await page.locator('#cropApply').click();await expect(page.locator('#canvas')).toHaveAttribute('data-image-width','1800');
  await expect(page.locator('#canvas')).toHaveAttribute('data-image-height','1198');
 });
+
+// Reading is covered separately; these scenarios continue into the detailed editor.
+test.beforeEach(async({page})=>{await page.addLocatorHandler(page.locator('#ordinaryDialog'),async()=>{await page.locator('#ordinaryDetailed').click();});});

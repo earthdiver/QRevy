@@ -1,5 +1,7 @@
 import {nativeStrings} from './native-strings.js';
 const translations={
+'QRコードを読み取り':'Reading QR code',
+'通常読み取りの結果':'Ordinary reading result',
 '射影補正を解除':'Remove perspective correction',
 'Finder指定をすべて解除':'Clear all Finder assignments',
 '位置未測定の役割指定を解除':'Clear role without a center',

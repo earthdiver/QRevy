@@ -1,8 +1,9 @@
+import {continueAfterOrdinaryReading} from './input-helpers.js';
 import {test,expect} from '@playwright/test';
 import {readFile} from 'node:fs/promises';
 import {runRecovery,clickInputAction} from './input-helpers.js';
 test.beforeEach(async({page})=>{await page.addInitScript(()=>{localStorage.setItem('qrevy-automatic-repair','false');localStorage.setItem('qrevy-language','ja');});});
-async function photo(page){await page.goto('/');await installFont(page);await expect(page.locator('#imageImport')).toBeEnabled();await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await expect(page.locator('#recover')).toBeEnabled();}
+async function photo(page){await page.goto('/');await installFont(page);await expect(page.locator('#imageImport')).toBeEnabled();await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await continueAfterOrdinaryReading(page);await expect(page.locator('#recover')).toBeEnabled();}
 const size=page=>page.evaluate(()=>{const r=id=>{const e=document.getElementById(id),b=e.getBoundingClientRect();return {width:b.width,height:b.height,scrollLeft:e.scrollLeft,scrollTop:e.scrollTop};};return {canvas:r('canvas'),viewport:r('canvasScroll'),dock:r('previewDock'),zoom:document.getElementById('zoomLabel').textContent};});
 test('image viewport and fitted size stay stable across repeated zoom and pan',async({page},info)=>{
  await photo(page);await page.locator('#imageView').click();await page.locator('#fitView').click();await page.waitForTimeout(100);const initial=await size(page);

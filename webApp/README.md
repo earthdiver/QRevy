@@ -24,6 +24,10 @@ npm run dev
 
 Open [the local app](http://127.0.0.1:4173). To use another device, serve `webApp/dist/` over HTTPS. Apply `dist/_headers` or equivalent response headers on your host. The headers enable cooperative cancellation; without cross-origin isolation, stopping recovery terminates its worker and discards that run's unfinished candidates. Existing edits and earlier results are retained.
 
+Image import tries ZXing-C++ ordinary reading, then ZXing Java. If neither reads the QR, automatic repair (when enabled) uses the native boundaries and shared recovery engine. If the native reader finds no boundary, both platforms use the same verified Java geometry fallback, including inverted images. Ordinary text is shown separately from repair candidates and is never opened as a URL automatically. Initial image reduction and analysis resizing use the same Kotlin pixel arithmetic as Android.
+
+The checked-in `web/native/` assets use ZXing-C++ 3.1.1 and Emscripten 4.0.20; the static build verifies their hashes and Android version. To rebuild, activate Emscripten 4.0.20 and run `bash scripts/build-native.sh` from this directory, then review and update `web/native/manifest.json`. The script checks out the pinned upstream revision and builds the adapter in `native/`. The bundled reader works offline. Hosting CSP must permit `'wasm-unsafe-eval'` as shown in `_headers`. Full-resolution image decoding happens before reduction; peak codec memory still depends on source dimensions and the platform.
+
 ## Validation
 
 Install the test browsers once from `webApp/`:

@@ -1,3 +1,4 @@
+import {continueAfterOrdinaryReading} from './input-helpers.js';
 import {test,expect} from '@playwright/test';
 
 // These scenarios exercise manual analysis; automatic imports have their own suite.
@@ -41,7 +42,7 @@ test('image dialogs contain gestures and restore background scrolling; rapid arr
  await expect(page.locator('.image-dialog')).toHaveCSS('overscroll-behavior','contain');
  await page.locator('#cropCanvas').evaluate(c=>{const e=new Event('touchmove',{bubbles:true,cancelable:true});c.dispatchEvent(e);if(!e.defaultPrevented)throw Error('Canvas gesture was not contained');});
  await page.locator('#cropCancel').click();await expect(page.locator('body')).not.toHaveCSS('position','fixed');await expect.poll(()=>page.evaluate(()=>scrollY)).toBe(scroll);
- await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await expect(page.locator('#recover')).toBeEnabled();await expect(page.locator('body')).not.toHaveCSS('position','fixed');
+ await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await continueAfterOrdinaryReading(page);await expect(page.locator('#recover')).toBeEnabled();await expect(page.locator('body')).not.toHaveCSS('position','fixed');
  await page.locator('#canvas').screenshot({path:info.outputPath('visible-main-guides.png')});
  page.once('dialog',d=>d.accept());await page.locator('#version').selectOption('2');await expect(page.locator('#dimensions')).toContainText('V2');await expect(page.locator('#recover')).toBeEnabled();await page.locator('#canvas').screenshot({path:info.outputPath('visible-version-mismatch.png')});
  page.once('dialog',d=>d.accept());await page.locator('#version').selectOption('1');await expect(page.locator('#dimensions')).toContainText('V1');await expect(page.locator('#recover')).toBeEnabled();

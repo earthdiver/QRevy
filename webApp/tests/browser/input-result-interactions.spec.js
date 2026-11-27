@@ -1,3 +1,4 @@
+import {continueAfterOrdinaryReading} from './input-helpers.js';
 import {changeEvidenceControl,runRecovery,setAutomaticRepair} from './input-helpers.js';
 import {test,expect} from '@playwright/test';
 
@@ -8,7 +9,7 @@ const state=page=>page.evaluate(()=>structuredClone(review.state));
 async function reveal(page,id){await page.locator('#'+id).evaluate(e=>{for(let p=e.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;});}
 async function click(page,id){await reveal(page,id);await page.locator('#'+id).click();await idle(page);}
 async function textInput(page,name){await page.locator('#textFile').setInputFiles(fixture(name));await page.waitForFunction(()=>review.state.matrix&&!review.busy);}
-async function photo(page){await page.locator('#imageFile').setInputFiles(fixture('clean.png'));await click(page,'cropApply');await page.waitForFunction(()=>review.state.image&&review.state.matrix&&!review.busy);}
+async function photo(page){await page.locator('#imageFile').setInputFiles(fixture('clean.png'));await click(page,'cropApply');await continueAfterOrdinaryReading(page);await expect(page.locator('#recover')).toBeEnabled();await page.waitForFunction(()=>review.state.image&&review.state.matrix&&!review.busy);}
 async function demo(page){await click(page,'demo');await page.waitForFunction(()=>review.state.matrix&&!review.busy);}
 async function repaired(page){await demo(page);await click(page,'recover');await expect(page.locator('#payload')).not.toHaveValue('');}
 async function compare(page){await repaired(page);await click(page,'resultEvidenceTab');await changeEvidenceControl(page,'#resultStage','selectOption','compare');}
@@ -145,3 +146,6 @@ test('result disclosures support keyboard expansion',async({page})=>{
  await page.keyboard.press('Enter');await expect(page.locator('#resultDiagnosticSection')).not.toHaveAttribute('open','');
  await page.keyboard.press('Enter');await expect(page.locator('#resultDiagnosticSection')).toHaveAttribute('open','');
 });
+
+// Reading is covered separately; these scenarios continue into the detailed editor.
+test.beforeEach(async({page})=>{await page.addLocatorHandler(page.locator('#ordinaryDialog'),async()=>{await page.locator('#ordinaryDetailed').click();});});

@@ -1,3 +1,4 @@
+import {continueAfterOrdinaryReading} from './input-helpers.js';
 import {clickWorkspaceAction,runRecovery} from './input-helpers.js';
 import {test,expect} from '@playwright/test';
 
@@ -22,7 +23,7 @@ test('image values remain readable at 800 percent while selection and exported s
     p.fillText=function(value,...args){if(this.canvas.id==='canvas'&&/^[01]$/.test(String(value))){const m=this.getTransform();window.imageGlyphs.push({value:String(value),rasterHeight:parseFloat(this.font)*Math.hypot(m.c,m.d)});}return text.call(this,value,...args);};
   });
   await page.goto('/');await expect(page.locator('#imageImport')).toBeEnabled();
-  await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await expect(page.locator('#recover')).toBeEnabled();await page.locator('#imageView').click();
+  await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await continueAfterOrdinaryReading(page);await expect(page.locator('#recover')).toBeEnabled();await page.locator('#imageView').click();
   const initial=await workspace(page),canvas=page.locator('#canvas');
   const raster=()=>canvas.evaluate(c=>({width:c.width,height:c.height,imageWidth:Number(c.dataset.imageWidth),imageHeight:Number(c.dataset.imageHeight),cssWidth:c.getBoundingClientRect().width,glyphs:window.imageGlyphs}));
   const before=await raster();await page.locator('#canvasScroll').screenshot({path:info.outputPath('image-values-100.png')});

@@ -69,3 +69,5 @@ shared/src/commonTest/kotlin/io/github/earthdiver/qrrepair/core/ThinPlateWarpInv
 shared/src/commonTest/kotlin/io/github/earthdiver/qrrepair/core/ThinPlateWarpTest.kt
 shared/src/commonTest/kotlin/io/github/earthdiver/qrrepair/core/TwoFinderGridEstimatorTest.kt
 shared/src/commonTest/kotlin/io/github/earthdiver/qrrepair/core/WuDecoderTest.kt
+shared/src/commonTest/kotlin/io/github/earthdiver/qrrepair/core/ImageResamplingTest.kt
+androidApp/src/test/java/io/github/earthdiver/qrrepair/core/ZxingJavaGridDetectorTest.kt

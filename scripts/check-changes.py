@@ -51,7 +51,8 @@ def scope_for(path: str) -> str:
     # test fixtures default to full validation until their dependencies are reviewed.
     if path in {"AGENTS.md", "NOTICE.md"} or path in WEB_SHARED_PATHS or path in WEB_OVERRIDE_ORIGINALS:
         return "full"
-    if path.startswith("androidApp/src/main/java/com/google/zxing/qrcode/decoder/"):
+    if path.startswith(("androidApp/src/main/java/com/google/zxing/qrcode/decoder/",
+                        "androidApp/src/main/java/com/google/zxing/qrcode/detector/")):
         return "full"
     parts = PurePosixPath(path).parts
     if path in {"webApp/README.md", "webApp/README.ja.md"} or (

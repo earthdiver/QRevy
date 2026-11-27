@@ -96,6 +96,7 @@ class CheckSelectionTest(unittest.TestCase):
     def test_shared_callers_and_implicit_browser_inputs_require_both_platforms(self):
         paths = ["webApp/shared-sources.txt", "webApp/shared-tests.txt",
                  "androidApp/src/main/java/com/google/zxing/qrcode/decoder/NewDecoder.java",
+                 "androidApp/src/main/java/com/google/zxing/qrcode/detector/FinderGeometry.java",
                  APP + "session/RecoverySessionCodec.kt",
                  APP + "PreRecoveryCellEditState.kt",
                  "shared/src/commonTest/kotlin/io/github/earthdiver/qrrepair/core/SharedCoreSmokeTest.kt",

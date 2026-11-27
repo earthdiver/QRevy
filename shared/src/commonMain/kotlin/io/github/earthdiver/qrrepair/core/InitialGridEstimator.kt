@@ -233,8 +233,8 @@ object InitialGridEstimator {
             .thenBy { it.moduleCenterQuad.bottomLeft.x }.thenBy { it.moduleCenterQuad.bottomLeft.y })
     }
 
-    /** Native positions are outer boundaries, whereas the editor stores outer module centers. */
-    internal fun fromBoundary(image: LumaImage, boundary: ImageQuad): InitialGridEstimate? =
+    /** Validates a platform detector's outer boundary and returns the editor's outer module centers. */
+    fun fromBoundary(image: LumaImage, boundary: ImageQuad): InitialGridEstimate? =
         fromBoundary(image, LumaImage(image.width, image.height,
             IntArray(image.pixels.size) { 255 - image.pixels[it] }), boundary)
 

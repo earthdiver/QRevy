@@ -66,7 +66,9 @@ internal class InitialImageAnalysis(
                 provisionalBlackMax = thresholds?.blackMax ?: 96, provisionalWhiteMin = thresholds?.whiteMin ?: 160,
                 unknownColorClusters = original?.unknownColorClusters.orEmpty())
             initialGrid = if (estimateGrid != null) estimateGrid.invoke(adjusted.luma, boundaries, cancellation)
-                else InitialGridEstimator.estimate(adjusted.luma, boundaries, cancellation, trace?.gridObserver())
+                else InitialGridEstimator.estimate(adjusted.luma,
+                    boundaries.ifEmpty { io.github.earthdiver.qrrepair.core.ZxingJavaGridDetector.detect(adjusted.luma) },
+                    cancellation, trace?.gridObserver())
         } catch (_: RecoveryCancelledException) {
             // No completed grid is available; the detailed editor remains usable without it.
         }
@@ -236,11 +238,8 @@ internal class ImageImportController(
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-        var sample = 1
-        val maxSide = maxOf(bounds.outWidth, bounds.outHeight)
-        while (maxSide / sample > 2600) sample *= 2
+        // Decode before resampling: decoder-specific subsampling changes recovery evidence.
         val options = BitmapFactory.Options().apply {
-            inSampleSize = sample
             inPreferredConfig = Bitmap.Config.ARGB_8888
         }
         val decoded = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
@@ -250,17 +249,16 @@ internal class ImageImportController(
             setRotate(spec.rotationDegrees)
             if (spec.scaleX != 1f || spec.scaleY != 1f) postScale(spec.scaleX, spec.scaleY)
         }
-        if (orientation == ExifInterface.ORIENTATION_NORMAL || orientation == ExifInterface.ORIENTATION_UNDEFINED) {
-            return decoded
-        }
-        return try {
-            Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, transform, true).also {
+        val upright = try {
+            if (orientation == ExifInterface.ORIENTATION_NORMAL || orientation == ExifInterface.ORIENTATION_UNDEFINED) decoded
+            else Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, transform, false).also {
                 if (it !== decoded) decoded.recycle()
             }
         } catch (t: Throwable) {
             decoded.recycle()
             throw t
         }
+        return try { BitmapUtils.boundImportedSource(upright) } finally { upright.recycle() }
     }
 }
 

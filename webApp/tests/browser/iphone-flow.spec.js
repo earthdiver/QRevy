@@ -1,8 +1,9 @@
+import {continueAfterOrdinaryReading} from './input-helpers.js';
 import {test,expect} from '@playwright/test';
 import {readFile} from 'node:fs/promises';
 import {runRecovery,changeRecoverySetting} from './input-helpers.js';
 test.beforeEach(async({page})=>{await page.addInitScript(()=>{localStorage.setItem('qrevy-automatic-repair','false');localStorage.setItem('qrevy-language','ja');});});
-async function photo(page){await page.goto('/');await expect(page.locator('#imageImport')).toBeEnabled();await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await expect(page.locator('#recover')).toBeEnabled();}
+async function photo(page){await page.goto('/');await expect(page.locator('#imageImport')).toBeEnabled();await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await continueAfterOrdinaryReading(page);await expect(page.locator('#recover')).toBeEnabled();}
 async function screenshot(page,info,name){
  if(process.env.QREVY_QA_FONT){const data=await readFile(process.env.QREVY_QA_FONT);await page.evaluate(async b=>{const f=new FontFace('QRevyQA',`url(data:font/ttf;base64,${b})`);await f.load();document.fonts.add(f);},data.toString('base64'));await page.addStyleTag({content:'body,button,input,select,textarea{font-family:QRevyQA,sans-serif}pre{font-family:monospace,QRevyQA,sans-serif}'});}
  await page.locator('#toast').waitFor({state:'hidden'});await page.screenshot({path:info.outputPath(name+'.png')});

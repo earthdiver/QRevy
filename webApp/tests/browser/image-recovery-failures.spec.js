@@ -63,7 +63,7 @@ for(const [key,value] of [['brightness','100'],['black','150'],['toneInvert',tru
 });
 
 test('failed image resampling restores settings without adding an inconsistent history entry',async({page})=>{
- await page.route('**/worker.js',route=>route.fulfill({contentType:'text/javascript',headers:{'Cross-Origin-Embedder-Policy':'require-corp'},body:`import {execute} from './engine/js/engine.js';self.onmessage=({data})=>{if(['sample','refine'].includes(data.request.action)&&data.request.settings.brightness===100){self.postMessage({id:data.id,error:'Simulated sampling failure'});return;}self.postMessage({id:data.id,result:JSON.parse(execute(data.request))});};self.postMessage({ready:true});`}));
+ await page.route('**/worker.js',route=>route.fulfill({contentType:'text/javascript',headers:{'Cross-Origin-Embedder-Policy':'require-corp'},body:`import {execute} from './engine/js/engine.js';import {loadNativeScanner} from './native-boundaries.js';const nativeReady=loadNativeScanner().then(scan=>{globalThis.qrevyNativeScan=scan;});self.onmessage=async({data})=>{await nativeReady;if(['sample','refine'].includes(data.request.action)&&data.request.settings.brightness===100){self.postMessage({id:data.id,error:'Simulated sampling failure'});return;}self.postMessage({id:data.id,result:JSON.parse(execute(data.request))});};self.postMessage({ready:true});`}));
  const before=await imageWorkspace(page);
  await page.locator('#brightness').evaluate(el=>{el.value='100';el.dispatchEvent(new Event('change'));});
  await expect(page.locator('#toast')).toContainText('Simulated sampling failure');

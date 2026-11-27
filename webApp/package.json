@@ -6,7 +6,7 @@
   "scripts": {
     "build:engine": "../gradlew -p . generateJavaScript --console=plain",
     "build": "node scripts/build.mjs",
-    "test": "node --test tests/engine.test.mjs tests/inspection.test.mjs tests/storage.test.mjs tests/server.test.mjs tests/codeword-overlay.test.mjs tests/recovery-worker.test.mjs tests/workspace-history.test.mjs tests/browser-workers.test.mjs tests/browser-cache.test.mjs",
+    "test": "node --test tests/engine.test.mjs tests/inspection.test.mjs tests/storage.test.mjs tests/server.test.mjs tests/codeword-overlay.test.mjs tests/recovery-worker.test.mjs tests/workspace-history.test.mjs tests/browser-workers.test.mjs tests/browser-cache.test.mjs tests/image-resampling.test.mjs",
     "dev": "node scripts/serve.mjs",
     "test:browser": "playwright test",
     "test:jvm": "../gradlew -p . test --console=plain"

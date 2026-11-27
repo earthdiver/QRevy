@@ -1,3 +1,4 @@
+import {continueAfterOrdinaryReading} from './input-helpers.js';
 import {changeRecoverySetting,clickWorkspaceAction,runRecovery,setAutomaticRepair} from './input-helpers.js';
 import {test,expect} from '@playwright/test';
 import {readFile} from 'node:fs/promises';
@@ -37,7 +38,7 @@ test('quick automatic repair starts enabled and its preference persists for late
 test('image LM preference starts enabled and survives saving and reopening the workspace',async({page})=>{
   await page.addInitScript(()=>localStorage.setItem('qrevy-automatic-repair','false'));
   await ready(page);await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');
-  await page.locator('#cropApply').click();await expect(page.locator('#recover')).toBeEnabled();
+  await page.locator('#cropApply').click();await continueAfterOrdinaryReading(page);await expect(page.locator('#recover')).toBeEnabled();
   const initial=await savedWork(page);expect(initial.session.history[initial.session.cursor].settings.lmEnabled).toBe(true);
   await page.locator('#imageSettings > summary').click();await page.locator('.image-adjustment-body > details > summary').click();
   await expect(page.locator('#refine')).toBeChecked();await page.locator('#refine').uncheck();
@@ -161,7 +162,7 @@ test('automatic QRR history retains the selected execution assumptions',async({p
 
 test('assigning a Finder again preserves the enabled LM preference',async({page})=>{
   await page.addInitScript(()=>localStorage.setItem('qrevy-automatic-repair','false'));
-  await ready(page);await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await expect(page.locator('#recover')).toBeEnabled();
+  await ready(page);await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await continueAfterOrdinaryReading(page);await expect(page.locator('#recover')).toBeEnabled();
   await expect(page.locator('#refine')).toBeChecked();await page.locator('#finderRole').selectOption('0');
   const canvas=page.locator('#canvas'),box=await canvas.boundingBox();await canvas.click({position:{x:60/232*box.width,y:60/232*box.height}});
   await expect(page.locator('#recover')).toBeEnabled();await expect(page.locator('#refine')).toBeChecked();
@@ -183,7 +184,7 @@ test('Detailed analysis interrupts automatic processing and opens settings with 
 });
 
 test('image imports run automatic repair and retain the image and selected content for detailed analysis',async({page})=>{
-  await ready(page);await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();
+  await ready(page);await page.locator('#imageFile').setInputFiles('tests/fixtures/ordinary-failure.png');await page.locator('#cropApply').click();
   await chooseDetailed(page);await expect(page.locator('#imageView')).toBeEnabled();
   const saved=await savedWork(page);expect(saved.session.image).toMatch(/^data:image\//);
   expect(saved.session.history.some(h=>h.automaticScanAssumption)).toBe(true);

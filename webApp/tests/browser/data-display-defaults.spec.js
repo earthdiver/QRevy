@@ -1,3 +1,4 @@
+import {continueAfterOrdinaryReading} from './input-helpers.js';
 import {test,expect} from '@playwright/test';
 import {clickInputAction,changeRecoverySetting,runRecovery} from './input-helpers.js';
 
@@ -35,12 +36,12 @@ test('failed data starts as unmasked partial input and a later success restores 
  await page.locator('#dataPartial').uncheck();await page.locator('#dataUnmask').uncheck();await page.locator('#dataStage').selectOption('after');
  await page.locator('#languageButton').click();await expect(page.locator('#hex')).toContainText('Before unmasking');await expectView(page,true,false,false);
  await runRecovery(page);await expect(page.locator('#recover')).toBeEnabled();await showData(page);await expectView(page,false,true,true);
- await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await expect(page.locator('#recover')).toBeEnabled();await runRecovery(page);await expect(page.locator('#payload')).toHaveValue('QRevy repaired.');
+ await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await continueAfterOrdinaryReading(page);await expect(page.locator('#recover')).toBeEnabled();await runRecovery(page);await expect(page.locator('#payload')).toHaveValue('QRevy repaired.');
  await showData(page);await expectView(page,true,true,false);
 });
 test('automatic image recovery uses the same successful data defaults',async({page})=>{
  await page.addInitScript(()=>localStorage.setItem('qrevy-automatic-repair','true'));
- await page.goto('/');await expect(page.locator('#imageImport')).toBeEnabled();await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();
+ await page.goto('/');await expect(page.locator('#imageImport')).toBeEnabled();await page.locator('#imageFile').setInputFiles('tests/fixtures/ordinary-failure.png');await page.locator('#cropApply').click();
  await expect(page.locator('#automaticDialog')).toBeVisible({timeout:60000});await page.locator('#automaticDetailed').click();
  await page.locator('[data-tab="results"]').click();await expect(page.locator('#payload')).toHaveValue('QRevy repaired.');
  await showData(page);await expectView(page,true,true,false);

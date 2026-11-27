@@ -80,3 +80,6 @@ test('unadjusted outlines remain unassigned after reopening and workspace export
  await page.locator('#imageView').click();await assign(page,0,[140.8,140.8],false);
  expect((await snapshot(page)).settings.gridReference).toBe(false);
 });
+
+// Reading is covered separately; these scenarios continue into the detailed editor.
+test.beforeEach(async({page})=>{await page.addLocatorHandler(page.locator('#ordinaryDialog'),async()=>{await page.locator('#ordinaryDetailed').click();});});

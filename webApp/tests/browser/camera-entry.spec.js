@@ -1,3 +1,4 @@
+import {continueAfterOrdinaryReading} from './input-helpers.js';
 import {clickInputAction,clickWorkspaceAction,runRecovery} from './input-helpers.js';
 import {test,expect} from '@playwright/test';
 
@@ -33,7 +34,7 @@ test('camera file entry opens the shared crop and cancellation preserves the exi
   expect(cancelled.id).toBe(before.id);
   expect(cancelled.current.matrix).toEqual(before.current.matrix);
   expect(cancelled.current.settings).toEqual(before.current.settings);
-  await cameraFile(page,fileChoosers);await page.locator('#cropApply').click();
+  await cameraFile(page,fileChoosers);await page.locator('#cropApply').click();await continueAfterOrdinaryReading(page);
   await expect(page.locator('#recover')).toBeEnabled();
   await expect(page.locator('#imageView')).toBeEnabled();
   await runRecovery(page);

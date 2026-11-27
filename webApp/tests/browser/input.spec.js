@@ -1,3 +1,4 @@
+import {continueAfterOrdinaryReading} from './input-helpers.js';
 import {assignFinderOrientation} from './input-helpers.js';
 import {openRecoverySettings,changeRecoverySetting,clickWorkspaceAction,openAppMenu,releaseFinderConstraints,runRecovery} from './input-helpers.js';
 import {test,expect} from '@playwright/test';
@@ -29,7 +30,7 @@ async function observeCanvas(page){
     }
   });
 }
-async function photo(page){await page.goto('/');await expect(page.locator('#imageImport')).toBeEnabled();await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await expect(page.locator('#recover')).toBeEnabled();}
+async function photo(page){await page.goto('/');await expect(page.locator('#imageImport')).toBeEnabled();await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await continueAfterOrdinaryReading(page);await expect(page.locator('#recover')).toBeEnabled();}
 async function settings(page){
   await page.evaluate(()=>navigator.canShare=()=>false);await openAppMenu(page);await page.locator('#workMenuButton').click();
   const event=page.waitForEvent('download');await clickWorkspaceAction(page,'#exportSession');
@@ -132,7 +133,7 @@ test('crop numeric adjustments and resets preserve the chosen rotation and crop 
   await page.locator('#cropBrightnessNumber').fill('14');await page.locator('#cropBrightnessNumber').press('Tab');await page.locator('#cropResetAdjustments').click();
   await expect(page.locator('#cropBrightnessNumber')).toHaveValue('0');await expect(page.locator('#cropContrastNumber')).toHaveValue('0');await expect(page.locator('#cropInvert')).not.toBeChecked();
   await expect(page.locator('#cropAngle')).toHaveValue('90');expect(await Promise.all(['cropX','cropY','cropW','cropH'].map(id=>page.locator('#'+id).inputValue()))).toEqual(rect);
-  await page.locator('#cropBefore').uncheck();await page.locator('#cropAngle').fill('0');await page.locator('#cropAngle').press('Tab');await page.locator('#cropApply').click();await expect(page.locator('#recover')).toBeEnabled();
+  await page.locator('#cropBefore').uncheck();await page.locator('#cropAngle').fill('0');await page.locator('#cropAngle').press('Tab');await page.locator('#cropApply').click();await continueAfterOrdinaryReading(page);await expect(page.locator('#recover')).toBeEnabled();
   await runRecovery(page);await expect(page.locator('#payload')).toHaveValue('QRevy repaired.');
 });
 

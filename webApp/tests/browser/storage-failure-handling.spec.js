@@ -104,7 +104,7 @@ test('input data reflects undo when reopened and another workspace clears analys
 
 test('automatic image import supports selecting and editing cells on the image',async({page})=>{
  await page.goto('/');await setAutomaticRepair(page,true);
- await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();
+ await page.locator('#imageFile').setInputFiles('tests/fixtures/ordinary-failure.png');await page.locator('#cropApply').click();
  await expect(page.locator('#automaticDialog')).toBeVisible();await page.locator('#automaticDetailed').click();
  await page.locator('.steps [data-tab="edit"]').click();await page.locator('#imageView').click();
  const canvas=page.locator('#canvas'),box=await canvas.boundingBox();await canvas.click({position:{x:box.width*.5,y:box.height*.5}});

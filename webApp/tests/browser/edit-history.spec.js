@@ -1,3 +1,4 @@
+import {continueAfterOrdinaryReading} from './input-helpers.js';
 import {clickInputAction,openAppMenu} from './input-helpers.js';
 import {test,expect} from '@playwright/test';
 test.use({serviceWorkers:'block'});
@@ -36,7 +37,7 @@ test('crop dialog treats imported tone values as values instead of HTML',async({
  await expect(page.locator('#cropApply')).toBeVisible();await expect(page.locator('#injected-markup')).toHaveCount(0);await expect(page.locator('#cropBrightness')).toHaveValue('0');await expect(page.locator('#cropContrast')).toHaveValue('0');
 });
 test('rotation and rotation reset never remove an applied rectification',async({page})=>{
- await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await expect(page.locator('#recover')).toBeEnabled();
+ await page.locator('#imageFile').setInputFiles('tests/fixtures/clean.png');await page.locator('#cropApply').click();await continueAfterOrdinaryReading(page);await expect(page.locator('#recover')).toBeEnabled();
  await page.locator('#rectifyImage').evaluate(el=>el.click());await expect.poll(async()=>(await latest(page))?.settings.imageOps.some(op=>op.type==='source'&&op.quad)).toBe(true);
  const before=await latest(page);await page.locator('#resetImageRotation').evaluate(el=>el.click());expect((await latest(page)).settings.imageOps).toEqual(before.settings.imageOps);
  await change(page,'imageAngle','90');await page.locator('#rotateImage').evaluate(el=>el.click());await expect.poll(async()=>(await latest(page)).settings.imageOps[0].angle).toBe(90);expect((await latest(page)).settings.imageOps[0].quad).toEqual(before.settings.imageOps[0].quad);
