@@ -1,7 +1,7 @@
 import {sourceTransform} from './image-tools.js';
 
 function snapshots(session){
- const entries=[...session.history,...(session.checkpoint?[session.checkpoint]:[])];
+ const entries=[...(session.settings?[{settings:session.settings}]:[]),...session.history,...(session.checkpoint?[session.checkpoint]:[])];
  return entries.flatMap(entry=>[
   {entry,settings:entry.settings},
   ...[entry.automatic?.input?.settings,entry.automatic?.retrySettings].filter(Boolean).map(settings=>({entry,settings}))
@@ -42,5 +42,24 @@ export function migrateLegacyImages(session,originalHistory=[]){
   const original=Number.isInteger(entry.qrrIndex)&&entry.qrrIndex>=0?originalHistory[entry.qrrIndex]?.settings:null;
   const legacyRaster=retainsImportedBasis(entry,settings,original)?'android':'pwa';
   settings.imageOps=[{...sourceTransform(settings.imageOps,settings.version),legacyRaster}];
+ }
+}
+
+export function needsPreviewMigration(session){
+ return snapshots(session).some(({settings:s})=>s?.previewQuad&&!s.warp?.length&&s.previewGeometryVersion!==1);
+}
+
+// A retained QRR is evidence only when both the imported preview and its input
+// geometry still match. Inherited qrrIndex values alone do not establish this.
+export function migrateCorrectionPreviews(session,originalHistory=[]){
+ for(const {entry,settings:s} of snapshots(session)){
+  if(!s?.previewQuad||s.warp?.length||s.previewGeometryVersion===1)continue;
+  const original=Number.isInteger(entry.qrrIndex)&&entry.qrrIndex>=0?originalHistory[entry.qrrIndex]?.settings:null;
+  const keys=['version','assigned','curved','lmEnabled','confirmedPolarity','polarity','brightness','contrast','toneInvert','finders','visibleFinderRole'];
+  const retained=original?.previewGeometryVersion===1&&s.curved&&
+   retainsImportedBasis(entry,s,original)&&sameQuad(s.previewQuad,original.previewQuad)&&
+   keys.every(key=>JSON.stringify(s[key]??null)===JSON.stringify(original[key]??null));
+  if(retained)s.previewGeometryVersion=1;
+  else {s.previewQuad=null;s.previewGeometryVersion=null;}
  }
 }

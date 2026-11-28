@@ -1,8 +1,9 @@
+import {hasPreviewGeometry} from './preview-geometry.js';
 import {resampleImage} from './image-resampling.js';
 import {recordHistory,restoreHistoryEntry,historyChangedCells,saveHistoryCheckpoint,checkpointHistoryIndex,readAutomaticTrial} from './workspace-history.js';
 import {createRecoveryWorker} from './recovery-worker.js';
 import {drawCodewordOverlay,codewordCellLabel} from './codeword-overlay.js';
-import {needsLegacyImageMigration,migrateLegacyImages} from './session-migration.js';
+import {needsLegacyImageMigration,migrateLegacyImages,needsPreviewMigration,migrateCorrectionPreviews} from './session-migration.js';
 import {setupWorkflow} from './workflow.js';
 import './preferences.js';
 import {renderDiagnostic} from './diagnostic-view.js';
@@ -185,19 +186,19 @@ for(const key of Object.keys(defaults)){
    state.settings=next;
    if(key==='assigned'&&state.settings.assigned)state.settings.gridReference=true;
    if(key==='assigned'&&!state.settings.assigned){invalidateLm(true);state.settings.grid=null;state.settings.warp=null;state.settings.previewQuad=null;curve.candidates=[];}
-   if(['brightness','contrast','toneInvert','polarity','black','white','automatic'].includes(key)){invalidateLm(true);state.settings.warp=null;state.settings.previewQuad=null;curve.candidates=[];}
-   if(key==='curved'&&!state.settings.curved){state.settings.warp=null;curve.candidates=[];}
+   if(['brightness','contrast','toneInvert'].includes(key)||(key==='polarity'&&samplingInverted(before.settings)!==samplingInverted(next))){invalidateLm(true);state.settings.warp=null;state.settings.previewQuad=null;curve.candidates=[];}
+   if(key==='curved')invalidateCurve();
    if(key==='black'||key==='white')state.settings.automatic=false;
    syncSettings();
    // Commit the new settings and all derived samples as one undo step.
-   if(state.image&&['curved','assigned'].includes(key)&&state.settings.curved&&state.settings.assigned)await curve({recordHistory:false});
-   else if(state.image&&['black','white','automatic','polarity','brightness','contrast','toneInvert','curved','colorUnknown','assigned'].includes(key))await sample(false,{recordHistory:false});
+   if(state.image&&['black','white','automatic','polarity','brightness','contrast','toneInvert','curved','colorUnknown','assigned'].includes(key))await sample(false,{recordHistory:false});
    record('設定を変更');render();
   }catch(e){Object.assign(state,before);imagePixelsCache=null;restoreCurveChoices();syncSettings();render();report(e);}
  };
 }
 // Keep native range gestures responsive; commit sampling when the thumb is released.
-function thresholdsInverted(){return state.settings.confirmedPolarity==='INVERTED'||state.settings.confirmedPolarity!=='NORMAL'&&state.settings.polarity==='INVERTED';}
+function samplingInverted(s){return s.confirmedPolarity==='INVERTED'||s.confirmedPolarity!=='NORMAL'&&s.polarity==='INVERTED';}
+function thresholdsInverted(){return samplingInverted(state.settings);}
 function syncThresholdControls(black=state.settings.black,white=state.settings.white){
  const inverted=thresholdsInverted();
  for(const [key,value] of [['black',black],['white',white]]){
@@ -220,7 +221,7 @@ for(const key of ['black','white']){
  range.oninput=()=>{number.value=thresholdsInverted()?255-Number(range.value):range.value;thresholdDraft(key);};
  range.onchange=()=>number.onchange();
 }
-$('version').onchange=async()=>{const v=Number($('version').value);if(state.matrix && v!==state.settings.version&&!confirm(translate('バージョンを変更するとセル編集が解除されます。変更しますか？'))){syncSettings();return;}let remapped;try{remapped=rectifiedVersionSettings(v);}catch(e){syncSettings();report(e);return;}selected=null;selectedCells=[];state.settings.grid=null;state.settings.warp=null;state.settings.previewQuad=null;result=null;renderResult();disableLm();if(remapped){Object.assign(state.settings,remapped);imagePixelsCache=null;}state.settings.version=v;if(state.image){state.source=null;state.matrix=null;await sample().catch(report);}else{const n=17+4*v;state.matrix={text:Array(n).fill('?'.repeat(n)).join('\n'),sources:'0'.repeat(n*n)};state.source=clone(state.matrix);await regions();renderLimitLabels();record('バージョン変更');render();}};
+$('version').onchange=async()=>{const v=Number($('version').value);if(state.matrix && v!==state.settings.version&&!confirm(translate('バージョンを変更するとセル編集が解除されます。変更しますか？'))){syncSettings();return;}let remapped;try{remapped=rectifiedVersionSettings(v);}catch(e){syncSettings();report(e);return;}selected=null;selectedCells=[];state.settings.grid=null;state.settings.warp=null;state.settings.previewQuad=null;result=null;renderResult();disableLm();if(remapped){Object.assign(state.settings,remapped);imagePixelsCache=null;}state.settings.version=v;if(state.image){state.source=null;state.matrix=null;await sample(false,{keepOnCurveAbort:true}).catch(report);}else{const n=17+4*v;state.matrix={text:Array(n).fill('?'.repeat(n)).join('\n'),sources:'0'.repeat(n*n)};state.source=clone(state.matrix);await regions();renderLimitLabels();record('バージョン変更');render();}};
 $('orientation').onchange=async()=>{const next=Number($('orientation').value),old=state.settings.orientation;for(let k=0;k<(next-old+4)%4;k++)transformMatrix(false);state.settings.orientation=next;syncSettings();await revalidatePriority();record('向きを変更');render();if(state.image&&state.settings.curved)await sample();};
 function setTab(next){if(next!=='edit'&&$('inputDataPanel').open)$('inputDataPanel').close();tab=next;document.body.dataset.activeTab=next;document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));document.querySelectorAll('[data-panel]').forEach(p=>p.hidden=p.dataset.panel!==tab);document.querySelectorAll('[data-context]').forEach(p=>p.hidden=p.dataset.context!==tab);if(next==='edit'||next==='results')mode='matrix';if(next==='edit'&&state.matrix&&!regionCache.has(state.settings.version))regions().then(render).catch(report);if(next==='results')renderResult();$('viewLabel').textContent=next==='results'?'RECOVERY / 修復結果':next==='edit'?'MODULE EDITOR / セル編集':'SOURCE / 入力';render();}
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{setTab(b.dataset.tab);if(state.matrix)document.querySelector('.steps').scrollIntoView({block:'start'});});
@@ -345,7 +346,7 @@ canvas.onpointermove=e=>{
   state.settings.quad[drag*2]=Math.max(0,Math.min(canvasCoordinates.width-1,dragStart.corner[0]+dx));
   state.settings.quad[drag*2+1]=Math.max(0,Math.min(canvasCoordinates.height-1,dragStart.corner[1]+dy));render();
 };
-function finishCornerDrag(){const changed=dragStart?.changed;drag=null;dragStart=null;if(changed)sample().catch(report);else render();}
+function finishCornerDrag(){const changed=dragStart?.changed;drag=null;dragStart=null;if(changed)sample(false,{keepOnCurveAbort:true}).catch(report);else render();}
 canvas.onpointerup=()=>{if(cellGesture){const tool=cellGesture.tool;cellGesture=null;if(tool!=='rect')editCell(tool.startsWith('brush0')?'0':tool.startsWith('brush1')?'1':'?').catch(report);}if(drag!==null)finishCornerDrag();};
 canvas.onpointercancel=()=>{cellGesture=null;selectedCells=[];if(drag!==null)finishCornerDrag();else render();};
 
@@ -359,7 +360,7 @@ canvas.addEventListener('keydown',e=>{
  const step=Math.max(.25,(distance(0,1)+distance(3,2)+distance(0,3)+distance(1,2))/(4*(n-1)))/4;
  const i=cornerSelection*2,x=Math.max(0,Math.min(canvasCoordinates.width-1,q[i]+delta[0]*step)),y=Math.max(0,Math.min(canvasCoordinates.height-1,q[i+1]+delta[1]*step));
  if(x===q[i]&&y===q[i+1])return;state.settings.gridReference=true;disableLm();state.settings.warp=null;state.settings.previewQuad=null;state.settings.grid=null;q[i]=x;q[i+1]=y;
- sample().catch(report);
+ sample(false,{keepOnCurveAbort:true}).catch(report);
 });
 
 function updateGesture(x,y){
@@ -375,8 +376,8 @@ function updateGesture(x,y){
  g.last={x,y};selectedCells=[...g.cells];
 }
 $('cellTool').onchange=()=>{cellGesture=null;selectedCells=[];render();};
-$('clearVisibleFinder').onclick=async()=>{disableLm();state.settings.visibleFinderRole=null;if(!state.settings.finders?.length)state.settings.assigned=false;syncSettings();if(state.image)await sample(false,{recordHistory:false}).catch(report);record('役割指定を解除');render();};
-function finderPositions(settings){const last=13+4*settings.version,map=moduleMap({...settings,warp:null});return [[3,3],[last,3],[last,last],[3,last]].map(([column,row])=>map(column,row));}
+$('clearVisibleFinder').onclick=async()=>{disableLm();state.settings.warp=null;curve.candidates=[];state.settings.visibleFinderRole=null;if(!state.settings.finders?.length)state.settings.assigned=false;syncSettings();if(state.image)await sample(false,{recordHistory:false,keepOnCurveAbort:true}).catch(report);record('役割指定を解除');render();};
+function finderPositions(settings){const last=13+4*settings.version,map=moduleMap({...settings,warp:null,previewQuad:null});return [[3,3],[last,3],[last,last],[3,last]].map(([column,row])=>map(column,row));}
 async function assignFinder(p,role){
   if(!state.matrix)await initializeDetailedAnalysis();
   if(state.settings.assigned&&!(state.settings.finders||[]).some((value,i)=>i%3===0&&value===role)){
@@ -392,7 +393,7 @@ async function assignFinder(p,role){
   if(!f.confirmed){await assignRoleOnly(p,role,savedSettings,restore,f.outcome);return;}
   // A tap outside the Finder is not used as its center; cancelling restores the state before the tap.
   if(f.needsConfirmation&&!confirm(translate('タップ位置はFinderの外側です。近くで検出したFinderの中心を使いますか？'))){restore();return;}
-  state.settings.gridReference=true;if(state.settings.visibleFinderRole===role)state.settings.visibleFinderRole=null;if(f.quad)state.settings.quad=f.quad;state.settings.confirmedPolarity=f.confirmedPolarity;const points=state.settings.finders||[];state.settings.finders=points.filter((_,i)=>points[Math.floor(i/3)*3]!==role).concat([role,f.x,f.y]);await revalidatePriority();syncSettings();await sample();toast('Finder位置を確認しました');}
+  state.settings.gridReference=true;if(state.settings.visibleFinderRole===role)state.settings.visibleFinderRole=null;if(f.quad)state.settings.quad=f.quad;state.settings.confirmedPolarity=f.confirmedPolarity;const points=state.settings.finders||[];state.settings.finders=points.filter((_,i)=>points[Math.floor(i/3)*3]!==role).concat([role,f.x,f.y]);await revalidatePriority();syncSettings();await sample(false,{keepOnCurveAbort:true});toast('Finder位置を確認しました');}
 // Without a detected Finder the tap only names a corner of the grid; it never moves the grid or adds a Finder.
 async function assignRoleOnly(p,role,savedSettings,restore,outcome){
   const ja=getLanguage()==='ja',label=ja?['左上','右上',,'左下'][role]:['top left','top right',,'bottom left'][role],finders=savedSettings.finders||[];
@@ -401,16 +402,16 @@ async function assignRoleOnly(p,role,savedSettings,restore,outcome){
   if(finders.some((v,i)=>i%3===0&&v===role))message=ja?`確定済みの${label}Finderは変更していません。`:`The confirmed ${label} Finder is unchanged.`;
   else if(finders.length)message=ja?'格子の向きは確定済みのFinderで決まっているため、変更していません。':'The grid orientation is set by the confirmed Finder and is unchanged.';
   else if(!savedSettings.assigned){
-   const q=savedSettings.quad,map=moduleMap({...savedSettings,warp:null}),spots=finderPositions(savedSettings),neighbor=map(4,3),pitch=Math.hypot(neighbor[0]-spots[0][0],neighbor[1]-spots[0][1]),tolerance=Math.max(pitch*4,36*canvasCoordinates.width/canvas.getBoundingClientRect().width);
+   const q=savedSettings.quad,map=moduleMap({...savedSettings,warp:null,previewQuad:null}),spots=finderPositions(savedSettings),neighbor=map(4,3),pitch=Math.hypot(neighbor[0]-spots[0][0],neighbor[1]-spots[0][1]),tolerance=Math.max(pitch*4,36*canvasCoordinates.width/canvas.getBoundingClientRect().width);
    if(!savedSettings.gridReference||!q)message=ja?'四隅を調整してから役割を指定してください。':'Adjust the corners, then assign the role.';
    else if(Math.min(...spots.map(s=>Math.hypot(s[0]-p.x,s[1]-p.y)))>tolerance)message=ja?'格子の角にあるFinderの位置をタップしてください。':'Tap the Finder position at a corner of the grid.';
   }
   if(message){restore();toast(`${failure} ${message}`);return;}
   // The orientation chosen before the search stays; the corners keep their positions.
-  await revalidatePriority();state.settings.visibleFinderRole=role;syncSettings();await sample();
+  await revalidatePriority();state.settings.visibleFinderRole=role;syncSettings();await sample(false,{keepOnCurveAbort:true});
   toast(`${failure} `+(ja?`格子は動かさずに${label}の役割だけを指定しました。位置は四隅で調整してください。`:`Only the ${label} role was assigned and the grid was not moved. Adjust the corners to place it.`));
 }
-$('clearFinders').onclick=async()=>{invalidateLm(true);state.settings.warp=null;state.settings.previewQuad=null;curve.candidates=[];state.settings.finders=[];state.settings.visibleFinderRole=null;state.settings.confirmedPolarity='UNKNOWN';state.settings.assigned=false;syncSettings();if(state.image)await sample(false,{recordHistory:false}).catch(report);record('Finder指定を解除');render();};
+$('clearFinders').onclick=async()=>{invalidateLm(true);state.settings.warp=null;state.settings.previewQuad=null;curve.candidates=[];state.settings.finders=[];state.settings.visibleFinderRole=null;state.settings.confirmedPolarity='UNKNOWN';state.settings.assigned=false;syncSettings();if(state.image)await sample(false,{recordHistory:false,keepOnCurveAbort:true}).catch(report);record('Finder指定を解除');render();};
 function revealCellEvidence(){if(tab==='results'&&result?.candidates[candidateIndex]){$('resultEvidencePanel').open=true;$('resultInspection').querySelector('details').open=true;}}
 function showCell(){if(!selected||!matrixNow()){ $('selectedCell').textContent='セルを選択してください';$('sourceSummary').textContent='';$('cellDetail').textContent='';$('resultCellDetail').textContent=t('inline:セルをタップ：セルの修復理由を表示');return;}const m=matrixNow(),rows=rowsOf(m),v=rows[selected.y]?.[selected.x];if(tab==='edit'&&!cellGesture){const cells=selectedCells.length?selectedCells:[selected.y*rows.length+selected.x],kinds=cells.map(i=>['1','6'].includes(m.sources[i])?'1':m.sources[i]==='5'?'5':'0'),unique=[...new Set(kinds)];$('editKind').value=unique.length===1?unique[0]:'mixed';$('editKind').querySelector('[value="1"]').disabled=cells.some(i=>['?','*'].includes(rows[Math.floor(i/rows.length)]?.[i%rows.length]));$('sourceSummary').textContent=cells.length===1?t('cell_source_preview',v,rowsOf(state.source)[selected.y]?.[selected.x]):t('cell_source_selection',cells.length,kinds.filter(k=>k==='0').length,kinds.filter(k=>k==='5').length,kinds.filter(k=>k==='1').length);}const overlay=tab==='edit'&&$('codewordOverlay').checked&&overlayFingerprint===state.matrix?.text?overlayCells?.[`${selected.x},${selected.y}`]:null;const kind=overlay?codewordCellLabel(overlay,getLanguage()==='ja'):t(regionKindsCache.get(state.settings.version)?.[selected.y*rows.length+selected.x]||'cell_region_codeword');$('selectedCell').textContent=getLanguage()==='ja'?`選択: (${selected.x},${selected.y}) / ${kind} / 値=${v}`:`Selected: (${selected.x},${selected.y}) / ${kind} / value=${v}`;const trace=tab==='results'?resultTrace(result?.candidates[candidateIndex],selected.x,selected.y):null;$('cellDetail').textContent=trace?`${trace.title}\n${trace.detail}`:'';if(tab==='results'){const role=trace?.formatRole,label=translate(role==='ECC'?'ECCレベルのセルを表示':role==='MASK'?'マスク番号のセルを表示':role==='PARITY'?'形式情報の訂正ビットを表示':'同じコード語を表示');const text=[...$('sameCodeword').parentElement.childNodes].find(n=>n.nodeType===Node.TEXT_NODE);if(text)text.nodeValue=label;}$('resultCellDetail').textContent=tab==='results'&&result?.candidates[candidateIndex]?resultBasicCellText(result.candidates[candidateIndex],selected.x,selected.y,trace)+($('calculationDetails').checked?'\n'+technicalCellText(result.candidates[candidateIndex],selected.x,selected.y,trace):''):t('inline:セルをタップ：セルの修復理由を表示');}
 async function editCell(value,restore=false){if(!selected||!state.matrix||recoveryWorker.pending)return;const n=rowsOf(state.matrix).length,cells=selectedCells.length?selectedCells:[selected.y*n+selected.x];const m=await call({action:'edit',matrix:state.matrix,source:state.source,settings:state.settings,cells,value:restore?'source':value,kind:restore?'0':$('editKind').value},'セル編集');if(m.text===state.matrix.text&&m.sources===state.matrix.sources){render();return;}state.matrix=m;record(restore?'セルの読み取りを復元':`${cells.length}セル → ${value}`);render();}
@@ -479,8 +480,7 @@ async function detect({recordHistory=true}={}){
  const editGrid=previous.settings.grid||(map?Array.from({length:n*n},(_,i)=>map(i%n,Math.floor(i/n))):[]);
  try{
   const detection=await call({action:'detect',...imageRequest()},'格子を推定');
-  state.settings.lmBaseQuad=null;state.settings.lmAppliedQuad=null;state.settings.lmFailed=false;
-  state.settings.warp=null;state.settings.previewQuad=null;state.settings.grid=null;state.settings.finders=[];state.settings.visibleFinderRole=null;
+  invalidateLm();state.settings.grid=null;state.settings.finders=[];state.settings.visibleFinderRole=null;
   state.settings.colorClusters=detection.colorClusters||[];state.settings.provisionalBlack=detection.black??96;state.settings.provisionalWhite=detection.white??160;
   if(detection.quad)state.settings.gridReference=true;
   if(detection.quad){
@@ -515,8 +515,56 @@ function preserveManualEdits(previous,matrix,editGrid,grid,allowed){
  matrix.text=Array.from({length:n},(_,y)=>values.slice(y*n,(y+1)*n).join('')).join('\n');matrix.sources=sources.join('');
 }
 $('detect').onclick=()=>detect().catch(report);
-async function sample(refine=false,{recordHistory=true,editGrid=null}={}){state.settings=readSettings();if(state.settings.curved&&!state.settings.assigned){state.settings.warp=null;state.settings.previewQuad=null;state.settings.grid=null;curve.candidates=[];curve.failed=false;curve.memoryLimited=false;}refine=refine||(!!state.settings.lmEnabled&&state.settings.assigned&&!state.settings.lmAppliedQuad&&!state.settings.lmFailed&&!state.settings.warp);if(refine){state.settings.lmBaseQuad=clone(quadWithoutLm());state.settings.quad=clone(state.settings.lmBaseQuad);}const res=await call({action:refine?'refine':'sample',settings:state.settings,refreshPolarity:JSON.stringify(state.settings.polarityTone)!==JSON.stringify([state.settings.brightness,state.settings.contrast,state.settings.toneInvert]),...imageRequest()},refine?'LM格子補正':'セルを読み取り');state.settings.grid=res.grid;state.settings.confirmedPolarity=res.confirmedPolarity;if(res.provisionalBlack!=null){state.settings.provisionalBlack=res.provisionalBlack;state.settings.provisionalWhite=res.provisionalWhite;}state.settings.polarityTone=[state.settings.brightness,state.settings.contrast,state.settings.toneInvert];state.imageOnly=false;const previous=state.matrix;state.source=clone(res.matrix);state.matrix=res.matrix;const allowed=await regions();preserveManualEdits(previous,state.matrix,editGrid,res.grid,allowed);if(refine){state.settings.warp=null;state.settings.quad=res.quad;state.settings.lmAppliedQuad=clone(res.quad);state.settings.lmFailed=!res.refined;toast(res.refined?'格子を補正しました':'有効な補正が見つからないため元の格子を維持します');}if(res.black!=null&&state.settings.automatic){state.settings.black=res.black;state.settings.white=res.white;}syncSettings();if(recordHistory)record(refine?'LM格子補正':'画像からセルを読み取り');render();if(state.settings.curved&&state.settings.assigned&&!state.settings.warp&&!curve.inProgress)await curve({recordHistory});}
-$('refine').onchange=async()=>{const enabled=$('refine').checked;if(!enabled)invalidateLm(true);state.settings.lmEnabled=enabled;state.settings.lmFailed=false;if(state.settings.lmEnabled&&state.settings.curved&&state.settings.warp){const i=Number($('curveChoice').value)||0;if(curve.candidates[i])curve.candidates[i].refined=false;await $('curveChoice').onchange();return;}if(state.settings.lmEnabled){state.settings.lmAppliedQuad=null;state.settings.lmBaseQuad=clone(state.settings.quad);}else{state.settings.grid=null;state.settings.warp=null;state.settings.previewQuad=null;curve.candidates=[];}await sample().catch(report);};
+async function sample(refine=false,{recordHistory=true,editGrid=null,keepOnCurveAbort=false}={}){
+ state.settings=readSettings();
+ if(state.settings.curved&&!state.settings.assigned){invalidateCurve();state.settings.grid=null;}
+ refine=refine||(!!state.settings.lmEnabled&&state.settings.assigned&&!state.settings.lmAppliedQuad&&!state.settings.lmFailed&&!hasPreviewGeometry(state.settings));
+ if(refine){state.settings.lmBaseQuad=clone(quadWithoutLm());state.settings.quad=clone(state.settings.lmBaseQuad);}
+ const res=await call({action:refine?'refine':'sample',settings:state.settings,refreshPolarity:JSON.stringify(state.settings.polarityTone)!==JSON.stringify([state.settings.brightness,state.settings.contrast,state.settings.toneInvert]),...imageRequest()},refine?'LM格子補正':'セルを読み取り');
+ state.settings.grid=res.grid;state.settings.confirmedPolarity=res.confirmedPolarity;
+ if(res.provisionalBlack!=null){state.settings.provisionalBlack=res.provisionalBlack;state.settings.provisionalWhite=res.provisionalWhite;}
+ state.settings.polarityTone=[state.settings.brightness,state.settings.contrast,state.settings.toneInvert];state.imageOnly=false;
+ const previous=state.matrix;state.source=clone(res.matrix);state.matrix=res.matrix;
+ const allowed=await regions();preserveManualEdits(previous,state.matrix,editGrid,res.grid,allowed);
+ if(refine){state.settings.warp=null;state.settings.quad=res.quad;state.settings.lmAppliedQuad=clone(res.quad);state.settings.lmFailed=!res.refined;toast(res.refined?'格子を補正しました':'有効な補正が見つからないため元の格子を維持します');}
+ if(res.black!=null&&state.settings.automatic){state.settings.black=res.black;state.settings.white=res.white;}
+ syncSettings();render();
+ if(state.settings.curved&&state.settings.assigned&&!curveSettled()&&!curve.inProgress){
+  try{await curve();}catch(error){
+   // Only a stopped follow-up search may keep the completed edit and sampling.
+   // Transactional callers instead propagate the stop and restore their snapshot.
+   if(error.name!=='AbortError'||!keepOnCurveAbort)throw error;
+   report(error);
+  }
+ }
+ if(recordHistory)record(refine?'LM格子補正':'画像からセルを読み取り');
+}
+$('refine').onchange=async()=>{
+ const before=correctionSnapshot();
+ try{
+ const enabled=$('refine').checked;
+ if(state.settings.lmFailed)state.settings.lmAppliedQuad=null;
+ state.settings.lmFailed=false;
+ if(!enabled)state.settings.quad=clone(quadWithoutLm());
+ state.settings.lmEnabled=enabled;
+ if(enabled&&state.settings.curved&&hasPreviewGeometry(state.settings)){
+  state.settings.lmAppliedQuad=null;state.settings.lmBaseQuad=null;
+  for(const candidate of curve.candidates||[])candidate.refined=false;
+  // Enabling LM explicitly refines the currently selected correction.
+  curve.candidatesKey=curveCacheKey();
+  await selectCurve();return;
+ }
+ // A successful fit survives OFF/ON; geometry and image edits still invalidate it.
+ if(enabled&&state.settings.lmAppliedQuad&&!state.settings.lmFailed){
+  state.settings.quad=clone(state.settings.lmAppliedQuad);
+ }else if(enabled){
+  state.settings.lmAppliedQuad=null;state.settings.lmBaseQuad=clone(state.settings.quad);
+ }
+ state.settings.lmFailed=false;
+ state.settings.grid=null;invalidateCurve();
+ await sample();
+ }catch(e){restoreCorrection(before);report(e);}
+};
 $('recover').onclick=async()=>{try{if(!state.matrix)return;state.oneTimeSingleSegment=false;state.automaticTrial=null;state.automatic=null;state.settings=readSettings();if(state.imageOnly)throw new Error('QRRの元画像を追加してください');if(!state.settings.assigned)throw new Error('Finderの向きを確認してから修復してください');record('修復を開始');if(result)result.needsInspectionRestore=true;const res=await call({action:state.image?'recoverImage':'recover',...(state.image?imageRequest():{}),matrix:state.matrix,settings:{...state.settings,single:state.settings.single||!!state.oneTimeSingleSegment}},'修復を実行中');result=res;result.input=clone(state.matrix);result.settings=clone(state.settings);result.fingerprint=JSON.stringify([state.matrix,state.settings,!!state.oneTimeSingleSegment]);candidateIndex=0;$('resultStage').value='after';setResultView('content');record('修復結果');selected=null;renderResult();setTab('results');$('fitView').onclick();document.querySelector('.steps').scrollIntoView({block:'start'});offerSingleRetry();}catch(e){report(e);}};
 function renderResultStatus(){$('resultStatus').textContent=[resultIsStale()?translate('前回実行した修復結果です。編集中の変更はまだ反映されていません。'):'',result?.summary||''].filter(Boolean).join('\n\n');}
 function renderResult(){syncResultDataDisplay();renderAutomaticStatus();renderNextResultAction();clearTailAnalysis();const candidates=result?.candidates||[];$('resultCount').textContent=String(candidates.length);renderResultStatus();if($('candidateDialog').open)renderCandidatePage();$('candidatePicker').replaceChildren(...candidates.map((c,i)=>new Option(`${i+1} / ${candidates.length} · V${c.version} / ${c.ecc} / mask ${c.mask}`,String(i))));$('candidatePicker').value=String(candidateIndex);const c=candidates[candidateIndex];$('resultDetail').hidden=!c;$('explanation').parentElement.hidden=!c;if(!c){$('payload').value='';$('methods').textContent='';$('inputAgreement').replaceChildren();$('hex').textContent='';$('copyPayload').disabled=true;$('exportPng').disabled=true;}$('retrySingle').hidden=!result?.retryAvailable;if(!c&&result){setResultView('diagnostic');$('resultStage').value='before';}for(const option of $('resultStage').options)option.disabled=!c&&option.value!=='before';if(c){$('payload').value=c.text??'';$('copyPayload').disabled=c.text==null||resultIsStale();$('exportPng').disabled=resultIsStale();$('methods').textContent=c.methods;$('hex').textContent='';$('inputAgreement').replaceChildren(...[c.formatAgreement,c.dataAgreement].map(text=>{const p=document.createElement('p');p.dataset.userContent='';p.textContent=text;return p;}));$('metrics').replaceChildren(...[[c.corrected,'訂正コード語'],[c.filled,'元の消失コード語']].map(([v,l])=>{const d=document.createElement('div');d.className='metric';const b=document.createElement('b');b.textContent=String(v);d.append(b,document.createTextNode(l));return d;}));}for(const [id,text] of [['contentBefore',c?.contentPreview?.before],['contentAfter',c?.contentPreview?.after],['explanation',c?.explanation]]){const element=$(id);element.textContent=text||'';element.hidden=!text;}renderComparison();if($('resultDataPanel').open)queueMicrotask(updateResultData);renderDiagnostic($('diagnostic'),result?.diagnosticReport,result?[result.diagnostic,result.failure].filter(Boolean).join('\n\n'):translate('未実行'),{appendix:result?.failure||''});$('tailAnalysis').hidden=!result?.tailAvailable;if($('tailAnalysis').open)queueMicrotask(updateTailAnalysis);}
@@ -528,6 +576,13 @@ $('exportPng').onclick=async()=>{try{if(resultIsStale())return;const c=result?.c
 $('exportSession').onclick=async()=>{try{if(!state.matrix&&!state.image)throw new Error('作業を読み込んでください');await download(await exportWorkspace(serializable()),'qrevy-workspace.qrpwa',true);}catch(e){report(e);}};
 async function openSession(s){
  validateSession(s);
+ if(needsLegacyImageMigration(s)||needsPreviewMigration(s)){
+  // Re-read the retained QRR to distinguish unchanged imports from PWA edits.
+  // If that metadata is unavailable, preserve the existing PWA interpretation.
+  const original=s.qrrRaw?await call({action:'qrrDecode',raw:s.qrrRaw,version:s.qrrVersion},'QRRを検証').catch(()=>null):null;
+  migrateCorrectionPreviews(s,original?.history);
+  migrateLegacyImages(s,original?.history);
+ }
  if(s.kind==='image-import'){
   if(await digest(await s.image.arrayBuffer())!==s.imageHash)throw new Error('保存した画像の整合性チェックに失敗しました');
   const img=await loadImageElement(s.image);
@@ -537,13 +592,8 @@ async function openSession(s){
   if(s.ordinary)showOrdinaryResult(s.ordinary);
   return;
  }
- if(needsLegacyImageMigration(s)){
-  // Re-read the retained QRR to distinguish unchanged imports from PWA edits.
-  // If that metadata is unavailable, preserve the existing PWA interpretation.
-  const original=await call({action:'qrrDecode',raw:s.qrrRaw,version:s.qrrVersion},'QRRを検証').catch(()=>null);
-  migrateLegacyImages(s,original?.history);
- }
- overlayFingerprint=0;curve.candidates=[];curve.failed=false;curve.memoryLimited=false;if(s.image&&await digest(await s.image.arrayBuffer())!==s.imageHash)throw new Error('保存した画像の整合性チェックに失敗しました');const img=s.image?await loadImageElement(s.image):null;const h=s.history[s.cursor];clearAnalysis();state={...s};ordinaryResult=s.ordinary?{...s.ordinary,workspaceId:s.id}:null;restoreHistoryEntry(state,s.cursor,defaults);restoreCurveChoices();imageElement=img;imagePixelsCache=null;result=null;selected=null;selectedCells=[];zoom=1;mode='matrix';await regions();syncSettings();renderResult();renderHistory();setTab('input');$('sessionsDialog').close();toast(h.imageOnly?'画像のみの履歴です。QRRの元画像を追加してください。':'作業を再開しました。');if(state.settings.curved&&imageElement&&!curve.candidates.length)await curve({restore:true});await restoreSelection(h.selection);$('fitView').onclick();}
+
+ overlayFingerprint=0;curve.candidates=[];curve.failed=false;curve.memoryLimited=false;if(s.image&&await digest(await s.image.arrayBuffer())!==s.imageHash)throw new Error('保存した画像の整合性チェックに失敗しました');const img=s.image?await loadImageElement(s.image):null;const h=s.history[s.cursor];clearAnalysis();state={...s};ordinaryResult=s.ordinary?{...s.ordinary,workspaceId:s.id}:null;restoreHistoryEntry(state,s.cursor,defaults);restoreCurveChoices();imageElement=img;imagePixelsCache=null;result=null;selected=null;selectedCells=[];zoom=1;mode='matrix';await regions();syncSettings();renderResult();renderHistory();setTab('input');$('sessionsDialog').close();toast(h.imageOnly?'画像のみの履歴です。QRRの元画像を追加してください。':'作業を再開しました。');if(state.settings.curved&&imageElement&&!curveSettled())await curve({restore:true});await restoreSelection(h.selection);$('fitView').onclick();}
 $('sessionFile').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{const s=f.name.toLowerCase().endsWith('.qrr')?await call({action:'qrrDecode',...await unpackQrr(f)},'QRRを検証'):await importWorkspace(f);await saveChain;await openSession({...s,id:crypto.randomUUID()});autoSave();}catch(e){report(e);}};
 async function showSessions(){try{await saveChain;const sessions=await listSessions();$('sessionList').replaceChildren(...sessions.map(s=>{const div=document.createElement('div');div.className='session-item';const open=document.createElement('button');const name=document.createElement('span');name.dataset.userContent='';name.textContent=workspaceName(s);open.append(name);const small=document.createElement('small');small.textContent=new Date(s.updated).toLocaleString(getLanguage()==='ja'?'ja-JP':'en-GB');open.append(small);open.onclick=()=>openSession(s).catch(report);const del=document.createElement('button');del.textContent='削除';del.onclick=async()=>{try{if(confirm(t('delete_recent_work_message'))){await deleteSavedSessions(s.id);await showSessions();}}catch(e){report(e);}};div.append(open,del);return div;}));if(!sessions.length)$('sessionList').textContent='保存した作業はまだありません。';if(!$('sessionsDialog').open)$('sessionsDialog').showModal();}catch(e){report(e);}}
 $('sessionsButton').onclick=showSessions;$('helpButton').onclick=()=>$('helpDialog').showModal();document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
@@ -556,9 +606,66 @@ window.addEventListener('pagehide',()=>{autoSave(false);});
 
 $('exportQrr').onclick=async()=>{try{if(!state.matrix)throw new Error('作業を読み込んでください');const raw=await call({action:'qrrEncode',id:state.id,cursor:state.cursor,history:JSON.stringify(state.history.map(h=>({...h,settings:settingsForQrr(imageElement,h.settings),detail:historyDetail(h)}))),qrrRaw:state.qrrRaw,qrrVersion:state.qrrVersion},'QRRを書き出し');await download(await packQrr(raw),'qrevy-session.qrr',true);}catch(e){report(e);}};
 
-function updateCurveStatus(){const i=Number($('curveChoice').value)||0,total=curve.candidates?.length||0;const text=!state.settings.assigned?translate('曲面補正: QRの向きを指定してください'):curve.failed?translate(state.settings.warp?'再計算に失敗: 保存した補正を使用':'補正計算に失敗: 直線格子を使用'):total?(getLanguage()==='ja'?`曲面補正: 候補 ${i+1}/${total}`:`Distortion: candidate ${i+1}/${total}`):translate('補正点を検出できません: 直線格子を使用');$('curveStatus').textContent=text+(curve.memoryLimited?t('inline:\nメモリ上限により補正探索の一部を省略しました'):'');$('curveStatus').hidden=!state.settings.curved;$('curveChoice').hidden=!state.settings.curved||!total;$('curveChoice').disabled=!!recoveryWorker.pending||!state.settings.assigned||total<2;}
-async function curve({restore=false,recordHistory=true}={}){if(curve.inProgress)return;if(!state.settings.assigned){updateCurveStatus();return;}curve.inProgress=true;try{const retained=state.settings.warp?{quad:clone(state.settings.previewQuad||state.settings.quad),warp:clone(state.settings.warp),grid:clone(state.settings.grid)}:null;const r=await call({action:'curve',settings:state.settings,...imageRequest()},'曲面の補正点を探索');curve.failed=false;curve.memoryLimited=r.memoryLimited;if(retained&&!r.candidates.some(c=>JSON.stringify([c.quad,c.warp])===JSON.stringify([retained.quad,retained.warp])))r.candidates.push(retained);curve.candidates=r.candidates;$('curveChoice').replaceChildren(...r.candidates.map((c,i)=>new Option(getLanguage()==='ja'?`補正候補 ${i+1}`:`Correction candidate ${i+1}`,String(i))));if(!r.candidates.length){state.settings.warp=null;updateCurveStatus();await sample(false,{recordHistory});return;}const index=retained?Math.max(0,r.candidates.findIndex(c=>JSON.stringify([c.quad,c.warp])===JSON.stringify([retained.quad,retained.warp]))):0;$('curveChoice').value=String(index);const c=r.candidates[index];Object.assign(state.settings,{previewQuad:c.quad,warp:c.warp,grid:c.grid});if(!restore)await sample(false,{recordHistory});saveCurveCache();updateCurveStatus();}catch(e){curve.failed=true;updateCurveStatus();if(!recordHistory)throw e;}finally{curve.inProgress=false;}}
-$('curveChoice').onchange=async()=>{if(!state.settings.curved)return;const i=Number($('curveChoice').value),c=curve.candidates?.[i];if(!c)return;Object.assign(state.settings,{previewQuad:c.quad,warp:c.warp,grid:c.grid});try{if(state.settings.lmEnabled&&!c.refined){const refined=await call({action:'refineCurve',settings:state.settings,...imageRequest()},'曲面格子を補正');curve.candidates[i]={...c,...refined};Object.assign(state.settings,{previewQuad:refined.quad,warp:refined.warp,grid:refined.grid});}await sample();saveCurveCache();updateCurveStatus();}catch(e){report(e);}};
+function updateCurveStatus(){const i=Number($('curveChoice').value)||0,total=curve.candidates?.length||0;const text=!state.settings.assigned?translate('曲面補正: QRの向きを指定してください'):curve.failed?translate(hasPreviewGeometry(state.settings)?'再計算に失敗: 保存した補正を使用':'補正計算に失敗: 直線格子を使用'):total?(getLanguage()==='ja'?`曲面補正: 候補 ${i+1}/${total}`:`Distortion: candidate ${i+1}/${total}`):translate('補正点を検出できません: 直線格子を使用');$('curveStatus').textContent=text+(curve.memoryLimited?t('inline:\nメモリ上限により補正探索の一部を省略しました'):'');$('curveStatus').hidden=!state.settings.curved;$('curveChoice').hidden=!state.settings.curved||!total;$('curveChoice').disabled=!!recoveryWorker.pending||!state.settings.assigned||total<2;}
+function curveComplete(){return state.settings.curved&&curve.completedKey===curveCacheKey();}
+function curveSettled(){return curveComplete()||(state.settings.curved&&curve.failedKey===curveCacheKey());}
+function correctionSnapshot(){const selected=(curve.candidates||[]).findIndex(c=>JSON.stringify([c.quad,c.warp||null])===JSON.stringify([state.settings.previewQuad,state.settings.warp||null]));return {settings:clone(state.settings),matrix:clone(state.matrix),source:clone(state.source),imageOnly:state.imageOnly,
+ curve:clone(Object.fromEntries(['candidates','candidatesKey','profile','completedKey','failedKey','failed','memoryLimited'].map(key=>[key,curve[key]]))),selected:Math.max(0,selected)};}
+function restoreCorrection(snapshot){const {curve:saved,selected,...workspace}=snapshot;Object.assign(state,workspace);Object.assign(curve,saved);renderCurveChoices(selected);syncSettings();render();updateCurveStatus();}
+function curveProfile(s){return clone(Object.fromEntries(['black','white','automatic','provisionalBlack','provisionalWhite','colorUnknown','colorClusters'].map(key=>[key,s[key]])));}
+function renderCurveChoices(selected=0){
+ $('curveChoice').replaceChildren(...(curve.candidates||[]).map((_,i)=>new Option(getLanguage()==='ja'?`補正候補 ${i+1}`:`Correction candidate ${i+1}`,String(i))));
+ $('curveChoice').value=String(selected);
+}
+async function curve({restore=false}={}){
+ if(curve.inProgress||!state.settings.assigned){updateCurveStatus();return;}
+ if(curve.candidatesKey!==curveCacheKey())clearCurveChoices();
+ const before=correctionSnapshot();
+ curve.inProgress=true;
+ try{
+  const retained=hasPreviewGeometry(state.settings)?{quad:clone(state.settings.previewQuad||state.settings.quad),warp:clone(state.settings.warp),grid:clone(state.settings.grid)}:null;
+  curve.profile=curveProfile(state.settings);
+  const r=await call({action:'curve',settings:state.settings,...imageRequest()},'曲面の補正点を探索');
+  curve.failed=false;curve.failedKey=null;curve.memoryLimited=r.memoryLimited;
+  if(retained&&!r.candidates.some(c=>JSON.stringify([c.quad,c.warp])===JSON.stringify([retained.quad,retained.warp])))r.candidates.push(retained);
+  curve.candidates=r.candidates;curve.candidatesKey=curveCacheKey();
+  const index=retained?Math.max(0,r.candidates.findIndex(c=>JSON.stringify([c.quad,c.warp])===JSON.stringify([retained.quad,retained.warp]))):0;
+  renderCurveChoices(index);
+  const c=r.candidates[index];
+  Object.assign(state.settings,{previewQuad:c?.quad||null,previewGeometryVersion:c?1:null,warp:c?.warp||null,grid:c?.grid||null});
+  // An empty search is complete too. Reading cells must not restart it.
+  curve.completedKey=curveCacheKey();
+  if(!restore)await sample(false,{recordHistory:false});
+  saveCurveCache();updateCurveStatus();
+ }catch(e){
+  restoreCorrection(before);
+  if(e.name==='AbortError')throw e;
+  curve.failed=true;curve.failedKey=curveCacheKey();curve.completedKey=null;curve.candidatesKey=curveCacheKey();
+  saveCurveCache();updateCurveStatus();
+ }
+ finally{curve.inProgress=false;}
+}
+$('curveChoice').onchange=()=>selectCurve().catch(report);
+async function selectCurve(){
+ if(!state.settings.curved)return;
+ if(curve.candidatesKey!==curveCacheKey()){clearCurveChoices();updateCurveStatus();return;}
+ const before=correctionSnapshot();
+ let i=Number($('curveChoice').value)||0;const c=curve.candidates?.[i];if(!c)return;
+ Object.assign(state.settings,{previewQuad:c.quad,previewGeometryVersion:1,warp:c.warp,grid:c.grid});
+ try{
+  if(state.settings.lmEnabled&&!c.refined){
+   const refined=await call({action:'refineCurve',settings:{...state.settings,...curve.profile},
+    candidates:curve.candidates.map(candidate=>({quad:candidate.quad,warp:candidate.warp})),selected:i,...imageRequest()},'曲面格子を補正');
+   const {order,...candidate}=refined;
+   curve.candidates[i]={...c,...candidate};
+   if(order){curve.candidates=order.map(index=>curve.candidates[index]);i=order.indexOf(i);}
+   renderCurveChoices(i);
+   Object.assign(state.settings,{previewQuad:candidate.quad,previewGeometryVersion:1,warp:candidate.warp,grid:candidate.grid});
+  }
+  curve.completedKey=curveCacheKey();curve.failedKey=null;curve.failed=false;
+  await sample();saveCurveCache();updateCurveStatus();
+ }catch(e){restoreCorrection(before);throw e;}
+}
 
 $('sameCodeword').onchange=render;
 let tailInspectionRevision=0;
@@ -583,12 +690,12 @@ $('retrySingle').onclick=async()=>{try{state.oneTimeSingleSegment=true;state.aut
 function currentSelection(){const c=result?.candidates?.[candidateIndex];if(!c||result.fingerprint!==JSON.stringify([state.matrix,state.settings,!!state.oneTimeSingleSegment]))return null;return {version:c.version,ecc:c.ecc,mask:c.mask,codewords:c.codewords};}
 async function restoreSelection(selection,showResults=true){if(state.imageOnly)return;const saved=state.history[state.cursor];if(!state.automaticTrial&&['フルオート解析','Automatic scan','簡易自動修復','Quick automatic repair'].includes(saved?.label)){toast(getLanguage()==='ja'?'この履歴には自動修復の実行条件がありません。入力を保持しました。修復をもう一度実行してください。':'This history has no automatic execution conditions. The input is preserved. Run recovery again.');return;}if(!selection&&!state.automaticTrial)return;const trial=state.automaticTrial,imageSearch=!!imageElement&&!trial;const r=await call({...trial,action:imageSearch?'recoverImage':'recover',...(imageSearch?imageRequest():{}),matrix:state.matrix,settings:{...state.settings,single:state.settings.single||!!state.oneTimeSingleSegment}},'保存した候補を再計算');r.fingerprint=JSON.stringify([state.matrix,state.settings,!!state.oneTimeSingleSegment]);result=r;if(trial)for(const c of r.candidates)Object.assign(c,{...trial,settings:clone(state.settings),input:clone(state.matrix)});result.automatic=state.automatic?.status?{...state.automatic.status}:trial?{selectedIndex:-1,restored:true,assumption:trial.automaticScanAssumption}:null;result.input=clone(state.matrix);result.settings={...clone(state.settings),single:state.settings.single||!!state.oneTimeSingleSegment};candidateIndex=selection?r.candidates.findIndex(c=>c.version===selection.version&&c.ecc===selection.ecc&&c.mask===selection.mask&&JSON.stringify(c.codewords)===JSON.stringify(selection.codewords)):r.candidates.length?0:-1;if(result.automatic&&result.automatic.selectedIndex>=0)result.automatic.selectedIndex=candidateIndex;renderResult();if(showResults)setTab('results');else render();renderHistory();if(selection&&candidateIndex<0)toast('以前の候補が見つかりません。結果は未選択です。');}
 $('attachImage').onclick=()=>$('companionImageFile').click();
-$('companionImageFile').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{if(f.size>32*1024*1024)throw new Error('画像は32MB以下にしてください');const img=await loadImageElement(f);if(img.naturalWidth>4096||img.naturalHeight>4096||img.naturalWidth*img.naturalHeight>8000000)throw new Error('QRRの元画像は4096px以内・800万画素以下で追加してください。自動縮小は座標を変えるため行いません。');const c=document.createElement('canvas');c.width=img.naturalWidth;c.height=img.naturalHeight;const cx=c.getContext('2d');cx.fillStyle='#fff';cx.fillRect(0,0,c.width,c.height);cx.drawImage(img,0,0);const blob=await new Promise(r=>c.toBlob(r,'image/png'));state.image=blob;state.imageHash=await digest(await blob.arrayBuffer());imageElement=await loadImageElement(blob);imagePixelsCache=null;state.settings.assigned=false;if(!state.settings.quad)state.settings.quad=[c.width*.1,c.height*.1,c.width*.9,c.height*.1,c.width*.9,c.height*.9,c.width*.1,c.height*.9];syncSettings();mode='image';setTab('input');await sample();toast('元画像を追加しました。QRRだけでは画像の同一性を証明できないため、四隅と向きを確認してください。');}catch(e){report(e);}};
+$('companionImageFile').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{if(f.size>32*1024*1024)throw new Error('画像は32MB以下にしてください');const img=await loadImageElement(f);if(img.naturalWidth>4096||img.naturalHeight>4096||img.naturalWidth*img.naturalHeight>8000000)throw new Error('QRRの元画像は4096px以内・800万画素以下で追加してください。自動縮小は座標を変えるため行いません。');const c=document.createElement('canvas');c.width=img.naturalWidth;c.height=img.naturalHeight;const cx=c.getContext('2d');cx.fillStyle='#fff';cx.fillRect(0,0,c.width,c.height);cx.drawImage(img,0,0);const blob=await new Promise(r=>c.toBlob(r,'image/png'));state.image=blob;state.imageHash=await digest(await blob.arrayBuffer());imageElement=await loadImageElement(blob);imagePixelsCache=null;state.settings.assigned=false;if(!state.settings.quad)state.settings.quad=[c.width*.1,c.height*.1,c.width*.9,c.height*.1,c.width*.9,c.height*.9,c.width*.1,c.height*.9];syncSettings();mode='image';setTab('input');await sample(false,{keepOnCurveAbort:true});toast('元画像を追加しました。QRRだけでは画像の同一性を証明できないため、四隅と向きを確認してください。');}catch(e){report(e);}};
 
 window.addEventListener('qrevy-language',async()=>{try{renderNativeHelp();syncSettings();for(let i=0;i<$('curveChoice').options.length;i++)$('curveChoice').options[i].textContent=getLanguage()==='ja'?`補正候補 ${i+1}`:`Correction candidate ${i+1}`;updateCurveStatus();renderThresholdLabels();renderHistory();render();const hadInput=!!$('inputDataReport').textContent,hadTail=!!$('tailReport').textContent,hadData=!!$('hex').textContent;if(result){const saved=result,selectedCandidate=saved.candidates[candidateIndex];const refreshed=await inspectCall({action:'localizeResult'},'保存した候補を再計算');if(saved.automatic)for(const c of refreshed.candidates){const prior=saved.candidates.find(p=>p.version===c.version&&p.ecc===c.ecc&&p.mask===c.mask&&JSON.stringify(p.codewords)===JSON.stringify(c.codewords));if(prior?.automaticScanAssumption!=null)Object.assign(c,{...readAutomaticTrial(prior),settings:clone(prior.settings),input:clone(prior.input)});}result={...refreshed,input:saved.input,settings:saved.settings,fingerprint:saved.fingerprint,automatic:saved.automatic};if(dataDisplayResult===saved)dataDisplayResult=result;candidateIndex=selectedCandidate?result.candidates.findIndex(c=>c.version===selectedCandidate.version&&c.ecc===selectedCandidate.ecc&&c.mask===selectedCandidate.mask&&JSON.stringify(c.codewords)===JSON.stringify(selectedCandidate.codewords)):-1;comparisonKey='';renderResult();render();await comparisonPromise;await refreshCandidateDiagnostic();if(hadData&&(result.candidates[candidateIndex]||result.failureFormat))await updateResultData();if(hadTail)await updateTailAnalysis();}if(hadInput)await updateInputData();}catch(e){report(e);}});
 
 
-$('fineCorners').onclick=async()=>{if(!imageElement||recoveryWorker.pending)return;imageRequest();const quad=await fineCorners(imagePreview,state.settings);if(!quad)return;disableLm();state.settings.gridReference=true;state.settings.quad=quad;state.settings.warp=null;state.settings.grid=null;await sample().catch(report);mode='image';render();};
+$('fineCorners').onclick=async()=>{if(!imageElement||recoveryWorker.pending)return;imageRequest();const quad=await fineCorners(imagePreview,state.settings);if(!quad)return;disableLm();state.settings.gridReference=true;state.settings.quad=quad;state.settings.warp=null;state.settings.grid=null;await sample(false,{keepOnCurveAbort:true}).catch(report);mode='image';render();};
 
 // Remap image observations through the immutable source, preserving logical edits.
 function remappedImageSettings(nextOps){
@@ -628,7 +735,7 @@ async function transformImage(op){
   // Render before changing state so invalid transforms leave observations intact.
   prepareImage(imageElement,mapped.imageOps);
   Object.assign(state.settings,mapped);invalidateLm();state.settings.warp=null;state.settings.previewQuad=null;state.settings.grid=null;curve.candidates=[];curve.failed=false;
-  imagePixelsCache=null;syncSettings();await sample();mode='image';render();
+  imagePixelsCache=null;syncSettings();await sample(false,{keepOnCurveAbort:true});mode='image';render();
 }
 $('rotateImage').onclick=()=>transformImage({type:'rotate',angle:Number($('imageAngle').value)}).catch(report);
 $('clearPerspective').onclick=()=>transformImage({type:'clearPerspective'}).catch(report);
@@ -731,9 +838,9 @@ function renderFinderHint(){
  if($('finderHint').textContent!==hint)$('finderHint').textContent=hint;
 }
 $('finderRole').onchange=()=>{$('removeFinder').disabled=!!recoveryWorker.pending||$('finderRole').value==='';renderFinderHint();};
-$('removeFinder').onclick=async()=>{if($('finderRole').value==='')return;const role=Number($('finderRole').value);invalidateLm(true);state.settings.warp=null;state.settings.previewQuad=null;curve.candidates=[];state.settings.finders=(state.settings.finders||[]).filter((_,i,a)=>a[Math.floor(i/3)*3]!==role);if(!state.settings.finders.length){state.settings.confirmedPolarity='UNKNOWN';state.settings.assigned=state.settings.visibleFinderRole!=null;}syncSettings();if(state.image)await sample(false,{recordHistory:false}).catch(report);record('Finder指定を解除');render();};
-document.querySelectorAll('[data-reset]').forEach(button=>button.onclick=async()=>{const key=button.dataset.reset;state.settings[key]=0;invalidateLm(true);state.settings.warp=null;state.settings.previewQuad=null;curve.candidates=[];syncSettings();await sample().catch(report);});
-$('resetImageAdjustments').onclick=async()=>{Object.assign(state.settings,{brightness:0,contrast:0,toneInvert:false});invalidateLm(true);state.settings.warp=null;state.settings.previewQuad=null;curve.candidates=[];syncSettings();await sample().catch(report);};
+$('removeFinder').onclick=async()=>{if($('finderRole').value==='')return;const role=Number($('finderRole').value);invalidateLm(true);state.settings.warp=null;state.settings.previewQuad=null;curve.candidates=[];state.settings.finders=(state.settings.finders||[]).filter((_,i,a)=>a[Math.floor(i/3)*3]!==role);if(!state.settings.finders.length){state.settings.confirmedPolarity='UNKNOWN';state.settings.assigned=state.settings.visibleFinderRole!=null;}syncSettings();if(state.image)await sample(false,{recordHistory:false,keepOnCurveAbort:true}).catch(report);record('Finder指定を解除');render();};
+document.querySelectorAll('[data-reset]').forEach(button=>button.onclick=async()=>{const key=button.dataset.reset;state.settings[key]=0;invalidateLm(true);state.settings.warp=null;state.settings.previewQuad=null;curve.candidates=[];syncSettings();await sample(false,{keepOnCurveAbort:true}).catch(report);});
+$('resetImageAdjustments').onclick=async()=>{Object.assign(state.settings,{brightness:0,contrast:0,toneInvert:false});invalidateLm(true);state.settings.warp=null;state.settings.previewQuad=null;curve.candidates=[];syncSettings();await sample(false,{keepOnCurveAbort:true}).catch(report);};
 $('resetImageRotation').onclick=()=>{const angle=sourceTransform(state.settings.imageOps,state.settings.version).angle;return transformImage({type:'rotate',angle:-angle}).catch(report);};
 
 // Two fingers zoom the work surface; they never commit a brush transaction.
@@ -831,13 +938,41 @@ $('resultDataPanel').ontoggle=()=>{if($('resultDataPanel').open)updateResultData
 // Restore a base only while its successful LM result is the current grid.
 function quadWithoutLm(s=state.settings){return s.lmEnabled&&!s.lmFailed&&s.lmBaseQuad&&s.lmAppliedQuad&&JSON.stringify(s.quad)===JSON.stringify(s.lmAppliedQuad)?s.lmBaseQuad:s.quad;}
 
-function invalidateLm(restore=false){if(restore)state.settings.quad=clone(quadWithoutLm());state.settings.lmAppliedQuad=null;state.settings.lmBaseQuad=null;state.settings.lmFailed=false;}
+function clearCurveChoices(){
+ curve.candidates=[];curve.candidatesKey=null;curve.profile=null;
+ curve.completedKey=null;curve.failedKey=null;curve.failed=false;curve.memoryLimited=false;
+ renderCurveChoices();
+}
+function invalidateCurve(){
+ clearCurveChoices();state.settings.warp=null;state.settings.previewQuad=null;state.settings.previewGeometryVersion=null;
+ updateCurveStatus();
+}
+function invalidateLm(restore=false){if(restore)state.settings.quad=clone(quadWithoutLm());invalidateCurve();state.settings.lmAppliedQuad=null;state.settings.lmBaseQuad=null;state.settings.lmFailed=false;}
 
 function disableLm(restore=false){const enabled=state.settings.lmEnabled;invalidateLm(restore);state.settings.lmEnabled=false;$('refine').checked=false;if(enabled)toast('LM補正を解除しました');}
 
-function curveCacheKey(){const s=state.settings;return JSON.stringify([state.id,quadWithoutLm(s),s.version,s.lmEnabled,s.brightness,s.contrast,s.toneInvert,s.imageOps,s.polarity,s.black,s.white,s.automatic,s.finders]);}
-function saveCurveCache(){if(!curve.candidates?.length)return;correctionCache.set(curveCacheKey(),{candidates:clone(curve.candidates),selected:Number($('curveChoice').value)||0,memoryLimited:curve.memoryLimited});if(correctionCache.size>40)correctionCache.delete(correctionCache.keys().next().value);}
-function restoreCurveChoices(){const cached=correctionCache.get(curveCacheKey());curve.failed=false;curve.memoryLimited=false;curve.candidates=state.settings.curved&&cached?clone(cached.candidates):state.settings.curved&&state.settings.warp?[{quad:clone(state.settings.previewQuad||state.settings.quad),warp:clone(state.settings.warp),grid:clone(state.settings.grid)}]:[];$('curveChoice').replaceChildren(...curve.candidates.map((_,i)=>new Option(getLanguage()==='ja'?`補正候補 ${i+1}`:`Correction candidate ${i+1}`,String(i))));if(cached){$('curveChoice').value=String(cached.selected);curve.memoryLimited=cached.memoryLimited;}updateCurveStatus();}
+function curveCacheKey(){const s=state.settings;return JSON.stringify([state.id,state.imageHash,quadWithoutLm(s),s.version,s.lmEnabled,s.brightness,s.contrast,s.toneInvert,s.imageOps,samplingInverted(s),s.finders,s.assigned]);}
+function saveCurveCache(){
+ if(!curveSettled()||curve.candidatesKey!==curveCacheKey())return;
+ correctionCache.set(curveCacheKey(),{candidates:clone(curve.candidates),selected:Number($('curveChoice').value)||0,memoryLimited:curve.memoryLimited,profile:clone(curve.profile),failed:!!curve.failed});
+ if(correctionCache.size>40)correctionCache.delete(correctionCache.keys().next().value);
+}
+function restoreCurveChoices(){
+ const cached=state.settings.curved&&correctionCache.get(curveCacheKey());
+ const saved=state.settings.curved&&hasPreviewGeometry(state.settings)?{
+  quad:clone(state.settings.previewQuad||state.settings.quad),warp:clone(state.settings.warp),grid:clone(state.settings.grid),
+ }:null;
+ curve.failed=!!cached?.failed;curve.memoryLimited=cached?.memoryLimited||false;
+ curve.candidates=cached?clone(cached.candidates):saved?[saved]:[];
+ curve.candidatesKey=curveCacheKey();
+ // Undo restores the selected geometry from that history entry, not a newer selection.
+ let selected=saved?curve.candidates.findIndex(c=>JSON.stringify([c.quad,c.warp||null])===JSON.stringify([saved.quad,saved.warp||null])):0;
+ if(selected<0){curve.candidates=[saved];selected=0;}
+ curve.profile=clone(cached?.profile||curveProfile(state.settings));
+ curve.completedKey=state.settings.curved&&(cached||saved)&&!curve.failed?curveCacheKey():null;
+ curve.failedKey=curve.failed?curveCacheKey():null;
+ renderCurveChoices(selected);updateCurveStatus();
+}
 
 const retryOffers=new Map();
 function offerSingleRetry(){if(!result?.retryPromptEligible||state.oneTimeSingleSegment||state.settings.single)return;const key=JSON.stringify([state.matrix,state.settings]);let offered=retryOffers.get(state.id);if(!offered){retryOffers.clear();retryOffers.set(state.id,offered=new Set());}if(offered.has(key))return;offered.add(key);$('singleRetryDialog').showModal();}

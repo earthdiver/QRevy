@@ -81,7 +81,7 @@ internal fun settings(o: JSObject): PreprocessSettings {
         useUnknownColorClusters=o.bool("colorUnknown"),unknownColorClusters=run {
             val a=o.obj("colorClusters");require(Interop.length(a)<=16 && Interop.length(a)%4==0)
             (0 until Interop.length(a)/4).map { i -> UnknownColorCluster(Interop.item(a,i*4).toInt(),Interop.item(a,i*4+1).toInt(),Interop.item(a,i*4+2).toInt(),Interop.item(a,i*4+3).toInt()) }
-        }).let { s -> if(s.manualQuad!=null && Interop.length(o.obj("warp"))>0) s.copy(previewGeometry=ImageRecovery.geometryWithWarp(s,o)) else s }
+        }).let { s -> if(s.manualQuad!=null && ImageRecovery.hasPreviewGeometry(s,o)) s.copy(previewGeometry=ImageRecovery.geometryWithWarp(s,o)) else s }
 }
 internal fun adjustedBitmap(o:JSObject):android.graphics.Bitmap {
     val w=o.int("width");val h=o.int("height");require(w in 1..4096 && h in 1..4096 && w.toLong()*h<=8_000_000)

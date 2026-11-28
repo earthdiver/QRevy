@@ -69,3 +69,10 @@ test('pre-analysis image state has a distinct validated schema',()=>{
  const invalid=workspace();invalid.history=[];invalid.cursor=-1;
  assert.throws(()=>validateSession(invalid));
 });
+
+test('workspace validates correction provenance and planar preview coordinates',()=>{
+ const value=workspace();Object.assign(value.history[0].settings,{previewGeometryVersion:1,previewQuad:[10,10,20,10,20,20,10,20]});
+ assert.doesNotThrow(()=>validateSession(value));
+ for(const marker of [0,2,'1',true]){const bad=structuredClone(value);bad.history[0].settings.previewGeometryVersion=marker;assert.throws(()=>validateSession(bad));}
+ for(const quad of [[],[NaN,10,20,10,20,20,10,20],{}]){const bad=structuredClone(value);bad.history[0].settings.previewQuad=quad;assert.throws(()=>validateSession(bad));}
+});

@@ -7,6 +7,7 @@ import java.io.DataOutputStream
 import java.util.Base64
 
 internal fun settingsJson(s: PreprocessSettings) = mapOf(
+    "previewGeometryVersion" to s.previewGeometry?.let { 1 },
     "previewQuad" to s.previewGeometry?.imageQuad?.let(::quadJson),"warp" to s.previewGeometry?.warp?.landmarks?.flatMap { listOf(it.position.x,it.position.y,it.displacement.x,it.displacement.y,it.smoothing) },
     "finders" to s.manualFinders.flatMap { (r,p) -> listOf(when(r){FinderRole.TOP_LEFT->0;FinderRole.TOP_RIGHT->1;FinderRole.BOTTOM_LEFT->3},p.x,p.y) },"priorityLimit" to s.prioritySearchLimit,"quietZone" to s.quietZoneCorrection,
     "lmEnabled" to s.lmCorrectionEnabled,"lmBaseQuad" to s.manualQuad?.let(::quadJson),"lmAppliedQuad" to s.lmGeometry?.moduleCenterQuad()?.let(::quadJson),"version" to s.version,"quad" to (s.lmGeometry?.moduleCenterQuad()?:s.manualQuad)?.let(::quadJson),"assigned" to s.logicalGridAssigned,"visibleFinderRole" to s.visibleFinderRole?.let { when(it){FinderRole.TOP_LEFT->0;FinderRole.TOP_RIGHT->1;FinderRole.BOTTOM_LEFT->3} },

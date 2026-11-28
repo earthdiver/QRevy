@@ -14,6 +14,8 @@ export function createRecoveryWorker({
   let pending = null;
   let sequence = 0;
 
+  function stoppedError() {return Object.assign(new Error(messages.stopped), {name: 'AbortError'});}
+
   function finish(error, result) {
     const completed = pending;
     pending = null;
@@ -39,6 +41,10 @@ export function createRecoveryWorker({
         return;
       }
       if (data.id !== pending.id) return;
+      if (pending.cancelled && ['curve', 'refineCurve', 'refine', 'sample'].includes(pending.action)) {
+        finish(stoppedError());
+        return;
+      }
       const error = data.error || data.result?.error;
       finish(error ? new Error(error) : null, data.result);
     };
@@ -80,13 +86,14 @@ export function createRecoveryWorker({
 
   function stop() {
     if (!pending) return 'idle';
+    pending.cancelled = true;
     if (pending.stop && Atomics.load(pending.stop, 0) === 0) {
       Atomics.store(pending.stop, 0, 1);
       return 'stopping';
     }
     terminateWorker();
     onTerminated();
-    finish(new Error(messages.stopped));
+    finish(stoppedError());
     start();
     return 'terminated';
   }

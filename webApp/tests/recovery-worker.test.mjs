@@ -175,3 +175,11 @@ test('exit and resume replace only an idle worker', async () => {
   assert.deepEqual(f.errors, []);
   assert.deepEqual(f.progress, []);
 });
+
+for(const action of ['curve','refineCurve','refine','sample'])test(`stopped ${action} discards a partial response and remains retryable`,async()=>{
+ const f=fixture(),worker=f.workers[0];
+ const first=f.client.call({action});const rejected=assert.rejects(first,{name:'AbortError'});
+ assert.equal(f.client.stop(),'stopping');respond(worker,{candidates:['partial']});await rejected;
+ const next=f.client.call({action});respond(worker,{candidates:['complete']});
+ assert.deepEqual(await next,{candidates:['complete']});
+});

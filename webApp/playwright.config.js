@@ -4,6 +4,9 @@ const testPort=process.env.QREVY_TEST_PORT||'4175';
 const baseURL=`http://127.0.0.1:${testPort}`;
 const webkitLaunch=process.env.QREVY_WEBKIT_EXECUTABLE?{executablePath:process.env.QREVY_WEBKIT_EXECUTABLE}:{};
 export default defineConfig({
+ // Concurrent local runs already use distinct server ports; isolate their
+ // downloads and traces too so one run cannot delete another run's artifacts.
+ outputDir:`../build/browser-tests/${testPort}`,
  webServer:{command:'npm run dev',url:baseURL,env:{PORT:testPort,HOST:'127.0.0.1'},reuseExistingServer:false,timeout:30000},
  testDir:'tests/browser',timeout:120000,expect:{timeout:20000},workers:browserWorkers(),
  use:{actionTimeout:20000,baseURL,locale:'ja-JP',trace:{mode:'retain-on-failure',screenshots:false}},

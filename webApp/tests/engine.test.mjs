@@ -337,3 +337,35 @@ for(const order of ['be','le'])test(`BOM-detected UTF-16 ${order} preserves a fi
  const text=await readFile(new URL(`./fixtures/utf16-bom-${order}.txt`,import.meta.url),'utf8');
  const matrix=run({action:'parse',text});assert.ok(recover(matrix).candidates.some(c=>c.text==='😀'));
 });
+
+test('curve refinement ranks every candidate stably and sampling honors a planar preview',()=>{
+ const matrix=run({action:'demo',damage:false,text:'CURVE RANKING'}),rows=matrix.text.split('\n'),n=rows.length,unit=6,width=(n+8)*unit;
+ const pixels=new Uint32Array(width*width).fill(0xffffff);
+ for(let y=0;y<n;y++)for(let x=0;x<n;x++)if(rows[y][x]==='1')for(let dy=0;dy<unit;dy++)for(let dx=0;dx<unit;dx++)pixels[((y+4)*unit+dy)*width+(x+4)*unit+dx]=0;
+ const a=4*unit+(unit-1)/2,b=(n+3)*unit+(unit-1)/2,quad=[a,a,b,a,b,b,a,b],outside=quad.map(v=>v+width*2);
+ const settings={version:(n-17)/4,quad:outside,previewQuad:quad,previewGeometryVersion:1,curved:true,automatic:false,black:96,white:160};
+ const request={width,height:width,pixels,settings};
+ assert.equal(run({...request,action:'sample'}).matrix.text,matrix.text);
+ const candidates=[{quad:outside,warp:null},{quad,warp:null},{quad:quad.slice(),warp:null}];
+ const refined=run({...request,action:'refineCurve',settings:{...settings,previewQuad:outside},candidates,selected:0});
+ assert.deepEqual(refined.order,[1,2,0]);
+ assert.deepEqual(refined.quad,outside);assert.equal(refined.refined,true);
+});
+
+test('planar corrections survive QRR export and retain their sampling coordinates',()=>{
+ const matrix=run({action:'demo',damage:false,text:'PLANAR SESSION'}),n=matrix.text.split('\n').length;
+ const quad=[10,10,210,10,210,210,10,210],previewQuad=quad.map(v=>v+20);
+ const settings={version:(n-17)/4,quad,previewQuad,previewGeometryVersion:1,curved:true,warp:null,lmEnabled:false,assigned:true,automatic:false,black:96,white:160};
+ const request={action:'sample',width:260,height:260,pixels:new Uint32Array(260*260).fill(0xffffff)};
+ const expected=run({...request,settings});
+ assert.deepEqual(expected.grid[0],[30,30]);
+ const encoded=run({action:'qrrEncode',id:'planar-roundtrip',cursor:0,history:JSON.stringify([{label:'Input',matrix,source:matrix,settings}])});
+ const decoded=run({action:'qrrDecode',...encoded}).history[0].settings;
+ assert.deepEqual(decoded.previewQuad,previewQuad);assert.equal(decoded.previewGeometryVersion,1);
+ assert.deepEqual(decoded.quad,quad);assert.deepEqual(run({...request,settings:decoded}).grid,expected.grid);
+ for(const legacy of [{...settings,previewGeometryVersion:null},{...settings,curved:false}]){
+  assert.deepEqual(run({...request,settings:legacy}).grid[0],[10,10]);
+  const raw=run({action:'qrrEncode',id:'inactive-preview',cursor:0,history:JSON.stringify([{label:'Input',matrix,source:matrix,settings:legacy}])});
+  assert.equal(run({action:'qrrDecode',...raw}).history[0].settings.previewQuad,null);
+ }
+});

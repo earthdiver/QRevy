@@ -1,3 +1,4 @@
+import {hasPreviewGeometry} from './preview-geometry.js';
 import {resampleImage} from './image-resampling.js';
 import {drawQrGrid} from './grid-overlay.js';
 import {t} from './i18n.js';
@@ -103,7 +104,7 @@ export function prepareImage(image,ops=[]){
 
 // Use sampled warp displacements for display; straight/projective guides use the exact homography.
 export function moduleMap(settings){
- const n=17+4*settings.version,q=settings.warp&&settings.previewQuad?settings.previewQuad:settings.quad;
+ const n=17+4*settings.version,q=hasPreviewGeometry(settings)&&settings.previewQuad?settings.previewQuad:settings.quad;
  const project=(x,y)=>quadMap(q,x/(n-1),y/(n-1));
  if(!settings.warp||settings.grid?.length!==n*n)return project;
  const offsets=settings.grid.map(([x,y],i)=>{const p=project(i%n,Math.floor(i/n));return [x-p[0],y-p[1]];});

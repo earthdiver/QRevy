@@ -35,8 +35,12 @@ internal object ImageRecovery {
         return mapOf("text" to decoded.text,"dataCodewords" to decoded.rawBytes?.map{it.toInt() and 255},"reader" to "ZXing Java")
     }
 
+    fun hasPreviewGeometry(s: PreprocessSettings,o: JSObject): Boolean =
+        Interop.length(o.obj("warp"))>0 ||
+            (s.distortionCorrection && o.int("previewGeometryVersion")==1 && quad(o.obj("previewQuad"))!=null)
+
     fun geometryWithWarp(s: PreprocessSettings,o: JSObject): GridGeometry {
-        val w=o.obj("warp");val size=Interop.length(w);val g=geometry(if(size>0)quad(o.obj("previewQuad"))?.let { s.copy(manualQuad=it) }?:s else s)
+        val w=o.obj("warp");val size=Interop.length(w);val g=geometry(if(hasPreviewGeometry(s,o))quad(o.obj("previewQuad"))?.let { s.copy(manualQuad=it) }?:s else s)
         if(size==0)return g
         require(size in 15..320 && size%5==0)
         val landmarks=(0 until size/5).map { i -> WarpLandmark(PointD(Interop.item(w,i*5),Interop.item(w,i*5+1)),PointD(Interop.item(w,i*5+2),Interop.item(w,i*5+3)),Interop.item(w,i*5+4)) }
@@ -46,16 +50,31 @@ internal object ImageRecovery {
     fun warp(g: GridGeometry)=g.warp?.landmarks?.flatMap { listOf(it.position.x,it.position.y,it.displacement.x,it.displacement.y,it.smoothing) }
     fun curve(o: JSObject): Any {
         val img=image(o);val s=settings(o.obj("settings"));val g=geometry(s)
-        val initialProfile=SamplingProfile(s,samplingInverted(s));val profile=if(s.automaticThresholds)initialProfile.copy(settings=s.copy(blackMax=initialProfile.provisionalThresholds.blackMax,whiteMin=initialProfile.provisionalThresholds.whiteMin))else initialProfile;val detector=CurvedGridDetector(img,profile,maxContourWorkingBytes=16L*1024*1024)
+        val profile=correctionProfile(s);val detector=CurvedGridDetector(img,profile,maxContourWorkingBytes=16L*1024*1024)
         var candidates=detector.candidates(g).distinct().sortedBy { quickGeometryScore(img,it,profile) }.sortedBy { geometryRankingUnknownCount(img,it,profile){Interop.stopped(o.obj("stop"))} }
         if(s.lmCorrectionEnabled){val first=candidates.firstOrNull()?:g;jointlyRefinedGeometry(img,first,profile){Interop.stopped(o.obj("stop"))}?.let { candidates=(listOf(it)+candidates.drop(1)).distinct() }}
         return mapOf("memoryLimited" to detector.contourMemoryLimited,"candidates" to candidates.mapIndexed { index,it -> curveJson(img,it,profile)+( "refined" to (index==0&&s.lmCorrectionEnabled)) })
     }
     private fun curveJson(img:LumaImage,g:GridGeometry,p:SamplingProfile):Map<String,Any?> = mapOf("quad" to quadJson(g.imageQuad ?: g.moduleCenterQuad()),"warp" to warp(g),"grid" to grid(g),"unknownCount" to geometryRankingUnknownCount(img,g,p){false},"score" to quickGeometryScore(img,g,p))
+    private fun correctionProfile(s:PreprocessSettings):SamplingProfile {
+        val profile=SamplingProfile(s,samplingInverted(s))
+        return if(s.automaticThresholds)profile.copy(settings=s.copy(
+            blackMax=profile.provisionalThresholds.blackMax,whiteMin=profile.provisionalThresholds.whiteMin))else profile
+    }
     fun refineCurve(o:JSObject):Any {
-        val img=image(o);val s=settings(o.obj("settings"));val g=geometryWithWarp(s,o.obj("settings"));val p=SamplingProfile(s,samplingInverted(s))
+        val img=image(o);val s=settings(o.obj("settings"));val g=geometryWithWarp(s,o.obj("settings"));val p=correctionProfile(s)
         val refined=jointlyRefinedGeometry(img,g,p){Interop.stopped(o.obj("stop"))}?:g
-        return curveJson(img,refined,p)+("refined" to true)
+        val choices=o.obj("candidates");val count=Interop.length(choices)
+        require(count in 0..13)
+        val selected=o.int("selected")
+        require(count==0 || selected in 0 until count)
+        val order=(0 until count).map { index ->
+            val choice=choices.obj(index.toString())
+            val candidate=if(index==selected)refined else geometryWithWarp(
+                s.copy(manualQuad=requireNotNull(quad(choice.obj("quad")))),choice)
+            index to geometryRankingUnknownCount(img,candidate,p){Interop.stopped(o.obj("stop"))}
+        }.sortedBy { it.second }.map { it.first }
+        return curveJson(img,refined,p)+mapOf("refined" to true,"order" to order.takeIf { count>0 })
     }
     fun recover(o: JSObject): Any {
         val img=image(o);val input=readMatrix(o.obj("matrix"));val base=settings(o.obj("settings"));require(base.logicalGridAssigned)

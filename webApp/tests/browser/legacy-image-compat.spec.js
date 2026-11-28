@@ -176,7 +176,7 @@ for(const lmEnabled of [true,false])test(`saved QRR retains Android LM geometry 
  if(lmEnabled){
   await page.locator('#refine').evaluate(async el=>{el.checked=false;await el.onchange();});
   await expect.poll(async()=>(await latest(page)).settings.lmEnabled).toBe(false);
-  const off=await latest(page);expect(off.settings.quad).toEqual(expected.base);expect(off.matrix.text).toBe(expected.withoutLm);expect(off.settings.lmBaseQuad).toBeNull();expect(off.settings.lmAppliedQuad).toBeNull();
+  const off=await latest(page);expect(off.settings.quad).toEqual(expected.base);expect(off.matrix.text).toBe(expected.withoutLm);expect(off.settings.lmBaseQuad).toEqual(expected.base);expect(off.settings.lmAppliedQuad).toEqual(expected.applied);
   await historyStep(page,'undo');await expect.poll(async()=>(await latest(page)).settings.lmEnabled).toBe(true);
   // Tone changes rerun LM from its manual grid, not from the previous result.
   await page.locator('#brightness').evaluate(async el=>{el.value='1';await el.onchange();});
@@ -205,4 +205,43 @@ test('migration preserves explicit raster tags and falls back to PWA without a m
   return {needs,again:needsLegacyImageMigration(session),tags:session.history.map(h=>h.settings.imageOps[0].legacyRaster),checkpoint:session.checkpoint.settings.imageOps[0].legacyRaster,input:session.history[0].automatic.input.settings.imageOps[0].legacyRaster,retry:session.history[0].automatic.retrySettings.imageOps[0].legacyRaster,missing:missing.history[0].settings.imageOps[0].legacyRaster};
  });
  expect(result).toEqual({needs:true,again:false,tags:['pwa','android','pwa','pwa'],checkpoint:'android',input:'android',retry:'android',missing:'pwa'});
+});
+
+test('planar correction migration preserves verified imports and all manual snapshots',async({page})=>{
+ const result=await page.evaluate(async()=>{
+  const {migrateCorrectionPreviews,needsPreviewMigration}=await import('/session-migration.js');
+  const original={version:1,quad:[10,10,210,10,210,210,10,210],previewQuad:[30,30,230,30,230,230,30,230],previewGeometryVersion:1,curved:true,lmEnabled:false,assigned:true,imageOps:[]};
+  const legacy=()=>({...structuredClone(original),previewGeometryVersion:null});
+  const entry=()=>({qrrIndex:0,settings:legacy(),matrix:{text:'manual',sources:'fixed'},source:{text:'observed'}});
+  const session={settings:legacy(),history:[entry(),entry()],checkpoint:entry()};
+  session.history[1].settings.quad=original.quad.map(v=>v+1);
+  session.history[1].automatic={input:{settings:legacy()},retrySettings:legacy()};
+  session.history[1].automatic.input.settings.brightness=20;
+  const matrices=JSON.stringify(session.history.map(h=>[h.matrix,h.source]));
+  const needed=needsPreviewMigration(session);
+  migrateCorrectionPreviews(session,[{settings:original}]);
+  const once=JSON.stringify(session);migrateCorrectionPreviews(session,[{settings:original}]);
+  const uncertain={history:[entry()]};migrateCorrectionPreviews(uncertain);
+  const warped={history:[entry()]};warped.history[0].settings.warp=[0,0,0,0,.1,1,0,0,0,.1,0,1,0,0,.1];migrateCorrectionPreviews(warped);
+  const current={history:[{settings:structuredClone(original)}]};migrateCorrectionPreviews(current);
+  return {needed,remaining:needsPreviewMigration(session),session,unchanged:matrices===JSON.stringify(session.history.map(h=>[h.matrix,h.source])),idempotent:once===JSON.stringify(session),uncertain:uncertain.history[0].settings.previewQuad,warped:warped.history[0].settings.previewQuad,current:current.history[0].settings.previewQuad};
+ });
+ expect(result.needed).toBe(true);expect(result.remaining).toBe(false);expect(result.unchanged).toBe(true);expect(result.idempotent).toBe(true);
+ expect(result.session.settings.previewQuad).toBeNull();expect(result.session.history[0].settings.previewGeometryVersion).toBe(1);
+ expect(result.session.checkpoint.settings.previewGeometryVersion).toBe(1);expect(result.session.history[1].settings.previewQuad).toBeNull();
+ expect(result.session.history[1].automatic.input.settings.previewQuad).toBeNull();expect(result.session.history[1].automatic.retrySettings.previewGeometryVersion).toBe(1);
+ expect(result.uncertain).toBeNull();expect(result.warped).not.toBeNull();expect(result.current).not.toBeNull();
+});
+
+test('displayed planar grid and sampled cells share the same coordinates',async({page})=>{
+ const result=await page.evaluate(async()=>{
+  const {moduleMap}=await import('/image-tools.js'),{execute}=await import('/engine/js/engine.js');
+  const settings={version:1,quad:[10,10,210,10,210,210,10,210],previewQuad:[30,30,230,30,230,230,30,230],previewGeometryVersion:1,curved:true,warp:null,automatic:false,black:96,white:160};
+  return [settings,{...settings,previewGeometryVersion:null},{...settings,curved:false}].map(s=>{
+   const sampled=JSON.parse(execute({action:'sample',settings:s,width:260,height:260,pixels:new Uint32Array(260*260).fill(0xffffff)}));
+   const map=moduleMap({...s,grid:sampled.grid});return {actual:sampled.grid,display:sampled.grid.map((_,i)=>map(i%21,Math.floor(i/21)))};
+  });
+ });
+ for(const {actual,display} of result)for(let i=0;i<actual.length;i++){expect(display[i][0]).toBeCloseTo(actual[i][0],8);expect(display[i][1]).toBeCloseTo(actual[i][1],8);}
+ expect(result[0].actual[0]).toEqual([30,30]);expect(result[1].actual[0]).toEqual([10,10]);
 });

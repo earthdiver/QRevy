@@ -106,6 +106,8 @@ export function validateSession(s) {
   }
 }
 function validateSettings(p,n=null){
+    if(p?.previewGeometryVersion!=null&&p.previewGeometryVersion!==1)throw new Error('Invalid preview geometry version');
+    if(p?.previewQuad!=null&&(!Array.isArray(p.previewQuad)||p.previewQuad.length!==8||p.previewQuad.some(x=>!Number.isFinite(x)||Math.abs(x)>1e7)))throw new Error('Invalid preview coordinates');
     if(p?.gridReference!=null&&typeof p.gridReference!=='boolean')throw new Error('設定が不正です');
     if(p?.visibleFinderRole!=null&&(![0,1,3].includes(p.visibleFinderRole)||p.assigned!==true||!p.quad))throw new Error('位置未測定のFinder役割が不正です');
     for(const key of ['brightness','contrast'])if(p?.[key]!=null&&(!Number.isFinite(p[key])||p[key]<-100||p[key]>100))throw new Error('画像調整値が不正です');
