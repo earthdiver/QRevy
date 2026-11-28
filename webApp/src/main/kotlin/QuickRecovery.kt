@@ -38,7 +38,7 @@ internal object QuickRecovery {
             img=image(o)
             if(s.manualQuad==null){
                 val cancellation=RecoveryCancellation{budget.stopped()}
-                val estimate=try{cancellation.check();BrowserInitialGridEstimator.estimate(img,ImageRecovery.boundaries(o,img),cancellation,trace?.gridObserver())}catch(_:RecoveryCancelledException){null}
+                val estimate=try{cancellation.check();BrowserInitialGridEstimator.estimate(img,ImageRecovery.boundaries(o,img,cancellation),cancellation,trace?.gridObserver())}catch(_:RecoveryCancelledException){null}
                 val tones=InitialThresholdEstimator.estimate(adjustedBitmap(o))
                 val colors=InitialThresholdEstimator.estimate(android.graphics.Bitmap(img.width,img.height,requireNotNull(img.rgbPixels)))
                 s=s.copy(version=estimate?.version?:s.version,manualQuad=estimate?.moduleCenterQuad,

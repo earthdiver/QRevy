@@ -10,16 +10,19 @@ import zxingcpp.BarcodeReader
 object ZxingCppGridDetector {
     data class Scan(val boundaries: List<ImageQuad>, val decoded: Result? = null)
 
-    fun detect(bitmap: Bitmap): List<ImageQuad> {
+    fun detect(bitmap: Bitmap, image: LumaImage? = null, cancellation: RecoveryCancellation = RecoveryCancellation.NONE): List<ImageQuad> {
+        cancellation.check()
         val native = scan(bitmap).boundaries
+        cancellation.check()
         if (native.isNotEmpty()) return native
+        if (image != null) return ZxingJavaGridDetector.detect(image, cancellation)
         val pixels = IntArray(bitmap.width * bitmap.height)
         bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
         val luma = IntArray(pixels.size) { i ->
             val p = pixels[i]
             (299 * ((p ushr 16) and 255) + 587 * ((p ushr 8) and 255) + 114 * (p and 255) + 500) / 1000
         }
-        return ZxingJavaGridDetector.detect(LumaImage(bitmap.width, bitmap.height, luma, pixels))
+        return ZxingJavaGridDetector.detect(LumaImage(bitmap.width, bitmap.height, luma), cancellation)
     }
 
     fun scan(bitmap: Bitmap): Scan = try {
@@ -28,6 +31,7 @@ object ZxingCppGridDetector {
             formats = setOf(BarcodeReader.Format.QR_CODE_MODEL_2),
             tryHarder = true,
             tryRotate = true,
+            tryInvert = true,
             tryDownscale = true,
             returnErrors = true,
             maxNumberOfSymbols = 16,

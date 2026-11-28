@@ -2,8 +2,8 @@ package io.github.earthdiver.qrrepair
 
 import android.content.ContentResolver
 import android.graphics.Bitmap
+import android.graphics.BitmapRegionDecoder
 import android.graphics.BitmapFactory
-import android.graphics.Matrix
 import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
 import com.google.zxing.Result
@@ -43,10 +43,14 @@ internal class InitialImageAnalysis(
     private val source: BitmapUtils.Prepared,
     private val adjusted: BitmapUtils.Prepared,
     initialSettings: PreprocessSettings,
-    val boundaries: List<ImageQuad>,
+    boundaries: List<ImageQuad>,
     private val trace: AutomaticScanTrace? = null,
     private val estimateGrid: ((LumaImage, List<ImageQuad>, RecoveryCancellation) -> InitialGridEstimate?)? = null,
 ) {
+    var boundaries = boundaries.toList()
+        private set
+    var boundaryDetectionComplete = boundaries.isNotEmpty()
+        private set
     var initialized = false
         private set
     var settings = initialSettings
@@ -65,9 +69,15 @@ internal class InitialImageAnalysis(
             settings = settings.copy(blackMax = thresholds?.blackMax ?: 96, whiteMin = thresholds?.whiteMin ?: 160,
                 provisionalBlackMax = thresholds?.blackMax ?: 96, provisionalWhiteMin = thresholds?.whiteMin ?: 160,
                 unknownColorClusters = original?.unknownColorClusters.orEmpty())
+            if (estimateGrid == null && boundaries.isEmpty()) {
+                val detected = io.github.earthdiver.qrrepair.core.ZxingJavaGridDetector.detect(adjusted.luma, cancellation)
+                cancellation.check()
+                boundaries = detected
+                boundaryDetectionComplete = true
+            }
             initialGrid = if (estimateGrid != null) estimateGrid.invoke(adjusted.luma, boundaries, cancellation)
                 else InitialGridEstimator.estimate(adjusted.luma,
-                    boundaries.ifEmpty { io.github.earthdiver.qrrepair.core.ZxingJavaGridDetector.detect(adjusted.luma) },
+                    boundaries,
                     cancellation, trace?.gridObserver())
         } catch (_: RecoveryCancelledException) {
             // No completed grid is available; the detailed editor remains usable without it.
@@ -93,6 +103,9 @@ internal class ImageImportController(
     private val automaticScan: (LumaImage, PreprocessSettings, AutomaticScanBudget) -> QuickAutoRecoveryResult = QuickAutoRecovery()::run,
     private val clockMillis: () -> Long = { System.nanoTime() / 1_000_000 },
     private val firstAutomaticRun: () -> Boolean = QuickAutoStartupState.process::claim,
+    private val readRegion: (BitmapRegionDecoder, android.graphics.Rect) -> Bitmap? = { decoder, rect ->
+        decoder.decodeRegion(rect, BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 })
+    },
 ) {
     fun load(token: Int, uri: Uri, cleanupFile: File?, onDecoded: (Bitmap) -> Unit) {
         executor.execute {
@@ -238,27 +251,35 @@ internal class ImageImportController(
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-        // Decode before resampling: decoder-specific subsampling changes recovery evidence.
+        require(bounds.outWidth <= 65536 && bounds.outHeight <= 65536) { localizedText("画像の幅または高さが上限を超えています", "Image dimensions exceed the supported limit") }
+        // Include neighboring JPEG chroma samples before trimming each decoded region.
+        @Suppress("DEPRECATION")
+        val decoder = contentResolver.openInputStream(uri)?.use {
+            runCatching { BitmapRegionDecoder.newInstance(it, false) }.getOrNull()
+        }
+        if (decoder != null) {
+            try {
+                return decodeImportedTiles(decoder.width, decoder.height, orientation) { rect ->
+                    readImportedRegion(decoder.width, rect) { padded -> readRegion(decoder, padded) }
+                }
+            } catch (_: ImageRegionDecodeException) {
+                // Release partial output and the codec before trying a bounded full decode.
+            } finally { decoder.recycle() }
+        }
+        // Unsupported or failed region codecs use bounded decoding before EXIF copies.
+        // The codec may choose a different subsampling filter.
         val options = BitmapFactory.Options().apply {
             inPreferredConfig = Bitmap.Config.ARGB_8888
+            inSampleSize = io.github.earthdiver.qrrepair.core.ImageResampling.importSample(bounds.outWidth, bounds.outHeight)
         }
         val decoded = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
-            ?: return null
-        val spec = imageOrientationTransform(orientation)
-        val transform = Matrix().apply {
-            setRotate(spec.rotationDegrees)
-            if (spec.scaleX != 1f || spec.scaleY != 1f) postScale(spec.scaleX, spec.scaleY)
-        }
-        val upright = try {
-            if (orientation == ExifInterface.ORIENTATION_NORMAL || orientation == ExifInterface.ORIENTATION_UNDEFINED) decoded
-            else Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, transform, false).also {
-                if (it !== decoded) decoded.recycle()
+            ?: error(localizedText("画像をデコードできませんでした", "Could not decode the image"))
+        return try {
+            decodeImportedTiles(decoded.width, decoded.height, orientation) { rect ->
+                Bitmap.createBitmap(decoded, rect.left, rect.top, rect.width(), rect.height())
+                    .let { if (it === decoded) it.copy(Bitmap.Config.ARGB_8888, false) else it }
             }
-        } catch (t: Throwable) {
-            decoded.recycle()
-            throw t
-        }
-        return try { BitmapUtils.boundImportedSource(upright) } finally { upright.recycle() }
+        } finally { decoded.recycle() }
     }
 }
 

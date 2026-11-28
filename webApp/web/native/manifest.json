@@ -11,10 +11,10 @@
     "ZXING_LICENSE": "c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08",
     "ZXING_THIRD_PARTY": "c047d54b7119674c7719424a1069d28b8a638cab309d41d3c9be1339ad43b53e",
     "boundary.js": "9e14971000fd3612f45bc43acd157d5899a5b25bb0961dfd5b190343f8522a77",
-    "boundary.wasm": "2a5cbcf10d316004649dd3cebd76a2accbcfe7ca5b3bdd06491cc567767e0535"
+    "boundary.wasm": "2cbf65316161c54176ce6c14dd3748daa4301d225b5b2320aef0ef45aebe78b3"
   },
   "sources": {
-    "native/boundary.cpp": "1349463235bd26d7532abbf8dec0904dd46a060e7324b7c0580292f0f5fd252a",
+    "native/boundary.cpp": "8975f0dbc2623dbfb0f9089ba4262c14a8817b4f66ad69a61be3ea8e559c2deb",
     "native/CMakeLists.txt": "612b6d85763c4f6026ccbc403eb87f89d3c17994bdece025ffff780e8c4fbd86"
   }
 }

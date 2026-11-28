@@ -56,3 +56,16 @@ test('source transforms survive backups and reject invalid geometry or mixed ope
  }
  s.history[0].settings.imageOps=[op,{type:'rotate',angle:10}];assert.throws(()=>validateSession(s));
 });
+
+test('pre-analysis image state has a distinct validated schema',()=>{
+ const regular=workspace();const value={...regular,kind:'image-import',settings:regular.history[0].settings,
+  image:'data:image/png;base64,AA==',imageHash:'a'.repeat(64),history:[],cursor:-1,
+  ordinary:{text:'\uFEFFComplete text',reader:'ZXing-C++',payloadBytes:[0,255]}};
+ assert.doesNotThrow(()=>validateSession(value));
+ for(const corrupt of [s=>s.image=null,s=>s.imageHash='bad',s=>s.cursor=0,s=>s.history=regular.history,
+  s=>s.settings.version=0,s=>s.ordinary.text=42,s=>s.ordinary.payloadBytes=[256],s=>s.checkpoint=regular.history[0],s=>s.qrrRaw='raw']){
+  const invalid=structuredClone(value);corrupt(invalid);assert.throws(()=>validateSession(invalid));
+ }
+ const invalid=workspace();invalid.history=[];invalid.cursor=-1;
+ assert.throws(()=>validateSession(invalid));
+});

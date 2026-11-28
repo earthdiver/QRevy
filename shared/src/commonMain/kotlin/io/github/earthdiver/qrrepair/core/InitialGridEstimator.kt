@@ -234,9 +234,15 @@ object InitialGridEstimator {
     }
 
     /** Validates a platform detector's outer boundary and returns the editor's outer module centers. */
-    fun fromBoundary(image: LumaImage, boundary: ImageQuad): InitialGridEstimate? =
-        fromBoundary(image, LumaImage(image.width, image.height,
-            IntArray(image.pixels.size) { 255 - image.pixels[it] }), boundary)
+    fun fromBoundary(image: LumaImage, boundary: ImageQuad,
+        cancellation: RecoveryCancellation = RecoveryCancellation.NONE): InitialGridEstimate? {
+        cancellation.check()
+        val inverse = IntArray(image.pixels.size) {
+            if (it % image.width == 0) cancellation.check()
+            255 - image.pixels[it]
+        }
+        return fromBoundary(image, LumaImage(image.width, image.height, inverse), boundary, cancellation)
+    }
 
     private fun fromBoundary(image: LumaImage, inverse: LumaImage, boundary: ImageQuad,
         cancellation: RecoveryCancellation = RecoveryCancellation.NONE): InitialGridEstimate? {

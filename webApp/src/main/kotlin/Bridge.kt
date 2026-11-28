@@ -107,7 +107,8 @@ object Bridge {
                     (Interop.item(rgba,i).toInt() shl 16) or (Interop.item(rgba,i+1).toInt() shl 8) or Interop.item(rgba,i+2).toInt()
             }
         }
-        val sample=ImageResampling.importSample(w,h)
+        val sample=o.int("sample",ImageResampling.importSample(w,h))
+        require(sample > 0 && sample <= 65536)
         val bounded=o.str("method")=="import"
         val ow=if(bounded)ImageResampling.sampledSize(w,sample)else o.int("outWidth")
         val oh=if(bounded)ImageResampling.sampledSize(h,sample)else o.int("outHeight")

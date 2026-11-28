@@ -1163,7 +1163,22 @@ export const nativeStrings = {
   "inline:画像をデコードできません": {
     "ja": "画像をデコードできません",
     "en": "Could not decode the image",
-    "source": "java/io/github/earthdiver/qrrepair/ImageImportController.kt:99"
+    "source": "java/io/github/earthdiver/qrrepair/ImageImportController.kt:114"
+  },
+  "inline:画像の幅または高さが上限を超えています": {
+    "ja": "画像の幅または高さが上限を超えています",
+    "en": "Image dimensions exceed the supported limit",
+    "source": "java/io/github/earthdiver/qrrepair/ImageImportController.kt:254"
+  },
+  "inline:画像をデコードできませんでした": {
+    "ja": "画像をデコードできませんでした",
+    "en": "Could not decode the image",
+    "source": "java/io/github/earthdiver/qrrepair/ImageImportController.kt:276"
+  },
+  "inline:画像の領域をデコードできませんでした": {
+    "ja": "画像の領域をデコードできませんでした",
+    "en": "Could not decode an image region",
+    "source": "java/io/github/earthdiver/qrrepair/ImportedImageTiles.kt:76"
   },
   "inline:テキスト行列を読み込めません": {
     "ja": "テキスト行列を読み込めません",
@@ -1738,287 +1753,287 @@ export const nativeStrings = {
   "inline:簡易自動修復をONにして画像を読み込んでください。診断記録はこの画面を開いている間だけ保持します。": {
     "ja": "簡易自動修復をONにして画像を読み込んでください。診断記録はこの画面を開いている間だけ保持します。",
     "en": "Import an image with automatic repair enabled. Diagnostic records are kept for this activity only.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2263"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2264"
   },
   "inline:診断をコピー": {
     "ja": "診断をコピー",
     "en": "Copy diagnostics",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2273"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2274"
   },
   "inline:診断をコピーしました": {
     "ja": "診断をコピーしました",
     "en": "Diagnostics copied",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2278"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2279"
   },
   "inline:短時間の探索。データ・ECC誤り0bit。": {
     "ja": "短時間の探索。データ・ECC誤り0bit。",
     "en": "Short search; zero data/ECC bit errors.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2304"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2305"
   },
   "inline:短時間の探索。データ・ECC上限5%。": {
     "ja": "短時間の探索。データ・ECC上限5%。",
     "en": "Short search; 5% data/ECC allowance.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2305"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2306"
   },
   "inline:同じ入力・格子を使い、最大10秒の時間枠で最初から再試行できます。途中で詳細解析へ切り替えられます。": {
     "ja": "同じ入力・格子を使い、最大10秒の時間枠で最初から再試行できます。途中で詳細解析へ切り替えられます。",
     "en": "Retry the same input and grid from the beginning with a time allowance of up to 10 seconds. You can switch to detailed analysis at any time.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2323"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2324"
   },
   "inline:同じ入力・格子を使い、時間制限なしで最初から再試行できます。時間がかかる場合がありますが、途中で詳細解析へ切り替えられます。探索量・メモリの上限、復号条件、成功判定は維持します。": {
     "ja": "同じ入力・格子を使い、時間制限なしで最初から再試行できます。時間がかかる場合がありますが、途中で詳細解析へ切り替えられます。探索量・メモリの上限、復号条件、成功判定は維持します。",
     "en": "Retry the same input and grid from the beginning without time limits. This may take longer; you can switch to detailed analysis at any time. Search and memory limits, decoding conditions, and success criteria remain unchanged.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2326"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2327"
   },
   "inline:詳細解析で格子や条件を確認できます。": {
     "ja": "詳細解析で格子や条件を確認できます。",
     "en": "You can review the grid and conditions in detailed analysis.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2329"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2330"
   },
   "inline:簡易自動修復の結果": {
     "ja": "簡易自動修復の結果",
     "en": "Quick automatic repair result",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2332"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2333"
   },
   "inline:時間枠を広げて再試行（10秒）": {
     "ja": "時間枠を広げて再試行（10秒）",
     "en": "Retry with more time (10 seconds)",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2337"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2338"
   },
   "inline:時間制限なしで再試行": {
     "ja": "時間制限なしで再試行",
     "en": "Retry without time limits",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2338"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2339"
   },
   "inline:延長時の格子推定": {
     "ja": "延長時の格子推定",
     "en": "Grid estimated during extended repair",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2365"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2366"
   },
   "inline:UTF-8と単一セグメントを仮定した候補です。": {
     "ja": "UTF-8と単一セグメントを仮定した候補です。",
     "en": "This candidate assumes UTF-8 and a single segment.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2387"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2388"
   },
   "inline:UTF-8を仮定した候補です。": {
     "ja": "UTF-8を仮定した候補です。",
     "en": "This candidate assumes UTF-8.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2389"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2390"
   },
   "inline:単一セグメントを仮定した候補です。": {
     "ja": "単一セグメントを仮定した候補です。",
     "en": "This candidate assumes a single segment.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2390"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2391"
   },
   "inline:読み取れたデータ・ECC bitに誤りがない条件で検証した候補です。": {
     "ja": "読み取れたデータ・ECC bitに誤りがない条件で検証した候補です。",
     "en": "This candidate was verified assuming the observed data/ECC bits are correct.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2391"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2392"
   },
   "inline:別の条件では他の候補も見つかっています。": {
     "ja": "別の条件では他の候補も見つかっています。",
     "en": "Other candidates were found under different conditions.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2396"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2397"
   },
   "inline:（テキストなし）": {
     "ja": "（テキストなし）",
     "en": "(No text)",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2397"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2398"
   },
   "inline:試した条件の範囲で候補が1件になりました。詳しく解析しますか？": {
     "ja": "試した条件の範囲で候補が1件になりました。詳しく解析しますか？",
     "en": "One candidate remains within the conditions tried. Continue with detailed analysis?",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2400"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2401"
   },
   "inline:復元候補が見つかりました": {
     "ja": "復元候補が見つかりました",
     "en": "Recovery candidate found",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2404"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2405"
   },
   "inline:詳しく解析する": {
     "ja": "詳しく解析する",
     "en": "Analyze in detail",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2406"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2407"
   },
   "inline:完了": {
     "ja": "完了",
     "en": "Done",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2409"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2410"
   },
   "inline:03 結果  /  内容を確認": {
     "ja": "03 結果  /  内容を確認",
     "en": "03 Result  /  Review content",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2431"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2432"
   },
   "inline:正常なQRコードを検出しました。\n\n": {
     "ja": "正常なQRコードを検出しました。\n\n",
     "en": "A valid QR code was detected.\n\n",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2437"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2438"
   },
   "inline:\n\nURL等は安全のため自動では開きません。": {
     "ja": "\n\nURL等は安全のため自動では開きません。",
     "en": "\n\nURLs are not opened automatically for safety.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2440"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2441"
   },
   "inline:正常なQRコードを即時デコードしました。修復は不要です。": {
     "ja": "正常なQRコードを即時デコードしました。修復は不要です。",
     "en": "The valid QR code was decoded immediately; repair is unnecessary.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2442"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2443"
   },
   "inline:案内: 内容を確認してください。必要な場合のみ『修復する』を開けます。": {
     "ja": "案内: 内容を確認してください。必要な場合のみ『修復する』を開けます。",
     "en": "Guide: Review the content. Open Repair only if needed.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2443"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2444"
   },
   "inline:QRコードの内容": {
     "ja": "QRコードの内容",
     "en": "QR code content",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2446"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2447"
   },
   "inline:形式情報の指定エラー": {
     "ja": "形式情報の指定エラー",
     "en": "Format selection error",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2455"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2456"
   },
   "inline:形式情報の指定が矛盾しているため、修復を開始できません。": {
     "ja": "形式情報の指定が矛盾しているため、修復を開始できません。",
     "en": "Repair cannot start: format selections conflict.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2487"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2488"
   },
   "inline:先に画像を選択してください。": {
     "ja": "先に画像を選択してください。",
     "en": "Select an image first.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2493"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2494"
   },
   "inline:単一セグメントの終端・埋め草を強制すると、内容を復号できる可能性があります。この条件で今回だけ再実行しますか？": {
     "ja": "単一セグメントの終端・埋め草を強制すると、内容を復号できる可能性があります。この条件で今回だけ再実行しますか？",
     "en": "Forcing a single segment’s terminator and padding may allow the content to decode. Retry with this condition for this run only?",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2540"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2541"
   },
   "inline:今回だけ再実行": {
     "ja": "今回だけ再実行",
     "en": "Retry this time only",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2542"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2543"
   },
   "inline:再実行しない": {
     "ja": "再実行しない",
     "en": "Do not retry",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2546"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2547"
   },
   "inline:保持された候補はありません。復元不能を意味しません。": {
     "ja": "保持された候補はありません。復元不能を意味しません。",
     "en": "No candidates were retained. This does not establish that recovery is impossible.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2551"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2552"
   },
   "inline:表示用の修復結果を保持できませんでした。": {
     "ja": "表示用の修復結果を保持できませんでした。",
     "en": "Could not retain a recovery result for display.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2556"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2557"
   },
   "inline:メモリの保持上限に達しました。作業を保存してアプリを開き直し、再実行してください。": {
     "ja": "メモリの保持上限に達しました。作業を保存してアプリを開き直し、再実行してください。",
     "en": "The memory retention limit was reached. Save the work, reopen the app and try again.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2557"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2558"
   },
   "inline:論理四隅が未確定のため、QR行列を作成できませんでした。四隅とFinder役割を確認してください。": {
     "ja": "論理四隅が未確定のため、QR行列を作成できませんでした。四隅とFinder役割を確認してください。",
     "en": "The QR matrix could not be built because the logical corners are not assigned. Check the corners and Finder roles.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2563"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2564"
   },
   "inline:案内: QR行列を作成できなかったため、修復を開始できませんでした。四隅・Finderの役割・バージョンをご確認ください。QR行列がないため、追加で確定が必要なbit数と推奨セルは算出できません。": {
     "ja": "案内: QR行列を作成できなかったため、修復を開始できませんでした。四隅・Finderの役割・バージョンをご確認ください。QR行列がないため、追加で確定が必要なbit数と推奨セルは算出できません。",
     "en": "Guide: Repair could not be started because a QR matrix could not be created. Please review the corners, Finder roles, and Version. Without a QR matrix, the number of additional bits that must be determined and a recommended cell cannot be calculated.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2564"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2565"
   },
   "inline:修復できませんでした": {
     "ja": "修復できませんでした",
     "en": "Repair failed",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2565"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2566"
   },
   "inline:論理四隅が未確定": {
     "ja": "論理四隅が未確定",
     "en": "Logical corners are not assigned",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2565"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2566"
   },
   "inline:固定した四隅とバージョンから幾何候補を作れませんでした。": {
     "ja": "固定した四隅とバージョンから幾何候補を作れませんでした。",
     "en": "No geometry candidate could be built from the fixed corners and Version.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2569"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2570"
   },
   "inline:案内: 固定された四隅とバージョンからQR行列を作成できなかったため、修復を開始できませんでした。四隅とバージョンをご確認ください。QR行列がないため、追加で確定が必要なbit数と推奨セルは算出できません。": {
     "ja": "案内: 固定された四隅とバージョンからQR行列を作成できなかったため、修復を開始できませんでした。四隅とバージョンをご確認ください。QR行列がないため、追加で確定が必要なbit数と推奨セルは算出できません。",
     "en": "Guide: Repair could not be started because a QR matrix could not be created from the fixed corners and Version. Please review the corners and Version. Without a QR matrix, the number of additional bits that must be determined and a recommended cell cannot be calculated.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2570"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2571"
   },
   "inline:固定幾何候補なし": {
     "ja": "固定幾何候補なし",
     "en": "No fixed geometry candidate",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2571"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2572"
   },
   "inline:修復処理（今回だけ終端後構造を強制）": {
     "ja": "修復処理（今回だけ終端後構造を強制）",
     "en": "Repair (single-segment forcing for this run only)",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2583"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2584"
   },
   "inline:修復処理": {
     "ja": "修復処理",
     "en": "Repair",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2584"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2585"
   },
   "inline:内部エラーにより、探索の完了状況を確認できません。": {
     "ja": "内部エラーにより、探索の完了状況を確認できません。",
     "en": "An internal error prevented determining search completion.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2589"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2590"
   },
   "inline:初期格子を推定": {
     "ja": "初期格子を推定",
     "en": "Estimated initial grid",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2630"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2631"
   },
   "inline:修復設定を保存しました。": {
     "ja": "修復設定を保存しました。",
     "en": "Repair settings saved.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2676"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2677"
   },
   "inline:内容プレビュー: 修復設定を保存しました。修復はまだ実行していません。": {
     "ja": "内容プレビュー: 修復設定を保存しました。修復はまだ実行していません。",
     "en": "Content preview: Repair settings were saved; repair has not started.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2677"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2678"
   },
   "inline:このセルをご確認ください。": {
     "ja": "このセルをご確認ください。",
     "en": " Check this cell.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2822"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2823"
   },
   "inline: 入力済みセルや修復設定をご確認ください。": {
     "ja": " 入力済みセルや修復設定をご確認ください。",
     "en": " Review the entered cells and repair settings.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2825"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2826"
   },
   "inline:\nQRのデータ形式を確認しました\n文字として表示できないデータです。": {
     "ja": "\nQRのデータ形式を確認しました\n文字として表示できないデータです。",
     "en": "\nThe QR data format was verified\nThe data cannot be displayed as text.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2869"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2870"
   },
   "inline:QRのデータ形式を確認しました\n文字として表示できないデータです。": {
     "ja": "QRのデータ形式を確認しました\n文字として表示できないデータです。",
     "en": "The QR data format was verified\nThe data cannot be displayed as text.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2881"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2882"
   },
   "inline:誤り訂正の条件を満たす候補はありますが、内容を読み取れませんでした": {
     "ja": "誤り訂正の条件を満たす候補はありますが、内容を読み取れませんでした",
     "en": "Error-correction candidates exist, but their content could not be read",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2883"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2884"
   },
   "inline:保存するQR行列がありません。": {
     "ja": "保存するQR行列がありません。",
     "en": "No QR matrix is available to save.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2923"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2924"
   },
   "inline:保存する入力画像がありません。": {
     "ja": "保存する入力画像がありません。",
     "en": "No input image is available to save.",
-    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2975"
+    "source": "java/io/github/earthdiver/qrrepair/MainActivity.kt:2976"
   },
   "inline:通常RSの訂正結果は固定セルまたは誤り上限の条件を満たさないため、解析対象にしていません。": {
     "ja": "通常RSの訂正結果は固定セルまたは誤り上限の条件を満たさないため、解析対象にしていません。",

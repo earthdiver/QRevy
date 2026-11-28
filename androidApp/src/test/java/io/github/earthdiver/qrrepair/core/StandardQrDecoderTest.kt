@@ -17,6 +17,21 @@ class StandardQrDecoderTest {
         assertEquals(expected, StandardQrDecoder.decode(size, size, pixels)?.text)
     }
 
+    @Test fun invertedQrPreservesPayloadAndDoesNotChangeSourcePixels() {
+        val expected = "  café 日本語\nhttps://example.invalid/  "
+        val encoded = Encoder.encode(expected, ErrorCorrectionLevel.M,
+            mapOf(EncodeHintType.CHARACTER_SET to "UTF-8"))
+        val (size, pixels) = render(encoded.matrix)
+        val inverted = IntArray(pixels.size) { pixels[it] xor 0x00ffffff }
+        val retained = inverted.copyOf()
+        val normal = requireNotNull(StandardQrDecoder.decode(size, size, pixels))
+        val result = requireNotNull(StandardQrDecoder.decode(size, size, inverted))
+        assertEquals(expected, result.text)
+        assertArrayEquals(normal.rawBytes, result.rawBytes)
+        assertArrayEquals(retained, inverted)
+        assertNull(StandardQrDecoder.decode(80, 80, IntArray(6400) { -1 }))
+    }
+
     @Test fun defaultLatin1BytePayloadIsNotForcedThroughUtf8() {
         val expected = "caf\u00e9"
         // ZXing's QR default encodes this as ISO-8859-1 without requiring an ECI segment.

@@ -29,7 +29,11 @@ export async function saveSession(session) {
   await transaction('readwrite', s => {
     s.put(stored);
     const all = s.getAll();
-    all.onsuccess = () => all.result.sort((a,b)=>b.updated-a.updated).slice(20).forEach(v=>s.delete(v.id));
+    all.onsuccess = () => {
+      const ordered=all.result.sort((a,b)=>b.updated-a.updated);
+      for(const imageOnly of [false,true])ordered.filter(v=>(v.kind==='image-import')===imageOnly)
+        .slice(20).forEach(v=>s.delete(v.id));
+    };
   });
 }
 export async function digest(bytes) {
@@ -40,14 +44,15 @@ export async function exportWorkspace(session) {
   const image = session.image ? await blobToDataURL(session.image) : null;
   const payload = JSON.stringify({ ...session, image });
   if(new TextEncoder().encode(payload).length>31*1024*1024)throw new Error('作業ファイルが大きすぎます。QRRと画像を別々に保存してください');
-  return new Blob([JSON.stringify({ format:'QRevy-PWA', version:1, sha256:await digest(new TextEncoder().encode(payload)), payload })], {type:'application/json'});
+  return new Blob([JSON.stringify({ format:'QRevy-PWA', version:session.kind==='image-import'?2:1, sha256:await digest(new TextEncoder().encode(payload)), payload })], {type:'application/json'});
 }
 export async function importWorkspace(file) {
   if (file.size > 32*1024*1024) throw new Error('作業ファイルは32MB以下にしてください');
   const envelope = JSON.parse(await file.text());
-  if(envelope.format !== 'QRevy-PWA' || envelope.version !== 1 || typeof envelope.payload !== 'string') throw new Error('対応していない作業ファイルです');
+  if(envelope.format !== 'QRevy-PWA' || ![1,2].includes(envelope.version) || typeof envelope.payload !== 'string') throw new Error('対応していない作業ファイルです');
   if(await digest(new TextEncoder().encode(envelope.payload)) !== envelope.sha256) throw new Error('作業ファイルの整合性チェックに失敗しました');
   const session=JSON.parse(envelope.payload);
+  if(envelope.version===1&&session.kind==='image-import')throw new Error('Unsupported workspace version');
   validateSession(session);
   if(session.image) {
     if(!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(session.image))throw new Error('画像の形式が不正です');
@@ -68,6 +73,17 @@ export function validateMatrix(matrix) {
 }
 export function validateSession(s) {
   if(!s || typeof s.id!=='string'||!/^[-\w]{1,80}$/.test(s.id)||typeof s.name!=='string'||s.name.length>200||!Number.isFinite(s.updated)||s.updated<0)throw new Error('作業情報が不正です');
+  if(s.kind!=null&&!['analysis','image-import'].includes(s.kind))throw new Error('Invalid workspace kind');
+  if(s.ordinary!=null){
+    const o=s.ordinary;
+    if(typeof o!=='object'||typeof o.text!=='string'||o.text.length>65536||!['ZXing-C++','ZXing Java'].includes(o.reader))throw new Error('Invalid ordinary result');
+    for(const key of ['payloadBytes','dataCodewords'])if(o[key]!=null&&(!Array.isArray(o[key])||o[key].length>65536||o[key].some(b=>!Number.isInteger(b)||b<0||b>255)))throw new Error('Invalid ordinary bytes');
+  }
+  if(s.kind==='image-import'){
+    if(!s.image||typeof s.imageHash!=='string'||!/^[a-f0-9]{64}$/.test(s.imageHash)||!Array.isArray(s.history)||s.history.length!==0||s.cursor!==-1||s.checkpoint!=null||s.qrrRaw!=null||s.qrrVersion!=null)throw new Error('Invalid image import');
+    validateSettings(s.settings);
+    return;
+  }
   if(!Array.isArray(s.history)||s.history.length<1||s.history.length>40||!Number.isInteger(s.cursor)||s.cursor<0||s.cursor>=s.history.length)throw new Error('操作履歴が不正です');
   const entries=[...s.history,...(s.checkpoint?[s.checkpoint]:[])];
   const snapshots=[...entries];

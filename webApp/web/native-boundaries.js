@@ -1,4 +1,4 @@
-import createNative from './native/boundary.js';
+
 
 export function nativeScanner(native){
   return (pixels,width,height)=>{
@@ -16,7 +16,7 @@ export function nativeScanner(native){
       const boundaries=Array.from(native.HEAP32.subarray(output/4,output/4+count*8));
       const textStart=native._textPointer(),bytesStart=native._bytesPointer();
       const decoded=native._hasDecoded()?{
-        text:new TextDecoder().decode(native.HEAPU8.subarray(textStart,textStart+native._textLength())),
+        text:new TextDecoder('utf-8',{ignoreBOM:true}).decode(native.HEAPU8.subarray(textStart,textStart+native._textLength())),
         bytes:Array.from(native.HEAPU8.subarray(bytesStart,bytesStart+native._bytesLength())),reader:'ZXing-C++'
       }:null;
       return {boundaries,decoded};
@@ -24,9 +24,22 @@ export function nativeScanner(native){
   };
 }
 export async function loadNativeScanner(options){
+  const {default:createNative}=await import('./native/boundary.js');
   const scan=nativeScanner(await createNative(options));
   return (...args)=>{
     try{return scan(...args);}
     catch(error){console.warn('Native reading failed; using Java reading and verified geometry',error);return {boundaries:[],decoded:null};}
+  };
+}
+
+/** Keep one exact input; settings and incoming cache hints cannot forge a native result. */
+export function cacheNativeScanner(scan){
+  let previous=null;
+  return (pixels,width,height)=>{
+    if(previous&&previous.width===width&&previous.height===height&&pixels.length===previous.pixels.length&&
+       previous.pixels.every((value,i)=>value===pixels[i]))return structuredClone(previous.result);
+    const result=scan(pixels,width,height);
+    previous={pixels:Uint32Array.from(pixels),width,height,result:structuredClone(result)};
+    return result;
   };
 }

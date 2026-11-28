@@ -24,9 +24,12 @@ internal class AutomaticRepairDiagnosticSession(
     val baselineReport: String,
     boundaries: List<ImageQuad> = emptyList(),
     val textMatrix: Boolean = false,
+    boundaryDetectionComplete: Boolean = boundaries.isNotEmpty(),
+    private val detectFallback: (LumaImage, RecoveryCancellation) -> List<ImageQuad> =
+        io.github.earthdiver.qrrepair.core.ZxingJavaGridDetector::detect,
 ) {
     val settings = settings.recoverySnapshot()
-    private val boundaries = boundaries.toList()
+    private var boundaries = boundaries.takeIf { boundaryDetectionComplete || it.isNotEmpty() }?.toList()
     var extendedReport: String? = null
     var unlimitedRepairReport: String? = null
     @Volatile var nextRetry: QuickAutoRetryMode? = QuickAutoRetryMode.TEN_SECONDS
@@ -78,7 +81,11 @@ internal class AutomaticRepairDiagnosticSession(
         val start = trace.elapsedMillis
         return try {
             cancellation.check()
-            val grid = estimateGrid(image, boundaries, cancellation, trace.gridObserver())
+            val detected = boundaries ?: detectFallback(image, cancellation).also {
+                cancellation.check()
+                boundaries = it.toList()
+            }
+            val grid = estimateGrid(image, detected, cancellation, trace.gridObserver())
             cancellation.check()
             trace.event("INITIAL_GRID", "durationMs=${trace.elapsedMillis - start} result=$grid stop=NONE")
             if (grid == null) settings else settings.withInitialGrid(grid)

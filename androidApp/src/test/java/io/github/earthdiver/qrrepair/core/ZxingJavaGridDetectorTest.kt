@@ -9,6 +9,23 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 
 class ZxingJavaGridDetectorTest {
+    @Test fun fallbackChecksCancellationWhileBuildingTheThresholdImage() {
+        val image = LumaImage(80, 80, IntArray(6400) { 255 })
+        var checks = 0
+        org.junit.Assert.assertThrows(RecoveryCancelledException::class.java) {
+            ZxingJavaGridDetector.detect(image, RecoveryCancellation { ++checks >= 10 })
+        }
+        assertEquals(10, checks)
+    }
+
+    @Test fun boundaryValidationHonorsAlreadyStoppedWork() {
+        val image = LumaImage(80, 80, IntArray(6400) { 255 })
+        val quad = ImageQuad(PointD(0.0,0.0),PointD(79.0,0.0),PointD(79.0,79.0),PointD(0.0,79.0))
+        org.junit.Assert.assertThrows(RecoveryCancelledException::class.java) {
+            InitialGridEstimator.fromBoundary(image, quad, RecoveryCancellation { true })
+        }
+    }
+
     @Test fun damagedAlignmentPreservesVersionAndCorners() {
         for (payload in listOf("BOUNDARY 42", "FINDER GEOMETRY", "ALIGNMENT OCCLUSION")) {
             val qr = Encoder.encode(payload, ErrorCorrectionLevel.M, mapOf(EncodeHintType.QR_VERSION to 5)).matrix

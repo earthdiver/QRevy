@@ -2247,7 +2247,8 @@ class MainActivity : Activity() {
                 val automatic = result.automaticResult
                 automatic?.let {
                     automaticDiagnostic = AutomaticRepairDiagnosticSession(adjusted.luma, result.settings, it.diagnosticReport.orEmpty(),
-                        result.initialization.boundaries)
+                        result.initialization.boundaries,
+                        boundaryDetectionComplete = result.initialization.boundaryDetectionComplete)
                 }
                 if (automatic != null) retainAutomaticResult(automatic)
                 if (automatic != null && !stop.get()) showAutomaticResult(automatic)
@@ -2616,7 +2617,7 @@ class MainActivity : Activity() {
             val adjusted = analysisPrepared ?: source
             pendingInitialAnalysis = source to InitialImageAnalysis(source, adjusted, preprocessSettings, emptyList()) { image, _, cancellation ->
                 io.github.earthdiver.qrrepair.core.InitialGridEstimator.estimate(image,
-                    io.github.earthdiver.qrrepair.core.ZxingCppGridDetector.detect(adjusted.bitmap), cancellation)
+                    io.github.earthdiver.qrrepair.core.ZxingCppGridDetector.detect(adjusted.bitmap, adjusted.luma, cancellation), cancellation)
             }
         }
         pendingInitialAnalysis?.takeIf { it.first === source && !it.second.initialized }?.let { (_, initialization) ->

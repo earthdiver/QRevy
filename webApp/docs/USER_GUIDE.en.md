@@ -196,7 +196,7 @@ If offered a retry with a single-segment assumption, the one-time retry applies 
 
 Use **Menu → Current workspace** for checkpoint saving, restoration, history, and workspace file exports. PNG export remains beside the decoded content.
 
-Changes are saved automatically in this browser. Use **Menu → Open a saved workspace** to resume or delete work. Storage holds up to 20 workspaces with 40 history states each; older entries are removed when limits are exceeded. Select an earlier state in **Operation history** to return to it. Reopening an automatic result preserves the execution conditions used for that result.
+Changes are saved automatically in this browser. Use **Menu → Open a saved workspace** to resume or delete work. Storage holds up to 20 analyzed workspaces with 40 history states each, plus 20 workspaces awaiting detailed analysis. Each category removes its oldest entries when its limit is exceeded; ordinary reads do not evict analyzed workspaces. Select an earlier state in **Operation history** to return to it. Reopening an automatic result preserves the execution conditions used for that result.
 
 **Save** records a checkpoint. After further edits, use **Restore saved checkpoint** to return to that state.
 

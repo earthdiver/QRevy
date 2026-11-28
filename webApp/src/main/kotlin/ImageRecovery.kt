@@ -4,12 +4,12 @@ import org.teavm.jso.JSObject
 
 internal object ImageRecovery {
     /** Same native reader and verified Java fallback as Android. */
-    fun boundaries(o: JSObject, img: LumaImage): List<ImageQuad> {
+    fun boundaries(o: JSObject, img: LumaImage, cancellation: RecoveryCancellation = RecoveryCancellation.NONE): List<ImageQuad> {
         val w=o.int("width");val h=o.int("height");val pixels=o.obj("pixels")
         require(w in 1..4096 && h in 1..4096 && w.toLong()*h<=8_000_000 && Interop.length(pixels)==w*h)
         val points=Interop.nativeScan(o,pixels,w,h).obj("boundaries")
         require(Interop.length(points)%8==0 && Interop.length(points)<=128)
-        if(Interop.length(points)==0)return ZxingJavaGridDetector.detect(img)
+        if(Interop.length(points)==0)return ZxingJavaGridDetector.detect(img, cancellation)
         return (0 until Interop.length(points)/8).map { i ->
             fun p(j:Int):PointD {
                 val x=Interop.item(points,i*8+j*2);val y=Interop.item(points,i*8+j*2+1)
@@ -27,12 +27,12 @@ internal object ImageRecovery {
         val native=Interop.nativeScan(o,pixels,w,h).obj("decoded")
         if(native.str("reader").isNotEmpty()) {
             val bytes=native.obj("bytes")
-            return mapOf("text" to native.str("text"),"bytes" to (0 until Interop.length(bytes)).map{Interop.item(bytes,it).toInt()},"reader" to native.str("reader"))
+            return mapOf("text" to native.str("text"),"payloadBytes" to (0 until Interop.length(bytes)).map{Interop.item(bytes,it).toInt()},"reader" to native.str("reader"))
         }
         if(!allowFallback())return null
         val argb=IntArray(w*h){Interop.item(pixels,it).toInt()}
         val decoded=StandardQrDecoder.decode(w,h,argb)?:return null
-        return mapOf("text" to decoded.text,"bytes" to decoded.rawBytes?.map{it.toInt() and 255},"reader" to "ZXing Java")
+        return mapOf("text" to decoded.text,"dataCodewords" to decoded.rawBytes?.map{it.toInt() and 255},"reader" to "ZXing Java")
     }
 
     fun geometryWithWarp(s: PreprocessSettings,o: JSObject): GridGeometry {

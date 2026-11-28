@@ -5,6 +5,42 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AutomaticRepairDiagnosticSessionTest {
+    @Test fun retryObtainsMissingJavaBoundariesAndCachesEvenAnEmptyCompletedResult() {
+        for (detected in listOf(emptyList(), listOf(quad))) {
+            var calls = 0
+            val session = AutomaticRepairDiagnosticSession(image, PreprocessSettings(), "baseline",
+                detectFallback = { _, cancellation -> calls++; cancellation.check(); detected })
+            repeat(2) {
+                session.settingsForRetry(AutomaticScanTrace(), RecoveryCancellation.NONE) { _, boundaries, _, _ ->
+                    assertEquals(detected, boundaries)
+                    null
+                }
+            }
+            assertEquals(1, calls)
+        }
+    }
+
+    @Test fun interruptedJavaFallbackIsRetriedWithoutCachingPartialGeometry() {
+        var calls = 0
+        var stop = false
+        val session = AutomaticRepairDiagnosticSession(image, PreprocessSettings(), "baseline",
+            detectFallback = { _, cancellation ->
+                calls++
+                if (calls == 1) stop = true
+                cancellation.check()
+                listOf(quad)
+            })
+        assertThrows(RecoveryCancelledException::class.java) {
+            session.settingsForRetry(AutomaticScanTrace(), RecoveryCancellation { stop })
+        }
+        stop = false
+        session.settingsForRetry(AutomaticScanTrace(), RecoveryCancellation { stop }) { _, boundaries, _, _ ->
+            assertEquals(listOf(quad), boundaries)
+            estimate
+        }
+        assertEquals(2, calls)
+    }
+
     @Test fun retriesProgressFromTenSecondsToUnlimitedAndReuseTheCompletedGrid() {
         var now = 0L
         var estimates = 0

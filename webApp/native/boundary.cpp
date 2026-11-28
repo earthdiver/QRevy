@@ -27,7 +27,7 @@ extern "C" int detectBoundaries(const uint8_t* rgba, int width, int height, int*
     try {
         const auto options = ZXing::ReaderOptions()
             .formats(ZXing::BarcodeFormat::QRCodeModel2)
-            .tryHarder(true).tryRotate(true).tryInvert(false).tryDownscale(true)
+            .tryHarder(true).tryRotate(true).tryInvert(true).tryDownscale(true)
             .returnErrors(true).maxNumberOfSymbols(16).textMode(ZXing::TextMode::Plain);
         const auto results = ZXing::ReadBarcodes(ZXing::ImageView(rgba, width, height, ZXing::ImageFormat::RGBA), options);
         int count = 0;

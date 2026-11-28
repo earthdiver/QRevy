@@ -1,4 +1,4 @@
-import {changeEvidenceControl,clickInputAction,openAppMenu,runRecovery,setAutomaticRepair} from './input-helpers.js';
+import {changeEvidenceControl,clickInputAction,openAppMenu,openImageAdjustments,runRecovery,setAutomaticRepair} from './input-helpers.js';
 import {test,expect} from '@playwright/test';
 import {readFile} from 'node:fs/promises';
 
@@ -90,8 +90,10 @@ test('orientation changes on an inverted image synchronize thresholds before rec
   for(let i=0;i<d.data.length;i+=4)for(let j=0;j<3;j++)d.data[i+j]=255-d.data[i+j];cx.putImageData(d,0,0);return c.toDataURL().split(',')[1];
  },'data:image/png;base64,'+raw.toString('base64'));
  await page.locator('#imageFile').setInputFiles({name:'inverted.png',mimeType:'image/png',buffer:Buffer.from(png,'base64')});
- await page.locator('#cropApply').click();await expect(page.locator('#automaticDialog')).toBeVisible();await page.locator('#automaticDetailed').click();
+ await page.locator('#cropApply').click();await expect(page.locator('#ordinaryDialog')).toBeVisible();await page.locator('#ordinaryDetailed').click();
+ await ready(page);await openImageAdjustments(page);await page.locator('#polarity').selectOption('AUTO');await ready(page);
  await expect.poll(async()=>(await latest(page))?.settings.confirmedPolarity).toBe('INVERTED');
+ expect(Number(await page.locator('#black').inputValue())).toBeGreaterThan(Number(await page.locator('#white').inputValue()));
  await page.locator('#orientation').selectOption('1');await ready(page);
  expect(Number(await page.locator('#black').inputValue())).toBeLessThan(Number(await page.locator('#white').inputValue()));
  await runRecovery(page);await expect(page.locator('.steps [data-tab="results"]')).toHaveClass(/active/);

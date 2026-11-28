@@ -15,17 +15,21 @@ import com.google.zxing.qrcode.decoder.ZxingPayloadBridge
 object StandardQrDecoder {
     fun decode(width: Int, height: Int, argb: IntArray): Result? {
         require(width > 0 && height > 0 && argb.size == width * height)
-        return runCatching {
-            val hints = mapOf(
-                DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE),
-                DecodeHintType.TRY_HARDER to true,
-            )
-            val result = MultiFormatReader().decode(
-                BinaryBitmap(HybridBinarizer(RGBLuminanceSource(width, height, argb))),
-                hints,
-            )
-            correctFnc1SecondPosition(result, hints)
-        }.getOrNull()
+        val hints = mapOf(
+            DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE),
+            DecodeHintType.TRY_HARDER to true,
+        )
+        val source = RGBLuminanceSource(width, height, argb)
+        for (inverted in listOf(false, true)) {
+            val result = runCatching {
+                val decoded = MultiFormatReader().decode(
+                    BinaryBitmap(HybridBinarizer(if (inverted) source.invert() else source)), hints,
+                )
+                correctFnc1SecondPosition(decoded, hints)
+            }.getOrNull()
+            if (result != null) return result
+        }
+        return null
     }
 
     private fun correctFnc1SecondPosition(result: Result, hints: Map<DecodeHintType, *>): Result {

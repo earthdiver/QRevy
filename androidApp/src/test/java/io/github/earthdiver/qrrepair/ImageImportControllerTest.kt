@@ -19,6 +19,41 @@ import java.util.concurrent.Executor
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class ImageImportControllerTest {
+    @Test fun completedEmptyImportDetectionIsReusedByAutomaticRetry() {
+        val source = BitmapUtils.prepare(bitmap())
+        try {
+            val initialization = InitialImageAnalysis(source, source, PreprocessSettings(), emptyList())
+            initialization.initialize()
+            assertTrue(initialization.boundaryDetectionComplete)
+            assertTrue(initialization.boundaries.isEmpty())
+            assertNull(initialization.initialGrid)
+            val session = AutomaticRepairDiagnosticSession(source.luma, initialization.settings, "",
+                initialization.boundaries, boundaryDetectionComplete = initialization.boundaryDetectionComplete,
+                detectFallback = { _, _ -> error("Completed import detection must not run again") })
+            session.settingsForRetry(AutomaticScanTrace(), RecoveryCancellation.NONE) { _, boundaries, _, _ ->
+                assertTrue(boundaries.isEmpty())
+                null
+            }
+        } finally { source.bitmap.recycle() }
+    }
+
+    @Test fun interruptedImportDetectionIsRunByAutomaticRetry() {
+        val source = BitmapUtils.prepare(bitmap())
+        try {
+            val initialization = InitialImageAnalysis(source, source, PreprocessSettings(), emptyList())
+            initialization.initialize(RecoveryCancellation { true })
+            assertFalse(initialization.boundaryDetectionComplete)
+            var calls = 0
+            val session = AutomaticRepairDiagnosticSession(source.luma, initialization.settings, "",
+                initialization.boundaries, boundaryDetectionComplete = initialization.boundaryDetectionComplete,
+                detectFallback = { _, _ -> calls++; emptyList() })
+            repeat(2) {
+                session.settingsForRetry(AutomaticScanTrace(), RecoveryCancellation.NONE) { _, _, _, _ -> null }
+            }
+            assertEquals(1, calls)
+        } finally { source.bitmap.recycle() }
+    }
+
     @Test fun gridPreparationTimeoutIsReportedWithoutDependingOnDebugTracing() {
         var now = 0L
         var imported: PreparedImageImport? = null
